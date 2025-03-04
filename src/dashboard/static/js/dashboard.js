@@ -1,0 +1,594 @@
+// Dashboard JavaScript
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Elements
+    const proposalsTableBody = document.getElementById('proposals-table-body');
+    const proposalCount = document.getElementById('proposal-count');
+    const loadingIndicator = document.getElementById('loading');
+    const noResultsMessage = document.getElementById('no-results');
+    const filterForm = document.getElementById('filter-form');
+    const searchInput = document.getElementById('search');
+    const sourceSelect = document.getElementById('source');
+    const agencySelect = document.getElementById('agency');
+    const statusSelect = document.getElementById('status');
+    const sortBySelect = document.getElementById('sort-by');
+    const sortOrderSelect = document.getElementById('sort-order');
+    const resetFiltersButton = document.getElementById('reset-filters');
+    const rebuildDbButton = document.getElementById('rebuild-db');
+    const initDbButton = document.getElementById('init-db');
+    const updateNotification = document.getElementById('update-notification');
+    const refreshFromNotification = document.getElementById('refresh-from-notification');
+    const proposalModal = new bootstrap.Modal(document.getElementById('proposal-modal'));
+    const modalTitle = document.getElementById('modal-title');
+    const modalBody = document.getElementById('modal-body');
+    const viewSourceButton = document.getElementById('view-source');
+    
+    // Statistics elements
+    const statsModal = document.getElementById('stats-modal');
+    const statsLoading = document.getElementById('stats-loading');
+    const statsContent = document.getElementById('stats-content');
+    const totalProposals = document.getElementById('total-proposals');
+    const sourceStats = document.getElementById('source-stats');
+    const agencyStats = document.getElementById('agency-stats');
+    const statusStats = document.getElementById('status-stats');
+    
+    // Current filters and sort options
+    let currentFilters = {
+        search: '',
+        source_id: '',
+        agency: '',
+        status: '',
+        sort_by: 'release_date',
+        sort_order: 'desc'
+    };
+    
+    // Track the last time we checked for updates
+    let lastUpdateCheck = null;
+    
+    // Update check interval (in milliseconds) - check every 10 seconds for updates
+    const updateCheckInterval = 10 * 1000;
+    
+    // Initialize the dashboard
+    initializeDashboard();
+    
+    // Start periodic update checks
+    startUpdateChecks();
+    
+    // Event listeners
+    filterForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        applyFilters();
+    });
+    
+    resetFiltersButton.addEventListener('click', resetFilters);
+    
+    sortBySelect.addEventListener('change', function() {
+        currentFilters.sort_by = this.value;
+        loadProposals();
+    });
+    
+    sortOrderSelect.addEventListener('change', function() {
+        currentFilters.sort_order = this.value;
+        loadProposals();
+    });
+    
+    refreshFromNotification.addEventListener('click', function(e) {
+        e.preventDefault();
+        // Hide the notification
+        updateNotification.classList.add('d-none');
+        // Refresh the data
+        loadProposals();
+        // Update the last check time
+        lastUpdateCheck = new Date().toISOString();
+    });
+    
+    rebuildDbButton.addEventListener('click', function(e) {
+        e.preventDefault();
+        rebuildDatabase();
+    });
+    
+    initDbButton.addEventListener('click', function(e) {
+        e.preventDefault();
+        initializeDatabase();
+    });
+    
+    // Add event listener for statistics modal
+    statsModal.addEventListener('show.bs.modal', function() {
+        loadStatistics();
+    });
+    
+    // Functions
+    function initializeDashboard() {
+        // Load filter options
+        loadFilterOptions();
+        
+        // Load initial proposals
+        loadProposals();
+    }
+    
+    function loadFilterOptions() {
+        // Load data sources
+        fetch('/api/sources')
+            .then(response => response.json())
+            .then(sources => {
+                sourceSelect.innerHTML = '<option value="">All Sources</option>';
+                sources.forEach(source => {
+                    const option = document.createElement('option');
+                    option.value = source.id;
+                    option.textContent = source.name;
+                    sourceSelect.appendChild(option);
+                });
+            })
+            .catch(error => console.error('Error loading sources:', error));
+        
+        // Load filter options (agencies, statuses)
+        fetch('/api/filters')
+            .then(response => response.json())
+            .then(filters => {
+                // Populate agencies
+                agencySelect.innerHTML = '<option value="">All Agencies</option>';
+                filters.agencies.forEach(agency => {
+                    const option = document.createElement('option');
+                    option.value = agency;
+                    option.textContent = agency;
+                    agencySelect.appendChild(option);
+                });
+                
+                // Populate statuses
+                statusSelect.innerHTML = '<option value="">All Statuses</option>';
+                filters.statuses.forEach(status => {
+                    const option = document.createElement('option');
+                    option.value = status;
+                    option.textContent = status;
+                    statusSelect.appendChild(option);
+                });
+            })
+            .catch(error => console.error('Error loading filter options:', error));
+    }
+    
+    function applyFilters() {
+        currentFilters.search = searchInput.value;
+        currentFilters.source_id = sourceSelect.value;
+        currentFilters.agency = agencySelect.value;
+        currentFilters.status = statusSelect.value;
+        
+        loadProposals();
+    }
+    
+    function resetFilters() {
+        searchInput.value = '';
+        sourceSelect.value = '';
+        agencySelect.value = '';
+        statusSelect.value = '';
+        sortBySelect.value = 'release_date';
+        sortOrderSelect.value = 'desc';
+        
+        currentFilters = {
+            search: '',
+            source_id: '',
+            agency: '',
+            status: '',
+            sort_by: 'release_date',
+            sort_order: 'desc'
+        };
+        
+        loadProposals();
+    }
+    
+    function loadProposals() {
+        // Show loading indicator
+        loadingIndicator.classList.remove('d-none');
+        noResultsMessage.classList.add('d-none');
+        proposalsTableBody.innerHTML = '';
+        
+        // Build query string
+        const queryParams = new URLSearchParams();
+        if (currentFilters.search) queryParams.append('search', currentFilters.search);
+        if (currentFilters.source_id) queryParams.append('source_id', currentFilters.source_id);
+        if (currentFilters.agency) queryParams.append('agency', currentFilters.agency);
+        if (currentFilters.status) queryParams.append('status', currentFilters.status);
+        queryParams.append('sort_by', currentFilters.sort_by);
+        queryParams.append('sort_order', currentFilters.sort_order);
+        
+        // Fetch proposals
+        fetch(`/api/proposals?${queryParams.toString()}`)
+            .then(response => response.json())
+            .then(proposals => {
+                // Hide loading indicator
+                loadingIndicator.classList.add('d-none');
+                
+                // Update proposal count
+                proposalCount.textContent = `${proposals.length} proposals`;
+                
+                if (proposals.length === 0) {
+                    // Show no results message
+                    noResultsMessage.classList.remove('d-none');
+                } else {
+                    // Populate table
+                    proposals.forEach(proposal => {
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>${proposal.title}</td>
+                            <td>${proposal.agency || 'N/A'}</td>
+                            <td>${formatDate(proposal.release_date)}</td>
+                            <td>${formatDate(proposal.response_date)}</td>
+                            <td class="currency">${formatCurrency(proposal.estimated_value)}</td>
+                            <td><span class="badge bg-secondary badge-status">${proposal.status || 'Unknown'}</span></td>
+                            <td>
+                                <button class="btn btn-sm btn-primary view-details" data-proposal-id="${proposal.id}">
+                                    <i class="bi bi-info-circle"></i> Details
+                                </button>
+                            </td>
+                        `;
+                        
+                        // Add click event to view details
+                        row.querySelector('.view-details').addEventListener('click', function() {
+                            showProposalDetails(proposal);
+                        });
+                        
+                        proposalsTableBody.appendChild(row);
+                    });
+                }
+            })
+            .catch(error => {
+                console.error('Error loading proposals:', error);
+                loadingIndicator.classList.add('d-none');
+                noResultsMessage.classList.remove('d-none');
+                noResultsMessage.textContent = 'Error loading proposals. Please try again.';
+            });
+    }
+    
+    function showProposalDetails(proposal) {
+        // Set modal title
+        modalTitle.textContent = proposal.title;
+        
+        // Set view source button URL
+        if (proposal.url) {
+            viewSourceButton.href = proposal.url;
+            viewSourceButton.classList.remove('d-none');
+        } else {
+            viewSourceButton.classList.add('d-none');
+        }
+        
+        // Build modal body content
+        modalBody.innerHTML = `
+            <div class="row">
+                <div class="col-md-6">
+                    <p class="proposal-detail-label">Agency</p>
+                    <p class="proposal-detail-value">${proposal.agency || 'N/A'}</p>
+                </div>
+                <div class="col-md-6">
+                    <p class="proposal-detail-label">Office</p>
+                    <p class="proposal-detail-value">${proposal.office || 'N/A'}</p>
+                </div>
+            </div>
+            
+            <div class="row">
+                <div class="col-md-6">
+                    <p class="proposal-detail-label">Release Date</p>
+                    <p class="proposal-detail-value">${formatDate(proposal.release_date)}</p>
+                </div>
+                <div class="col-md-6">
+                    <p class="proposal-detail-label">Response Date</p>
+                    <p class="proposal-detail-value">${formatDate(proposal.response_date)}</p>
+                </div>
+            </div>
+            
+            <div class="row">
+                <div class="col-md-6">
+                    <p class="proposal-detail-label">Estimated Value</p>
+                    <p class="proposal-detail-value">${formatCurrency(proposal.estimated_value)}</p>
+                </div>
+                <div class="col-md-6">
+                    <p class="proposal-detail-label">NAICS Code</p>
+                    <p class="proposal-detail-value">${proposal.naics_code || 'N/A'}</p>
+                </div>
+            </div>
+            
+            <div class="row">
+                <div class="col-md-6">
+                    <p class="proposal-detail-label">Status</p>
+                    <p class="proposal-detail-value">
+                        <span class="badge bg-secondary badge-status">${proposal.status || 'Unknown'}</span>
+                    </p>
+                </div>
+                <div class="col-md-6">
+                    <p class="proposal-detail-label">Last Updated</p>
+                    <p class="proposal-detail-value">${formatDate(proposal.last_updated)}</p>
+                </div>
+            </div>
+            
+            <div class="row">
+                <div class="col-md-6">
+                    <p class="proposal-detail-label">Contract Type</p>
+                    <p class="proposal-detail-value">${proposal.contract_type || 'N/A'}</p>
+                </div>
+                <div class="col-md-6">
+                    <p class="proposal-detail-label">Set Aside</p>
+                    <p class="proposal-detail-value">${proposal.set_aside || 'N/A'}</p>
+                </div>
+            </div>
+            
+            <div class="row">
+                <div class="col-md-6">
+                    <p class="proposal-detail-label">Competition Type</p>
+                    <p class="proposal-detail-value">${proposal.competition_type || 'N/A'}</p>
+                </div>
+                <div class="col-md-6">
+                    <p class="proposal-detail-label">Solicitation Number</p>
+                    <p class="proposal-detail-value">${proposal.solicitation_number || 'N/A'}</p>
+                </div>
+            </div>
+            
+            <div class="row">
+                <div class="col-md-6">
+                    <p class="proposal-detail-label">Award Date</p>
+                    <p class="proposal-detail-value">${formatDate(proposal.award_date)}</p>
+                </div>
+                <div class="col-md-6">
+                    <p class="proposal-detail-label">Incumbent</p>
+                    <p class="proposal-detail-value">${proposal.incumbent || 'N/A'}</p>
+                </div>
+            </div>
+            
+            <div class="row">
+                <div class="col-12">
+                    <p class="proposal-detail-label">Place of Performance</p>
+                    <p class="proposal-detail-value">${proposal.place_of_performance || 'N/A'}</p>
+                </div>
+            </div>
+            
+            <div class="row">
+                <div class="col-12">
+                    <p class="proposal-detail-label">Description</p>
+                    <p class="proposal-detail-value">${proposal.description || 'No description available.'}</p>
+                </div>
+            </div>
+            
+            <div class="row">
+                <div class="col-12">
+                    <p class="proposal-detail-label">Contact Information</p>
+                    <p class="proposal-detail-value">${proposal.contact_info || 'No contact information available.'}</p>
+                </div>
+            </div>
+        `;
+        
+        // Show the modal
+        proposalModal.show();
+    }
+    
+    function rebuildDatabase() {
+        // Create a more detailed confirmation dialog
+        const confirmMessage = 
+            'WARNING: This is an advanced operation!\n\n' +
+            'Rebuilding the database will:\n' +
+            '1. Create a backup of your current database\n' +
+            '2. Create a new database with the latest schema\n' +
+            '3. Copy all data from the old database to the new one\n\n' +
+            'This operation may take some time and could potentially cause issues if interrupted.\n\n' +
+            'Are you absolutely sure you want to proceed?';
+            
+        if (confirm(confirmMessage)) {
+            // Show loading indicator
+            loadingIndicator.classList.remove('d-none');
+            
+            // Call the API to rebuild the database
+            fetch('/api/rebuild-db', {
+                method: 'POST'
+            })
+            .then(response => response.json())
+            .then(data => {
+                // Hide loading indicator
+                loadingIndicator.classList.add('d-none');
+                
+                if (data.status === 'success') {
+                    alert('Database rebuild initiated. The application may need to be restarted to use the new database.');
+                    
+                    // Reload the page after a short delay
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 5000);
+                } else {
+                    alert('Error rebuilding database: ' + data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error rebuilding database:', error);
+                loadingIndicator.classList.add('d-none');
+                alert('Error rebuilding database. Please check the console for details.');
+            });
+        }
+    }
+    
+    function initializeDatabase() {
+        // Create a more detailed confirmation dialog
+        const confirmMessage = 
+            'WARNING: This is an advanced operation!\n\n' +
+            'Initializing the database will:\n' +
+            '1. Create the database if it does not exist\n' +
+            '2. Set up the required tables and initial data\n\n' +
+            'This should only be used when setting up the application for the first time or if the database is missing.\n\n' +
+            'Are you absolutely sure you want to proceed?';
+            
+        if (confirm(confirmMessage)) {
+            // Show loading indicator
+            loadingIndicator.classList.remove('d-none');
+            
+            // Call the API to initialize the database
+            fetch('/api/init-db', {
+                method: 'POST'
+            })
+            .then(response => response.json())
+            .then(data => {
+                // Hide loading indicator
+                loadingIndicator.classList.add('d-none');
+                
+                if (data.status === 'success') {
+                    alert('Database initialized successfully!');
+                    
+                    // Reload the page after a short delay
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 2000);
+                } else {
+                    alert('Error initializing database: ' + data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error initializing database:', error);
+                loadingIndicator.classList.add('d-none');
+                alert('Error initializing database. Please check the console for details.');
+            });
+        }
+    }
+    
+    function loadStatistics() {
+        // Show loading indicator
+        statsLoading.classList.remove('d-none');
+        statsContent.classList.add('d-none');
+        
+        // Fetch statistics
+        fetch('/api/stats')
+            .then(response => response.json())
+            .then(data => {
+                // Update the statistics
+                totalProposals.textContent = data.total_proposals;
+                
+                // Update source stats
+                sourceStats.innerHTML = '';
+                data.by_source.forEach(source => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${source.name}</td>
+                        <td>${source.count}</td>
+                    `;
+                    sourceStats.appendChild(row);
+                });
+                
+                // Update agency stats
+                agencyStats.innerHTML = '';
+                data.by_agency.forEach(agency => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${agency.agency}</td>
+                        <td>${agency.count}</td>
+                    `;
+                    agencyStats.appendChild(row);
+                });
+                
+                // Update status stats
+                statusStats.innerHTML = '';
+                data.by_status.forEach(status => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${status.status}</td>
+                        <td>${status.count}</td>
+                    `;
+                    statusStats.appendChild(row);
+                });
+                
+                // Hide loading indicator and show content
+                statsLoading.classList.add('d-none');
+                statsContent.classList.remove('d-none');
+            })
+            .catch(error => {
+                console.error('Error loading statistics:', error);
+                statsLoading.classList.add('d-none');
+                alert('Error loading statistics. Please try again.');
+            });
+    }
+    
+    function startUpdateChecks() {
+        // Get the initial server timestamp before starting checks
+        fetch('/api/check-updates')
+            .then(response => response.json())
+            .then(data => {
+                // Initialize with the server's timestamp to avoid false positives
+                if (data.last_refresh) {
+                    lastUpdateCheck = data.last_refresh;
+                    console.log(`Initialized update check with server timestamp: ${lastUpdateCheck}`);
+                } else {
+                    // If no server timestamp, use current time
+                    lastUpdateCheck = new Date().toISOString();
+                    console.log(`No server timestamp available, using current time: ${lastUpdateCheck}`);
+                }
+                
+                // Set up periodic checks after initializing
+                setInterval(checkForUpdates, updateCheckInterval);
+            })
+            .catch(error => {
+                console.error('Error initializing update checks:', error);
+                // Still set up checks even if initialization fails
+                lastUpdateCheck = new Date().toISOString();
+                setInterval(checkForUpdates, updateCheckInterval);
+            });
+    }
+    
+    function checkForUpdates() {
+        // Skip check if lastUpdateCheck is not initialized
+        if (!lastUpdateCheck) {
+            console.log('Skipping update check - not initialized yet');
+            return;
+        }
+        
+        // Log update check (only visible in browser console)
+        console.log(`Checking for updates at ${new Date().toLocaleTimeString()}...`);
+        
+        // Make a request to check for updates
+        fetch(`/api/check-updates?last_check=${encodeURIComponent(lastUpdateCheck)}`, {
+            // Use cache: 'no-store' to ensure we always get fresh data
+            cache: 'no-store',
+            // Add a timestamp to prevent caching
+            headers: {
+                'Pragma': 'no-cache',
+                'Cache-Control': 'no-cache'
+            }
+        })
+            .then(response => response.json())
+            .then(data => {
+                if (data.updates_available) {
+                    // Show the notification
+                    updateNotification.classList.remove('d-none');
+                    console.log('New updates available!');
+                    
+                    // Update the last refresh time if available
+                    if (data.last_refresh) {
+                        lastUpdateCheck = data.last_refresh;
+                    }
+                } else {
+                    console.log('No new updates available');
+                    
+                    // Still update the timestamp to stay in sync with server
+                    if (data.last_refresh) {
+                        lastUpdateCheck = data.last_refresh;
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('Error checking for updates:', error);
+            });
+    }
+    
+    // Helper functions
+    function formatDate(dateString) {
+        if (!dateString) return 'N/A';
+        
+        const date = new Date(dateString);
+        return date.toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric'
+        });
+    }
+    
+    function formatCurrency(value) {
+        if (value === null || value === undefined) return 'N/A';
+        
+        return new Intl.NumberFormat('en-US', {
+            style: 'currency',
+            currency: 'USD',
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 0
+        }).format(value);
+    }
+}); 
