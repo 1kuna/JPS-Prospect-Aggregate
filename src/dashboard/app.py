@@ -2,6 +2,7 @@ import os
 import sys
 import threading
 import datetime
+import shutil
 from flask import Flask, render_template, request, jsonify
 from dotenv import load_dotenv
 from sqlalchemy import func
@@ -24,7 +25,7 @@ from src.scrapers.ssa_contract_forecast import run_scraper as run_ssa_contract_f
 from src.database.init_db import init_database
 
 # Import the rebuild_database function
-from rebuild_db import rebuild_database
+from scripts.rebuild_db import rebuild_database, list_backups, cleanup_old_backups
 
 # Load environment variables
 load_dotenv()
@@ -223,11 +224,16 @@ def create_app():
             dispose_engine()
         except Exception as e:
             app.logger.warning(f"Error closing database connections: {e}")
+            return jsonify({
+                "status": "error",
+                "message": f"Error closing database connections: {str(e)}"
+            }), 500
         
         # Run the database rebuild in a background thread
         def rebuild_and_reconnect():
             try:
                 # Rebuild the database
+                app.logger.info("Starting database rebuild process")
                 rebuild_database()
                 
                 # Wait a moment for the rebuild to complete
@@ -237,18 +243,30 @@ def create_app():
                 # Try to reconnect to the database
                 from src.database.db import reconnect
                 reconnect()
+                app.logger.info("Database rebuild completed successfully")
             except Exception as e:
-                app.logger.error(f"Error during database rebuild: {e}")
+                error_msg = f"Error during database rebuild: {str(e)}"
+                app.logger.error(error_msg)
+                # Log the full traceback for debugging
+                import traceback
+                app.logger.error(f"Traceback: {traceback.format_exc()}")
         
-        thread = threading.Thread(target=rebuild_and_reconnect)
-        thread.daemon = True
-        thread.start()
-        
-        # Return success response
-        return jsonify({
-            "status": "success", 
-            "message": "Database rebuild initiated. The application may need to be restarted to use the new database."
-        })
+        try:
+            thread = threading.Thread(target=rebuild_and_reconnect)
+            thread.daemon = True
+            thread.start()
+            
+            # Return success response
+            return jsonify({
+                "status": "success", 
+                "message": "Database rebuild initiated. The application may need to be restarted to use the new database."
+            })
+        except Exception as e:
+            app.logger.error(f"Error starting rebuild thread: {e}")
+            return jsonify({
+                "status": "error",
+                "message": f"Error starting rebuild process: {str(e)}"
+            }), 500
     
     @app.route("/api/reconnect-db", methods=["POST"])
     def reconnect_db():
@@ -500,5 +518,168 @@ def create_app():
         except Exception as e:
             logger.error(f"Error collecting from all sources: {e}")
             return jsonify({"success": False, "message": str(e)}), 500
+    
+    @app.route("/api/database-backups", methods=["GET"])
+    def get_database_backups():
+        """API endpoint to list database backups"""
+        try:
+            # Get the database directory
+            project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            db_dir = os.path.join(project_root, 'data')
+            
+            # Get the list of backups
+            backups = list_backups(db_dir)
+            
+            return jsonify({
+                "status": "success",
+                "backups": backups
+            })
+        except Exception as e:
+            app.logger.error(f"Error listing database backups: {e}")
+            return jsonify({
+                "status": "error",
+                "message": f"Error listing database backups: {str(e)}"
+            }), 500
+    
+    @app.route("/api/database-backups/cleanup", methods=["POST"])
+    def cleanup_database_backups():
+        """API endpoint to clean up old database backups"""
+        try:
+            # Get the maximum number of backups to keep from the request
+            data = request.get_json()
+            max_backups = data.get("max_backups", 5)
+            
+            # Get the database directory
+            project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            db_dir = os.path.join(project_root, 'data')
+            
+            # Clean up old backups
+            cleanup_old_backups(db_dir, max_backups=max_backups)
+            
+            # Get the updated list of backups
+            backups = list_backups(db_dir)
+            
+            return jsonify({
+                "status": "success",
+                "message": f"Successfully cleaned up database backups, keeping {max_backups} most recent",
+                "backups": backups
+            })
+        except Exception as e:
+            app.logger.error(f"Error cleaning up database backups: {e}")
+            return jsonify({
+                "status": "error",
+                "message": f"Error cleaning up database backups: {str(e)}"
+            }), 500
+    
+    @app.route("/api/reset-everything", methods=["POST"])
+    def reset_everything():
+        """API endpoint to delete all downloads and the database"""
+        try:
+            # Get the project root directory
+            project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            
+            # Close any existing database connections
+            try:
+                Session.remove()
+                dispose_engine()
+            except Exception as e:
+                app.logger.warning(f"Error closing database connections: {e}")
+            
+            # Define paths to clean
+            data_dir = os.path.join(project_root, 'data')
+            downloads_dir = os.path.join(data_dir, 'downloads')
+            db_path = os.path.join(data_dir, 'proposals.db')
+            
+            # Function to perform the reset in a background thread
+            def perform_reset():
+                try:
+                    # Delete all downloads
+                    if os.path.exists(downloads_dir):
+                        app.logger.info(f"Deleting downloads directory: {downloads_dir}")
+                        try:
+                            # First try to delete all files in the directory
+                            for root, dirs, files in os.walk(downloads_dir, topdown=False):
+                                for file in files:
+                                    try:
+                                        file_path = os.path.join(root, file)
+                                        app.logger.info(f"Deleting file: {file_path}")
+                                        os.remove(file_path)
+                                    except (PermissionError, OSError) as e:
+                                        app.logger.warning(f"Could not delete file {file_path}: {e}")
+                                
+                                # Then try to delete empty directories
+                                for dir in dirs:
+                                    try:
+                                        dir_path = os.path.join(root, dir)
+                                        app.logger.info(f"Deleting directory: {dir_path}")
+                                        os.rmdir(dir_path)
+                                    except (PermissionError, OSError) as e:
+                                        app.logger.warning(f"Could not delete directory {dir_path}: {e}")
+                            
+                            # Finally try to delete the main directory
+                            try:
+                                shutil.rmtree(downloads_dir)
+                            except (PermissionError, OSError) as e:
+                                app.logger.warning(f"Could not completely delete downloads directory: {e}")
+                                # If we can't delete it, try to recreate it
+                                if not os.path.exists(downloads_dir):
+                                    os.makedirs(downloads_dir, exist_ok=True)
+                        except Exception as e:
+                            app.logger.warning(f"Error while deleting downloads directory: {e}")
+                            # If we can't delete it, at least try to create it if it doesn't exist
+                            if not os.path.exists(downloads_dir):
+                                os.makedirs(downloads_dir, exist_ok=True)
+                    else:
+                        # Create the downloads directory if it doesn't exist
+                        os.makedirs(downloads_dir, exist_ok=True)
+                    
+                    # Delete all database backups
+                    backup_files = [f for f in os.listdir(data_dir) if f.startswith('proposals_backup_') and f.endswith('.db')]
+                    for backup_file in backup_files:
+                        backup_path = os.path.join(data_dir, backup_file)
+                        app.logger.info(f"Deleting database backup: {backup_path}")
+                        try:
+                            os.remove(backup_path)
+                        except (PermissionError, OSError) as e:
+                            app.logger.warning(f"Could not delete backup file {backup_path}: {e}")
+                    
+                    # Delete the database
+                    if os.path.exists(db_path):
+                        app.logger.info(f"Deleting database: {db_path}")
+                        try:
+                            os.remove(db_path)
+                        except (PermissionError, OSError) as e:
+                            app.logger.warning(f"Could not delete database file {db_path}: {e}")
+                    
+                    # Initialize a new database
+                    app.logger.info("Initializing new database")
+                    init_database()
+                    
+                    # Reconnect to the database
+                    from src.database.db import reconnect
+                    reconnect()
+                    
+                    app.logger.info("Reset completed successfully")
+                except Exception as e:
+                    error_msg = f"Error during reset: {str(e)}"
+                    app.logger.error(error_msg)
+                    import traceback
+                    app.logger.error(f"Traceback: {traceback.format_exc()}")
+            
+            # Start the reset in a background thread
+            thread = threading.Thread(target=perform_reset)
+            thread.daemon = True
+            thread.start()
+            
+            return jsonify({
+                "status": "success",
+                "message": "Reset initiated. All downloads and database will be deleted and a new database will be created."
+            })
+        except Exception as e:
+            app.logger.error(f"Error initiating reset: {e}")
+            return jsonify({
+                "status": "error",
+                "message": f"Error initiating reset: {str(e)}"
+            }), 500
     
     return app 

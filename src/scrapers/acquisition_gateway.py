@@ -66,7 +66,7 @@ class AcquisitionGatewayScraper:
         
         # Enable headless mode to prevent browser window from appearing
         if not self.debug_mode:
-            chrome_options.add_argument("--headless")
+            chrome_options.add_argument("--headless=new")  # Use the newer headless mode
         
         # Add these arguments to make Chrome more stable
         chrome_options.add_argument("--no-sandbox")
@@ -75,6 +75,9 @@ class AcquisitionGatewayScraper:
         chrome_options.add_argument("--disable-extensions")
         chrome_options.add_argument("--disable-popup-blocking")
         chrome_options.add_argument("--window-size=1920,1080")  # Set a specific window size
+        chrome_options.add_argument("--start-maximized")  # Maximize the window
+        chrome_options.add_argument("--disable-blink-features=AutomationControlled")  # Avoid detection
+        chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")  # Set a common user agent
         
         # Set download preferences
         download_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'data', 'downloads')
@@ -96,7 +99,7 @@ class AcquisitionGatewayScraper:
             "plugins.always_open_pdf_externally": True,
             "browser.download.manager.showWhenStarting": False,
             "browser.download.folderList": 2,  # Use custom folder
-            "browser.helperApps.neverAsk.saveToDisk": "text/csv,application/csv,application/vnd.ms-excel,application/excel,application/x-excel,application/x-msexcel,text/comma-separated-values,application/octet-stream",
+            "browser.helperApps.neverAsk.saveToDisk": "text/csv,application/csv,application/vnd.ms-excel,application/excel,application/x-excel,application/x-msexcel,text/comma-separated-values,application/octet-stream,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             "browser.download.manager.useWindow": False,
             "browser.download.manager.focusWhenStarting": False,
             "browser.download.manager.closeWhenDone": True,
@@ -127,6 +130,11 @@ class AcquisitionGatewayScraper:
                 except Exception as e:
                     logger.warning(f"Could not set CDP download behavior: {e}")
             
+            # Set page load timeout and script timeout
+            driver.set_page_load_timeout(60)  # 60 seconds timeout for page load
+            driver.set_script_timeout(60)     # 60 seconds timeout for scripts
+            
+            logger.info("WebDriver setup complete")
             return driver
         except Exception as e:
             logging.error(f"Error with ChromeDriverManager: {str(e)}")
@@ -254,7 +262,7 @@ class AcquisitionGatewayScraper:
         try:
             # Wait for the page to fully load
             logger.info("Waiting for page to fully load")
-            time.sleep(10)  # Give the page more time to stabilize
+            time.sleep(15)  # Give the page more time to stabilize
             
             # Clear any existing CSV files in the downloads directory
             downloads_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'data', 'downloads')
@@ -265,17 +273,6 @@ class AcquisitionGatewayScraper:
                     os.remove(file)
                 except Exception as e:
                     logger.warning(f"Could not remove existing CSV file {file}: {e}")
-            
-            # Take a screenshot before looking for the button
-            screenshot_path = os.path.join(downloads_dir, "before_export_button.png")
-            driver.save_screenshot(screenshot_path)
-            logger.info(f"Screenshot before export button saved to {screenshot_path}")
-            
-            # Save page source for analysis
-            source_path = os.path.join(downloads_dir, "page_source_before_export.html")
-            with open(source_path, 'w', encoding='utf-8') as f:
-                f.write(driver.page_source)
-            logger.info(f"Page source saved to {source_path}")
             
             # Try to find any table data on the page first
             logger.info("Looking for table data on the page")
@@ -319,6 +316,48 @@ class AcquisitionGatewayScraper:
                         except Exception as e:
                             logger.warning(f"Error trying download link: {e}")
             
+            # Fallback: Try to scrape the table data directly if we can't find a download button
+            logger.info("Attempting to scrape table data directly as a fallback")
+            try:
+                tables = driver.find_elements(By.TAG_NAME, "table")
+                if tables:
+                    logger.info(f"Found {len(tables)} tables for direct scraping")
+                    
+                    # Use the first table (most likely the main data table)
+                    main_table = tables[0]
+                    
+                    # Get all rows
+                    rows = main_table.find_elements(By.TAG_NAME, "tr")
+                    logger.info(f"Found {len(rows)} rows in the table")
+                    
+                    if rows:
+                        # Create a CSV file manually
+                        csv_filename = os.path.join(downloads_dir, f"scraped_data_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv")
+                        
+                        with open(csv_filename, 'w', newline='', encoding='utf-8') as csvfile:
+                            csv_writer = csv.writer(csvfile)
+                            
+                            # Process each row
+                            for row in rows:
+                                # Get all cells in the row
+                                cells = row.find_elements(By.TAG_NAME, "td")
+                                
+                                # If no td cells (might be header), try th
+                                if not cells:
+                                    cells = row.find_elements(By.TAG_NAME, "th")
+                                
+                                # Extract text from each cell
+                                row_data = [cell.text.strip() for cell in cells]
+                                
+                                # Write to CSV
+                                if row_data:  # Only write non-empty rows
+                                    csv_writer.writerow(row_data)
+                        
+                        logger.info(f"Successfully created CSV from table data: {csv_filename}")
+                        return csv_filename
+            except Exception as e:
+                logger.warning(f"Failed to scrape table directly: {e}")
+            
             # Based on our analysis, we know the exact button to target
             export_button = None
             
@@ -346,7 +385,19 @@ class AcquisitionGatewayScraper:
                 lambda: driver.find_element(By.XPATH, "//*[@download]"),
                 
                 # Method 8: By XPath for any element with href containing csv
-                lambda: driver.find_element(By.XPATH, "//a[contains(@href, 'csv')]")
+                lambda: driver.find_element(By.XPATH, "//a[contains(@href, 'csv')]"),
+                
+                # Method 9: By XPath for any button
+                lambda: next((b for b in driver.find_elements(By.TAG_NAME, "button") if "export" in b.text.lower() or "csv" in b.text.lower() or "download" in b.text.lower()), None),
+                
+                # Method 10: By XPath for any link that might be a download
+                lambda: next((a for a in driver.find_elements(By.TAG_NAME, "a") if "export" in a.text.lower() or "csv" in a.text.lower() or "download" in a.text.lower()), None),
+                
+                # Method 11: By class name containing export or download
+                lambda: next((e for e in driver.find_elements(By.XPATH, "//*[contains(@class, 'export') or contains(@class, 'download')]")), None),
+                
+                # Method 12: By aria-label
+                lambda: driver.find_element(By.XPATH, "//*[@aria-label='Export' or @aria-label='Download' or @aria-label='Export CSV']"),
             ]
             
             # Try each method until we find the button
@@ -358,95 +409,32 @@ class AcquisitionGatewayScraper:
                         export_button = result
                         logger.info(f"Found Export button using method {i+1}")
                         
-                        # Take a screenshot with the button highlighted
-                        try:
-                            driver.execute_script("arguments[0].style.border='3px solid red'", export_button)
-                            screenshot_path = os.path.join(downloads_dir, f"export_button_found_method_{i+1}.png")
-                            driver.save_screenshot(screenshot_path)
-                            logger.info(f"Screenshot with highlighted button saved to {screenshot_path}")
-                        except:
-                            pass
-                        
                         break
                 except Exception as e:
                     logger.info(f"Button finder method {i+1} failed: {str(e)}")
             
-            # If we still couldn't find the button, take a screenshot for debugging
+            # If we still couldn't find the button, try to get page source for debugging
             if not export_button:
-                logger.error("Could not find Export CSV button")
-                screenshot_path = os.path.join(downloads_dir, "acquisition_gateway_page.png")
-                driver.save_screenshot(screenshot_path)
-                logger.info(f"Page screenshot saved to {screenshot_path}")
-                
-                # Save page source for debugging
-                source_path = os.path.join(downloads_dir, "acquisition_gateway_page.html")
-                with open(source_path, 'w', encoding='utf-8') as f:
-                    f.write(driver.page_source)
-                logger.info(f"Page source saved to {source_path}")
-                
-                # Try a last resort approach - look for any table and try to extract data directly
                 try:
-                    logger.info("Attempting to extract table data directly as CSV")
-                    tables = driver.find_elements(By.TAG_NAME, "table")
-                    if tables:
-                        largest_table = None
-                        max_rows = 0
-                        
-                        for table in tables:
-                            rows = table.find_elements(By.TAG_NAME, "tr")
-                            if len(rows) > max_rows:
-                                max_rows = len(rows)
-                                largest_table = table
-                        
-                        if largest_table and max_rows > 1:
-                            logger.info(f"Found table with {max_rows} rows, extracting to CSV")
-                            
-                            # Extract headers
-                            headers = []
-                            header_row = largest_table.find_elements(By.TAG_NAME, "th")
-                            if not header_row:
-                                # Try first row as header if no th elements
-                                rows = largest_table.find_elements(By.TAG_NAME, "tr")
-                                if rows:
-                                    header_row = rows[0].find_elements(By.TAG_NAME, "td")
-                            
-                            for header in header_row:
-                                headers.append(header.text.strip())
-                            
-                            # Extract data rows
-                            data_rows = []
-                            rows = largest_table.find_elements(By.TAG_NAME, "tr")
-                            
-                            for row_idx, row in enumerate(rows):
-                                # Skip header row
-                                if row_idx == 0:
-                                    continue
-                                
-                                cells = row.find_elements(By.TAG_NAME, "td")
-                                if cells:
-                                    row_data = []
-                                    for cell in cells:
-                                        row_data.append(cell.text.strip())
-                                    data_rows.append(row_data)
-                            
-                            # Create a CSV file from the extracted data
-                            csv_path = os.path.join(downloads_dir, f"extracted_table_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv")
-                            with open(csv_path, 'w', newline='', encoding='utf-8') as f:
-                                writer = csv.writer(f)
-                                writer.writerow(headers)
-                                writer.writerows(data_rows)
-                            
-                            logger.info(f"Created CSV file from table data: {csv_path}")
-                            
-                            # Update the download tracker
-                            download_tracker.set_last_download_time(self.source_name)
-                            logger.info(f"Updated download timestamp for {self.source_name}")
-                            
-                            return csv_path
+                    # Log the page source for debugging
+                    page_source = driver.page_source
+                    logger.info("Page source for debugging:")
+                    logger.info(page_source[:1000] + "..." if len(page_source) > 1000 else page_source)
+                    
+                    # Take a screenshot if possible
+                    try:
+                        screenshot_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'logs', f'screenshot_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.png')
+                        driver.save_screenshot(screenshot_path)
+                        logger.info(f"Saved screenshot to {screenshot_path}")
+                    except Exception as e:
+                        logger.warning(f"Could not save screenshot: {e}")
+                    
+                    logger.error("Could not find Export CSV button")
+                    return None
                 except Exception as e:
-                    logger.error(f"Error extracting table data: {e}")
-                
-                return None
+                    logger.error(f"Error getting page source: {e}")
+                    logger.error("Could not find Export CSV button")
+                    return None
             
             # Check if the button is a link with href
             href = None
@@ -495,20 +483,10 @@ class AcquisitionGatewayScraper:
                 # Try regular click
                 export_button.click()
                 logger.info("Clicked Export CSV button")
-                
-                # Take a screenshot after clicking
-                screenshot_path = os.path.join(downloads_dir, "after_button_click.png")
-                driver.save_screenshot(screenshot_path)
-                logger.info(f"Screenshot after button click saved to {screenshot_path}")
             except ElementClickInterceptedException:
                 logger.info("Click intercepted, trying JavaScript click")
                 driver.execute_script("arguments[0].click();", export_button)
                 logger.info("Used JavaScript to click Export CSV button")
-                
-                # Take a screenshot after JS click
-                screenshot_path = os.path.join(downloads_dir, "after_js_click.png")
-                driver.save_screenshot(screenshot_path)
-                logger.info(f"Screenshot after JS click saved to {screenshot_path}")
             except Exception as e:
                 logger.error(f"Error clicking Export CSV button: {str(e)}")
                 return None
@@ -810,18 +788,24 @@ class AcquisitionGatewayScraper:
                         is_latest=True
                     ).first()
                     
-                    # Check if this is a duplicate (same data as existing record)
+                    # Check if this is a duplicate or if we need to update with new information
                     is_duplicate = False
+                    needs_update = False
+                    
                     if existing_proposal:
                         # Compare relevant fields to see if data has changed
                         fields_to_compare = [
                             "title", "agency", "office", "description", "naics_code", 
                             "estimated_value", "release_date", "response_date", 
-                            "contact_info", "url", "status"
+                            "contact_info", "url", "status", "contract_type", "set_aside",
+                            "competition_type", "solicitation_number", "award_date",
+                            "place_of_performance", "incumbent"
                         ]
                         
                         # Count how many fields are different
                         different_fields = 0
+                        fields_updated = []
+                        
                         for field in fields_to_compare:
                             existing_value = getattr(existing_proposal, field)
                             new_value = proposal_data[field]
@@ -830,13 +814,36 @@ class AcquisitionGatewayScraper:
                             if existing_value is None and new_value is None:
                                 continue
                                 
+                            # Check if we're updating from empty/N/A to a valid value
+                            is_empty_or_na = (
+                                existing_value is None or 
+                                existing_value == "" or 
+                                (isinstance(existing_value, str) and existing_value.lower() in ["n/a", "na", "not available", "not applicable", "tbd", "to be determined"])
+                            )
+                            
+                            has_new_value = (
+                                new_value is not None and 
+                                new_value != "" and 
+                                (not isinstance(new_value, str) or new_value.lower() not in ["n/a", "na", "not available", "not applicable", "tbd", "to be determined"])
+                            )
+                            
                             # Compare values, accounting for different types
                             if isinstance(existing_value, datetime.datetime) and isinstance(new_value, datetime.datetime):
                                 # For dates, compare only the date part
                                 if existing_value.date() != new_value.date():
                                     different_fields += 1
+                                    # If we're updating from a null-like date to a valid date
+                                    if existing_value.year < 1900 and new_value.year >= 1900:
+                                        setattr(existing_proposal, field, new_value)
+                                        fields_updated.append(field)
+                                        needs_update = True
                             elif existing_value != new_value:
                                 different_fields += 1
+                                # If we're updating from empty/N/A to a valid value
+                                if is_empty_or_na and has_new_value:
+                                    setattr(existing_proposal, field, new_value)
+                                    fields_updated.append(field)
+                                    needs_update = True
                         
                         # If no fields are different, it's a duplicate
                         if different_fields == 0:
@@ -845,7 +852,15 @@ class AcquisitionGatewayScraper:
                             logger.debug(f"Duplicate record found for external_id: {external_id}")
                             continue
                         
-                        # If we get here, the data has changed, so we need to create a new record
+                        # If we updated fields but didn't create a new record
+                        if needs_update:
+                            # Update the last_updated timestamp
+                            existing_proposal.last_updated = import_timestamp
+                            session.add(existing_proposal)
+                            logger.info(f"Updated existing record for external_id: {external_id} - Fields updated: {fields_updated}")
+                            continue
+                        
+                        # If we get here, the data has changed significantly, so we need to create a new record
                         # First, mark the existing record as not latest
                         existing_proposal.is_latest = False
                         session.add(existing_proposal)
@@ -1038,18 +1053,24 @@ class AcquisitionGatewayScraper:
                             is_latest=True
                         ).first()
                         
-                        # Check if this is a duplicate (same data as existing record)
+                        # Check if this is a duplicate or if we need to update with new information
                         is_duplicate = False
+                        needs_update = False
+                        
                         if existing_proposal:
                             # Compare relevant fields to see if data has changed
                             fields_to_compare = [
                                 "title", "agency", "office", "description", "naics_code", 
                                 "estimated_value", "release_date", "response_date", 
-                                "contact_info", "url", "status"
+                                "contact_info", "url", "status", "contract_type", "set_aside",
+                                "competition_type", "solicitation_number", "award_date",
+                                "place_of_performance", "incumbent"
                             ]
                             
                             # Count how many fields are different
                             different_fields = 0
+                            fields_updated = []
+                            
                             for field in fields_to_compare:
                                 existing_value = getattr(existing_proposal, field)
                                 new_value = proposal_data[field]
@@ -1058,13 +1079,36 @@ class AcquisitionGatewayScraper:
                                 if existing_value is None and new_value is None:
                                     continue
                                     
+                                # Check if we're updating from empty/N/A to a valid value
+                                is_empty_or_na = (
+                                    existing_value is None or 
+                                    existing_value == "" or 
+                                    (isinstance(existing_value, str) and existing_value.lower() in ["n/a", "na", "not available", "not applicable", "tbd", "to be determined"])
+                                )
+                                
+                                has_new_value = (
+                                    new_value is not None and 
+                                    new_value != "" and 
+                                    (not isinstance(new_value, str) or new_value.lower() not in ["n/a", "na", "not available", "not applicable", "tbd", "to be determined"])
+                                )
+                                
                                 # Compare values, accounting for different types
                                 if isinstance(existing_value, datetime.datetime) and isinstance(new_value, datetime.datetime):
                                     # For dates, compare only the date part
                                     if existing_value.date() != new_value.date():
                                         different_fields += 1
+                                        # If we're updating from a null-like date to a valid date
+                                        if existing_value.year < 1900 and new_value.year >= 1900:
+                                            setattr(existing_proposal, field, new_value)
+                                            fields_updated.append(field)
+                                            needs_update = True
                                 elif existing_value != new_value:
                                     different_fields += 1
+                                    # If we're updating from empty/N/A to a valid value
+                                    if is_empty_or_na and has_new_value:
+                                        setattr(existing_proposal, field, new_value)
+                                        fields_updated.append(field)
+                                        needs_update = True
                             
                             # If no fields are different, it's a duplicate
                             if different_fields == 0:
@@ -1073,7 +1117,15 @@ class AcquisitionGatewayScraper:
                                 logger.debug(f"Duplicate record found for external_id: {external_id}")
                                 continue
                             
-                            # If we get here, the data has changed, so we need to create a new record
+                            # If we updated fields but didn't create a new record
+                            if needs_update:
+                                # Update the last_updated timestamp
+                                existing_proposal.last_updated = import_timestamp
+                                session.add(existing_proposal)
+                                logger.info(f"Updated existing record for external_id: {external_id} - Fields updated: {fields_updated}")
+                                continue
+                            
+                            # If we get here, the data has changed significantly, so we need to create a new record
                             # First, mark the existing record as not latest
                             existing_proposal.is_latest = False
                             session.add(existing_proposal)

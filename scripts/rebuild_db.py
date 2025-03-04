@@ -13,6 +13,12 @@ import shutil
 import datetime
 import logging
 import time
+import glob
+import re
+import argparse
+
+# Add the parent directory to the path so we can import from src
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Set up logging
 logging.basicConfig(
@@ -21,10 +27,72 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-def rebuild_database():
-    """Rebuild the database with the new schema"""
-    # Get the database path
-    db_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
+def cleanup_old_backups(backup_dir, max_backups=5):
+    """
+    Clean up old database backups, keeping only the most recent ones.
+    
+    Args:
+        backup_dir (str): Directory containing the backups
+        max_backups (int): Maximum number of backups to keep
+    """
+    # Find all database backup files
+    backup_pattern = os.path.join(backup_dir, 'proposals_backup_*.db')
+    backup_files = glob.glob(backup_pattern)
+    
+    # If we have more backups than the maximum allowed
+    if len(backup_files) > max_backups:
+        # Sort files by modification time (newest first)
+        backup_files.sort(key=lambda x: os.path.getmtime(x), reverse=True)
+        
+        # Delete older backups
+        for old_backup in backup_files[max_backups:]:
+            try:
+                os.remove(old_backup)
+                logger.info(f"Deleted old backup: {old_backup}")
+            except Exception as e:
+                logger.warning(f"Could not delete old backup {old_backup}: {e}")
+
+def list_backups(backup_dir):
+    """
+    List all database backups in the specified directory.
+    
+    Args:
+        backup_dir (str): Directory containing the backups
+    
+    Returns:
+        list: List of backup files with their creation time and size
+    """
+    # Find all database backup files
+    backup_pattern = os.path.join(backup_dir, 'proposals_backup_*.db')
+    backup_files = glob.glob(backup_pattern)
+    
+    # Sort files by modification time (newest first)
+    backup_files.sort(key=lambda x: os.path.getmtime(x), reverse=True)
+    
+    # Prepare the list of backups with details
+    backups = []
+    for backup in backup_files:
+        size_bytes = os.path.getsize(backup)
+        size_mb = size_bytes / (1024 * 1024)
+        mod_time = datetime.datetime.fromtimestamp(os.path.getmtime(backup))
+        backups.append({
+            'file': os.path.basename(backup),
+            'size': f"{size_mb:.2f} MB",
+            'created': mod_time.strftime("%Y-%m-%d %H:%M:%S")
+        })
+    
+    return backups
+
+def rebuild_database(max_backups=5):
+    """
+    Rebuild the database with the new schema
+    
+    Args:
+        max_backups (int): Maximum number of backups to keep
+    """
+    # Get the database path - use project root instead of script directory
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    db_dir = os.path.join(project_root, 'data')
     db_path = os.path.join(db_dir, 'proposals.db')
     
     # Ensure the directory exists
@@ -32,8 +100,9 @@ def rebuild_database():
     
     # Check if the database exists
     if not os.path.exists(db_path):
-        logger.error(f"Database file not found: {db_path}")
-        return
+        error_msg = f"Database file not found: {db_path}"
+        logger.error(error_msg)
+        raise FileNotFoundError(error_msg)
     
     # Create a backup of the existing database
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -41,6 +110,9 @@ def rebuild_database():
     
     logger.info(f"Creating backup of database at: {backup_path}")
     shutil.copy2(db_path, backup_path)
+    
+    # Clean up old backups, keeping only the specified number of most recent ones
+    cleanup_old_backups(db_dir, max_backups=max_backups)
     
     # Import here to avoid circular imports
     from src.database.db import engine, Session
@@ -82,8 +154,9 @@ def rebuild_database():
             # After rebuilding, we'll try to replace the original file
             db_path_to_use = temp_db_path
         except Exception as e:
-            logger.error(f"Error removing database file: {e}")
-            return
+            error_msg = f"Error removing database file: {e}"
+            logger.error(error_msg)
+            raise Exception(error_msg)
         else:
             # If deletion succeeded, create a new database at the original path
             new_conn = sqlite3.connect(db_path)
@@ -94,8 +167,9 @@ def rebuild_database():
         # Check if the data_sources table exists in the old database
         old_cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='data_sources'")
         if not old_cursor.fetchone():
-            logger.error("data_sources table not found in the database. Database may be corrupted.")
-            return
+            error_msg = "data_sources table not found in the database. Database may be corrupted."
+            logger.error(error_msg)
+            raise Exception(error_msg)
         
         # Create the data_sources table in the new database
         new_cursor.execute("""
@@ -344,6 +418,7 @@ def rebuild_database():
         logger.error(f"Error rebuilding database: {e}")
         if new_conn:
             new_conn.rollback()
+        raise  # Re-raise the exception
     finally:
         # Close connections
         if old_conn:
@@ -352,6 +427,38 @@ def rebuild_database():
             new_conn.close()
 
 if __name__ == "__main__":
-    print("Rebuilding database...")
-    rebuild_database()
-    print("Database rebuild complete!") 
+    parser = argparse.ArgumentParser(description="Database rebuild and backup management utility")
+    parser.add_argument("--rebuild", action="store_true", help="Rebuild the database")
+    parser.add_argument("--cleanup", action="store_true", help="Clean up old database backups")
+    parser.add_argument("--list", action="store_true", help="List all database backups")
+    parser.add_argument("--max-backups", type=int, default=5, help="Maximum number of backups to keep when cleaning up")
+    
+    args = parser.parse_args()
+    
+    # Get the database directory
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    db_dir = os.path.join(project_root, 'data')
+    
+    if args.list:
+        print("Available database backups:")
+        backups = list_backups(db_dir)
+        if not backups:
+            print("No backups found.")
+        else:
+            print(f"{'Filename':<40} {'Size':<10} {'Created':<20}")
+            print("-" * 70)
+            for backup in backups:
+                print(f"{backup['file']:<40} {backup['size']:<10} {backup['created']:<20}")
+    elif args.cleanup:
+        print(f"Cleaning up old database backups, keeping {args.max_backups} most recent...")
+        cleanup_old_backups(db_dir, max_backups=args.max_backups)
+        print("Cleanup complete!")
+    elif args.rebuild:
+        print("Rebuilding database...")
+        rebuild_database(max_backups=args.max_backups)
+        print("Database rebuild complete!")
+    else:
+        # Default behavior if no arguments are provided
+        print("Rebuilding database...")
+        rebuild_database(max_backups=args.max_backups)
+        print("Database rebuild complete!") 

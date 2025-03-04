@@ -63,6 +63,9 @@
                             <li><h6 class="dropdown-header">Database Operations</h6></li>
                             <li><a class="dropdown-item text-warning" href="#" id="rebuild-db"><i class="bi bi-exclamation-triangle-fill"></i> Rebuild Database</a></li>
                             <li><a class="dropdown-item text-warning" href="#" id="init-db"><i class="bi bi-exclamation-triangle-fill"></i> Initialize Database</a></li>
+                            <li><a class="dropdown-item" href="#" id="manage-backups"><i class="bi bi-archive-fill"></i> Manage Backups</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item text-danger" href="#" id="reset-everything"><i class="bi bi-trash-fill"></i> Reset Everything</a></li>
                             <li><hr class="dropdown-divider"></li>
                             <li><small class="dropdown-item-text text-muted">These operations should only be used by administrators</small></li>
                         </ul>
@@ -283,6 +286,64 @@
                                 </table>
                             </div>
                         </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading indicator -->
+    <div id="loading-indicator" class="position-fixed top-0 start-0 w-100 h-100 d-flex justify-content-center align-items-center d-none" style="background-color: rgba(0,0,0,0.5); z-index: 9999;">
+        <div class="spinner-border text-light" role="status" style="width: 3rem; height: 3rem;">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    </div>
+    
+    <!-- Database Backups Modal -->
+    <div class="modal fade" id="backupsModal" tabindex="-1" aria-labelledby="backupsModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="backupsModalLabel">Manage Database Backups</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <p>Database backups are created automatically when you rebuild the database. You can manage your backups here.</p>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <h6>Available Backups</h6>
+                        <div class="table-responsive">
+                            <table class="table table-striped table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Filename</th>
+                                        <th>Size</th>
+                                        <th>Created</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="backups-table-body">
+                                    <tr>
+                                        <td colspan="3" class="text-center">Loading backups...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <h6>Cleanup Options</h6>
+                        <div class="input-group">
+                            <span class="input-group-text">Keep</span>
+                            <input type="number" class="form-control" id="max-backups" value="5" min="1" max="20">
+                            <span class="input-group-text">most recent backups</span>
+                            <button class="btn btn-warning" id="cleanup-backups">Clean Up</button>
+                        </div>
+                        <small class="text-muted">This will permanently delete older backups.</small>
                     </div>
                 </div>
                 <div class="modal-footer">

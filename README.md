@@ -52,47 +52,53 @@ A dashboard application that scrapes data from various proposal forecast sites a
 5. Set up environment variables (copy `.env.example` to `.env` and fill in values)
 6. Initialize the database:
    ```
-   python init_db.py
+   python src/database/init_db.py
    ```
 7. Run the application:
    ```
    python app.py
    ```
 
-## Running Components Individually
+## Database Management
 
-- Run the web scraper: `python run_scraper.py`
-- Run the scheduler: `python run_scheduler.py`
+The project includes several scripts for database management:
+
+- `create_new_db.py`: Creates a new database with the current schema
+- `rebuild_db.py`: Rebuilds the database while preserving existing data
+- `import_csv.py`: Imports data from CSV files in the downloads directory
+- `process_csv.py`: Rebuilds the database and processes CSV files
 
 ## Project Structure
 
 - `app.py`: Main application entry point for the Flask dashboard
-- `init_db.py`: Script to initialize the database
-- `run_scraper.py`: Script to run the scraper manually
-- `run_scheduler.py`: Script to start the scheduler
+- `src/database/init_db.py`: Script to initialize the database
 - `src/scrapers/`: Web scraping modules for different data sources
+  - `acquisition_gateway.py`: Scraper for Acquisition Gateway Forecast
+  - `ssa_contract_forecast.py`: Scraper for SSA Contract Forecast
 - `src/database/`: Database models and connection management
 - `src/dashboard/`: Flask web application for the dashboard
 - `src/scheduler/`: Scheduled tasks for data refresh
-- `data/`: Directory for storing the SQLite database
+- `data/`: Directory for storing the SQLite database and downloaded files
+- `logs/`: Directory for log files
 
 ## Adding New Data Sources
 
 To add a new data source:
 1. Create a new scraper module in `src/scrapers/`
 2. Implement the scraping logic following the existing pattern
-3. Register the new scraper in the scheduler
+3. Register the new scraper in the scheduler (`src/scheduler/scheduler.py`)
 
 ## Dependencies
 
-- beautifulsoup4: HTML parsing for web scraping
-- requests: HTTP requests
-- pandas: Data manipulation
-- flask: Web dashboard
-- sqlalchemy: Database ORM
-- apscheduler: Task scheduling
-- selenium: Browser automation for complex scraping
-- webdriver-manager: Selenium webdriver management
+- beautifulsoup4==4.12.2: HTML parsing for web scraping
+- requests==2.31.0: HTTP requests
+- pandas==2.1.1: Data manipulation
+- flask==2.3.3: Web dashboard
+- sqlalchemy==2.0.21: Database ORM
+- apscheduler==3.10.4: Task scheduling
+- python-dotenv==1.0.0: Environment variable management
+- selenium==4.15.2: Browser automation for complex scraping
+- webdriver-manager==4.0.1: Selenium webdriver management
 
 ## License
 

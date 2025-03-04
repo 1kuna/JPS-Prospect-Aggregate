@@ -16,12 +16,20 @@ document.addEventListener('DOMContentLoaded', function() {
     const resetFiltersButton = document.getElementById('reset-filters');
     const rebuildDbButton = document.getElementById('rebuild-db');
     const initDbButton = document.getElementById('init-db');
+    const manageBackupsButton = document.getElementById('manage-backups');
+    const resetEverythingButton = document.getElementById('reset-everything');
     const updateNotification = document.getElementById('update-notification');
     const refreshFromNotification = document.getElementById('refresh-from-notification');
     const proposalModal = new bootstrap.Modal(document.getElementById('proposal-modal'));
     const modalTitle = document.getElementById('modal-title');
     const modalBody = document.getElementById('modal-body');
     const viewSourceButton = document.getElementById('view-source');
+    
+    // Backups elements
+    const backupsModal = new bootstrap.Modal(document.getElementById('backupsModal'));
+    const backupsTableBody = document.getElementById('backups-table-body');
+    const maxBackupsInput = document.getElementById('max-backups');
+    const cleanupBackupsButton = document.getElementById('cleanup-backups');
     
     // Statistics elements
     const statsModal = document.getElementById('stats-modal');
@@ -60,7 +68,10 @@ document.addEventListener('DOMContentLoaded', function() {
         applyFilters();
     });
     
-    resetFiltersButton.addEventListener('click', resetFilters);
+    resetFiltersButton.addEventListener('click', function(e) {
+        e.preventDefault();
+        resetFilters();
+    });
     
     sortBySelect.addEventListener('change', function() {
         currentFilters.sort_by = this.value;
@@ -90,6 +101,16 @@ document.addEventListener('DOMContentLoaded', function() {
     initDbButton.addEventListener('click', function(e) {
         e.preventDefault();
         initializeDatabase();
+    });
+    
+    manageBackupsButton.addEventListener('click', function(e) {
+        e.preventDefault();
+        openBackupsModal();
+    });
+    
+    resetEverythingButton.addEventListener('click', function(e) {
+        e.preventDefault();
+        resetEverything();
     });
     
     // Add event listener for statistics modal
@@ -590,5 +611,181 @@ document.addEventListener('DOMContentLoaded', function() {
             minimumFractionDigits: 0,
             maximumFractionDigits: 0
         }).format(value);
+    }
+    
+    // Function to open the backups modal and load the backups
+    function openBackupsModal() {
+        // Show the modal
+        backupsModal.show();
+        
+        // Load the backups
+        loadBackups();
+    }
+    
+    // Function to load the database backups
+    function loadBackups() {
+        // Show loading message
+        backupsTableBody.innerHTML = '<tr><td colspan="3" class="text-center">Loading backups...</td></tr>';
+        
+        // Fetch the backups from the API
+        fetch('/api/database-backups')
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    // Clear the table
+                    backupsTableBody.innerHTML = '';
+                    
+                    // Check if there are any backups
+                    if (data.backups.length === 0) {
+                        backupsTableBody.innerHTML = '<tr><td colspan="3" class="text-center">No backups found</td></tr>';
+                        return;
+                    }
+                    
+                    // Add each backup to the table
+                    data.backups.forEach(backup => {
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>${backup.file}</td>
+                            <td>${backup.size}</td>
+                            <td>${backup.created}</td>
+                        `;
+                        backupsTableBody.appendChild(row);
+                    });
+                } else {
+                    // Show error message
+                    backupsTableBody.innerHTML = `<tr><td colspan="3" class="text-center text-danger">Error: ${data.message}</td></tr>`;
+                }
+            })
+            .catch(error => {
+                console.error('Error loading backups:', error);
+                backupsTableBody.innerHTML = '<tr><td colspan="3" class="text-center text-danger">Error loading backups. Please try again.</td></tr>';
+            });
+    }
+    
+    // Function to clean up old backups
+    function cleanupBackups() {
+        // Get the maximum number of backups to keep
+        const maxBackups = parseInt(maxBackupsInput.value);
+        
+        // Validate the input
+        if (isNaN(maxBackups) || maxBackups < 1) {
+            alert('Please enter a valid number of backups to keep (minimum 1)');
+            return;
+        }
+        
+        // Confirm the action
+        if (!confirm(`This will permanently delete all but the ${maxBackups} most recent backups. Are you sure you want to continue?`)) {
+            return;
+        }
+        
+        // Show loading indicator
+        loadingIndicator.classList.remove('d-none');
+        
+        // Call the API to clean up old backups
+        fetch('/api/database-backups/cleanup', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                max_backups: maxBackups
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            // Hide loading indicator
+            loadingIndicator.classList.add('d-none');
+            
+            if (data.status === 'success') {
+                // Show success message
+                alert(data.message);
+                
+                // Update the backups table
+                backupsTableBody.innerHTML = '';
+                
+                // Check if there are any backups
+                if (data.backups.length === 0) {
+                    backupsTableBody.innerHTML = '<tr><td colspan="3" class="text-center">No backups found</td></tr>';
+                    return;
+                }
+                
+                // Add each backup to the table
+                data.backups.forEach(backup => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${backup.file}</td>
+                        <td>${backup.size}</td>
+                        <td>${backup.created}</td>
+                    `;
+                    backupsTableBody.appendChild(row);
+                });
+            } else {
+                // Show error message
+                alert(`Error: ${data.message}`);
+            }
+        })
+        .catch(error => {
+            console.error('Error cleaning up backups:', error);
+            loadingIndicator.classList.add('d-none');
+            alert('Error cleaning up backups. Please try again.');
+        });
+    }
+    
+    // Add event listener for the cleanup backups button
+    cleanupBackupsButton.addEventListener('click', function() {
+        cleanupBackups();
+    });
+    
+    // Function to reset everything (downloads and database)
+    function resetEverything() {
+        // Create a detailed confirmation dialog
+        const confirmMessage = 
+            'WARNING: This is a destructive operation!\n\n' +
+            'This will:\n' +
+            '1. Delete ALL downloaded files\n' +
+            '2. Delete ALL database backups\n' +
+            '3. Delete the current database\n' +
+            '4. Create a new empty database\n\n' +
+            'This operation cannot be undone. All your data will be permanently lost.\n\n' +
+            'Are you absolutely sure you want to proceed?';
+            
+        if (confirm(confirmMessage)) {
+            // Double-check with a second confirmation
+            if (confirm('FINAL WARNING: You are about to delete ALL data. This cannot be undone. Type "RESET" to confirm.')) {
+                const userInput = prompt('Type "RESET" to confirm:');
+                if (userInput === 'RESET') {
+                    // Show loading indicator
+                    loadingIndicator.classList.remove('d-none');
+                    
+                    // Call the API to reset everything
+                    fetch('/api/reset-everything', {
+                        method: 'POST'
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        // Hide loading indicator
+                        loadingIndicator.classList.add('d-none');
+                        
+                        if (data.status === 'success') {
+                            alert('Reset initiated. The application will be reloaded when the reset is complete.');
+                            
+                            // Reload the page after a short delay
+                            setTimeout(() => {
+                                window.location.reload();
+                            }, 5000);
+                        } else {
+                            alert('Error resetting: ' + data.message);
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error resetting:', error);
+                        loadingIndicator.classList.add('d-none');
+                        alert('Error resetting. Please check the console for details.');
+                    });
+                } else {
+                    alert('Reset cancelled. You did not type "RESET" correctly.');
+                }
+            }
+        }
     }
 }); 

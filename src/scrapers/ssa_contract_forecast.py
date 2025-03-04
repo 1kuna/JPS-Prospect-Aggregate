@@ -392,10 +392,79 @@ class SSAContractForecastScraper:
                     if external_id:
                         existing_proposal = session.query(Proposal).filter(
                             Proposal.external_id == external_id,
-                            Proposal.source_id == data_source.id
+                            Proposal.source_id == data_source.id,
+                            Proposal.is_latest == True
                         ).first()
                     
-                    if not existing_proposal:
+                    if existing_proposal:
+                        # Check if we need to update any fields that were previously empty or N/A
+                        fields_updated = []
+                        needs_update = False
+                        
+                        # Define field mappings for easier comparison
+                        field_mappings = {
+                            "title": description,
+                            "office": site_type,
+                            "description": description,
+                            "naics_code": naics_code,
+                            "estimated_value": estimated_value,
+                            "release_date": release_date,
+                            "response_date": response_date,
+                            "url": self.base_url,
+                            "contract_type": contract_type,
+                            "competition_type": competition_type,
+                            "solicitation_number": app_num,
+                            "award_date": award_date,
+                            "place_of_performance": place_of_performance,
+                            "incumbent": incumbent
+                        }
+                        
+                        # Check each field for updates
+                        for field, new_value in field_mappings.items():
+                            existing_value = getattr(existing_proposal, field)
+                            
+                            # Skip if both values are None
+                            if existing_value is None and new_value is None:
+                                continue
+                            
+                            # Check if we're updating from empty/N/A to a valid value
+                            is_empty_or_na = (
+                                existing_value is None or 
+                                existing_value == "" or 
+                                (isinstance(existing_value, str) and existing_value.lower() in ["n/a", "na", "not available", "not applicable", "tbd", "to be determined"])
+                            )
+                            
+                            has_new_value = (
+                                new_value is not None and 
+                                new_value != "" and 
+                                (not isinstance(new_value, str) or new_value.lower() not in ["n/a", "na", "not available", "not applicable", "tbd", "to be determined"])
+                            )
+                            
+                            # Compare values, accounting for different types
+                            if isinstance(existing_value, datetime.datetime) and isinstance(new_value, datetime.datetime):
+                                # For dates, compare only the date part
+                                if existing_value.date() != new_value.date():
+                                    # If we're updating from a null-like date to a valid date
+                                    if existing_value.year < 1900 and new_value.year >= 1900:
+                                        setattr(existing_proposal, field, new_value)
+                                        fields_updated.append(field)
+                                        needs_update = True
+                            elif existing_value != new_value:
+                                # If we're updating from empty/N/A to a valid value
+                                if is_empty_or_na and has_new_value:
+                                    setattr(existing_proposal, field, new_value)
+                                    fields_updated.append(field)
+                                    needs_update = True
+                        
+                        if needs_update:
+                            # Update the last_updated timestamp
+                            existing_proposal.last_updated = datetime.datetime.utcnow()
+                            session.add(existing_proposal)
+                            logger.info(f"Updated existing proposal {external_id} - Fields updated: {fields_updated}")
+                            proposals_added += 1
+                        else:
+                            logger.debug(f"No updates needed for existing proposal {external_id}")
+                    else:
                         # Create a new proposal
                         proposal = Proposal(
                             source_id=data_source.id,
