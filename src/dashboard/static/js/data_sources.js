@@ -126,8 +126,8 @@ function loadDataSources() {
 
     // Fetch data sources and health status from the API
     Promise.all([
-        fetch('/api/data-sources').then(response => response.json()),
-        fetch('/api/scraper-health').then(response => response.json())
+        fetch('/api/sources').then(response => response.json()),
+        fetch('/api/scraper-status').then(response => response.json())
     ])
     .then(([sourceData, healthData]) => {
         // Hide loading indicator
@@ -338,28 +338,110 @@ function refreshSource(sourceId) {
     document.getElementById('loading-indicator').classList.remove('d-none');
     
     // Call the API to check the scraper's health
-    fetch(`/api/scraper-health/${sourceId}`, {
-        method: 'POST'
+    fetch(`/api/scraper-status/${sourceId}`, {
+        method: 'GET'
     })
-    .then(response => response.json())
+    .then(response => {
+        if (!response.ok) {
+            return response.json().then(err => {
+                throw new Error(err.error || `HTTP error! Status: ${response.status}`);
+            });
+        }
+        return response.json();
+    })
     .then(data => {
         // Hide loading indicator
         document.getElementById('loading-indicator').classList.add('d-none');
         
-        if (data.success) {
-            // Show a toast or notification
-            alert(data.message + '. The status will update shortly.');
+        if (data.status) {
+            // Show success message in a toast or notification area
+            const notificationArea = document.getElementById('notification-area') || document.createElement('div');
+            if (!document.getElementById('notification-area')) {
+                notificationArea.id = 'notification-area';
+                notificationArea.className = 'position-fixed bottom-0 end-0 p-3';
+                document.body.appendChild(notificationArea);
+            }
             
-            // Reload the data after a short delay to show updated status
-            setTimeout(loadDataSources, 5000);
+            const toastId = 'refresh-toast-' + Date.now();
+            notificationArea.innerHTML += `
+                <div id="${toastId}" class="toast show" role="alert" aria-live="assertive" aria-atomic="true">
+                    <div class="toast-header bg-success text-white">
+                        <strong class="me-auto">Source Refreshed</strong>
+                        <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close" onclick="document.getElementById('${toastId}').remove()"></button>
+                    </div>
+                    <div class="toast-body">
+                        Current status: ${data.status}
+                    </div>
+                </div>
+            `;
+            
+            // Auto-remove toast after 5 seconds
+            setTimeout(() => {
+                const toast = document.getElementById(toastId);
+                if (toast) toast.remove();
+            }, 5000);
+            
+            // Reload the data sources
+            loadDataSources();
         } else {
-            alert('Failed to check health: ' + data.error);
+            // Show error message in the notification area
+            const notificationArea = document.getElementById('notification-area') || document.createElement('div');
+            if (!document.getElementById('notification-area')) {
+                notificationArea.id = 'notification-area';
+                notificationArea.className = 'position-fixed bottom-0 end-0 p-3';
+                document.body.appendChild(notificationArea);
+            }
+            
+            const toastId = 'error-toast-' + Date.now();
+            notificationArea.innerHTML += `
+                <div id="${toastId}" class="toast show" role="alert" aria-live="assertive" aria-atomic="true">
+                    <div class="toast-header bg-danger text-white">
+                        <strong class="me-auto">Error</strong>
+                        <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close" onclick="document.getElementById('${toastId}').remove()"></button>
+                    </div>
+                    <div class="toast-body">
+                        Error refreshing source: ${data.error || 'Unknown error'}
+                    </div>
+                </div>
+            `;
+            
+            // Auto-remove toast after 5 seconds
+            setTimeout(() => {
+                const toast = document.getElementById(toastId);
+                if (toast) toast.remove();
+            }, 5000);
         }
     })
     .catch(error => {
-        console.error('Error checking health:', error);
+        console.error('Error refreshing source:', error);
         document.getElementById('loading-indicator').classList.add('d-none');
-        alert('An error occurred while checking health.');
+        
+        // Show error message in the notification area
+        const notificationArea = document.getElementById('notification-area') || document.createElement('div');
+        if (!document.getElementById('notification-area')) {
+            notificationArea.id = 'notification-area';
+            notificationArea.className = 'position-fixed bottom-0 end-0 p-3';
+            document.body.appendChild(notificationArea);
+        }
+        
+        const toastId = 'error-toast-' + Date.now();
+        notificationArea.innerHTML += `
+            <div id="${toastId}" class="toast show" role="alert" aria-live="assertive" aria-atomic="true">
+                <div class="toast-header bg-danger text-white">
+                    <strong class="me-auto">Error</strong>
+                    <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close" onclick="document.getElementById('${toastId}').remove()"></button>
+                </div>
+                <div class="toast-body">
+                    ${error.message || 'An error occurred while refreshing the source.'}
+                </div>
+            </div>
+        `;
+        
+        // Auto-remove toast after 5 seconds
+        setTimeout(() => {
+            const toast = document.getElementById(toastId);
+            if (toast) toast.remove();
+        }, 5000);
     });
 }
 
@@ -597,28 +679,110 @@ function runHealthChecks() {
     document.getElementById('loading-indicator').classList.remove('d-none');
     
     // Call the API to run health checks
-    fetch('/api/scraper-health/check', {
+    fetch('/api/scraper-status/check', {
         method: 'POST'
     })
-    .then(response => response.json())
+    .then(response => {
+        if (!response.ok) {
+            return response.json().then(err => {
+                throw new Error(err.error || `HTTP error! Status: ${response.status}`);
+            });
+        }
+        return response.json();
+    })
     .then(data => {
         // Hide loading indicator
         document.getElementById('loading-indicator').classList.add('d-none');
         
         if (data.success) {
-            // Show a toast or notification
-            alert('Health checks started. The status will update shortly.');
+            // Show success message in the notification area
+            const notificationArea = document.getElementById('notification-area') || document.createElement('div');
+            if (!document.getElementById('notification-area')) {
+                notificationArea.id = 'notification-area';
+                notificationArea.className = 'position-fixed bottom-0 end-0 p-3';
+                document.body.appendChild(notificationArea);
+            }
             
-            // Reload the data after a short delay to show updated status
-            setTimeout(loadDataSources, 5000);
+            const toastId = 'health-toast-' + Date.now();
+            notificationArea.innerHTML += `
+                <div id="${toastId}" class="toast show" role="alert" aria-live="assertive" aria-atomic="true">
+                    <div class="toast-header bg-success text-white">
+                        <strong class="me-auto">Health Checks</strong>
+                        <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close" onclick="document.getElementById('${toastId}').remove()"></button>
+                    </div>
+                    <div class="toast-body">
+                        Health checks started. The status will update shortly.
+                    </div>
+                </div>
+            `;
+            
+            // Auto-remove toast after 5 seconds
+            setTimeout(() => {
+                const toast = document.getElementById(toastId);
+                if (toast) toast.remove();
+            }, 5000);
+            
+            // Reload the data sources after a short delay
+            setTimeout(loadDataSources, 2000);
         } else {
-            alert('Failed to start health checks: ' + data.error);
+            // Show error message in the notification area
+            const notificationArea = document.getElementById('notification-area') || document.createElement('div');
+            if (!document.getElementById('notification-area')) {
+                notificationArea.id = 'notification-area';
+                notificationArea.className = 'position-fixed bottom-0 end-0 p-3';
+                document.body.appendChild(notificationArea);
+            }
+            
+            const toastId = 'error-toast-' + Date.now();
+            notificationArea.innerHTML += `
+                <div id="${toastId}" class="toast show" role="alert" aria-live="assertive" aria-atomic="true">
+                    <div class="toast-header bg-danger text-white">
+                        <strong class="me-auto">Error</strong>
+                        <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close" onclick="document.getElementById('${toastId}').remove()"></button>
+                    </div>
+                    <div class="toast-body">
+                        Error running health checks: ${data.error || 'Unknown error'}
+                    </div>
+                </div>
+            `;
+            
+            // Auto-remove toast after 5 seconds
+            setTimeout(() => {
+                const toast = document.getElementById(toastId);
+                if (toast) toast.remove();
+            }, 5000);
         }
     })
     .catch(error => {
-        console.error('Error running health checks:', error);
+        console.error('Error checking health:', error);
         document.getElementById('loading-indicator').classList.add('d-none');
-        alert('An error occurred while running health checks.');
+        
+        // Show error message in the notification area
+        const notificationArea = document.getElementById('notification-area') || document.createElement('div');
+        if (!document.getElementById('notification-area')) {
+            notificationArea.id = 'notification-area';
+            notificationArea.className = 'position-fixed bottom-0 end-0 p-3';
+            document.body.appendChild(notificationArea);
+        }
+        
+        const toastId = 'error-toast-' + Date.now();
+        notificationArea.innerHTML += `
+            <div id="${toastId}" class="toast show" role="alert" aria-live="assertive" aria-atomic="true">
+                <div class="toast-header bg-danger text-white">
+                    <strong class="me-auto">Error</strong>
+                    <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close" onclick="document.getElementById('${toastId}').remove()"></button>
+                </div>
+                <div class="toast-body">
+                    ${error.message || 'An error occurred while checking health.'}
+                </div>
+            </div>
+        `;
+        
+        // Auto-remove toast after 5 seconds
+        setTimeout(() => {
+            const toast = document.getElementById(toastId);
+            if (toast) toast.remove();
+        }, 5000);
     });
 }
 
@@ -628,28 +792,129 @@ function checkScraperHealth(sourceId) {
     document.getElementById('loading-indicator').classList.remove('d-none');
     
     // Call the API to check the scraper's health
-    fetch(`/api/scraper-health/${sourceId}`, {
-        method: 'POST'
+    fetch(`/api/scraper-status/${sourceId}`, {
+        method: 'GET'
     })
-    .then(response => response.json())
+    .then(response => {
+        if (!response.ok) {
+            return response.json().then(err => {
+                throw new Error(err.error || `HTTP error! Status: ${response.status}`);
+            });
+        }
+        return response.json();
+    })
     .then(data => {
         // Hide loading indicator
         document.getElementById('loading-indicator').classList.add('d-none');
         
-        if (data.success) {
-            // Show a toast or notification
-            alert(data.message + '. The status will update shortly.');
+        if (data.status) {
+            // Show health status in a modal
+            const modalId = 'health-modal-' + Date.now();
+            const modalHtml = `
+                <div class="modal fade" id="${modalId}" tabindex="-1" aria-labelledby="${modalId}-label" aria-hidden="true">
+                    <div class="modal-dialog">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title" id="${modalId}-label">Scraper Health Status</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body">
+                                <div class="mb-3">
+                                    <strong>Status:</strong> <span class="badge ${data.status === 'active' ? 'bg-success' : 'bg-warning'}">${data.status}</span>
+                                </div>
+                                <div class="mb-3">
+                                    <strong>Last Run:</strong> ${data.last_run ? new Date(data.last_run).toLocaleString() : 'Never'}
+                                </div>
+                                <div class="mb-3">
+                                    <strong>Next Run:</strong> ${data.next_run ? new Date(data.next_run).toLocaleString() : 'Not scheduled'}
+                                </div>
+                                <div class="mb-3">
+                                    <strong>Message:</strong> ${data.message || 'No message'}
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
             
-            // Reload the data after a short delay to show updated status
-            setTimeout(loadDataSources, 5000);
+            // Add modal to the document
+            const modalContainer = document.createElement('div');
+            modalContainer.innerHTML = modalHtml;
+            document.body.appendChild(modalContainer);
+            
+            // Show the modal
+            const modal = new bootstrap.Modal(document.getElementById(modalId));
+            modal.show();
+            
+            // Remove modal from DOM when hidden
+            document.getElementById(modalId).addEventListener('hidden.bs.modal', function () {
+                document.body.removeChild(modalContainer);
+            });
+            
+            // Reload the data sources
+            loadDataSources();
         } else {
-            alert('Failed to check health: ' + data.error);
+            // Show error message in the notification area
+            const notificationArea = document.getElementById('notification-area') || document.createElement('div');
+            if (!document.getElementById('notification-area')) {
+                notificationArea.id = 'notification-area';
+                notificationArea.className = 'position-fixed bottom-0 end-0 p-3';
+                document.body.appendChild(notificationArea);
+            }
+            
+            const toastId = 'error-toast-' + Date.now();
+            notificationArea.innerHTML += `
+                <div id="${toastId}" class="toast show" role="alert" aria-live="assertive" aria-atomic="true">
+                    <div class="toast-header bg-danger text-white">
+                        <strong class="me-auto">Error</strong>
+                        <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close" onclick="document.getElementById('${toastId}').remove()"></button>
+                    </div>
+                    <div class="toast-body">
+                        Error checking scraper health: ${data.error || 'Unknown error'}
+                    </div>
+                </div>
+            `;
+            
+            // Auto-remove toast after 5 seconds
+            setTimeout(() => {
+                const toast = document.getElementById(toastId);
+                if (toast) toast.remove();
+            }, 5000);
         }
     })
     .catch(error => {
-        console.error('Error checking health:', error);
+        console.error('Error checking scraper health:', error);
         document.getElementById('loading-indicator').classList.add('d-none');
-        alert('An error occurred while checking health.');
+        
+        // Show error message in the notification area
+        const notificationArea = document.getElementById('notification-area') || document.createElement('div');
+        if (!document.getElementById('notification-area')) {
+            notificationArea.id = 'notification-area';
+            notificationArea.className = 'position-fixed bottom-0 end-0 p-3';
+            document.body.appendChild(notificationArea);
+        }
+        
+        const toastId = 'error-toast-' + Date.now();
+        notificationArea.innerHTML += `
+            <div id="${toastId}" class="toast show" role="alert" aria-live="assertive" aria-atomic="true">
+                <div class="toast-header bg-danger text-white">
+                    <strong class="me-auto">Error</strong>
+                    <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close" onclick="document.getElementById('${toastId}').remove()"></button>
+                </div>
+                <div class="toast-body">
+                    ${error.message || 'An error occurred while checking scraper health.'}
+                </div>
+            </div>
+        `;
+        
+        // Auto-remove toast after 5 seconds
+        setTimeout(() => {
+            const toast = document.getElementById(toastId);
+            if (toast) toast.remove();
+        }, 5000);
     });
 }
 
@@ -663,9 +928,16 @@ function loadStatistics() {
     statsLoading.classList.remove('d-none');
     statsContent.classList.add('d-none');
     
-    // Fetch statistics
-    fetch('/api/stats')
-        .then(response => response.json())
+    // Fetch statistics - on the data sources page, we want to see all proposals
+    fetch('/api/statistics?only_latest=false')
+        .then(response => {
+            if (!response.ok) {
+                return response.json().then(err => {
+                    throw new Error(err.error || `HTTP error! Status: ${response.status}`);
+                });
+            }
+            return response.json();
+        })
         .then(data => {
             // Create the statistics content
             let html = `
@@ -685,11 +957,11 @@ function loadStatistics() {
             `;
             
             // Add source stats
-            data.by_source.forEach(source => {
+            Object.entries(data.by_source).forEach(([name, count]) => {
                 html += `
                     <tr>
-                        <td>${source.name}</td>
-                        <td>${source.count}</td>
+                        <td>${name}</td>
+                        <td>${count}</td>
                     </tr>
                 `;
             });
@@ -712,11 +984,11 @@ function loadStatistics() {
             `;
             
             // Add agency stats
-            data.by_agency.forEach(agency => {
+            Object.entries(data.by_agency).forEach(([agency, count]) => {
                 html += `
                     <tr>
-                        <td>${agency.agency || 'Unknown'}</td>
-                        <td>${agency.count}</td>
+                        <td>${agency}</td>
+                        <td>${count}</td>
                     </tr>
                 `;
             });
@@ -739,11 +1011,11 @@ function loadStatistics() {
             `;
             
             // Add status stats
-            data.by_status.forEach(status => {
+            Object.entries(data.by_status).forEach(([status, count]) => {
                 html += `
                     <tr>
-                        <td>${status.status || 'Unknown'}</td>
-                        <td>${status.count}</td>
+                        <td>${status}</td>
+                        <td>${count}</td>
                     </tr>
                 `;
             });
@@ -752,6 +1024,10 @@ function loadStatistics() {
                             </tbody>
                         </table>
                     </div>
+                </div>
+                
+                <div class="alert alert-info mt-3">
+                    Note: Statistics are showing all proposals, including historical versions.
                 </div>
             `;
             
@@ -765,7 +1041,20 @@ function loadStatistics() {
         .catch(error => {
             console.error('Error loading statistics:', error);
             statsLoading.classList.add('d-none');
-            statsContent.innerHTML = '<div class="alert alert-danger">Error loading statistics. Please try again.</div>';
+            
+            // Display error in the UI instead of an alert
+            statsContent.innerHTML = `
+                <div class="alert alert-danger">
+                    <h4 class="alert-heading">Error Loading Statistics</h4>
+                    <p>${error.message || 'An unexpected error occurred. Please try again later.'}</p>
+                    <hr>
+                    <p class="mb-0">
+                        <button class="btn btn-outline-danger btn-sm" onclick="loadStatistics()">
+                            <i class="bi bi-arrow-clockwise"></i> Try Again
+                        </button>
+                    </p>
+                </div>
+            `;
             statsContent.classList.remove('d-none');
         });
 } 

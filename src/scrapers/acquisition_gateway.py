@@ -5,6 +5,7 @@ import datetime
 import logging
 from logging.handlers import RotatingFileHandler
 import requests
+from requests.exceptions import RequestException, Timeout, ConnectionError as RequestsConnectionError
 import csv
 import tempfile
 from io import StringIO
@@ -13,6 +14,7 @@ from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeo
 import glob
 import pathlib
 import re
+import traceback
 
 # Add the parent directory to the path so we can import from src
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -20,6 +22,10 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
 from src.database.db import get_session, close_session, session_scope
 from src.database.models import Proposal, DataSource
 from src.database.download_tracker import download_tracker
+from src.exceptions import (
+    ScraperError, NetworkError, TimeoutError as AppTimeoutError, 
+    ConnectionError as AppConnectionError, ParsingError
+)
 from src.config import (
     LOGS_DIR, DOWNLOADS_DIR, 
     PAGE_NAVIGATION_TIMEOUT, PAGE_ELEMENT_TIMEOUT, TABLE_LOAD_TIMEOUT, DOWNLOAD_TIMEOUT,
@@ -250,178 +256,186 @@ class AcquisitionGatewayScraper:
             return 0
     
     def download_csv(self):
-        """Download the CSV file from the Acquisition Gateway Forecast site"""
-        logger.info("Attempting to download the CSV file from the Acquisition Gateway Forecast site")
+        """Download CSV file from the Acquisition Gateway site with improved error handling."""
+        max_retries = 3
+        retry_delay = 5  # seconds
         
-        # Check if we have a valid file using the download tracker
-        if download_tracker.verify_file_exists("Acquisition Gateway Forecast", "*.csv"):
-            # Get the downloads directory
-            download_dir = DOWNLOADS_DIR
-            
-            # Find the matching files
-            matching_files = list(pathlib.Path(download_dir).glob("*.csv"))
-            
-            if matching_files:
-                # Sort by modification time (most recent first)
-                matching_files.sort(key=os.path.getmtime, reverse=True)
-                latest_file = str(matching_files[0])
-                
-                # Check if the file is recent enough (within the configured freshness period)
-                if os.path.getmtime(latest_file) > time.time() - FILE_FRESHNESS_SECONDS:
-                    logger.info(f"Found existing CSV file, using it instead of downloading again: {latest_file}")
-                    return latest_file
+        # Create downloads directory if it doesn't exist
+        os.makedirs(DOWNLOADS_DIR, exist_ok=True)
         
-        try:
-            # Navigate to the base URL
-            logger.info(f"Navigating to {self.base_url}")
-            self.page.goto(self.base_url, wait_until="networkidle", timeout=PAGE_NAVIGATION_TIMEOUT)
-            
-            # Wait for the page to load
-            logger.info("Waiting for page to load")
-            self.page.wait_for_selector("body", state="visible", timeout=PAGE_ELEMENT_TIMEOUT)
-            
-            # Take a screenshot for debugging
-            screenshot_path = os.path.join(LOGS_DIR, f'acquisition_gateway_initial_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.png')
-            self.page.screenshot(path=screenshot_path)
-            logger.info(f"Initial page screenshot saved to {screenshot_path}")
-            
-            # Wait for the table to load
-            logger.info("Waiting for the table to load")
+        # Clear any existing CSV files
+        for file in glob.glob(os.path.join(DOWNLOADS_DIR, "*.csv")):
             try:
-                self.page.wait_for_selector("table", timeout=TABLE_LOAD_TIMEOUT, state="visible")
-                logger.info("Table loaded successfully")
-            except PlaywrightTimeoutError:
-                logger.warning("Table did not load within timeout, continuing anyway")
-            
-            # Save the page HTML for analysis
-            html_path = os.path.join(LOGS_DIR, f'acquisition_gateway_page_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.html')
-            with open(html_path, 'w', encoding='utf-8') as f:
-                f.write(self.page.content())
-            logger.info(f"Saved page HTML to {html_path} for analysis")
-            
-            # Look specifically for the "Export CSV" button
-            logger.info("Looking for the 'Export CSV' button")
-            
-            # Try various selectors that might match the Export CSV button
-            export_selectors = [
-                "button:has-text('Export CSV')",
-                "button:has-text('Export')",
-                "button.usa-button:has-text('Export')",
-                "button.export-button",
-                "[aria-label='Export CSV']",
-                "[aria-label='Export']",
-                "[title='Export CSV']",
-                "[title='Export']",
-                "button.usa-button",  # Try any USA button
-                "button.ag-button",   # Try any AG button
-                "button.download-button",
-                "button.csv-button"
-            ]
-            
-            export_button = None
-            for selector in export_selectors:
-                logger.info(f"Trying selector: {selector}")
-                buttons = self.page.query_selector_all(selector)
-                for button in buttons:
-                    text = button.inner_text().strip()
-                    logger.info(f"Found button with text: '{text}'")
-                    if "export" in text.lower() or "csv" in text.lower() or "download" in text.lower():
-                        export_button = button
-                        logger.info(f"Found export button with text: '{text}'")
-                        break
-                if export_button:
-                    break
-            
-            if not export_button:
-                # Try to find any buttons on the page and log their text
-                logger.info("No export button found with specific selectors, checking all buttons")
-                all_buttons = self.page.query_selector_all("button")
-                logger.info(f"Found {len(all_buttons)} buttons on the page")
-                for i, button in enumerate(all_buttons):
-                    try:
-                        text = button.inner_text().strip()
-                        logger.info(f"Button {i+1}: '{text}'")
-                        if "export" in text.lower() or "csv" in text.lower() or "download" in text.lower():
-                            export_button = button
-                            logger.info(f"Found potential export button with text: '{text}'")
-                            break
-                    except Exception as e:
-                        logger.warning(f"Could not get text for button {i+1}: {e}")
-            
-            if not export_button:
-                # Take a screenshot for debugging
-                screenshot_path = os.path.join(LOGS_DIR, f'acquisition_gateway_no_export_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.png')
-                self.page.screenshot(path=screenshot_path)
-                logger.error(f"Could not find any export buttons. Screenshot saved to {screenshot_path}")
-                return None
-            
-            # Click the export button and wait for download
-            logger.info(f"Clicking the export button")
-            
-            # Get the downloads directory
-            download_dir = DOWNLOADS_DIR
-            
-            # Start waiting for the download with the configured timeout
-            with self.page.expect_download(timeout=DOWNLOAD_TIMEOUT) as download_info:
-                try:
-                    # Click the export button
-                    export_button.click()
-                    logger.info("Clicked export button, waiting for download to start")
-                except Exception as e:
-                    logger.error(f"Error clicking export button: {e}")
-                    return None
-            
-            try:
-                # Get the download object
-                download = download_info.value
-                logger.info(f"Download started: {download.suggested_filename}")
-                
-                # Wait for the download to complete and save to the downloads directory
-                download_path = os.path.join(download_dir, download.suggested_filename)
-                download.save_as(download_path)
-                logger.info(f"Download completed and saved to: {download_path}")
-                
-                # Update the download tracker
-                download_tracker.set_last_download_time("Acquisition Gateway Forecast")
-                
-                # Return the path to the downloaded file
-                return download_path
+                os.remove(file)
+                logger.debug(f"Removed existing CSV file: {file}")
             except Exception as e:
-                logger.error(f"Error handling download: {e}")
-                
-                # Try a fallback approach if the download fails
-                logger.info("Trying fallback approach to detect downloaded file")
-                
-                # Get list of files before and after a short wait
-                before_files = set(os.listdir(download_dir))
-                time.sleep(10)  # Wait a bit more for any potential downloads
-                after_files = set(os.listdir(download_dir))
-                new_files = after_files - before_files
-                
-                if new_files:
-                    new_file = os.path.join(download_dir, list(new_files)[0])
-                    logger.info(f"Found new file using fallback method: {new_file}")
-                    
-                    # Update the download tracker
-                    download_tracker.set_last_download_time("Acquisition Gateway Forecast")
-                    
-                    return new_file
-                
-                logger.error("No download detected even with fallback method")
-                return None
-            
-        except Exception as e:
-            logger.error(f"Error downloading CSV file: {e}")
-            
-            # Take a screenshot for debugging
+                logger.warning(f"Failed to remove existing CSV file {file}: {e}")
+        
+        for attempt in range(max_retries):
             try:
-                screenshot_path = os.path.join(LOGS_DIR, f'acquisition_gateway_error_screenshot_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.png')
-                self.page.screenshot(path=screenshot_path)
-                logger.error(f"Error screenshot saved to {screenshot_path}")
-            except Exception as screenshot_error:
-                logger.error(f"Could not take error screenshot: {screenshot_error}")
+                logger.info(f"Downloading CSV file (attempt {attempt+1}/{max_retries})")
                 
-            return None
+                with sync_playwright() as playwright:
+                    try:
+                        browser = playwright.chromium.launch(headless=True)
+                        context = browser.new_context(
+                            accept_downloads=True,
+                            viewport={"width": 1920, "height": 1080}
+                        )
+                        
+                        # Set download behavior
+                        page = context.new_page()
+                        
+                        # Navigate to the Acquisition Gateway site
+                        try:
+                            logger.info(f"Navigating to {ACQUISITION_GATEWAY_URL}")
+                            page.goto(ACQUISITION_GATEWAY_URL, timeout=PAGE_NAVIGATION_TIMEOUT)
+                        except PlaywrightTimeoutError as e:
+                            raise AppTimeoutError(f"Timeout navigating to {ACQUISITION_GATEWAY_URL}: {str(e)}")
+                        
+                        # Wait for the page to load
+                        try:
+                            logger.debug("Waiting for page to load")
+                            page.wait_for_selector("table", timeout=TABLE_LOAD_TIMEOUT)
+                        except PlaywrightTimeoutError as e:
+                            raise AppTimeoutError(f"Timeout waiting for table to load: {str(e)}")
+                        
+                        # Click the download button
+                        try:
+                            logger.debug("Clicking download button")
+                            download_button = page.get_by_role("button", name="Download")
+                            download_button.click(timeout=PAGE_ELEMENT_TIMEOUT)
+                        except PlaywrightTimeoutError as e:
+                            raise AppTimeoutError(f"Timeout clicking download button: {str(e)}")
+                        except Exception as e:
+                            raise ScraperError(f"Failed to click download button: {str(e)}")
+                        
+                        # Wait for the download to complete
+                        logger.debug("Waiting for download to complete")
+                        download_start_time = time.time()
+                        
+                        # Wait for the download to complete with timeout
+                        while time.time() - download_start_time < DOWNLOAD_TIMEOUT:
+                            # Check if any CSV files have been downloaded
+                            csv_files = glob.glob(os.path.join(DOWNLOADS_DIR, "*.csv"))
+                            if csv_files:
+                                csv_file_path = csv_files[0]
+                                logger.info(f"CSV file downloaded: {csv_file_path}")
+                                
+                                # Verify the file is valid
+                                if os.path.getsize(csv_file_path) == 0:
+                                    raise ScraperError(f"Downloaded CSV file is empty: {csv_file_path}")
+                                
+                                # Try to open the file to verify it's valid
+                                try:
+                                    with open(csv_file_path, 'r', encoding='utf-8') as f:
+                                        # Read the first few lines to verify it's a valid CSV
+                                        header = f.readline()
+                                        if not header or ',' not in header:
+                                            raise ParsingError(f"Downloaded file does not appear to be a valid CSV: {csv_file_path}")
+                                except UnicodeDecodeError:
+                                    # Try different encodings
+                                    for encoding in CSV_ENCODINGS:
+                                        try:
+                                            with open(csv_file_path, 'r', encoding=encoding) as f:
+                                                header = f.readline()
+                                                if header and ',' in header:
+                                                    logger.info(f"CSV file is valid with encoding: {encoding}")
+                                                    break
+                                        except UnicodeDecodeError:
+                                            continue
+                                    else:
+                                        raise ParsingError(f"Could not decode CSV file with any known encoding: {csv_file_path}")
+                                
+                                return csv_file_path
+                            
+                            # Wait a bit before checking again
+                            time.sleep(0.5)
+                        
+                        # If we get here, the download timed out
+                        raise AppTimeoutError(f"Download timed out after {DOWNLOAD_TIMEOUT} seconds")
+                        
+                    except (AppTimeoutError, ScraperError, ParsingError) as e:
+                        # Re-raise these exceptions to be caught by the outer try/except
+                        raise
+                    except Exception as e:
+                        # Catch any other exceptions and convert to ScraperError
+                        logger.error(f"Error during browser automation: {str(e)}")
+                        logger.error(traceback.format_exc())
+                        raise ScraperError(f"Browser automation error: {str(e)}")
+                    finally:
+                        # Clean up
+                        try:
+                            if 'context' in locals():
+                                context.close()
+                            if 'browser' in locals():
+                                browser.close()
+                        except Exception as e:
+                            logger.warning(f"Error closing browser: {str(e)}")
+            
+            except (AppTimeoutError, PlaywrightTimeoutError) as e:
+                logger.warning(f"Timeout error on attempt {attempt+1}/{max_retries}: {str(e)}")
+                if attempt < max_retries - 1:
+                    logger.info(f"Retrying in {retry_delay} seconds...")
+                    time.sleep(retry_delay)
+                    retry_delay *= 2  # Exponential backoff
+                else:
+                    logger.error(f"Failed to download CSV after {max_retries} attempts due to timeout")
+                    raise AppTimeoutError(f"Failed to download CSV after {max_retries} attempts: {str(e)}")
+            
+            except (RequestsConnectionError, AppConnectionError) as e:
+                logger.warning(f"Connection error on attempt {attempt+1}/{max_retries}: {str(e)}")
+                if attempt < max_retries - 1:
+                    logger.info(f"Retrying in {retry_delay} seconds...")
+                    time.sleep(retry_delay)
+                    retry_delay *= 2  # Exponential backoff
+                else:
+                    logger.error(f"Failed to download CSV after {max_retries} attempts due to connection error")
+                    raise AppConnectionError(f"Failed to download CSV after {max_retries} attempts: {str(e)}")
+            
+            except RequestException as e:
+                logger.warning(f"Network error on attempt {attempt+1}/{max_retries}: {str(e)}")
+                if attempt < max_retries - 1:
+                    logger.info(f"Retrying in {retry_delay} seconds...")
+                    time.sleep(retry_delay)
+                    retry_delay *= 2  # Exponential backoff
+                else:
+                    logger.error(f"Failed to download CSV after {max_retries} attempts due to network error")
+                    raise NetworkError(f"Failed to download CSV after {max_retries} attempts: {str(e)}")
+            
+            except ParsingError as e:
+                logger.warning(f"Parsing error on attempt {attempt+1}/{max_retries}: {str(e)}")
+                if attempt < max_retries - 1:
+                    logger.info(f"Retrying in {retry_delay} seconds...")
+                    time.sleep(retry_delay)
+                    retry_delay *= 2  # Exponential backoff
+                else:
+                    logger.error(f"Failed to download CSV after {max_retries} attempts due to parsing error")
+                    raise
+            
+            except ScraperError as e:
+                logger.warning(f"Scraper error on attempt {attempt+1}/{max_retries}: {str(e)}")
+                if attempt < max_retries - 1:
+                    logger.info(f"Retrying in {retry_delay} seconds...")
+                    time.sleep(retry_delay)
+                    retry_delay *= 2  # Exponential backoff
+                else:
+                    logger.error(f"Failed to download CSV after {max_retries} attempts due to scraper error")
+                    raise
+            
+            except Exception as e:
+                logger.error(f"Unexpected error on attempt {attempt+1}/{max_retries}: {str(e)}")
+                logger.error(traceback.format_exc())
+                if attempt < max_retries - 1:
+                    logger.info(f"Retrying in {retry_delay} seconds...")
+                    time.sleep(retry_delay)
+                    retry_delay *= 2  # Exponential backoff
+                else:
+                    logger.error(f"Failed to download CSV after {max_retries} attempts due to unexpected error")
+                    raise ScraperError(f"Failed to download CSV after {max_retries} attempts: {str(e)}")
+        
+        # If we get here, all retries failed
+        raise ScraperError(f"Failed to download CSV after {max_retries} attempts")
     
     def process_csv(self, csv_file, session, data_source):
         """Process the downloaded CSV file and update the database

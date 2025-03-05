@@ -1,12 +1,19 @@
 import logging
 import os
+import traceback
 from datetime import datetime
+import requests
+from requests.exceptions import RequestException, Timeout, ConnectionError as RequestsConnectionError
 
 from src.celery_app import celery_app
 from src.scrapers.acquisition_gateway import run_scraper as run_acquisition_gateway_scraper
 from src.scrapers.ssa_contract_forecast import run_scraper as run_ssa_contract_forecast_scraper
 from src.database.db import session_scope
 from src.database.models import DataSource
+from src.exceptions import (
+    ScraperError, NetworkError, TimeoutError as AppTimeoutError, 
+    ConnectionError as AppConnectionError, DatabaseError, TaskError
+)
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -15,45 +22,113 @@ logger = logging.getLogger(__name__)
 def run_acquisition_gateway_scraper_task(self):
     """Celery task to run the Acquisition Gateway scraper"""
     logger.info("Starting Acquisition Gateway scraper task")
+    task_id = self.request.id
+    
     try:
         # Run the scraper with force=True to ensure it runs
         success = run_acquisition_gateway_scraper(force=True)
         
         if success:
             logger.info("Acquisition Gateway scraper completed successfully")
-            return {"status": "success", "message": "Scraper completed successfully"}
+            return {"status": "success", "message": "Scraper completed successfully", "task_id": task_id}
         else:
             logger.error("Acquisition Gateway scraper failed")
             # Retry the task if it fails
-            self.retry(countdown=60 * 5)  # Retry after 5 minutes
-            return {"status": "error", "message": "Scraper failed"}
+            raise ScraperError("Acquisition Gateway scraper failed without specific error")
+            
+    except ScraperError as e:
+        logger.error(f"Scraper error: {e.message}")
+        self.retry(countdown=60 * 5, exc=e)
+        return {"status": "error", "message": e.message, "error_code": e.error_code, "task_id": task_id}
+        
+    except (Timeout, AppTimeoutError) as e:
+        logger.error(f"Timeout error: {str(e)}")
+        # Use longer delay for timeouts
+        self.retry(countdown=60 * 10, exc=AppTimeoutError(f"Scraper timed out: {str(e)}"))
+        return {"status": "error", "message": f"Timeout error: {str(e)}", "error_code": "TIMEOUT_ERROR", "task_id": task_id}
+        
+    except (RequestsConnectionError, AppConnectionError) as e:
+        logger.error(f"Connection error: {str(e)}")
+        # Use longer delay for connection issues
+        self.retry(countdown=60 * 15, exc=AppConnectionError(f"Connection error: {str(e)}"))
+        return {"status": "error", "message": f"Connection error: {str(e)}", "error_code": "CONNECTION_ERROR", "task_id": task_id}
+        
+    except RequestException as e:
+        logger.error(f"Network error: {str(e)}")
+        self.retry(countdown=60 * 10, exc=NetworkError(f"Network error: {str(e)}"))
+        return {"status": "error", "message": f"Network error: {str(e)}", "error_code": "NETWORK_ERROR", "task_id": task_id}
+        
+    except DatabaseError as e:
+        logger.error(f"Database error: {e.message}")
+        self.retry(countdown=60 * 5, exc=e)
+        return {"status": "error", "message": e.message, "error_code": e.error_code, "task_id": task_id}
+        
     except Exception as e:
-        logger.exception(f"Error running Acquisition Gateway scraper: {e}")
+        logger.exception(f"Unexpected error running Acquisition Gateway scraper: {e}")
+        # Log the full traceback for debugging
+        logger.error(traceback.format_exc())
         # Retry the task if it fails
-        self.retry(countdown=60 * 5, exc=e)  # Retry after 5 minutes
-        return {"status": "error", "message": str(e)}
+        self.retry(countdown=60 * 5, exc=TaskError(f"Unexpected error: {str(e)}"))
+        return {"status": "error", "message": f"Unexpected error: {str(e)}", "error_code": "TASK_ERROR", "task_id": task_id}
+    finally:
+        # Cleanup code if needed
+        pass
 
 @celery_app.task(bind=True, name='src.tasks.scraper_tasks.run_ssa_contract_forecast_scraper_task', max_retries=3)
 def run_ssa_contract_forecast_scraper_task(self):
     """Celery task to run the SSA Contract Forecast scraper"""
     logger.info("Starting SSA Contract Forecast scraper task")
+    task_id = self.request.id
+    
     try:
         # Run the scraper with force=True to ensure it runs
         success = run_ssa_contract_forecast_scraper(force=True)
         
         if success:
             logger.info("SSA Contract Forecast scraper completed successfully")
-            return {"status": "success", "message": "Scraper completed successfully"}
+            return {"status": "success", "message": "Scraper completed successfully", "task_id": task_id}
         else:
             logger.error("SSA Contract Forecast scraper failed")
             # Retry the task if it fails
-            self.retry(countdown=60 * 5)  # Retry after 5 minutes
-            return {"status": "error", "message": "Scraper failed"}
+            raise ScraperError("SSA Contract Forecast scraper failed without specific error")
+            
+    except ScraperError as e:
+        logger.error(f"Scraper error: {e.message}")
+        self.retry(countdown=60 * 5, exc=e)
+        return {"status": "error", "message": e.message, "error_code": e.error_code, "task_id": task_id}
+        
+    except (Timeout, AppTimeoutError) as e:
+        logger.error(f"Timeout error: {str(e)}")
+        # Use longer delay for timeouts
+        self.retry(countdown=60 * 10, exc=AppTimeoutError(f"Scraper timed out: {str(e)}"))
+        return {"status": "error", "message": f"Timeout error: {str(e)}", "error_code": "TIMEOUT_ERROR", "task_id": task_id}
+        
+    except (RequestsConnectionError, AppConnectionError) as e:
+        logger.error(f"Connection error: {str(e)}")
+        # Use longer delay for connection issues
+        self.retry(countdown=60 * 15, exc=AppConnectionError(f"Connection error: {str(e)}"))
+        return {"status": "error", "message": f"Connection error: {str(e)}", "error_code": "CONNECTION_ERROR", "task_id": task_id}
+        
+    except RequestException as e:
+        logger.error(f"Network error: {str(e)}")
+        self.retry(countdown=60 * 10, exc=NetworkError(f"Network error: {str(e)}"))
+        return {"status": "error", "message": f"Network error: {str(e)}", "error_code": "NETWORK_ERROR", "task_id": task_id}
+        
+    except DatabaseError as e:
+        logger.error(f"Database error: {e.message}")
+        self.retry(countdown=60 * 5, exc=e)
+        return {"status": "error", "message": e.message, "error_code": e.error_code, "task_id": task_id}
+        
     except Exception as e:
-        logger.exception(f"Error running SSA Contract Forecast scraper: {e}")
+        logger.exception(f"Unexpected error running SSA Contract Forecast scraper: {e}")
+        # Log the full traceback for debugging
+        logger.error(traceback.format_exc())
         # Retry the task if it fails
-        self.retry(countdown=60 * 5, exc=e)  # Retry after 5 minutes
-        return {"status": "error", "message": str(e)}
+        self.retry(countdown=60 * 5, exc=TaskError(f"Unexpected error: {str(e)}"))
+        return {"status": "error", "message": f"Unexpected error: {str(e)}", "error_code": "TASK_ERROR", "task_id": task_id}
+    finally:
+        # Cleanup code if needed
+        pass
 
 @celery_app.task(name='src.tasks.scraper_tasks.run_all_scrapers_task')
 def run_all_scrapers_task():

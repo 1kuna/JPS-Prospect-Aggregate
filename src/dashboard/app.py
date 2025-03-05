@@ -61,6 +61,11 @@ def register_blueprints(app):
     app.register_blueprint(api)
     app.register_blueprint(data_sources)
     
+    # Log registered routes for debugging
+    app.logger.info('Registered routes:')
+    for rule in app.url_map.iter_rules():
+        app.logger.info(f"Route: {rule}, Endpoint: {rule.endpoint}")
+    
     app.logger.info('Blueprints registered')
 
 def register_error_handlers(app):

@@ -244,6 +244,19 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         }
         
+        // Check if any filters are applied
+        const hasFilters = currentFilters.search || currentFilters.source_id || 
+                          currentFilters.agency || currentFilters.status || 
+                          (currentFilters.naics_codes && currentFilters.naics_codes.length > 0);
+        
+        // If no filters are applied, show all proposals to match statistics
+        if (!hasFilters) {
+            queryParams.append('only_latest', 'false');
+        } else {
+            // Otherwise use the default (only latest)
+            queryParams.append('only_latest', 'true');
+        }
+        
         queryParams.append('sort_by', currentFilters.sort_by);
         queryParams.append('sort_order', currentFilters.sort_order);
         
@@ -408,88 +421,249 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function rebuildDatabase() {
-        // Create a more detailed confirmation dialog
-        const confirmMessage = 
-            'WARNING: This is an advanced operation!\n\n' +
-            'Rebuilding the database will:\n' +
-            '1. Create a backup of your current database\n' +
-            '2. Create a new database with the latest schema\n' +
-            '3. Copy all data from the old database to the new one\n\n' +
-            'This operation may take some time and could potentially cause issues if interrupted.\n\n' +
-            'Are you absolutely sure you want to proceed?';
-            
-        if (confirm(confirmMessage)) {
-            // Show loading indicator
-            loadingIndicator.classList.remove('d-none');
-            
-            // Call the API to rebuild the database
-            fetch('/api/rebuild-db', {
-                method: 'POST'
-            })
-            .then(response => response.json())
-            .then(data => {
-                // Hide loading indicator
-                loadingIndicator.classList.add('d-none');
-                
-                if (data.status === 'success') {
-                    alert('Database rebuild initiated. The application may need to be restarted to use the new database.');
-                    
-                    // Reload the page after a short delay
-                    setTimeout(() => {
-                        window.location.reload();
-                    }, 5000);
-                } else {
-                    alert('Error rebuilding database: ' + data.message);
-                }
-            })
-            .catch(error => {
-                console.error('Error rebuilding database:', error);
-                loadingIndicator.classList.add('d-none');
-                alert('Error rebuilding database. Please check the console for details.');
-            });
+        // Confirm with the user
+        if (!confirm('Are you sure you want to rebuild the database? This will delete all existing data and recreate the database structure.')) {
+            return;
         }
+        
+        // Show loading indicator
+        const loadingIndicator = document.getElementById('loading-indicator');
+        if (loadingIndicator) {
+            loadingIndicator.classList.remove('d-none');
+        }
+        
+        // Call the API to rebuild the database
+        fetch('/data-sources/rebuild-db', {
+            method: 'POST'
+        })
+        .then(response => {
+            if (!response.ok) {
+                return response.json().then(err => {
+                    throw new Error(err.error || err.message || `HTTP error! Status: ${response.status}`);
+                });
+            }
+            return response.json();
+        })
+        .then(data => {
+            // Hide loading indicator
+            if (loadingIndicator) {
+                loadingIndicator.classList.add('d-none');
+            }
+            
+            if (data.status === 'success') {
+                // Show success message in the notification area
+                const notificationArea = document.getElementById('notification-area') || document.createElement('div');
+                if (!document.getElementById('notification-area')) {
+                    notificationArea.id = 'notification-area';
+                    notificationArea.className = 'position-fixed bottom-0 end-0 p-3';
+                    document.body.appendChild(notificationArea);
+                }
+                
+                const toastId = 'rebuild-toast-' + Date.now();
+                notificationArea.innerHTML += `
+                    <div id="${toastId}" class="toast show" role="alert" aria-live="assertive" aria-atomic="true">
+                        <div class="toast-header bg-success text-white">
+                            <strong class="me-auto">Database Rebuild</strong>
+                            <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close" onclick="document.getElementById('${toastId}').remove()"></button>
+                        </div>
+                        <div class="toast-body">
+                            Database rebuild initiated. The application may need to be restarted to use the new database.
+                        </div>
+                    </div>
+                `;
+                
+                // Auto-remove toast after 5 seconds
+                setTimeout(() => {
+                    const toast = document.getElementById(toastId);
+                    if (toast) toast.remove();
+                }, 5000);
+            } else {
+                // Show error message in the notification area
+                const notificationArea = document.getElementById('notification-area') || document.createElement('div');
+                if (!document.getElementById('notification-area')) {
+                    notificationArea.id = 'notification-area';
+                    notificationArea.className = 'position-fixed bottom-0 end-0 p-3';
+                    document.body.appendChild(notificationArea);
+                }
+                
+                const toastId = 'error-toast-' + Date.now();
+                notificationArea.innerHTML += `
+                    <div id="${toastId}" class="toast show" role="alert" aria-live="assertive" aria-atomic="true">
+                        <div class="toast-header bg-danger text-white">
+                            <strong class="me-auto">Error</strong>
+                            <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close" onclick="document.getElementById('${toastId}').remove()"></button>
+                        </div>
+                        <div class="toast-body">
+                            Error rebuilding database: ${data.message || 'Unknown error'}
+                        </div>
+                    </div>
+                `;
+                
+                // Auto-remove toast after 5 seconds
+                setTimeout(() => {
+                    const toast = document.getElementById(toastId);
+                    if (toast) toast.remove();
+                }, 5000);
+            }
+        })
+        .catch(error => {
+            console.error('Error rebuilding database:', error);
+            
+            // Hide loading indicator
+            if (loadingIndicator) {
+                loadingIndicator.classList.add('d-none');
+            }
+            
+            // Show error message in the notification area
+            const notificationArea = document.getElementById('notification-area') || document.createElement('div');
+            if (!document.getElementById('notification-area')) {
+                notificationArea.id = 'notification-area';
+                notificationArea.className = 'position-fixed bottom-0 end-0 p-3';
+                document.body.appendChild(notificationArea);
+            }
+            
+            const toastId = 'error-toast-' + Date.now();
+            notificationArea.innerHTML += `
+                <div id="${toastId}" class="toast show" role="alert" aria-live="assertive" aria-atomic="true">
+                    <div class="toast-header bg-danger text-white">
+                        <strong class="me-auto">Error</strong>
+                        <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close" onclick="document.getElementById('${toastId}').remove()"></button>
+                    </div>
+                    <div class="toast-body">
+                        ${error.message || 'Error rebuilding database. Please check the console for details.'}
+                    </div>
+                </div>
+            `;
+            
+            // Auto-remove toast after 5 seconds
+            setTimeout(() => {
+                const toast = document.getElementById(toastId);
+                if (toast) toast.remove();
+            }, 5000);
+        });
     }
     
     function initializeDatabase() {
-        // Create a more detailed confirmation dialog
-        const confirmMessage = 
-            'WARNING: This is an advanced operation!\n\n' +
-            'Initializing the database will:\n' +
-            '1. Create the database if it does not exist\n' +
-            '2. Set up the required tables and initial data\n\n' +
-            'This should only be used when setting up the application for the first time or if the database is missing.\n\n' +
-            'Are you absolutely sure you want to proceed?';
-            
-        if (confirm(confirmMessage)) {
-            // Show loading indicator
-            loadingIndicator.classList.remove('d-none');
-            
-            // Call the API to initialize the database
-            fetch('/api/init-db', {
-                method: 'POST'
-            })
-            .then(response => response.json())
-            .then(data => {
-                // Hide loading indicator
-                loadingIndicator.classList.add('d-none');
-                
-                if (data.status === 'success') {
-                    alert('Database initialized successfully!');
-                    
-                    // Reload the page after a short delay
-                    setTimeout(() => {
-                        window.location.reload();
-                    }, 2000);
-                } else {
-                    alert('Error initializing database: ' + data.message);
-                }
-            })
-            .catch(error => {
-                console.error('Error initializing database:', error);
-                loadingIndicator.classList.add('d-none');
-                alert('Error initializing database. Please check the console for details.');
-            });
+        // Confirm with the user
+        if (!confirm('Are you sure you want to initialize the database? This will create the database structure if it does not exist.')) {
+            return;
         }
+        
+        // Show loading indicator
+        const loadingIndicator = document.getElementById('loading-indicator');
+        if (loadingIndicator) {
+            loadingIndicator.classList.remove('d-none');
+        }
+        
+        // Call the API to initialize the database
+        fetch('/api/init-db', {
+            method: 'POST'
+        })
+        .then(response => {
+            if (!response.ok) {
+                return response.json().then(err => {
+                    throw new Error(err.error || err.message || `HTTP error! Status: ${response.status}`);
+                });
+            }
+            return response.json();
+        })
+        .then(data => {
+            // Hide loading indicator
+            if (loadingIndicator) {
+                loadingIndicator.classList.add('d-none');
+            }
+            
+            if (data.status === 'success') {
+                // Show success message in the notification area
+                const notificationArea = document.getElementById('notification-area') || document.createElement('div');
+                if (!document.getElementById('notification-area')) {
+                    notificationArea.id = 'notification-area';
+                    notificationArea.className = 'position-fixed bottom-0 end-0 p-3';
+                    document.body.appendChild(notificationArea);
+                }
+                
+                const toastId = 'init-toast-' + Date.now();
+                notificationArea.innerHTML += `
+                    <div id="${toastId}" class="toast show" role="alert" aria-live="assertive" aria-atomic="true">
+                        <div class="toast-header bg-success text-white">
+                            <strong class="me-auto">Database Initialized</strong>
+                            <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close" onclick="document.getElementById('${toastId}').remove()"></button>
+                        </div>
+                        <div class="toast-body">
+                            Database initialized successfully!
+                        </div>
+                    </div>
+                `;
+                
+                // Auto-remove toast after 5 seconds
+                setTimeout(() => {
+                    const toast = document.getElementById(toastId);
+                    if (toast) toast.remove();
+                }, 5000);
+            } else {
+                // Show error message in the notification area
+                const notificationArea = document.getElementById('notification-area') || document.createElement('div');
+                if (!document.getElementById('notification-area')) {
+                    notificationArea.id = 'notification-area';
+                    notificationArea.className = 'position-fixed bottom-0 end-0 p-3';
+                    document.body.appendChild(notificationArea);
+                }
+                
+                const toastId = 'error-toast-' + Date.now();
+                notificationArea.innerHTML += `
+                    <div id="${toastId}" class="toast show" role="alert" aria-live="assertive" aria-atomic="true">
+                        <div class="toast-header bg-danger text-white">
+                            <strong class="me-auto">Error</strong>
+                            <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close" onclick="document.getElementById('${toastId}').remove()"></button>
+                        </div>
+                        <div class="toast-body">
+                            Error initializing database: ${data.message || 'Unknown error'}
+                        </div>
+                    </div>
+                `;
+                
+                // Auto-remove toast after 5 seconds
+                setTimeout(() => {
+                    const toast = document.getElementById(toastId);
+                    if (toast) toast.remove();
+                }, 5000);
+            }
+        })
+        .catch(error => {
+            console.error('Error initializing database:', error);
+            
+            // Hide loading indicator
+            if (loadingIndicator) {
+                loadingIndicator.classList.add('d-none');
+            }
+            
+            // Show error message in the notification area
+            const notificationArea = document.getElementById('notification-area') || document.createElement('div');
+            if (!document.getElementById('notification-area')) {
+                notificationArea.id = 'notification-area';
+                notificationArea.className = 'position-fixed bottom-0 end-0 p-3';
+                document.body.appendChild(notificationArea);
+            }
+            
+            const toastId = 'error-toast-' + Date.now();
+            notificationArea.innerHTML += `
+                <div id="${toastId}" class="toast show" role="alert" aria-live="assertive" aria-atomic="true">
+                    <div class="toast-header bg-danger text-white">
+                        <strong class="me-auto">Error</strong>
+                        <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close" onclick="document.getElementById('${toastId}').remove()"></button>
+                    </div>
+                    <div class="toast-body">
+                        ${error.message || 'Error initializing database. Please check the console for details.'}
+                    </div>
+                </div>
+            `;
+            
+            // Auto-remove toast after 5 seconds
+            setTimeout(() => {
+                const toast = document.getElementById(toastId);
+                if (toast) toast.remove();
+            }, 5000);
+        });
     }
     
     function loadStatistics() {
@@ -497,45 +671,68 @@ document.addEventListener('DOMContentLoaded', function() {
         statsLoading.classList.remove('d-none');
         statsContent.classList.add('d-none');
         
+        // Check if any filters are applied
+        const hasFilters = currentFilters.search || currentFilters.source_id || 
+                          currentFilters.agency || currentFilters.status || 
+                          (currentFilters.naics_codes && currentFilters.naics_codes.length > 0);
+        
+        // Set only_latest parameter to match the current dashboard view
+        const onlyLatest = hasFilters ? 'true' : 'false';
+        
         // Fetch statistics
-        fetch('/api/stats')
-            .then(response => response.json())
+        fetch(`/api/statistics?only_latest=${onlyLatest}`)
+            .then(response => {
+                if (!response.ok) {
+                    return response.json().then(err => {
+                        throw new Error(err.error || `HTTP error! Status: ${response.status}`);
+                    });
+                }
+                return response.json();
+            })
             .then(data => {
                 // Update the statistics
                 totalProposals.textContent = data.total_proposals;
                 
                 // Update source stats
                 sourceStats.innerHTML = '';
-                data.by_source.forEach(source => {
+                Object.entries(data.by_source).forEach(([name, count]) => {
                     const row = document.createElement('tr');
                     row.innerHTML = `
-                        <td>${source.name}</td>
-                        <td>${source.count}</td>
+                        <td>${name}</td>
+                        <td>${count}</td>
                     `;
                     sourceStats.appendChild(row);
                 });
                 
                 // Update agency stats
                 agencyStats.innerHTML = '';
-                data.by_agency.forEach(agency => {
+                Object.entries(data.by_agency).forEach(([agency, count]) => {
                     const row = document.createElement('tr');
                     row.innerHTML = `
-                        <td>${agency.agency}</td>
-                        <td>${agency.count}</td>
+                        <td>${agency}</td>
+                        <td>${count}</td>
                     `;
                     agencyStats.appendChild(row);
                 });
                 
                 // Update status stats
                 statusStats.innerHTML = '';
-                data.by_status.forEach(status => {
+                Object.entries(data.by_status).forEach(([status, count]) => {
                     const row = document.createElement('tr');
                     row.innerHTML = `
-                        <td>${status.status}</td>
-                        <td>${status.count}</td>
+                        <td>${status}</td>
+                        <td>${count}</td>
                     `;
                     statusStats.appendChild(row);
                 });
+                
+                // Add a note about what data is being shown
+                const noteElement = document.createElement('div');
+                noteElement.className = 'alert alert-info mt-3';
+                noteElement.innerHTML = data.only_latest 
+                    ? 'Note: Statistics are showing only the latest version of each proposal.'
+                    : 'Note: Statistics are showing all proposals, including historical versions.';
+                statsContent.appendChild(noteElement);
                 
                 // Hide loading indicator and show content
                 statsLoading.classList.add('d-none');
@@ -544,7 +741,21 @@ document.addEventListener('DOMContentLoaded', function() {
             .catch(error => {
                 console.error('Error loading statistics:', error);
                 statsLoading.classList.add('d-none');
-                alert('Error loading statistics. Please try again.');
+                
+                // Display error in the UI instead of an alert
+                statsContent.innerHTML = `
+                    <div class="alert alert-danger">
+                        <h4 class="alert-heading">Error Loading Statistics</h4>
+                        <p>${error.message || 'An unexpected error occurred. Please try again later.'}</p>
+                        <hr>
+                        <p class="mb-0">
+                            <button class="btn btn-outline-danger btn-sm" onclick="loadStatistics()">
+                                <i class="bi bi-arrow-clockwise"></i> Try Again
+                            </button>
+                        </p>
+                    </div>
+                `;
+                statsContent.classList.remove('d-none');
             });
     }
     

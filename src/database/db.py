@@ -1,12 +1,13 @@
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker, scoped_session
-from sqlalchemy.exc import SQLAlchemyError, DisconnectionError
+from sqlalchemy.exc import SQLAlchemyError, DisconnectionError, IntegrityError, OperationalError, TimeoutError as SQLAlchemyTimeoutError
 import os
 import logging
 from dotenv import load_dotenv
 from contextlib import contextmanager
 import time
 from sqlalchemy import text
+from src.exceptions import DatabaseError, DataIntegrityError, TimeoutError as AppTimeoutError, RetryableError
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -133,12 +134,52 @@ def session_scope():
     session = get_session()
     try:
         yield session
-        session.commit()
-        logger.debug("Database transaction committed")
+        try:
+            session.commit()
+            logger.debug("Database transaction committed")
+        except IntegrityError as e:
+            logger.warning(f"Data integrity error: {e}")
+            session.rollback()
+            # Convert SQLAlchemy IntegrityError to our custom DataIntegrityError
+            error_msg = str(e)
+            if "unique constraint" in error_msg.lower():
+                raise DataIntegrityError("A record with this information already exists", payload={"original_error": error_msg})
+            elif "foreign key constraint" in error_msg.lower():
+                raise DataIntegrityError("Referenced record does not exist", payload={"original_error": error_msg})
+            else:
+                raise DataIntegrityError(f"Data integrity error: {error_msg}", payload={"original_error": error_msg})
+        except OperationalError as e:
+            logger.warning(f"Database operational error: {e}")
+            session.rollback()
+            error_msg = str(e)
+            if "deadlock" in error_msg.lower():
+                raise RetryableError("Database deadlock detected, please retry your operation", 
+                                    payload={"original_error": error_msg, "retry_suggested": True})
+            elif "timeout" in error_msg.lower() or "timed out" in error_msg.lower():
+                raise AppTimeoutError("Database operation timed out", 
+                                    payload={"original_error": error_msg, "retry_suggested": True})
+            else:
+                raise DatabaseError(f"Database operational error: {error_msg}", 
+                                   payload={"original_error": error_msg})
+        except SQLAlchemyTimeoutError as e:
+            logger.warning(f"Database timeout error: {e}")
+            session.rollback()
+            raise AppTimeoutError("Database operation timed out", 
+                                payload={"original_error": str(e), "retry_suggested": True})
+        except SQLAlchemyError as e:
+            logger.warning(f"Database error: {e}")
+            session.rollback()
+            raise DatabaseError(f"Database error: {str(e)}", 
+                               payload={"original_error": str(e)})
+    except (DatabaseError, DataIntegrityError, AppTimeoutError, RetryableError):
+        # Re-raise our custom exceptions without modification
+        raise
     except Exception as e:
         logger.warning(f"Rolling back database transaction due to error: {e}")
         session.rollback()
-        raise
+        # Convert generic exceptions to DatabaseError
+        raise DatabaseError(f"Unexpected error during database operation: {str(e)}", 
+                           payload={"original_error": str(e)})
     finally:
         close_session(session)
 
