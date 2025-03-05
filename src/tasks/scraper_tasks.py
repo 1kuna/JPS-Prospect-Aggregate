@@ -1,15 +1,23 @@
-import logging
-import os
-import traceback
-from datetime import datetime
-import requests
-from requests.exceptions import RequestException, Timeout, ConnectionError as RequestsConnectionError
+"""Celery tasks for running scrapers."""
 
+# Import from common imports module
+from src.utils.imports import (
+    logging, os, traceback, datetime,
+    requests, RequestException, Timeout, RequestsConnectionError
+)
+
+# Import Celery app
 from src.celery_app import celery_app
+
+# Import scrapers
 from src.scrapers.acquisition_gateway import run_scraper as run_acquisition_gateway_scraper
 from src.scrapers.ssa_contract_forecast import run_scraper as run_ssa_contract_forecast_scraper
+
+# Import database
 from src.database.db import session_scope
 from src.database.models import DataSource
+
+# Import exceptions
 from src.exceptions import (
     ScraperError, NetworkError, TimeoutError as AppTimeoutError, 
     ConnectionError as AppConnectionError, DatabaseError, TaskError
@@ -130,72 +138,80 @@ def run_ssa_contract_forecast_scraper_task(self):
         # Cleanup code if needed
         pass
 
-@celery_app.task(name='src.tasks.scraper_tasks.run_all_scrapers_task')
-def run_all_scrapers_task():
-    """Celery task to run all scrapers"""
+@celery_app.task(bind=True, name='src.tasks.scraper_tasks.run_all_scrapers_task')
+def run_all_scrapers_task(self):
+    """Celery task to run all scrapers in parallel"""
     logger.info("Starting all scrapers task")
+    task_id = self.request.id
     
-    # Run both scrapers in parallel using Celery's group feature
-    from celery import group
-    job = group([
-        run_acquisition_gateway_scraper_task.s(),
-        run_ssa_contract_forecast_scraper_task.s()
-    ])
-    result = job.apply_async()
-    
-    # Wait for all tasks to complete
-    result.get()
-    
-    # Update the last_scraped timestamp for all data sources
-    with session_scope() as session:
-        try:
-            # Update all data sources with the current timestamp
-            current_time = datetime.utcnow()
-            session.query(DataSource).update({"last_scraped": current_time})
-            logger.info("Updated last_scraped timestamp for all data sources")
-        except Exception as e:
-            logger.error(f"Error updating data source timestamps: {e}")
-    
-    return {"status": "success", "message": "All scrapers completed"}
+    try:
+        # Import celery.group here to avoid circular imports
+        from celery import group
+        
+        # Create a group of tasks to run in parallel
+        tasks = group([
+            run_acquisition_gateway_scraper_task.s(),
+            run_ssa_contract_forecast_scraper_task.s()
+        ])
+        
+        # Run the tasks in parallel
+        result = tasks.apply_async()
+        
+        # Wait for all tasks to complete
+        task_results = result.get()
+        
+        # Update the last_scraped timestamp for all data sources
+        with session_scope() as session:
+            data_sources = session.query(DataSource).all()
+            for data_source in data_sources:
+                data_source.last_scraped = datetime.utcnow()
+            session.commit()
+        
+        logger.info("All scrapers completed")
+        return {"status": "success", "message": "All scrapers completed", "task_id": task_id, "results": task_results}
+        
+    except Exception as e:
+        logger.exception(f"Unexpected error running all scrapers: {e}")
+        logger.error(traceback.format_exc())
+        return {"status": "error", "message": f"Unexpected error: {str(e)}", "error_code": "TASK_ERROR", "task_id": task_id}
 
-@celery_app.task(bind=True, name='src.tasks.scraper_tasks.force_collect_task', max_retries=3)
-def force_collect_task(self, source_id):
-    """Celery task to force collect data from a specific source"""
-    logger.info(f"Starting force collect task for source_id={source_id}")
+@celery_app.task(bind=True, name='src.tasks.scraper_tasks.force_collect_task')
+def force_collect_task(self, source_id=None):
+    """
+    Celery task to force collection from a specific source.
     
-    with session_scope() as session:
-        try:
-            # Get the data source
+    Args:
+        source_id (int, optional): ID of the data source to collect from.
+            If None, collect from all sources.
+    """
+    logger.info(f"Starting force collect task for source_id={source_id}")
+    task_id = self.request.id
+    
+    try:
+        if source_id is None:
+            # Run all scrapers
+            return run_all_scrapers_task.delay().get()
+        
+        # Get the data source
+        with session_scope() as session:
             data_source = session.query(DataSource).filter(DataSource.id == source_id).first()
             
             if not data_source:
-                logger.error(f"Data source not found for source_id={source_id}")
-                return {"status": "error", "message": "Data source not found"}
+                error_msg = f"Data source with ID {source_id} not found"
+                logger.error(error_msg)
+                return {"status": "error", "message": error_msg, "error_code": "RESOURCE_NOT_FOUND", "task_id": task_id}
             
             # Run the appropriate scraper based on the data source name
-            if data_source.name == "Acquisition Gateway Forecast":
-                success = run_acquisition_gateway_scraper(force=True)
-            elif data_source.name == "SSA Contract Forecast":
-                success = run_ssa_contract_forecast_scraper(force=True)
+            if "Acquisition Gateway" in data_source.name:
+                return run_acquisition_gateway_scraper_task.delay().get()
+            elif "SSA Contract Forecast" in data_source.name:
+                return run_ssa_contract_forecast_scraper_task.delay().get()
             else:
-                logger.error(f"Unknown data source: {data_source.name}")
-                return {"status": "error", "message": f"Unknown data source: {data_source.name}"}
-            
-            if success:
-                logger.info(f"Force collect completed successfully for {data_source.name}")
-                return {
-                    "status": "success", 
-                    "message": f"Force collect completed successfully for {data_source.name}",
-                    "source_name": data_source.name
-                }
-            else:
-                logger.error(f"Force collect failed for {data_source.name}")
-                # Retry the task if it fails
-                self.retry(countdown=60)  # Retry after 1 minute
-                return {"status": "error", "message": f"Force collect failed for {data_source.name}"}
+                error_msg = f"No scraper available for data source: {data_source.name}"
+                logger.error(error_msg)
+                return {"status": "error", "message": error_msg, "error_code": "SCRAPER_ERROR", "task_id": task_id}
                 
-        except Exception as e:
-            logger.exception(f"Error in force collect task: {e}")
-            # Retry the task if it fails
-            self.retry(countdown=60, exc=e)  # Retry after 1 minute
-            return {"status": "error", "message": str(e)} 
+    except Exception as e:
+        logger.exception(f"Unexpected error in force collect task: {e}")
+        logger.error(traceback.format_exc())
+        return {"status": "error", "message": f"Unexpected error: {str(e)}", "error_code": "TASK_ERROR", "task_id": task_id} 

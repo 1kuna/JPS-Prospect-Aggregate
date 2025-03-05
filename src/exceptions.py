@@ -68,17 +68,6 @@ class DataIntegrityError(BaseAppException):
     status_code = 400
     error_code = "DATA_INTEGRITY_ERROR"
 
-# Authentication and authorization exceptions
-class AuthenticationError(BaseAppException):
-    """Exception raised when authentication fails."""
-    status_code = 401
-    error_code = "AUTHENTICATION_ERROR"
-    
-class AuthorizationError(BaseAppException):
-    """Exception raised when authorization fails."""
-    status_code = 403
-    error_code = "AUTHORIZATION_ERROR"
-
 # Task related exceptions
 class TaskError(BaseAppException):
     """Exception raised when a background task fails."""
