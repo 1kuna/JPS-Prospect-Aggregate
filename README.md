@@ -89,12 +89,9 @@ For detailed instructions on setting up and running the application with Celery,
 
 ## Database Management
 
-The project includes several scripts for database management:
+The project includes scripts for database management:
 
-- `create_new_db.py`: Creates a new database with the current schema
 - `rebuild_db.py`: Rebuilds the database while preserving existing data
-- `import_csv.py`: Imports data from CSV files in the downloads directory
-- `process_csv.py`: Rebuilds the database and processes CSV files
 
 ## Project Structure
 

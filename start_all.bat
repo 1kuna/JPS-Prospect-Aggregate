@@ -1,14 +1,30 @@
 @echo off
 setlocal enabledelayedexpansion
 
+:: Create logs directory if it doesn't exist
+if not exist logs mkdir logs
+
+:: Set up log file with timestamp
+for /f "tokens=2-4 delims=/ " %%a in ('date /t') do (set mydate=%%c%%a%%b)
+for /f "tokens=1-2 delims=: " %%a in ('time /t') do (set mytime=%%a%%b)
+set LOG_FILE=logs\jps_startup_%mydate%_%mytime%.log
+
+:: Start logging - redirect all output to both console and log file
 echo ==========================================
 echo JPS Prospect Aggregate Auto-Setup ^& Launch
 echo ==========================================
+echo Logging to: %LOG_FILE%
+echo Started at: %date% %time%
+echo ==========================================
+
+:: Log all output to file
+call :ENABLE_LOGGING
 
 :: Set colors for Windows console
 set "GREEN=[92m"
 set "RED=[91m"
 set "BLUE=[94m"
+set "YELLOW=[93m"
 set "RESET=[0m"
 
 :: Function to print status messages
@@ -112,37 +128,60 @@ call :print_success "Celery dependencies installed"
 
 :: Check for Redis (Windows)
 call :print_status "Checking Redis installation..."
+set "REDIS_INSTALLED=false"
+set "REDIS_RUNNING=false"
 
 :: Check if Redis is installed by looking for redis-server.exe
 where redis-server >nul 2>&1
-if %ERRORLEVEL% neq 0 (
-    call :print_error "Redis is not installed on Windows."
-    echo Please download and install Redis for Windows from: https://github.com/microsoftarchive/redis/releases
-    echo After installation, please restart this script.
-    exit /b 1
-) else (
+if %ERRORLEVEL% equ 0 (
     call :print_success "Redis is installed"
-)
-
-:: Check if Redis service is running
-call :print_status "Checking if Redis is running..."
-sc query redis >nul 2>&1
-if %ERRORLEVEL% neq 0 (
-    call :print_error "Redis service not found. Please install Redis as a Windows service."
-    exit /b 1
-)
-
-sc query redis | findstr "RUNNING" >nul
-if %ERRORLEVEL% neq 0 (
-    echo Redis service is not running. Starting Redis...
-    net start redis
-    if %ERRORLEVEL% neq 0 (
-        call :print_error "Failed to start Redis service. Please start it manually."
-        exit /b 1
+    set "REDIS_INSTALLED=true"
+    
+    :: Check if Redis service is running
+    call :print_status "Checking if Redis service is running..."
+    sc query redis >nul 2>&1
+    if %ERRORLEVEL% equ 0 (
+        sc query redis | findstr "RUNNING" >nul
+        if %ERRORLEVEL% equ 0 (
+            call :print_success "Redis service is running"
+            set "REDIS_RUNNING=true"
+        ) else (
+            call :print_warning "Redis service is installed but not running"
+        )
+    ) else (
+        call :print_warning "Redis is installed but not configured as a Windows service"
     )
-    call :print_success "Redis service started"
 ) else (
-    call :print_success "Redis service is running"
+    call :print_warning "Redis is not installed"
+)
+
+:: Try to start Redis if it's installed but not running
+if "%REDIS_INSTALLED%"=="true" if "%REDIS_RUNNING%"=="false" (
+    call :print_status "Attempting to start Redis service..."
+    sc query redis >nul 2>&1
+    if %ERRORLEVEL% equ 0 (
+        net start redis
+        if %ERRORLEVEL% neq 0 (
+            call :print_error "Failed to start Redis service."
+            call :print_warning "You can try starting Redis manually with: net start redis"
+            call :print_warning "Continuing without Redis. Celery tasks will not work properly."
+        ) else (
+            call :print_success "Redis service started"
+            set "REDIS_RUNNING=true"
+        )
+    ) else (
+        call :print_warning "Redis is not configured as a Windows service."
+        call :print_warning "Please install Redis as a Windows service or start it manually."
+        call :print_warning "Continuing without Redis. Celery tasks will not work properly."
+    )
+)
+
+:: If Redis is not installed, provide instructions
+if "%REDIS_INSTALLED%"=="false" (
+    call :print_warning "Redis is not installed on Windows."
+    echo Please download and install Redis for Windows from: https://github.com/microsoftarchive/redis/releases
+    echo After installation, please configure it as a Windows service.
+    call :print_warning "Continuing without Redis. Celery tasks will not work properly."
 )
 
 :: Check if start_all.py exists
@@ -173,10 +212,21 @@ if exist src\database\init_db.py (
 
 :: All checks passed, start the application
 call :print_status "All checks passed! Starting JPS Prospect Aggregate..."
+if "%REDIS_RUNNING%"=="false" (
+    call :print_warning "Redis is not running. Celery tasks will not work properly."
+    call :print_warning "You may see errors related to Celery and Redis when the application starts."
+)
 echo ==========================================
-python start_all.py
+echo Application starting at: %date% %time%
+echo Log file: %LOG_FILE%
+echo ==========================================
+echo Starting application... >> "%LOG_FILE%"
+python start_all.py >> "%LOG_FILE%" 2>&1
 
 :: If the script exits, deactivate the conda environment
+echo ==========================================
+echo Application exited at: %date% %time%
+echo ==========================================
 call conda deactivate
 exit /b 0
 
@@ -184,15 +234,36 @@ exit /b 0
 :: Function Definitions
 :: ==========================================
 
+:ENABLE_LOGGING
+:: Save all previous output to log file
+(
+  echo ==========================================
+  echo JPS Prospect Aggregate Auto-Setup ^& Launch
+  echo ==========================================
+  echo Logging to: %LOG_FILE%
+  echo Started at: %date% %time%
+  echo ==========================================
+) > "%LOG_FILE%"
+exit /b 0
+
 :print_status
 echo.
 echo %BLUE%📋 %~1%RESET%
+echo. >> "%LOG_FILE%"
+echo 📋 %~1 >> "%LOG_FILE%"
 exit /b 0
 
 :print_success
 echo %GREEN%✅ %~1%RESET%
+echo ✅ %~1 >> "%LOG_FILE%"
 exit /b 0
 
 :print_error
 echo %RED%❌ %~1%RESET%
+echo ❌ %~1 >> "%LOG_FILE%"
+exit /b 0
+
+:print_warning
+echo %YELLOW%⚠️ %~1%RESET%
+echo ⚠️ %~1 >> "%LOG_FILE%"
 exit /b 0 

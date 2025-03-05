@@ -161,23 +161,25 @@ def create_app():
     
     @app.route("/api/sources")
     def get_sources():
-        """API endpoint to get data sources"""
+        """API endpoint to get all data sources"""
         session = get_session()
-        
         try:
             sources = session.query(DataSource).all()
-            
-            result = []
-            for source in sources:
-                result.append({
-                    "id": source.id,
-                    "name": source.name,
-                    "url": source.url,
-                    "description": source.description
-                })
-            
-            return jsonify(result)
-        
+            return jsonify({
+                "sources": [
+                    {
+                        "id": source.id,
+                        "name": source.name,
+                        "url": source.url,
+                        "description": source.description,
+                        "last_scraped": source.last_scraped.isoformat() if source.last_scraped else None
+                    }
+                    for source in sources
+                ]
+            })
+        except Exception as e:
+            app.logger.error(f"Error getting sources: {e}")
+            return jsonify({"error": str(e)}), 500
         finally:
             close_session(session)
     
@@ -204,35 +206,6 @@ def create_app():
         
         finally:
             close_session(session)
-    
-    @app.route("/api/refresh", methods=["POST"])
-    def refresh_data():
-        """API endpoint to trigger data refresh"""
-        # Get the current timestamp before refresh
-        current_time = datetime.datetime.utcnow()
-        
-        # Use Celery to run the task asynchronously
-        from src.tasks.scraper_tasks import run_all_scrapers_task
-        task = run_all_scrapers_task.delay()
-        
-        # Update all data sources with the current timestamp to prevent false update notifications
-        session = get_session()
-        try:
-            # Update all data sources with the current timestamp
-            session.query(DataSource).update({"last_scraped": current_time})
-            session.commit()
-        except Exception as e:
-            app.logger.error(f"Error updating data source timestamps: {e}")
-            session.rollback()
-        finally:
-            close_session(session)
-        
-        return jsonify({
-            "status": "success", 
-            "message": "Data refresh initiated",
-            "timestamp": current_time.isoformat(),
-            "task_id": task.id
-        })
     
     @app.route("/api/rebuild-db", methods=["POST"])
     def rebuild_db():

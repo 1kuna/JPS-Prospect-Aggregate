@@ -1,7 +1,17 @@
 #!/bin/bash
 
+# Create logs directory if it doesn't exist
+mkdir -p logs
+
+# Set up logging - redirect all output to both console and log file
+LOG_FILE="logs/jps_startup_$(date +%Y%m%d_%H%M%S).log"
+exec > >(tee -a "$LOG_FILE") 2>&1
+
 echo "=========================================="
 echo "JPS Prospect Aggregate Auto-Setup & Launch"
+echo "=========================================="
+echo "Logging to: $LOG_FILE"
+echo "Started at: $(date)"
 echo "=========================================="
 
 # Function to check if a command exists
@@ -22,6 +32,11 @@ print_success() {
 # Function to print error messages
 print_error() {
     echo -e "❌ $1"
+}
+
+# Function to print warning messages
+print_warning() {
+    echo -e "⚠️ $1"
 }
 
 # Check if conda is installed
@@ -105,62 +120,93 @@ print_success "Celery dependencies installed"
 
 # Check for Redis
 print_status "Checking Redis installation..."
-if ! command_exists redis-cli; then
-    echo "Redis is not installed. Installing Redis..."
+REDIS_INSTALLED=false
+REDIS_RUNNING=false
+
+if command_exists redis-cli; then
+    print_success "Redis is installed"
+    REDIS_INSTALLED=true
+    
+    # Check if Redis is running
+    print_status "Checking if Redis is running..."
+    if redis-cli ping &> /dev/null; then
+        print_success "Redis is running"
+        REDIS_RUNNING=true
+    else
+        print_warning "Redis is installed but not running"
+    fi
+else
+    print_warning "Redis is not installed"
+fi
+
+# Try to install/start Redis if needed
+if [ "$REDIS_INSTALLED" = false ] || [ "$REDIS_RUNNING" = false ]; then
     if [[ "$OSTYPE" == "darwin"* ]]; then
         # macOS
         if ! command_exists brew; then
             print_error "Homebrew is not installed. Please install Homebrew first."
             echo "You can install it from: https://brew.sh/"
-            exit 1
-        fi
-        brew install redis
-        if [ $? -ne 0 ]; then
-            print_error "Failed to install Redis"
-            exit 1
-        fi
-        print_success "Redis installed"
-    elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
-        # Linux
-        sudo apt-get update && sudo apt-get install -y redis-server
-        if [ $? -ne 0 ]; then
-            print_error "Failed to install Redis"
-            exit 1
-        fi
-        print_success "Redis installed"
-    else
-        print_error "Unsupported OS. Please install Redis manually."
-        exit 1
-    fi
-else
-    print_success "Redis is installed"
-fi
-
-# Check if Redis is running
-print_status "Checking if Redis is running..."
-if ! redis-cli ping &> /dev/null; then
-    echo "Redis is not running. Starting Redis..."
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        # macOS
-        brew services start redis
-        if [ $? -ne 0 ]; then
-            print_error "Failed to start Redis"
-            exit 1
+            print_warning "Continuing without Redis. Celery tasks will not work properly."
+        else
+            if [ "$REDIS_INSTALLED" = false ]; then
+                print_status "Installing Redis using Homebrew..."
+                brew install redis
+                if [ $? -ne 0 ]; then
+                    print_error "Failed to install Redis using Homebrew."
+                    print_warning "You can try installing Redis manually with: brew install redis"
+                    print_warning "Continuing without Redis. Celery tasks will not work properly."
+                else
+                    print_success "Redis installed successfully"
+                    REDIS_INSTALLED=true
+                fi
+            fi
+            
+            if [ "$REDIS_INSTALLED" = true ] && [ "$REDIS_RUNNING" = false ]; then
+                print_status "Starting Redis service..."
+                brew services start redis
+                if [ $? -ne 0 ]; then
+                    print_error "Failed to start Redis service."
+                    print_warning "You can try starting Redis manually with: brew services start redis"
+                    print_warning "Or run Redis in the foreground with: redis-server /opt/homebrew/etc/redis.conf"
+                    print_warning "Continuing without Redis. Celery tasks will not work properly."
+                else
+                    print_success "Redis service started"
+                    REDIS_RUNNING=true
+                fi
+            fi
         fi
     elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
         # Linux
-        sudo systemctl start redis-server
-        if [ $? -ne 0 ]; then
-            print_error "Failed to start Redis"
-            exit 1
+        if [ "$REDIS_INSTALLED" = false ]; then
+            print_status "Installing Redis..."
+            sudo apt-get update && sudo apt-get install -y redis-server
+            if [ $? -ne 0 ]; then
+                print_error "Failed to install Redis."
+                print_warning "You can try installing Redis manually with: sudo apt-get install redis-server"
+                print_warning "Continuing without Redis. Celery tasks will not work properly."
+            else
+                print_success "Redis installed successfully"
+                REDIS_INSTALLED=true
+            fi
+        fi
+        
+        if [ "$REDIS_INSTALLED" = true ] && [ "$REDIS_RUNNING" = false ]; then
+            print_status "Starting Redis service..."
+            sudo systemctl start redis-server
+            if [ $? -ne 0 ]; then
+                print_error "Failed to start Redis service."
+                print_warning "You can try starting Redis manually with: sudo systemctl start redis-server"
+                print_warning "Continuing without Redis. Celery tasks will not work properly."
+            else
+                print_success "Redis service started"
+                REDIS_RUNNING=true
+            fi
         fi
     else
-        print_error "Unsupported OS. Please start Redis manually."
-        exit 1
+        print_warning "Unsupported OS for automatic Redis installation."
+        print_warning "Please install Redis manually according to your OS instructions."
+        print_warning "Continuing without Redis. Celery tasks will not work properly."
     fi
-    print_success "Redis started"
-else
-    print_success "Redis is running"
 fi
 
 # Check if start_all.py exists and is executable
@@ -199,8 +245,18 @@ fi
 
 # All checks passed, start the application
 print_status "All checks passed! Starting JPS Prospect Aggregate..."
+if [ "$REDIS_RUNNING" = false ]; then
+    print_warning "Redis is not running. Celery tasks will not work properly."
+    print_warning "You may see errors related to Celery and Redis when the application starts."
+fi
+echo "=========================================="
+echo "Application starting at: $(date)"
+echo "Log file: $LOG_FILE"
 echo "=========================================="
 python start_all.py
 
 # If the script exits, deactivate the conda environment
+echo "=========================================="
+echo "Application exited at: $(date)"
+echo "=========================================="
 conda deactivate 

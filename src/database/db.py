@@ -6,6 +6,7 @@ import logging
 from dotenv import load_dotenv
 from contextlib import contextmanager
 import time
+from sqlalchemy import text
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -53,7 +54,7 @@ def checkin(dbapi_connection, connection_record):
 def sqlite_ping(dbapi_connection):
     """Check if a SQLite connection is still valid"""
     try:
-        dbapi_connection.execute("SELECT 1")
+        dbapi_connection.execute(text("SELECT 1"))
         return True
     except Exception:
         return False
@@ -90,7 +91,7 @@ def get_session():
         try:
             session = Session()
             # Test the connection with a simple query
-            session.execute("SELECT 1")
+            session.execute(text("SELECT 1"))
             return session
         except SQLAlchemyError as e:
             logger.warning(f"Error getting database session (attempt {attempt+1}/{max_retries}): {e}")
@@ -157,7 +158,7 @@ def reconnect():
         
         # Test the connection
         with engine.connect() as connection:
-            connection.execute("SELECT 1")
+            connection.execute(text("SELECT 1"))
         
         logger.info("Database reconnection successful")
         return True
@@ -169,7 +170,7 @@ def check_connection():
     """Check if the database connection is working"""
     try:
         with engine.connect() as connection:
-            connection.execute("SELECT 1")
+            connection.execute(text("SELECT 1"))
         return True
     except Exception as e:
         logger.error(f"Database connection check failed: {e}")

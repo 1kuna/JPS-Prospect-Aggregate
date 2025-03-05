@@ -4,7 +4,73 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Set up event listeners
     document.getElementById('refresh-all-sources').addEventListener('click', function() {
-        refreshAllSources();
+        if (confirm('This will force re-collection from all data sources. This may take some time. Are you sure you want to proceed?')) {
+            // Show collection status modal
+            const collectionModal = new bootstrap.Modal(document.getElementById('collection-status-modal'));
+            collectionModal.show();
+            
+            // Show loading indicator in the modal
+            document.getElementById('collection-status-loading').classList.remove('d-none');
+            document.getElementById('collection-status-content').classList.add('d-none');
+            
+            // Call the API to refresh all sources
+            fetch('/api/data-sources/collect-all', {
+                method: 'POST'
+            })
+            .then(response => response.json())
+            .then(data => {
+                // Hide loading indicator
+                document.getElementById('collection-status-loading').classList.add('d-none');
+                document.getElementById('collection-status-content').classList.remove('d-none');
+                
+                // Update the status message
+                const statusMessage = document.getElementById('collection-status-message');
+                const detailsContainer = document.getElementById('collection-details');
+                
+                if (data.success) {
+                    statusMessage.textContent = 'Collection from all sources completed!';
+                    statusMessage.parentElement.classList.remove('alert-danger');
+                    statusMessage.parentElement.classList.add('alert-success');
+                    
+                    // Display collection details
+                    detailsContainer.innerHTML = `
+                        <p><strong>Sources processed:</strong> ${data.sources_processed}</p>
+                        <p><strong>Total proposals collected:</strong> ${data.total_proposals_collected}</p>
+                        <p><strong>Total collection time:</strong> ${data.total_collection_time} seconds</p>
+                    `;
+                    
+                    // Reload the data sources to update the UI
+                    loadDataSources();
+                } else {
+                    statusMessage.textContent = 'Collection failed!';
+                    statusMessage.parentElement.classList.remove('alert-success');
+                    statusMessage.parentElement.classList.add('alert-danger');
+                    
+                    // Display error details
+                    detailsContainer.innerHTML = `
+                        <p><strong>Error:</strong> ${data.error}</p>
+                    `;
+                }
+            })
+            .catch(error => {
+                console.error('Error refreshing all sources:', error);
+                
+                // Hide loading indicator
+                document.getElementById('collection-status-loading').classList.add('d-none');
+                document.getElementById('collection-status-content').classList.remove('d-none');
+                
+                // Update the status message
+                const statusMessage = document.getElementById('collection-status-message');
+                statusMessage.textContent = 'Collection failed due to an error!';
+                statusMessage.parentElement.classList.remove('alert-success');
+                statusMessage.parentElement.classList.add('alert-danger');
+                
+                // Display error details
+                document.getElementById('collection-details').innerHTML = `
+                    <p><strong>Error:</strong> An unexpected error occurred. Please try again later.</p>
+                `;
+            });
+        }
     });
 
     // Add event listener for checking all scrapers' health
@@ -38,16 +104,18 @@ document.addEventListener('DOMContentLoaded', function() {
         resetEverything();
     });
 
-    document.getElementById('refresh-data').addEventListener('click', function() {
-        if (confirm('This will refresh all data from all sources. This may take some time. Are you sure you want to proceed?')) {
-            refreshAllData();
-        }
-    });
-    
     // Set up event listener for cleanup backups button
     document.getElementById('cleanup-backups').addEventListener('click', function() {
         cleanupBackups();
     });
+
+    // Add event listener for statistics modal
+    const statsModal = document.getElementById('stats-modal');
+    if (statsModal) {
+        statsModal.addEventListener('show.bs.modal', function() {
+            loadStatistics();
+        });
+    }
 });
 
 function loadDataSources() {
@@ -265,74 +333,34 @@ function forceCollect(sourceId) {
     });
 }
 
-function refreshAllSources() {
-    if (confirm('This will force re-collection from all data sources. This may take some time. Are you sure you want to proceed?')) {
-        // Show collection status modal
-        const collectionModal = new bootstrap.Modal(document.getElementById('collection-status-modal'));
-        collectionModal.show();
+function refreshSource(sourceId) {
+    // Show loading indicator
+    document.getElementById('loading-indicator').classList.remove('d-none');
+    
+    // Call the API to check the scraper's health
+    fetch(`/api/scraper-health/${sourceId}`, {
+        method: 'POST'
+    })
+    .then(response => response.json())
+    .then(data => {
+        // Hide loading indicator
+        document.getElementById('loading-indicator').classList.add('d-none');
         
-        // Show loading indicator in the modal
-        document.getElementById('collection-status-loading').classList.remove('d-none');
-        document.getElementById('collection-status-content').classList.add('d-none');
-        
-        // Call the API to refresh all sources
-        fetch('/api/data-sources/collect-all', {
-            method: 'POST'
-        })
-        .then(response => response.json())
-        .then(data => {
-            // Hide loading indicator
-            document.getElementById('collection-status-loading').classList.add('d-none');
-            document.getElementById('collection-status-content').classList.remove('d-none');
+        if (data.success) {
+            // Show a toast or notification
+            alert(data.message + '. The status will update shortly.');
             
-            // Update the status message
-            const statusMessage = document.getElementById('collection-status-message');
-            const detailsContainer = document.getElementById('collection-details');
-            
-            if (data.success) {
-                statusMessage.textContent = 'Collection from all sources completed!';
-                statusMessage.parentElement.classList.remove('alert-danger');
-                statusMessage.parentElement.classList.add('alert-success');
-                
-                // Display collection details
-                detailsContainer.innerHTML = `
-                    <p><strong>Sources processed:</strong> ${data.sources_processed}</p>
-                    <p><strong>Total proposals collected:</strong> ${data.total_proposals_collected}</p>
-                    <p><strong>Total collection time:</strong> ${data.total_collection_time} seconds</p>
-                `;
-                
-                // Reload the data sources to update the UI
-                loadDataSources();
-            } else {
-                statusMessage.textContent = 'Collection failed!';
-                statusMessage.parentElement.classList.remove('alert-success');
-                statusMessage.parentElement.classList.add('alert-danger');
-                
-                // Display error details
-                detailsContainer.innerHTML = `
-                    <p><strong>Error:</strong> ${data.error}</p>
-                `;
-            }
-        })
-        .catch(error => {
-            console.error('Error refreshing all sources:', error);
-            
-            // Hide loading indicator
-            document.getElementById('collection-status-loading').classList.add('d-none');
-            document.getElementById('collection-status-content').classList.remove('d-none');
-            
-            // Update the status message
-            const statusMessage = document.getElementById('collection-status-message');
-            statusMessage.textContent = 'Collection failed due to an error!';
-            statusMessage.parentElement.classList.remove('alert-success');
-            statusMessage.parentElement.classList.add('alert-danger');
-            
-            // Display error details
-            document.getElementById('collection-details').innerHTML = `
-                <p><strong>Error:</strong> An unexpected error occurred. Please try again later.</p>
-            `;
-        });
-    }
+            // Reload the data after a short delay to show updated status
+            setTimeout(loadDataSources, 5000);
+        } else {
+            alert('Failed to check health: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error checking health:', error);
+        document.getElementById('loading-indicator').classList.add('d-none');
+        alert('An error occurred while checking health.');
+    });
 }
 
 function rebuildDatabase() {
@@ -399,23 +427,6 @@ function initializeDatabase() {
                 });
         }
     }
-}
-
-function refreshAllData() {
-    fetch('/api/refresh-data', { method: 'POST' })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                alert('Data refreshed successfully. The page will now reload.');
-                window.location.reload();
-            } else {
-                alert('Error refreshing data: ' + data.error);
-            }
-        })
-        .catch(error => {
-            console.error('Error refreshing data:', error);
-            alert('An unexpected error occurred while refreshing data. Please check the console for details.');
-        });
 }
 
 // Function to open the backups modal and load the backups
@@ -640,4 +651,121 @@ function checkScraperHealth(sourceId) {
         document.getElementById('loading-indicator').classList.add('d-none');
         alert('An error occurred while checking health.');
     });
+}
+
+// Function to load statistics
+function loadStatistics() {
+    // Get the elements
+    const statsLoading = document.getElementById('stats-loading');
+    const statsContent = document.getElementById('stats-content');
+    
+    // Show loading indicator
+    statsLoading.classList.remove('d-none');
+    statsContent.classList.add('d-none');
+    
+    // Fetch statistics
+    fetch('/api/stats')
+        .then(response => response.json())
+        .then(data => {
+            // Create the statistics content
+            let html = `
+                <h4>Total Proposals: <span class="badge bg-primary">${data.total_proposals}</span></h4>
+                
+                <div class="row mt-4">
+                    <div class="col-md-4">
+                        <h5>By Source</h5>
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Source</th>
+                                    <th>Count</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+            `;
+            
+            // Add source stats
+            data.by_source.forEach(source => {
+                html += `
+                    <tr>
+                        <td>${source.name}</td>
+                        <td>${source.count}</td>
+                    </tr>
+                `;
+            });
+            
+            html += `
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <div class="col-md-4">
+                        <h5>By Agency</h5>
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Agency</th>
+                                    <th>Count</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+            `;
+            
+            // Add agency stats
+            data.by_agency.forEach(agency => {
+                html += `
+                    <tr>
+                        <td>${agency.agency || 'Unknown'}</td>
+                        <td>${agency.count}</td>
+                    </tr>
+                `;
+            });
+            
+            html += `
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <div class="col-md-4">
+                        <h5>By Status</h5>
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Status</th>
+                                    <th>Count</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+            `;
+            
+            // Add status stats
+            data.by_status.forEach(status => {
+                html += `
+                    <tr>
+                        <td>${status.status || 'Unknown'}</td>
+                        <td>${status.count}</td>
+                    </tr>
+                `;
+            });
+            
+            html += `
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+            
+            // Update the content
+            statsContent.innerHTML = html;
+            
+            // Hide loading indicator and show content
+            statsLoading.classList.add('d-none');
+            statsContent.classList.remove('d-none');
+        })
+        .catch(error => {
+            console.error('Error loading statistics:', error);
+            statsLoading.classList.add('d-none');
+            statsContent.innerHTML = '<div class="alert alert-danger">Error loading statistics. Please try again.</div>';
+            statsContent.classList.remove('d-none');
+        });
 } 
