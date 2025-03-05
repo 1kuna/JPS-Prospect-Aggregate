@@ -5,6 +5,7 @@ import sys
 import logging
 from logging.handlers import RotatingFileHandler
 from flask import Flask, render_template
+from flask_cors import CORS
 
 # Add the parent directory to the path so we can import from src
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -13,6 +14,9 @@ def create_app(config=None):
     """Application factory for creating Flask app instances."""
     # Create and configure the app
     app = Flask(__name__)
+    
+    # Enable CORS
+    CORS(app, resources={r"/api/*": {"origins": "*"}})
     
     # Load default configuration
     app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", os.urandom(24).hex())

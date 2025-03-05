@@ -41,6 +41,26 @@ if %ERRORLEVEL% neq 0 (
     call :print_success "Conda is installed"
 )
 
+:: Check if Node.js and npm are installed
+call :print_status "Checking for Node.js and npm installation..."
+where node >nul 2>&1
+where npm >nul 2>&1
+if %ERRORLEVEL% neq 0 (
+    call :print_warning "Node.js or npm is not installed. Vue.js frontend will not be available."
+    echo You can download Node.js from: https://nodejs.org/
+    set VUE_AVAILABLE=false
+) else (
+    for /f "tokens=*" %%a in ('node --version') do set NODE_VERSION=%%a
+    for /f "tokens=*" %%a in ('npm --version') do set NPM_VERSION=%%a
+    call :print_success "Node.js version %NODE_VERSION% and npm version %NPM_VERSION% are installed"
+    set VUE_AVAILABLE=true
+)
+
+:: Get the environment variable for Vue dev mode
+if "%VUE_DEV_MODE%"=="" (
+    set VUE_DEV_MODE=true
+)
+
 :: Get conda base directory
 for /f "tokens=*" %%a in ('conda info --base') do set "CONDA_BASE=%%a"
 
@@ -210,18 +230,86 @@ if exist src\database\init_db.py (
     call :print_status "Continuing without database initialization..."
 )
 
-:: All checks passed, start the application
-call :print_status "All checks passed! Starting JPS Prospect Aggregate..."
-if "%REDIS_RUNNING%"=="false" (
-    call :print_warning "Redis is not running. Celery tasks will not work properly."
-    call :print_warning "You may see errors related to Celery and Redis when the application starts."
+:: Function to build Vue.js frontend for production
+:build_vue_frontend
+call :print_status "Building Vue.js frontend for production..."
+
+:: Navigate to the frontend directory
+cd src\dashboard\frontend
+
+:: Check if node_modules exists, if not run npm install
+if not exist node_modules (
+    call :print_status "Installing Vue.js dependencies..."
+    call npm install
 )
-echo ==========================================
-echo Application starting at: %date% %time%
-echo Log file: %LOG_FILE%
-echo ==========================================
-echo Starting application... >> "%LOG_FILE%"
-python start_all.py >> "%LOG_FILE%" 2>&1
+
+:: Build the Vue.js app
+call npm run build
+
+:: Ensure the static/vue directory exists
+if not exist ..\static\vue mkdir ..\static\vue
+
+:: Return to the original directory
+cd ..\..\..
+
+call :print_success "Vue.js frontend built successfully!"
+exit /b 0
+
+:: Start the application components
+call :print_status "Starting application components..."
+
+:: Start Flask app
+call :print_status "Starting Flask app..."
+start "Flask App" /B python app.py > logs\flask.log 2>&1
+set FLASK_PID=%ERRORLEVEL%
+echo Flask app started
+
+:: Give Flask app time to start
+timeout /t 2 /nobreak > nul
+
+:: Start Celery worker
+call :print_status "Starting Celery worker..."
+start "Celery Worker" /B celery -A src.celery_app worker --loglevel=info > logs\celery_worker.log 2>&1
+echo Celery worker started
+
+:: Start Celery beat
+call :print_status "Starting Celery beat..."
+start "Celery Beat" /B celery -A src.celery_app beat --loglevel=info > logs\celery_beat.log 2>&1
+echo Celery beat started
+
+:: Start Flower for monitoring
+call :print_status "Starting Flower monitoring..."
+start "Flower" /B celery -A src.celery_app flower --port=5555 > logs\flower.log 2>&1
+echo Flower started
+
+:: Start Vue.js development server if in dev mode and available
+if "%VUE_DEV_MODE%"=="true" if "%VUE_AVAILABLE%"=="true" (
+    call :print_status "Starting Vue.js development server..."
+    cd src\dashboard\frontend
+    start "Vue.js Dev Server" /B npm run serve > ..\..\logs\vue.log 2>&1
+    cd ..\..\..
+    echo Vue.js development server started
+) else if "%VUE_DEV_MODE%"=="false" if "%VUE_AVAILABLE%"=="true" (
+    :: Build Vue.js frontend for production
+    call :build_vue_frontend
+)
+
+:: Print success message
+call :print_status "All services started!"
+echo - Flask app running at http://localhost:5000
+echo - Celery worker processing tasks
+echo - Celery beat scheduling tasks
+echo - Flower monitoring available at http://localhost:5555
+if "%VUE_DEV_MODE%"=="true" if "%VUE_AVAILABLE%"=="true" (
+    echo - Vue.js development server running at http://localhost:8080
+)
+
+echo.
+echo Press Ctrl+C to stop all services
+echo.
+
+:: Keep the script running until interrupted
+pause
 
 :: If the script exits, deactivate the conda environment
 echo ==========================================

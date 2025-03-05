@@ -1,0 +1,30 @@
+{
+  "name": "jps-prospect-aggregate-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "serve": "vue-cli-service serve",
+    "build": "vue-cli-service build",
+    "lint": "vue-cli-service lint"
+  },
+  "dependencies": {
+    "axios": "^1.6.2",
+    "core-js": "^3.33.3",
+    "vue": "^3.3.8",
+    "vue-router": "^4.2.5",
+    "vuetify": "^3.4.4",
+    "vuex": "^4.1.0"
+  },
+  "devDependencies": {
+    "@mdi/font": "^7.3.67",
+    "@vue/cli-plugin-babel": "~5.0.8",
+    "@vue/cli-plugin-eslint": "~5.0.8",
+    "@vue/cli-plugin-router": "~5.0.8",
+    "@vue/cli-plugin-vuex": "~5.0.8",
+    "@vue/cli-service": "~5.0.8",
+    "eslint": "^8.54.0",
+    "eslint-plugin-vue": "^9.18.1",
+    "sass": "^1.69.5",
+    "sass-loader": "^13.3.2"
+  }
+} 

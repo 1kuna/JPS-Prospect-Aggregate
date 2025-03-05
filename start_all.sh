@@ -49,6 +49,22 @@ else
     print_success "Conda is installed"
 fi
 
+# Check if Node.js and npm are installed
+print_status "Checking for Node.js and npm installation..."
+if ! command_exists node || ! command_exists npm; then
+    print_warning "Node.js or npm is not installed. Vue.js frontend will not be available."
+    echo "You can download Node.js from: https://nodejs.org/"
+    VUE_AVAILABLE=false
+else
+    NODE_VERSION=$(node --version)
+    NPM_VERSION=$(npm --version)
+    print_success "Node.js version $NODE_VERSION and npm version $NPM_VERSION are installed"
+    VUE_AVAILABLE=true
+fi
+
+# Get the environment variable for Vue dev mode
+VUE_DEV_MODE=${VUE_DEV_MODE:-true}
+
 # Activate conda environment
 print_status "Setting up Conda environment..."
 source "$(conda info --base)/etc/profile.d/conda.sh"
@@ -243,20 +259,120 @@ else
     print_status "Continuing without database initialization..."
 fi
 
-# All checks passed, start the application
-print_status "All checks passed! Starting JPS Prospect Aggregate..."
-if [ "$REDIS_RUNNING" = false ]; then
-    print_warning "Redis is not running. Celery tasks will not work properly."
-    print_warning "You may see errors related to Celery and Redis when the application starts."
-fi
-echo "=========================================="
-echo "Application starting at: $(date)"
-echo "Log file: $LOG_FILE"
-echo "=========================================="
-python start_all.py
+# Function to build Vue.js frontend for production
+build_vue_frontend() {
+    print_status "Building Vue.js frontend for production..."
+    
+    # Navigate to the frontend directory
+    cd src/dashboard/frontend || return
+    
+    # Check if node_modules exists, if not run npm install
+    if [ ! -d "node_modules" ]; then
+        print_status "Installing Vue.js dependencies..."
+        npm install
+    fi
+    
+    # Build the Vue.js app
+    npm run build
+    
+    # Ensure the static/vue directory exists
+    mkdir -p ../static/vue
+    
+    # Return to the original directory
+    cd - > /dev/null
+    
+    print_success "Vue.js frontend built successfully!"
+}
 
-# If the script exits, deactivate the conda environment
-echo "=========================================="
-echo "Application exited at: $(date)"
-echo "=========================================="
-conda deactivate 
+# Start the application components
+print_status "Starting application components..."
+
+# Start Flask app
+print_status "Starting Flask app..."
+python app.py > logs/flask.log 2>&1 &
+FLASK_PID=$!
+echo "Flask app started with PID: $FLASK_PID"
+
+# Give Flask app time to start
+sleep 2
+
+# Start Celery worker
+print_status "Starting Celery worker..."
+celery -A src.celery_app worker --loglevel=info > logs/celery_worker.log 2>&1 &
+WORKER_PID=$!
+echo "Celery worker started with PID: $WORKER_PID"
+
+# Start Celery beat
+print_status "Starting Celery beat..."
+celery -A src.celery_app beat --loglevel=info > logs/celery_beat.log 2>&1 &
+BEAT_PID=$!
+echo "Celery beat started with PID: $BEAT_PID"
+
+# Start Flower for monitoring
+print_status "Starting Flower monitoring..."
+celery -A src.celery_app flower --port=5555 > logs/flower.log 2>&1 &
+FLOWER_PID=$!
+echo "Flower started with PID: $FLOWER_PID"
+
+# Start Vue.js development server if in dev mode and available
+if [ "$VUE_DEV_MODE" = "true" ] && [ "$VUE_AVAILABLE" = true ]; then
+    print_status "Starting Vue.js development server..."
+    cd src/dashboard/frontend && npm run serve > ../../logs/vue.log 2>&1 &
+    VUE_PID=$!
+    cd - > /dev/null
+    echo "Vue.js development server started with PID: $VUE_PID"
+elif [ "$VUE_DEV_MODE" = "false" ] && [ "$VUE_AVAILABLE" = true ]; then
+    # Build Vue.js frontend for production
+    build_vue_frontend
+fi
+
+# Print success message
+print_status "All services started!"
+echo "- Flask app running at http://localhost:5000"
+echo "- Celery worker processing tasks"
+echo "- Celery beat scheduling tasks"
+echo "- Flower monitoring available at http://localhost:5555"
+if [ "$VUE_DEV_MODE" = "true" ] && [ "$VUE_AVAILABLE" = true ]; then
+    echo "- Vue.js development server running at http://localhost:8080"
+fi
+
+# Function to cleanup on exit
+cleanup() {
+    print_status "Shutting down all processes..."
+    
+    # Kill all processes
+    if [ -n "$FLASK_PID" ]; then
+        echo "Terminating Flask app (PID: $FLASK_PID)..."
+        kill -TERM "$FLASK_PID" 2>/dev/null || true
+    fi
+    
+    if [ -n "$WORKER_PID" ]; then
+        echo "Terminating Celery worker (PID: $WORKER_PID)..."
+        kill -TERM "$WORKER_PID" 2>/dev/null || true
+    fi
+    
+    if [ -n "$BEAT_PID" ]; then
+        echo "Terminating Celery beat (PID: $BEAT_PID)..."
+        kill -TERM "$BEAT_PID" 2>/dev/null || true
+    fi
+    
+    if [ -n "$FLOWER_PID" ]; then
+        echo "Terminating Flower (PID: $FLOWER_PID)..."
+        kill -TERM "$FLOWER_PID" 2>/dev/null || true
+    fi
+    
+    if [ -n "$VUE_PID" ]; then
+        echo "Terminating Vue.js development server (PID: $VUE_PID)..."
+        kill -TERM "$VUE_PID" 2>/dev/null || true
+    fi
+    
+    print_success "All processes terminated."
+}
+
+# Register the cleanup function to be called on exit
+trap cleanup EXIT
+
+# Keep the script running until interrupted
+echo ""
+echo "Press Ctrl+C to stop all services"
+wait 
