@@ -8,14 +8,7 @@ import csv
 import tempfile
 from io import StringIO
 from bs4 import BeautifulSoup
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, ElementClickInterceptedException, NoSuchElementException
-from webdriver_manager.chrome import ChromeDriverManager
+from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 import glob
 import pathlib
 import re
@@ -59,25 +52,16 @@ class SSAContractForecastScraper:
         self.source_name = "SSA Contract Forecast"
         self.debug_mode = debug_mode
         logger.info(f"Initializing scraper with debug_mode={debug_mode}")
+        self.playwright = None
+        self.browser = None
+        self.context = None
+        self.page = None
     
-    def setup_driver(self):
-        """Set up and configure the Chrome WebDriver"""
-        logging.info("Setting up Chrome WebDriver")
-        chrome_options = webdriver.ChromeOptions()
+    def setup_browser(self):
+        """Set up and configure the Playwright browser"""
+        logging.info("Setting up Playwright browser")
         
-        # Enable headless mode to prevent browser window from appearing
-        if not self.debug_mode:
-            chrome_options.add_argument("--headless")
-        
-        # Add these arguments to make Chrome more stable
-        chrome_options.add_argument("--no-sandbox")
-        chrome_options.add_argument("--disable-dev-shm-usage")
-        chrome_options.add_argument("--disable-gpu")
-        chrome_options.add_argument("--disable-extensions")
-        chrome_options.add_argument("--disable-popup-blocking")
-        chrome_options.add_argument("--window-size=1920,1080")  # Set a specific window size
-        
-        # Set download preferences
+        # Get the downloads directory
         download_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'data', 'downloads')
         # Ensure the download directory exists
         if not os.path.exists(download_dir):
@@ -88,39 +72,85 @@ class SSAContractForecastScraper:
         download_dir_abs = os.path.abspath(download_dir)
         logger.info(f"Absolute download path: {download_dir_abs}")
         
-        # More aggressive download preferences
-        prefs = {
-            "download.default_directory": download_dir_abs,
-            "download.prompt_for_download": False,
-            "download.directory_upgrade": True,
-            "safebrowsing.enabled": False,
-            "plugins.always_open_pdf_externally": True,
-            "browser.download.manager.showWhenStarting": False,
-            "browser.download.folderList": 2,  # Use custom folder
-            "browser.helperApps.neverAsk.saveToDisk": "text/csv,application/csv,application/vnd.ms-excel,application/excel,application/x-excel,application/x-msexcel,text/comma-separated-values,application/octet-stream,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            "browser.download.manager.useWindow": False,
-            "browser.download.manager.focusWhenStarting": False,
-        }
-        chrome_options.add_experimental_option("prefs", prefs)
+        try:
+            # Start Playwright
+            self.playwright = sync_playwright().start()
+            logger.info("Started Playwright")
+            
+            # Set browser options
+            browser_type = self.playwright.chromium
+            
+            # Launch the browser with appropriate options
+            self.browser = browser_type.launch(
+                headless=not self.debug_mode,
+                downloads_path=download_dir_abs,
+                args=[
+                    "--no-sandbox",
+                    "--disable-dev-shm-usage",
+                    "--disable-gpu",
+                    "--disable-extensions",
+                    "--disable-popup-blocking",
+                    "--window-size=1920,1080"
+                ]
+            )
+            logger.info("Launched browser")
+            
+            # Create a new context with download options
+            self.context = self.browser.new_context(
+                accept_downloads=True,
+                viewport={"width": 1920, "height": 1080},
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            )
+            logger.info("Created browser context")
+            
+            # Create a new page
+            self.page = self.context.new_page()
+            logger.info("Created page")
+            
+            # Set default timeout
+            self.page.set_default_timeout(60000)  # 60 seconds
+            
+            logger.info("Playwright browser setup complete")
+            return True
+        except Exception as e:
+            logger.error(f"Error setting up Playwright browser: {e}")
+            self.cleanup_browser()
+            return False
+    
+    def cleanup_browser(self):
+        """Clean up Playwright resources"""
+        logger.info("Cleaning up Playwright resources")
+        try:
+            if self.page:
+                logger.info("Closing page")
+                self.page.close()
+                self.page = None
+        except Exception as e:
+            logger.error(f"Error closing page: {e}")
         
         try:
-            # Try to use the ChromeDriverManager to get the driver
-            driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
-            logger.info("Successfully created Chrome WebDriver using ChromeDriverManager")
+            if self.context:
+                logger.info("Closing context")
+                self.context.close()
+                self.context = None
         except Exception as e:
-            logger.error(f"Error creating Chrome WebDriver using ChromeDriverManager: {e}")
-            # Fallback to using the system Chrome driver
-            try:
-                driver = webdriver.Chrome(options=chrome_options)
-                logger.info("Successfully created Chrome WebDriver using system Chrome driver")
-            except Exception as e:
-                logger.error(f"Error creating Chrome WebDriver using system Chrome driver: {e}")
-                raise
+            logger.error(f"Error closing context: {e}")
         
-        # Set page load timeout
-        driver.set_page_load_timeout(60)
+        try:
+            if self.browser:
+                logger.info("Closing browser")
+                self.browser.close()
+                self.browser = None
+        except Exception as e:
+            logger.error(f"Error closing browser: {e}")
         
-        return driver
+        try:
+            if self.playwright:
+                logger.info("Stopping playwright")
+                self.playwright.stop()
+                self.playwright = None
+        except Exception as e:
+            logger.error(f"Error stopping playwright: {e}")
     
     def parse_date(self, date_str):
         """Parse a date string into a datetime object"""
@@ -186,7 +216,7 @@ class SSAContractForecastScraper:
             logger.warning(f"Could not parse value: {value_str}")
             return None
     
-    def download_forecast_document(self, driver):
+    def download_forecast_document(self):
         """Download the FY25 SSA Contract Forecast document"""
         logger.info("Attempting to download the FY25 SSA Contract Forecast document")
         
@@ -208,21 +238,20 @@ class SSAContractForecastScraper:
         try:
             # Navigate to the base URL
             logger.info(f"Navigating to {self.base_url}")
-            driver.get(self.base_url)
+            self.page.goto(self.base_url, wait_until="domcontentloaded")
             
             # Wait for the page to load
-            WebDriverWait(driver, 30).until(
-                EC.presence_of_element_located((By.TAG_NAME, "body"))
-            )
+            logger.info("Waiting for page to load")
+            self.page.wait_for_selector("body", state="visible")
             
             # Look for the FY25 SSA Contract Forecast link
             logger.info("Looking for the FY25 SSA Contract Forecast link")
-            forecast_links = driver.find_elements(By.XPATH, "//a[contains(text(), 'FY25 SSA Contract Forecast')]")
+            forecast_links = self.page.query_selector_all("a:has-text('FY25 SSA Contract Forecast')")
             
             if not forecast_links:
                 logger.warning("Could not find the FY25 SSA Contract Forecast link")
                 # Try looking for it in the main menu
-                forecast_links = driver.find_elements(By.XPATH, "//div[contains(@class, 'mainMenu')]//a[contains(text(), 'FY25 SSA Contract Forecast')]")
+                forecast_links = self.page.query_selector_all("div.mainMenu a:has-text('FY25 SSA Contract Forecast')")
             
             if not forecast_links:
                 logger.error("Could not find the FY25 SSA Contract Forecast link")
@@ -233,74 +262,47 @@ class SSAContractForecastScraper:
             forecast_links[0].click()
             
             # Wait for the page to load
-            WebDriverWait(driver, 30).until(
-                EC.presence_of_element_located((By.TAG_NAME, "body"))
-            )
+            logger.info("Waiting for page to load after clicking link")
+            self.page.wait_for_selector("body", state="visible")
             
             # Look for the download link specifically for the 2025 file
             logger.info("Looking for the 2025 download link")
             # First try to find links with 01072025 in the text or href
-            download_links = driver.find_elements(By.XPATH, "//a[contains(text(), '01072025') or contains(@href, '01072025')]")
+            download_links = self.page.query_selector_all("a:has-text('01072025'), a[href*='01072025']")
             
             # If not found, look for links with 2025 in the text or href
             if not download_links:
                 logger.info("No links with '01072025' found, looking for links with '2025'")
-                download_links = driver.find_elements(By.XPATH, "//a[contains(text(), '2025') or contains(@href, '2025')]")
+                download_links = self.page.query_selector_all("a:has-text('2025'), a[href*='2025']")
             
             # If still not found, fall back to any Excel/PDF links
             if not download_links:
-                logger.warning("No 2025 links found, falling back to any Excel/PDF links")
-                download_links = driver.find_elements(By.XPATH, "//a[contains(@href, '.xlsx') or contains(@href, '.xls') or contains(@href, '.pdf') or contains(@href, '.csv') or contains(@href, '.xlsm')]")
+                logger.info("No links with '2025' found, looking for Excel/PDF links")
+                download_links = self.page.query_selector_all("a[href$='.xlsx'], a[href$='.xls'], a[href$='.pdf']")
             
             if not download_links:
                 logger.error("Could not find any download links")
                 return None
             
-            # Log all available download links for debugging
-            logger.info(f"Found {len(download_links)} download links:")
-            for i, link in enumerate(download_links):
-                href = link.get_attribute('href')
-                text = link.text
-                logger.info(f"Link {i+1}: Text='{text}', Href='{href}'")
+            # Click the download link and wait for the download to complete
+            href = download_links[0].get_attribute('href')
+            logger.info(f"Clicking download link: {href}")
             
-            # Click the first download link
-            logger.info(f"Clicking the download link: {download_links[0].get_attribute('href')}")
-            download_links[0].click()
+            # Start waiting for the download
+            with self.context.expect_download() as download_info:
+                download_links[0].click()
             
             # Wait for the download to complete
-            logger.info("Waiting for the download to complete")
-            time.sleep(5)  # Initial wait
+            download = download_info.value
+            logger.info(f"Download started: {download.suggested_filename}")
             
-            # Get the most recent file in the downloads directory
-            download_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'data', 'downloads')
-            files = glob.glob(os.path.join(download_dir, "*"))
-            if not files:
-                logger.error("No files found in the downloads directory")
-                return None
+            # Wait for the download to complete and save to the downloads directory
+            download_path = os.path.join(downloads_dir, download.suggested_filename)
+            download.save_as(download_path)
+            logger.info(f"Download completed: {download_path}")
             
-            # Sort by modification time (most recent first)
-            files.sort(key=os.path.getmtime, reverse=True)
-            
-            # Get the most recent file
-            latest_file = files[0]
-            logger.info(f"Most recent file: {latest_file}")
-            
-            # Check if the file was just downloaded (within the last minute)
-            if os.path.getmtime(latest_file) > time.time() - 60:
-                # Check if the file contains 2025 in the name
-                if "01072025" in os.path.basename(latest_file) or "2025" in os.path.basename(latest_file):
-                    logger.info(f"Successfully downloaded 2025 file: {latest_file}")
-                    # Update the download tracker
-                    download_tracker.set_last_download_time("SSA Contract Forecast")
-                    return latest_file
-                else:
-                    logger.warning(f"Downloaded file does not appear to be the 2025 file: {latest_file}")
-                    # We'll still return it for now, but log a warning
-                    return latest_file
-            else:
-                logger.warning("The most recent file is not from this download session")
-                return None
-            
+            # Return the path to the downloaded file
+            return download_path
         except Exception as e:
             logger.error(f"Error downloading forecast document: {e}")
             return None
@@ -310,20 +312,88 @@ class SSAContractForecastScraper:
         logger.info(f"Processing Excel file: {excel_file}")
         
         try:
-            # Read the Excel file
-            df = pd.read_excel(excel_file)
+            # First, try to convert the XLSM file to XLSX format
+            import openpyxl
+            import os
+            
+            # Create a new file path for the converted file
+            file_dir = os.path.dirname(excel_file)
+            file_name = os.path.basename(excel_file)
+            file_base, file_ext = os.path.splitext(file_name)
+            xlsx_file = os.path.join(file_dir, f"{file_base}_converted.xlsx")
+            
+            try:
+                logger.info(f"Attempting to convert {excel_file} to {xlsx_file}")
+                # Load the workbook
+                wb = openpyxl.load_workbook(excel_file, read_only=False, data_only=True)
+                # Save as xlsx
+                wb.save(xlsx_file)
+                logger.info(f"Successfully converted file to {xlsx_file}")
+                # Use the converted file for processing
+                excel_file = xlsx_file
+            except Exception as e:
+                logger.warning(f"Failed to convert file: {e}")
+                # Continue with the original file
+            
+            # Try a more robust approach to read the Excel file
+            try:
+                # First try with engine='openpyxl' explicitly
+                df = pd.read_excel(excel_file, engine='openpyxl')
+            except Exception as e1:
+                logger.warning(f"First attempt to read Excel file failed: {e1}")
+                try:
+                    # Try with xlrd engine for xls files
+                    df = pd.read_excel(excel_file, engine='xlrd')
+                except Exception as e2:
+                    logger.warning(f"Second attempt to read Excel file failed: {e2}")
+                    # Try with a different approach - read all sheets
+                    try:
+                        # Get all sheet names
+                        import openpyxl
+                        wb = openpyxl.load_workbook(excel_file, read_only=True, data_only=True)
+                        sheet_names = wb.sheetnames
+                        logger.info(f"Available sheets: {sheet_names}")
+                        
+                        # Try to read the first sheet
+                        df = pd.read_excel(excel_file, engine='openpyxl', sheet_name=sheet_names[0])
+                    except Exception as e3:
+                        # One last attempt - try to read the file as CSV
+                        try:
+                            logger.warning(f"Trying to read as CSV: {e3}")
+                            df = pd.read_csv(excel_file)
+                        except Exception as e4:
+                            logger.error(f"All attempts to read Excel file failed: {e4}")
+                            return 0
             
             # Check if the DataFrame is empty
             if df.empty:
                 logger.error("Excel file is empty")
                 return 0
             
-            # Log the column names
+            # Log the column names and first few rows for debugging
             logger.info(f"Column names: {df.columns.tolist()}")
+            logger.info(f"First few rows:\n{df.head()}")
             
-            # Based on examination, the SSA Excel file has headers at row 3 (0-indexed)
-            header_row_idx = 3
-            logger.info(f"Using header row at index {header_row_idx}")
+            # Try to find the header row by looking for specific keywords
+            header_row_idx = None
+            header_keywords = ['Site Type', 'App #', 'Requirement Type', 'Description', 'Est. Cost']
+            
+            # Look through the first 10 rows to find a potential header row
+            for i in range(min(10, len(df))):
+                row_values = df.iloc[i].astype(str).tolist()
+                row_text = ' '.join(row_values).lower()
+                
+                # Check if this row contains multiple header keywords
+                matches = sum(1 for keyword in header_keywords if keyword.lower() in row_text)
+                if matches >= 3:  # If at least 3 keywords match, consider this the header row
+                    header_row_idx = i
+                    logger.info(f"Found header row at index {header_row_idx}")
+                    break
+            
+            # If we couldn't find a header row, use a default (row 3 based on previous code)
+            if header_row_idx is None:
+                header_row_idx = 3
+                logger.info(f"Using default header row at index {header_row_idx}")
             
             # Get the header row values
             header_values = df.iloc[header_row_idx].values
@@ -356,36 +426,36 @@ class SSAContractForecastScraper:
                     
                     # Extract values safely using iloc for positional access
                     # This avoids the ambiguity with duplicate column names
-                    site_type = row.iloc[0] if pd.notna(row.iloc[0]) else None
-                    app_num = row.iloc[1] if pd.notna(row.iloc[1]) else None
-                    requirement_type = row.iloc[2] if pd.notna(row.iloc[2]) else None
-                    description = row.iloc[3] if pd.notna(row.iloc[3]) else None
-                    est_cost = row.iloc[4] if pd.notna(row.iloc[4]) else None
-                    award_date_str = row.iloc[5] if pd.notna(row.iloc[5]) else None
-                    existing_award = row.iloc[6] if pd.notna(row.iloc[6]) else None
-                    contract_type = row.iloc[7] if pd.notna(row.iloc[7]) else None
-                    incumbent = row.iloc[8] if pd.notna(row.iloc[8]) else None
-                    naics_code = row.iloc[9] if pd.notna(row.iloc[9]) else None
-                    naics_desc = row.iloc[10] if pd.notna(row.iloc[10]) else None
-                    competition_type = row.iloc[11] if pd.notna(row.iloc[11]) else None
-                    obligated_amt = row.iloc[12] if pd.notna(row.iloc[12]) else None
-                    place_of_performance = row.iloc[13] if pd.notna(row.iloc[13]) else None
-                    completion_date = row.iloc[14] if pd.notna(row.iloc[14]) else None
+                    site_type = str(row.iloc[0]) if pd.notna(row.iloc[0]) else None
+                    app_num = str(row.iloc[1]) if pd.notna(row.iloc[1]) else None
+                    requirement_type = str(row.iloc[2]) if pd.notna(row.iloc[2]) else None
+                    description = str(row.iloc[3]) if pd.notna(row.iloc[3]) else None
+                    est_cost = str(row.iloc[4]) if pd.notna(row.iloc[4]) else None
+                    award_date_str = str(row.iloc[5]) if pd.notna(row.iloc[5]) else None
+                    existing_award = str(row.iloc[6]) if pd.notna(row.iloc[6]) else None
+                    contract_type = str(row.iloc[7]) if pd.notna(row.iloc[7]) else None
+                    incumbent = str(row.iloc[8]) if pd.notna(row.iloc[8]) else None
+                    naics_code = str(row.iloc[9]) if pd.notna(row.iloc[9]) else None
+                    naics_desc = str(row.iloc[10]) if pd.notna(row.iloc[10]) else None
+                    competition_type = str(row.iloc[11]) if pd.notna(row.iloc[11]) else None
+                    obligated_amt = str(row.iloc[12]) if pd.notna(row.iloc[12]) else None
+                    place_of_performance = str(row.iloc[13]) if pd.notna(row.iloc[13]) else None
+                    completion_date = str(row.iloc[14]) if pd.notna(row.iloc[14]) and index < len(data_df.columns) else None
                     
                     # Skip rows without a description
-                    if not description:
+                    if not description or description.lower() in ['nan', 'none', '']:
                         continue
                     
                     # Parse dates
                     release_date = None
                     response_date = None
-                    award_date = self.parse_date(award_date_str) if award_date_str else None
+                    award_date = self.parse_date(award_date_str) if award_date_str and award_date_str.lower() not in ['nan', 'none', ''] else None
                     
                     # Parse estimated value
-                    estimated_value = self.parse_value(est_cost) if est_cost else None
+                    estimated_value = self.parse_value(est_cost) if est_cost and est_cost.lower() not in ['nan', 'none', ''] else None
                     
                     # Create a unique external ID
-                    external_id = f"SSA_{app_num}" if app_num else None
+                    external_id = f"SSA_{app_num}" if app_num and app_num.lower() not in ['nan', 'none', ''] else None
                     
                     # Check if this proposal already exists
                     existing_proposal = None
@@ -491,6 +561,7 @@ class SSAContractForecastScraper:
                         )
                         
                         session.add(proposal)
+                        logger.info(f"Added new proposal: {description} (ID: {external_id})")
                         proposals_added += 1
                     
                 except Exception as e:
@@ -553,10 +624,11 @@ class SSAContractForecastScraper:
         """Main scraping function"""
         logger.info("Starting scrape")
         
-        # Set up the driver
-        driver = None
         try:
-            driver = self.setup_driver()
+            # Set up the browser
+            if not self.setup_browser():
+                logger.error("Failed to set up browser")
+                return False
             
             # Get a database session
             session = get_session()
@@ -576,13 +648,12 @@ class SSAContractForecastScraper:
                 session.commit()
             
             # Download the forecast document
-            forecast_file = self.download_forecast_document(driver)
+            forecast_file = self.download_forecast_document()
             
             if not forecast_file:
                 logger.error("Failed to download forecast document")
                 close_session(session)
-                if driver:
-                    driver.quit()
+                self.cleanup_browser()
                 return False
             
             # Check if the downloaded file is the 2025 file
@@ -628,16 +699,21 @@ class SSAContractForecastScraper:
             # Close the session
             close_session(session)
             
+            # Clean up the browser
+            self.cleanup_browser()
+            
             return True
             
         except Exception as e:
             logger.error(f"Error during scrape: {e}")
-            return False
             
-        finally:
             # Clean up
-            if driver:
-                driver.quit()
+            if 'session' in locals() and session:
+                close_session(session)
+            
+            self.cleanup_browser()
+            
+            return False
 
 def run_scraper(force=False):
     """Run the scraper if it's time or if forced"""

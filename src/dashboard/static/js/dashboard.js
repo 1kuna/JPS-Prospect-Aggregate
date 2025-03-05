@@ -11,6 +11,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const sourceSelect = document.getElementById('source');
     const agencySelect = document.getElementById('agency');
     const statusSelect = document.getElementById('status');
+    const naicsCodesSelect = document.getElementById('naics-codes');
     const sortBySelect = document.getElementById('sort-by');
     const sortOrderSelect = document.getElementById('sort-order');
     const resetFiltersButton = document.getElementById('reset-filters');
@@ -46,6 +47,7 @@ document.addEventListener('DOMContentLoaded', function() {
         source_id: '',
         agency: '',
         status: '',
+        naics_codes: [],
         sort_by: 'release_date',
         sort_order: 'desc'
     };
@@ -142,7 +144,7 @@ document.addEventListener('DOMContentLoaded', function() {
             })
             .catch(error => console.error('Error loading sources:', error));
         
-        // Load filter options (agencies, statuses)
+        // Load filter options (agencies, statuses, naics codes)
         fetch('/api/filters')
             .then(response => response.json())
             .then(filters => {
@@ -163,6 +165,22 @@ document.addEventListener('DOMContentLoaded', function() {
                     option.textContent = status;
                     statusSelect.appendChild(option);
                 });
+                
+                // Populate NAICS codes
+                naicsCodesSelect.innerHTML = '';
+                if (filters.naics_codes && filters.naics_codes.length > 0) {
+                    // Sort NAICS codes numerically
+                    filters.naics_codes.sort((a, b) => {
+                        return a.localeCompare(b, undefined, {numeric: true});
+                    });
+                    
+                    filters.naics_codes.forEach(naicsCode => {
+                        const option = document.createElement('option');
+                        option.value = naicsCode;
+                        option.textContent = naicsCode;
+                        naicsCodesSelect.appendChild(option);
+                    });
+                }
             })
             .catch(error => console.error('Error loading filter options:', error));
     }
@@ -173,6 +191,9 @@ document.addEventListener('DOMContentLoaded', function() {
         currentFilters.agency = agencySelect.value;
         currentFilters.status = statusSelect.value;
         
+        // Get selected NAICS codes
+        currentFilters.naics_codes = Array.from(naicsCodesSelect.selectedOptions).map(option => option.value);
+        
         loadProposals();
     }
     
@@ -181,6 +202,12 @@ document.addEventListener('DOMContentLoaded', function() {
         sourceSelect.value = '';
         agencySelect.value = '';
         statusSelect.value = '';
+        
+        // Clear NAICS code selections
+        for (let i = 0; i < naicsCodesSelect.options.length; i++) {
+            naicsCodesSelect.options[i].selected = false;
+        }
+        
         sortBySelect.value = 'release_date';
         sortOrderSelect.value = 'desc';
         
@@ -189,6 +216,7 @@ document.addEventListener('DOMContentLoaded', function() {
             source_id: '',
             agency: '',
             status: '',
+            naics_codes: [],
             sort_by: 'release_date',
             sort_order: 'desc'
         };
@@ -208,6 +236,14 @@ document.addEventListener('DOMContentLoaded', function() {
         if (currentFilters.source_id) queryParams.append('source_id', currentFilters.source_id);
         if (currentFilters.agency) queryParams.append('agency', currentFilters.agency);
         if (currentFilters.status) queryParams.append('status', currentFilters.status);
+        
+        // Add NAICS codes to query params
+        if (currentFilters.naics_codes && currentFilters.naics_codes.length > 0) {
+            currentFilters.naics_codes.forEach(code => {
+                queryParams.append('naics_codes[]', code);
+            });
+        }
+        
         queryParams.append('sort_by', currentFilters.sort_by);
         queryParams.append('sort_order', currentFilters.sort_order);
         
@@ -352,21 +388,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 </div>
             </div>
             
-            <div class="row">
-                <div class="col-12">
-                    <p class="proposal-detail-label">Place of Performance</p>
-                    <p class="proposal-detail-value">${proposal.place_of_performance || 'N/A'}</p>
-                </div>
-            </div>
-            
-            <div class="row">
+            <div class="row mt-3">
                 <div class="col-12">
                     <p class="proposal-detail-label">Description</p>
                     <p class="proposal-detail-value">${proposal.description || 'No description available.'}</p>
                 </div>
             </div>
             
-            <div class="row">
+            <div class="row mt-3">
                 <div class="col-12">
                     <p class="proposal-detail-label">Contact Information</p>
                     <p class="proposal-detail-value">${proposal.contact_info || 'No contact information available.'}</p>

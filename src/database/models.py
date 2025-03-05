@@ -20,6 +20,7 @@ class DataSource(Base):
     last_scraped = Column(DateTime, nullable=True)
     
     proposals = relationship("Proposal", back_populates="source")
+    status_checks = relationship("ScraperStatus", back_populates="source")
     
     def __repr__(self):
         return f"<DataSource(name='{self.name}', url='{self.url}')>"
@@ -97,6 +98,23 @@ class ProposalHistory(Base):
     
     def __repr__(self):
         return f"<ProposalHistory(proposal_id={self.proposal_id}, imported_at='{self.imported_at}')>"
+
+
+class ScraperStatus(Base):
+    """Model for tracking scraper health status"""
+    __tablename__ = 'scraper_status'
+    
+    id = Column(Integer, primary_key=True)
+    source_id = Column(Integer, ForeignKey('data_sources.id'), nullable=False)
+    status = Column(String(50), nullable=False, default="unknown")  # "working", "not_working", "unknown"
+    last_checked = Column(DateTime, nullable=True)
+    error_message = Column(Text, nullable=True)
+    response_time = Column(Float, nullable=True)  # in seconds
+    
+    source = relationship("DataSource", back_populates="status_checks")
+    
+    def __repr__(self):
+        return f"<ScraperStatus(source_id={self.source_id}, status='{self.status}')>"
 
 
 def get_engine():

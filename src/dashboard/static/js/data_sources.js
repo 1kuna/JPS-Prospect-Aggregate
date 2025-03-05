@@ -7,6 +7,16 @@ document.addEventListener('DOMContentLoaded', function() {
         refreshAllSources();
     });
 
+    // Add event listener for checking all scrapers' health
+    document.getElementById('refresh-all-sources').insertAdjacentHTML('afterend', 
+        '<button id="check-all-health" class="btn btn-info ms-2">' +
+        '<i class="bi bi-heart-pulse"></i> Check All Health</button>'
+    );
+    
+    document.getElementById('check-all-health').addEventListener('click', function() {
+        runHealthChecks();
+    });
+
     // Set up event listeners for database operations
     document.getElementById('rebuild-db').addEventListener('click', function() {
         if (confirm('WARNING: This will delete and rebuild the entire database. All data will be lost and then re-collected. This operation cannot be undone. Are you sure you want to proceed?')) {
@@ -46,96 +56,145 @@ function loadDataSources() {
     document.getElementById('sources-container').classList.add('d-none');
     document.getElementById('no-sources').classList.add('d-none');
 
-    // Fetch data sources from the API
-    fetch('/api/data-sources')
-        .then(response => response.json())
-        .then(data => {
-            // Hide loading indicator
-            document.getElementById('loading').classList.add('d-none');
+    // Fetch data sources and health status from the API
+    Promise.all([
+        fetch('/api/data-sources').then(response => response.json()),
+        fetch('/api/scraper-health').then(response => response.json())
+    ])
+    .then(([sourceData, healthData]) => {
+        // Hide loading indicator
+        document.getElementById('loading').classList.add('d-none');
+        
+        if (sourceData.sources && sourceData.sources.length > 0) {
+            // Show sources container
+            document.getElementById('sources-container').classList.remove('d-none');
             
-            if (data.sources && data.sources.length > 0) {
-                // Show sources container
-                document.getElementById('sources-container').classList.remove('d-none');
+            // Create a map of source ID to health status
+            const healthMap = {};
+            if (healthData.success && healthData.status) {
+                healthData.status.forEach(status => {
+                    healthMap[status.source_id] = status;
+                });
+            }
+            
+            // Populate the table
+            const tableBody = document.getElementById('sources-table-body');
+            tableBody.innerHTML = '';
+            
+            sourceData.sources.forEach(source => {
+                const row = document.createElement('tr');
                 
-                // Populate the table
-                const tableBody = document.getElementById('sources-table-body');
-                tableBody.innerHTML = '';
+                // Get health status for this source
+                const health = healthMap[source.id] || { status: 'unknown', last_checked: null };
                 
-                data.sources.forEach(source => {
-                    const row = document.createElement('tr');
+                // Create status badge
+                let statusBadge = '';
+                if (health.status === 'working') {
+                    statusBadge = '<span class="badge bg-success">Working</span>';
+                } else if (health.status === 'not_working') {
+                    statusBadge = '<span class="badge bg-danger">Not Working</span>';
+                } else {
+                    statusBadge = '<span class="badge bg-secondary">Unknown</span>';
+                }
+                
+                // Add last checked time if available
+                if (health.last_checked) {
+                    const lastChecked = new Date(health.last_checked);
+                    const options = { 
+                        month: 'short', 
+                        day: 'numeric', 
+                        hour: '2-digit', 
+                        minute: '2-digit',
+                        hour12: true
+                    };
+                    statusBadge += `<br><small class="text-muted">Last checked: ${lastChecked.toLocaleString(undefined, options)}</small>`;
+                }
+                
+                // Format the last collected date
+                let lastCollectedText = 'Never';
+                if (source.last_collected) {
+                    // Parse the ISO string as UTC and convert to local time
+                    const lastCollected = new Date(source.last_collected);
+                    const now = new Date();
                     
-                    // Format the last collected date
-                    let lastCollectedText = 'Never';
-                    if (source.last_collected) {
-                        // Parse the ISO string as UTC and convert to local time
-                        const lastCollected = new Date(source.last_collected);
-                        const now = new Date();
-                        
-                        // Calculate time difference in local time
-                        const diffTime = Math.abs(now - lastCollected);
-                        const diffMinutes = Math.floor((diffTime % (1000 * 60 * 60)) / (1000 * 60));
-                        const diffHours = Math.floor((diffTime % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-                        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-                        
-                        // Format the relative time text
-                        if (diffDays > 0) {
-                            lastCollectedText = `${diffDays} days, ${diffHours} hours ago`;
-                        } else if (diffHours > 0) {
-                            lastCollectedText = `${diffHours} hours, ${diffMinutes} minutes ago`;
-                        } else {
-                            lastCollectedText = `${diffMinutes} minutes ago`;
-                        }
-                        
-                        // Format the exact timestamp in local time
-                        const options = { 
-                            year: 'numeric', 
-                            month: 'short', 
-                            day: 'numeric', 
-                            hour: '2-digit', 
-                            minute: '2-digit',
-                            second: '2-digit',
-                            hour12: true
-                        };
-                        
-                        lastCollectedText += `<br><small class="text-muted">${lastCollected.toLocaleString(undefined, options)}</small>`;
+                    // Calculate time difference in local time
+                    const diffTime = Math.abs(now - lastCollected);
+                    const diffMinutes = Math.floor((diffTime % (1000 * 60 * 60)) / (1000 * 60));
+                    const diffHours = Math.floor((diffTime % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+                    
+                    // Format the relative time text
+                    if (diffDays > 0) {
+                        lastCollectedText = `${diffDays} days, ${diffHours} hours ago`;
+                    } else if (diffHours > 0) {
+                        lastCollectedText = `${diffHours} hours, ${diffMinutes} minutes ago`;
+                    } else {
+                        lastCollectedText = `${diffMinutes} minutes ago`;
                     }
                     
-                    // Create the row content
-                    row.innerHTML = `
-                        <td>${source.id}</td>
-                        <td>${source.name}</td>
-                        <td><a href="${source.url}" target="_blank">${source.url}</a></td>
-                        <td>${source.description || 'N/A'}</td>
-                        <td>${lastCollectedText}</td>
-                        <td>${source.proposal_count || 0}</td>
-                        <td>
+                    // Format the exact timestamp in local time
+                    const options = { 
+                        year: 'numeric', 
+                        month: 'short', 
+                        day: 'numeric', 
+                        hour: '2-digit', 
+                        minute: '2-digit',
+                        second: '2-digit',
+                        hour12: true
+                    };
+                    
+                    lastCollectedText += `<br><small class="text-muted">${lastCollected.toLocaleString(undefined, options)}</small>`;
+                }
+                
+                // Create the row content
+                row.innerHTML = `
+                    <td>${source.id}</td>
+                    <td>${source.name}</td>
+                    <td><a href="${source.url}" target="_blank">${source.url}</a></td>
+                    <td>${source.description || 'N/A'}</td>
+                    <td>${statusBadge}</td>
+                    <td>${lastCollectedText}</td>
+                    <td>${source.proposal_count || 0}</td>
+                    <td>
+                        <div class="btn-group">
                             <button class="btn btn-sm btn-primary force-collect" data-source-id="${source.id}">
                                 <i class="bi bi-arrow-repeat"></i> Force Re-collect
                             </button>
-                        </td>
-                    `;
-                    
-                    tableBody.appendChild(row);
-                });
+                            <button class="btn btn-sm btn-info check-health" data-source-id="${source.id}">
+                                <i class="bi bi-heart-pulse"></i> Check Health
+                            </button>
+                        </div>
+                    </td>
+                `;
                 
-                // Add event listeners to the force collect buttons
-                document.querySelectorAll('.force-collect').forEach(button => {
-                    button.addEventListener('click', function() {
-                        const sourceId = this.getAttribute('data-source-id');
-                        forceCollect(sourceId);
-                    });
+                tableBody.appendChild(row);
+            });
+            
+            // Add event listeners to the buttons
+            document.querySelectorAll('.force-collect').forEach(button => {
+                button.addEventListener('click', function() {
+                    const sourceId = this.getAttribute('data-source-id');
+                    forceCollect(sourceId);
                 });
-            } else {
-                // Show no sources message
-                document.getElementById('no-sources').classList.remove('d-none');
-            }
-        })
-        .catch(error => {
-            console.error('Error loading data sources:', error);
-            document.getElementById('loading').classList.add('d-none');
+            });
+            
+            document.querySelectorAll('.check-health').forEach(button => {
+                button.addEventListener('click', function() {
+                    const sourceId = this.getAttribute('data-source-id');
+                    checkScraperHealth(sourceId);
+                });
+            });
+        } else {
+            // Show no sources message
             document.getElementById('no-sources').classList.remove('d-none');
-            document.getElementById('no-sources').textContent = 'Error loading data sources. Please try again later.';
-        });
+        }
+    })
+    .catch(error => {
+        console.error('Error loading data:', error);
+        document.getElementById('loading').classList.add('d-none');
+        document.getElementById('no-sources').classList.remove('d-none');
+        document.getElementById('no-sources').textContent = 'Error loading data. Please try again later.';
+    });
 }
 
 function forceCollect(sourceId) {
@@ -294,20 +353,52 @@ function rebuildDatabase() {
 }
 
 function initializeDatabase() {
-    fetch('/api/init-db', { method: 'POST' })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                alert('Database initialized successfully. The page will now reload.');
-                window.location.reload();
-            } else {
-                alert('Error initializing database: ' + data.error);
-            }
-        })
-        .catch(error => {
-            console.error('Error initializing database:', error);
-            alert('An unexpected error occurred while initializing the database. Please check the console for details.');
-        });
+    // Create a detailed warning message
+    const warningMessage = 
+        'WARNING: This will delete the current database and create a new one!\n\n' +
+        'This operation will:\n' +
+        '1. Delete ALL existing data\n' +
+        '2. Create a new empty database\n' +
+        '3. Initialize the data sources\n\n' +
+        'This operation cannot be undone. All your data will be permanently lost.\n\n' +
+        'Are you absolutely sure you want to proceed?';
+        
+    if (confirm(warningMessage)) {
+        // Double-check with a second confirmation
+        if (confirm('FINAL WARNING: You are about to delete ALL data. This cannot be undone. Type "INIT" to confirm.')) {
+            // Show loading indicator
+            const loadingIndicator = document.getElementById('loading-indicator');
+            loadingIndicator.classList.remove('d-none');
+            
+            fetch('/api/init-db', { method: 'POST' })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    // Hide loading indicator
+                    loadingIndicator.classList.add('d-none');
+                    
+                    if (data.success) {
+                        alert('Database initialized successfully. The page will now reload.');
+                        window.location.reload();
+                    } else {
+                        const errorMessage = data.error || 'An unknown error occurred';
+                        console.error('Database initialization error:', errorMessage);
+                        alert('Error initializing database: ' + errorMessage + '\n\nPlease check the browser console (F12) for more details.');
+                    }
+                })
+                .catch(error => {
+                    // Hide loading indicator
+                    loadingIndicator.classList.add('d-none');
+                    
+                    console.error('Error initializing database:', error);
+                    alert('An unexpected error occurred while initializing the database.\n\nError details: ' + error.message + '\n\nPlease check the browser console (F12) for more details.');
+                });
+        }
+    }
 }
 
 function refreshAllData() {
@@ -487,4 +578,66 @@ function resetEverything() {
             }
         }
     }
+}
+
+// Add a function to run health checks for all scrapers
+function runHealthChecks() {
+    // Show loading indicator
+    document.getElementById('loading-indicator').classList.remove('d-none');
+    
+    // Call the API to run health checks
+    fetch('/api/scraper-health/check', {
+        method: 'POST'
+    })
+    .then(response => response.json())
+    .then(data => {
+        // Hide loading indicator
+        document.getElementById('loading-indicator').classList.add('d-none');
+        
+        if (data.success) {
+            // Show a toast or notification
+            alert('Health checks started. The status will update shortly.');
+            
+            // Reload the data after a short delay to show updated status
+            setTimeout(loadDataSources, 5000);
+        } else {
+            alert('Failed to start health checks: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error running health checks:', error);
+        document.getElementById('loading-indicator').classList.add('d-none');
+        alert('An error occurred while running health checks.');
+    });
+}
+
+// Add a function to check health for a specific scraper
+function checkScraperHealth(sourceId) {
+    // Show loading indicator
+    document.getElementById('loading-indicator').classList.remove('d-none');
+    
+    // Call the API to check the scraper's health
+    fetch(`/api/scraper-health/${sourceId}`, {
+        method: 'POST'
+    })
+    .then(response => response.json())
+    .then(data => {
+        // Hide loading indicator
+        document.getElementById('loading-indicator').classList.add('d-none');
+        
+        if (data.success) {
+            // Show a toast or notification
+            alert(data.message + '. The status will update shortly.');
+            
+            // Reload the data after a short delay to show updated status
+            setTimeout(loadDataSources, 5000);
+        } else {
+            alert('Failed to check health: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error checking health:', error);
+        document.getElementById('loading-indicator').classList.add('d-none');
+        alert('An error occurred while checking health.');
+    });
 } 

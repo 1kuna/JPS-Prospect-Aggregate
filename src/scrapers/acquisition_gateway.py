@@ -3,19 +3,13 @@ import sys
 import time
 import datetime
 import logging
+from logging.handlers import RotatingFileHandler
 import requests
 import csv
 import tempfile
 from io import StringIO
 from bs4 import BeautifulSoup
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, ElementClickInterceptedException, NoSuchElementException
-from webdriver_manager.chrome import ChromeDriverManager
+from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 import glob
 import pathlib
 import re
@@ -23,63 +17,53 @@ import re
 # Add the parent directory to the path so we can import from src
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from src.database.db import get_session, close_session
+from src.database.db import get_session, close_session, session_scope
 from src.database.models import Proposal, DataSource
 from src.database.download_tracker import download_tracker
-
-# Create logs directory if it doesn't exist
-logs_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'logs')
-if not os.path.exists(logs_dir):
-    os.makedirs(logs_dir)
-
-# Create downloads directory if it doesn't exist
-downloads_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'data', 'downloads')
-if not os.path.exists(downloads_dir):
-    os.makedirs(downloads_dir)
-
-# Set up logging
-log_file = os.path.join(logs_dir, f'acquisition_gateway_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.log')
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler(log_file),
-        logging.StreamHandler()
-    ]
+from src.config import (
+    LOGS_DIR, DOWNLOADS_DIR, 
+    PAGE_NAVIGATION_TIMEOUT, PAGE_ELEMENT_TIMEOUT, TABLE_LOAD_TIMEOUT, DOWNLOAD_TIMEOUT,
+    CSV_ENCODINGS, FILE_FRESHNESS_SECONDS, ACQUISITION_GATEWAY_URL,
+    LOG_FORMAT, LOG_FILE_MAX_BYTES, LOG_FILE_BACKUP_COUNT
 )
+
+# Set up logging with a rotating file handler
+log_file = os.path.join(LOGS_DIR, 'acquisition_gateway.log')
+# Create a logger
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+# Create handlers
+# RotatingFileHandler will rotate log files when they reach the configured size
+file_handler = RotatingFileHandler(log_file, maxBytes=LOG_FILE_MAX_BYTES, backupCount=LOG_FILE_BACKUP_COUNT)
+console_handler = logging.StreamHandler()
+# Create formatters and add them to handlers
+formatter = logging.Formatter(LOG_FORMAT)
+file_handler.setFormatter(formatter)
+console_handler.setFormatter(formatter)
+# Add handlers to the logger
+logger.addHandler(file_handler)
+logger.addHandler(console_handler)
+
 logger.info(f"Logging to {log_file}")
 
 class AcquisitionGatewayScraper:
     """Scraper for the Acquisition Gateway Forecast site"""
     
     def __init__(self, debug_mode=False):
-        self.base_url = "https://acquisitiongateway.gov/forecast"
+        self.base_url = ACQUISITION_GATEWAY_URL
         self.source_name = "Acquisition Gateway Forecast"
         self.debug_mode = debug_mode
         logger.info(f"Initializing scraper with debug_mode={debug_mode}")
+        self.playwright = None
+        self.browser = None
+        self.context = None
+        self.page = None
     
-    def setup_driver(self):
-        """Set up and configure the Chrome WebDriver"""
-        logging.info("Setting up Chrome WebDriver")
-        chrome_options = webdriver.ChromeOptions()
+    def setup_browser(self):
+        """Set up and configure the Playwright browser"""
+        logging.info("Setting up Playwright browser")
         
-        # Enable headless mode to prevent browser window from appearing
-        if not self.debug_mode:
-            chrome_options.add_argument("--headless=new")  # Use the newer headless mode
-        
-        # Add these arguments to make Chrome more stable
-        chrome_options.add_argument("--no-sandbox")
-        chrome_options.add_argument("--disable-dev-shm-usage")
-        chrome_options.add_argument("--disable-gpu")
-        chrome_options.add_argument("--disable-extensions")
-        chrome_options.add_argument("--disable-popup-blocking")
-        chrome_options.add_argument("--window-size=1920,1080")  # Set a specific window size
-        chrome_options.add_argument("--start-maximized")  # Maximize the window
-        chrome_options.add_argument("--disable-blink-features=AutomationControlled")  # Avoid detection
-        chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")  # Set a common user agent
-        
-        # Set download preferences
+        # Get the downloads directory
         download_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'data', 'downloads')
         # Ensure the download directory exists
         if not os.path.exists(download_dir):
@@ -90,77 +74,85 @@ class AcquisitionGatewayScraper:
         download_dir_abs = os.path.abspath(download_dir)
         logger.info(f"Absolute download path: {download_dir_abs}")
         
-        # More aggressive download preferences
-        prefs = {
-            "download.default_directory": download_dir_abs,
-            "download.prompt_for_download": False,
-            "download.directory_upgrade": True,
-            "safebrowsing.enabled": False,
-            "plugins.always_open_pdf_externally": True,
-            "browser.download.manager.showWhenStarting": False,
-            "browser.download.folderList": 2,  # Use custom folder
-            "browser.helperApps.neverAsk.saveToDisk": "text/csv,application/csv,application/vnd.ms-excel,application/excel,application/x-excel,application/x-msexcel,text/comma-separated-values,application/octet-stream,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            "browser.download.manager.useWindow": False,
-            "browser.download.manager.focusWhenStarting": False,
-            "browser.download.manager.closeWhenDone": True,
-            "browser.download.manager.showAlertOnComplete": False,
-            "browser.download.manager.useWindow": False,
-            "browser.helperApps.alwaysAsk.force": False
-        }
-        chrome_options.add_experimental_option("prefs", prefs)
-        
-        # Disable the "Save As" dialog for downloads
-        chrome_options.add_experimental_option("excludeSwitches", ["enable-automation", "enable-logging"])
+        try:
+            # Start Playwright
+            self.playwright = sync_playwright().start()
+            logger.info("Started Playwright")
+            
+            # Set browser options
+            browser_type = self.playwright.chromium
+            
+            # Launch the browser with appropriate options
+            self.browser = browser_type.launch(
+                headless=not self.debug_mode,
+                downloads_path=download_dir_abs,
+                args=[
+                    "--no-sandbox",
+                    "--disable-dev-shm-usage",
+                    "--disable-gpu",
+                    "--disable-extensions",
+                    "--disable-popup-blocking",
+                    "--window-size=1920,1080"
+                ]
+            )
+            logger.info("Launched browser")
+            
+            # Create a new context with download options
+            self.context = self.browser.new_context(
+                accept_downloads=True,
+                viewport={"width": 1920, "height": 1080},
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            )
+            logger.info("Created browser context")
+            
+            # Create a new page
+            self.page = self.context.new_page()
+            logger.info("Created page")
+            
+            # Set default timeout
+            self.page.set_default_timeout(60000)  # 60 seconds
+            
+            logger.info("Playwright browser setup complete")
+            return True
+        except Exception as e:
+            logger.error(f"Error setting up Playwright browser: {e}")
+            self.cleanup_browser()
+            return False
+    
+    def cleanup_browser(self):
+        """Clean up Playwright resources"""
+        logger.info("Cleaning up Playwright resources")
+        try:
+            if self.page:
+                logger.info("Closing page")
+                self.page.close()
+                self.page = None
+        except Exception as e:
+            logger.error(f"Error closing page: {e}")
         
         try:
-            # Try using ChromeDriverManager
-            logging.info("Attempting to use ChromeDriverManager")
-            service = Service(ChromeDriverManager().install())
-            driver = webdriver.Chrome(service=service, options=chrome_options)
-            
-            # Set download behavior for headless mode
-            if not self.debug_mode:
-                params = {
-                    'behavior': 'allow',
-                    'downloadPath': download_dir_abs
-                }
-                try:
-                    driver.execute_cdp_cmd('Page.setDownloadBehavior', params)
-                    logger.info("Set download behavior for headless mode")
-                except Exception as e:
-                    logger.warning(f"Could not set CDP download behavior: {e}")
-            
-            # Set page load timeout and script timeout
-            driver.set_page_load_timeout(60)  # 60 seconds timeout for page load
-            driver.set_script_timeout(60)     # 60 seconds timeout for scripts
-            
-            logger.info("WebDriver setup complete")
-            return driver
+            if self.context:
+                logger.info("Closing context")
+                self.context.close()
+                self.context = None
         except Exception as e:
-            logging.error(f"Error with ChromeDriverManager: {str(e)}")
-            try:
-                # Fallback to default Chrome installation
-                logging.info("Falling back to default Chrome installation")
-                driver = webdriver.Chrome(options=chrome_options)
-                
-                # Set download behavior for headless mode
-                if not self.debug_mode:
-                    params = {
-                        'behavior': 'allow',
-                        'downloadPath': download_dir_abs
-                    }
-                    try:
-                        driver.execute_cdp_cmd('Page.setDownloadBehavior', params)
-                        logger.info("Set download behavior for headless mode")
-                    except Exception as e:
-                        logger.warning(f"Could not set CDP download behavior: {e}")
-                
-                return driver
-            except Exception as e2:
-                logging.error(f"Error with default Chrome installation: {str(e2)}")
-                # Log error and return None to handle in the calling method
-                logging.error("Could not initialize Chrome WebDriver. Please ensure Chrome is installed and up to date.")
-                return None
+            logger.error(f"Error closing context: {e}")
+        
+        try:
+            if self.browser:
+                logger.info("Closing browser")
+                self.browser.close()
+                self.browser = None
+        except Exception as e:
+            logger.error(f"Error closing browser: {e}")
+        
+        try:
+            if self.playwright:
+                logger.info("Stopping playwright")
+                self.playwright.stop()
+                self.playwright = None
+        except Exception as e:
+            logger.error(f"Error stopping playwright: {e}")
     
     def parse_date(self, date_str):
         """Parse date string into datetime object"""
@@ -257,369 +249,178 @@ class AcquisitionGatewayScraper:
         except ValueError:
             return 0
     
-    def download_csv(self, driver):
-        """Click the Export CSV button and download the file"""
+    def download_csv(self):
+        """Download the CSV file from the Acquisition Gateway Forecast site"""
+        logger.info("Attempting to download the CSV file from the Acquisition Gateway Forecast site")
+        
+        # Check if we have a valid file using the download tracker
+        if download_tracker.verify_file_exists("Acquisition Gateway Forecast", "*.csv"):
+            # Get the downloads directory
+            download_dir = DOWNLOADS_DIR
+            
+            # Find the matching files
+            matching_files = list(pathlib.Path(download_dir).glob("*.csv"))
+            
+            if matching_files:
+                # Sort by modification time (most recent first)
+                matching_files.sort(key=os.path.getmtime, reverse=True)
+                latest_file = str(matching_files[0])
+                
+                # Check if the file is recent enough (within the configured freshness period)
+                if os.path.getmtime(latest_file) > time.time() - FILE_FRESHNESS_SECONDS:
+                    logger.info(f"Found existing CSV file, using it instead of downloading again: {latest_file}")
+                    return latest_file
+        
         try:
-            # Wait for the page to fully load
-            logger.info("Waiting for page to fully load")
-            time.sleep(15)  # Give the page more time to stabilize
+            # Navigate to the base URL
+            logger.info(f"Navigating to {self.base_url}")
+            self.page.goto(self.base_url, wait_until="networkidle", timeout=PAGE_NAVIGATION_TIMEOUT)
             
-            # Clear any existing CSV files in the downloads directory
-            downloads_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'data', 'downloads')
-            existing_csv_files = glob.glob(os.path.join(downloads_dir, "*.csv"))
-            for file in existing_csv_files:
-                try:
-                    logger.info(f"Removing existing CSV file: {file}")
-                    os.remove(file)
-                except Exception as e:
-                    logger.warning(f"Could not remove existing CSV file {file}: {e}")
+            # Wait for the page to load
+            logger.info("Waiting for page to load")
+            self.page.wait_for_selector("body", state="visible", timeout=PAGE_ELEMENT_TIMEOUT)
             
-            # Try to find any table data on the page first
-            logger.info("Looking for table data on the page")
-            tables = driver.find_elements(By.TAG_NAME, "table")
-            if tables:
-                logger.info(f"Found {len(tables)} tables on the page")
-                
-                # Try to find a direct download link first
-                logger.info("Looking for direct download links")
-                download_links = driver.find_elements(By.XPATH, "//a[contains(@href, '.csv') or contains(@href, 'download') or contains(@href, 'export')]")
-                if download_links:
-                    logger.info(f"Found {len(download_links)} potential download links")
-                    for link in download_links:
-                        try:
-                            href = link.get_attribute('href')
-                            logger.info(f"Found download link with href: {href}")
-                            
-                            # Try to download directly
-                            logger.info(f"Navigating to download link: {href}")
-                            
-                            # Open in a new tab to avoid losing the main page
-                            driver.execute_script("window.open(arguments[0]);", href)
-                            
-                            # Switch back to the main tab
-                            driver.switch_to.window(driver.window_handles[0])
-                            
-                            # Wait a bit for the download to start
-                            time.sleep(5)
-                            
-                            # Check if any files were downloaded
-                            csv_files = glob.glob(os.path.join(downloads_dir, "*.csv"))
-                            if csv_files:
-                                new_file = max(csv_files, key=os.path.getmtime)
-                                logger.info(f"Successfully downloaded file via direct link: {new_file}")
-                                
-                                # Update the download tracker
-                                download_tracker.set_last_download_time(self.source_name)
-                                logger.info(f"Updated download timestamp for {self.source_name}")
-                                
-                                return new_file
-                        except Exception as e:
-                            logger.warning(f"Error trying download link: {e}")
+            # Take a screenshot for debugging
+            screenshot_path = os.path.join(LOGS_DIR, f'acquisition_gateway_initial_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.png')
+            self.page.screenshot(path=screenshot_path)
+            logger.info(f"Initial page screenshot saved to {screenshot_path}")
             
-            # Fallback: Try to scrape the table data directly if we can't find a download button
-            logger.info("Attempting to scrape table data directly as a fallback")
+            # Wait for the table to load
+            logger.info("Waiting for the table to load")
             try:
-                tables = driver.find_elements(By.TAG_NAME, "table")
-                if tables:
-                    logger.info(f"Found {len(tables)} tables for direct scraping")
-                    
-                    # Use the first table (most likely the main data table)
-                    main_table = tables[0]
-                    
-                    # Get all rows
-                    rows = main_table.find_elements(By.TAG_NAME, "tr")
-                    logger.info(f"Found {len(rows)} rows in the table")
-                    
-                    if rows:
-                        # Create a CSV file manually
-                        csv_filename = os.path.join(downloads_dir, f"scraped_data_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv")
-                        
-                        with open(csv_filename, 'w', newline='', encoding='utf-8') as csvfile:
-                            csv_writer = csv.writer(csvfile)
-                            
-                            # Process each row
-                            for row in rows:
-                                # Get all cells in the row
-                                cells = row.find_elements(By.TAG_NAME, "td")
-                                
-                                # If no td cells (might be header), try th
-                                if not cells:
-                                    cells = row.find_elements(By.TAG_NAME, "th")
-                                
-                                # Extract text from each cell
-                                row_data = [cell.text.strip() for cell in cells]
-                                
-                                # Write to CSV
-                                if row_data:  # Only write non-empty rows
-                                    csv_writer.writerow(row_data)
-                        
-                        logger.info(f"Successfully created CSV from table data: {csv_filename}")
-                        return csv_filename
-            except Exception as e:
-                logger.warning(f"Failed to scrape table directly: {e}")
+                self.page.wait_for_selector("table", timeout=TABLE_LOAD_TIMEOUT, state="visible")
+                logger.info("Table loaded successfully")
+            except PlaywrightTimeoutError:
+                logger.warning("Table did not load within timeout, continuing anyway")
             
-            # Based on our analysis, we know the exact button to target
-            export_button = None
+            # Save the page HTML for analysis
+            html_path = os.path.join(LOGS_DIR, f'acquisition_gateway_page_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.html')
+            with open(html_path, 'w', encoding='utf-8') as f:
+                f.write(self.page.content())
+            logger.info(f"Saved page HTML to {html_path} for analysis")
             
-            # Try multiple approaches to find the export button
-            button_finders = [
-                # Method 1: By ID
-                lambda: driver.find_element(By.ID, "export-0"),
-                
-                # Method 2: By class and text
-                lambda: next((b for b in driver.find_elements(By.CLASS_NAME, "ag-button") if "Export CSV" in b.text), None),
-                
-                # Method 3: By XPath containing Export CSV text
-                lambda: driver.find_element(By.XPATH, "//button[contains(text(), 'Export CSV')]"),
-                
-                # Method 4: By XPath for any button containing Export
-                lambda: driver.find_element(By.XPATH, "//button[contains(text(), 'Export')]"),
-                
-                # Method 5: By XPath for any element containing Export CSV
-                lambda: driver.find_element(By.XPATH, "//*[contains(text(), 'Export CSV')]"),
-                
-                # Method 6: By XPath for any link containing Export
-                lambda: driver.find_element(By.XPATH, "//a[contains(text(), 'Export')]"),
-                
-                # Method 7: By XPath for any element with download attribute
-                lambda: driver.find_element(By.XPATH, "//*[@download]"),
-                
-                # Method 8: By XPath for any element with href containing csv
-                lambda: driver.find_element(By.XPATH, "//a[contains(@href, 'csv')]"),
-                
-                # Method 9: By XPath for any button
-                lambda: next((b for b in driver.find_elements(By.TAG_NAME, "button") if "export" in b.text.lower() or "csv" in b.text.lower() or "download" in b.text.lower()), None),
-                
-                # Method 10: By XPath for any link that might be a download
-                lambda: next((a for a in driver.find_elements(By.TAG_NAME, "a") if "export" in a.text.lower() or "csv" in a.text.lower() or "download" in a.text.lower()), None),
-                
-                # Method 11: By class name containing export or download
-                lambda: next((e for e in driver.find_elements(By.XPATH, "//*[contains(@class, 'export') or contains(@class, 'download')]")), None),
-                
-                # Method 12: By aria-label
-                lambda: driver.find_element(By.XPATH, "//*[@aria-label='Export' or @aria-label='Download' or @aria-label='Export CSV']"),
+            # Look specifically for the "Export CSV" button
+            logger.info("Looking for the 'Export CSV' button")
+            
+            # Try various selectors that might match the Export CSV button
+            export_selectors = [
+                "button:has-text('Export CSV')",
+                "button:has-text('Export')",
+                "button.usa-button:has-text('Export')",
+                "button.export-button",
+                "[aria-label='Export CSV']",
+                "[aria-label='Export']",
+                "[title='Export CSV']",
+                "[title='Export']",
+                "button.usa-button",  # Try any USA button
+                "button.ag-button",   # Try any AG button
+                "button.download-button",
+                "button.csv-button"
             ]
             
-            # Try each method until we find the button
-            for i, finder in enumerate(button_finders):
-                try:
-                    logger.info(f"Trying button finder method {i+1}")
-                    result = finder()
-                    if result:
-                        export_button = result
-                        logger.info(f"Found Export button using method {i+1}")
-                        
+            export_button = None
+            for selector in export_selectors:
+                logger.info(f"Trying selector: {selector}")
+                buttons = self.page.query_selector_all(selector)
+                for button in buttons:
+                    text = button.inner_text().strip()
+                    logger.info(f"Found button with text: '{text}'")
+                    if "export" in text.lower() or "csv" in text.lower() or "download" in text.lower():
+                        export_button = button
+                        logger.info(f"Found export button with text: '{text}'")
                         break
-                except Exception as e:
-                    logger.info(f"Button finder method {i+1} failed: {str(e)}")
-            
-            # If we still couldn't find the button, try to get page source for debugging
-            if not export_button:
-                try:
-                    # Log the page source for debugging
-                    page_source = driver.page_source
-                    logger.info("Page source for debugging:")
-                    logger.info(page_source[:1000] + "..." if len(page_source) > 1000 else page_source)
-                    
-                    # Take a screenshot if possible
-                    try:
-                        screenshot_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'logs', f'screenshot_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.png')
-                        driver.save_screenshot(screenshot_path)
-                        logger.info(f"Saved screenshot to {screenshot_path}")
-                    except Exception as e:
-                        logger.warning(f"Could not save screenshot: {e}")
-                    
-                    logger.error("Could not find Export CSV button")
-                    return None
-                except Exception as e:
-                    logger.error(f"Error getting page source: {e}")
-                    logger.error("Could not find Export CSV button")
-                    return None
-            
-            # Check if the button is a link with href
-            href = None
-            try:
-                href = export_button.get_attribute('href')
-                if href:
-                    logger.info(f"Export button is a link with href: {href}")
-            except:
-                pass
-            
-            # If it's a link with href, try to download directly
-            if href:
-                try:
-                    logger.info(f"Navigating to download link: {href}")
-                    
-                    # Open in a new tab to avoid losing the main page
-                    driver.execute_script("window.open(arguments[0]);", href)
-                    
-                    # Switch back to the main tab
-                    driver.switch_to.window(driver.window_handles[0])
-                    
-                    # Wait a bit for the download to start
-                    time.sleep(5)
-                    
-                    # Check if any files were downloaded
-                    csv_files = glob.glob(os.path.join(downloads_dir, "*.csv"))
-                    if csv_files:
-                        new_file = max(csv_files, key=os.path.getmtime)
-                        logger.info(f"Successfully downloaded file via href: {new_file}")
-                        
-                        # Update the download tracker
-                        download_tracker.set_last_download_time(self.source_name)
-                        logger.info(f"Updated download timestamp for {self.source_name}")
-                        
-                        return new_file
-                except Exception as e:
-                    logger.warning(f"Error navigating to href: {e}")
-            
-            # Click the export button
-            logger.info("Clicking Export CSV button")
-            try:
-                # Scroll the button into view
-                driver.execute_script("arguments[0].scrollIntoView(true);", export_button)
-                time.sleep(2)
-                
-                # Try regular click
-                export_button.click()
-                logger.info("Clicked Export CSV button")
-            except ElementClickInterceptedException:
-                logger.info("Click intercepted, trying JavaScript click")
-                driver.execute_script("arguments[0].click();", export_button)
-                logger.info("Used JavaScript to click Export CSV button")
-            except Exception as e:
-                logger.error(f"Error clicking Export CSV button: {str(e)}")
-                return None
-            
-            # Wait for the download to complete
-            logger.info("Waiting for download to complete")
-            time.sleep(10)  # Give time for the download to start
-            
-            # Check the downloads directory for new CSV files
-            downloads_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'data', 'downloads')
-            
-            # Wait for new files to appear (up to 60 seconds)
-            max_wait = 60
-            wait_time = 0
-            new_file = None
-            
-            while wait_time < max_wait:
-                # Get current list of CSV files
-                csv_files = glob.glob(os.path.join(downloads_dir, "*.csv"))
-                
-                if csv_files:
-                    # Get the most recently modified file
-                    new_file = max(csv_files, key=os.path.getmtime)
-                    logger.info(f"Found CSV file: {new_file}")
+                if export_button:
                     break
-                
-                # Wait and check again
-                time.sleep(5)
-                wait_time += 5
-                logger.info(f"Waiting for download... ({wait_time}s)")
             
-            if not new_file:
-                # Check for other file types that might have been downloaded instead
-                for ext in ['.xlsx', '.xls', '.txt']:
-                    other_files = glob.glob(os.path.join(downloads_dir, f"*{ext}"))
-                    if other_files:
-                        new_file = max(other_files, key=os.path.getmtime)
-                        logger.info(f"Found non-CSV file: {new_file}")
-                        
-                        # If it's an Excel file, we can convert it to CSV
-                        if ext in ['.xlsx', '.xls']:
-                            try:
-                                import pandas as pd
-                                logger.info(f"Converting Excel file to CSV: {new_file}")
-                                df = pd.read_excel(new_file)
-                                csv_path = os.path.splitext(new_file)[0] + '.csv'
-                                df.to_csv(csv_path, index=False)
-                                logger.info(f"Converted Excel file to CSV: {csv_path}")
-                                new_file = csv_path
-                            except Exception as e:
-                                logger.error(f"Error converting Excel to CSV: {e}")
-                        break
+            if not export_button:
+                # Try to find any buttons on the page and log their text
+                logger.info("No export button found with specific selectors, checking all buttons")
+                all_buttons = self.page.query_selector_all("button")
+                logger.info(f"Found {len(all_buttons)} buttons on the page")
+                for i, button in enumerate(all_buttons):
+                    try:
+                        text = button.inner_text().strip()
+                        logger.info(f"Button {i+1}: '{text}'")
+                        if "export" in text.lower() or "csv" in text.lower() or "download" in text.lower():
+                            export_button = button
+                            logger.info(f"Found potential export button with text: '{text}'")
+                            break
+                    except Exception as e:
+                        logger.warning(f"Could not get text for button {i+1}: {e}")
             
-            if not new_file:
-                logger.error("No files found in downloads directory after export attempt")
-                
-                # As a last resort, try to extract table data directly
+            if not export_button:
+                # Take a screenshot for debugging
+                screenshot_path = os.path.join(LOGS_DIR, f'acquisition_gateway_no_export_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.png')
+                self.page.screenshot(path=screenshot_path)
+                logger.error(f"Could not find any export buttons. Screenshot saved to {screenshot_path}")
+                return None
+            
+            # Click the export button and wait for download
+            logger.info(f"Clicking the export button")
+            
+            # Get the downloads directory
+            download_dir = DOWNLOADS_DIR
+            
+            # Start waiting for the download with the configured timeout
+            with self.page.expect_download(timeout=DOWNLOAD_TIMEOUT) as download_info:
                 try:
-                    logger.info("Attempting to extract table data directly as CSV")
-                    tables = driver.find_elements(By.TAG_NAME, "table")
-                    if tables:
-                        largest_table = None
-                        max_rows = 0
-                        
-                        for table in tables:
-                            rows = table.find_elements(By.TAG_NAME, "tr")
-                            if len(rows) > max_rows:
-                                max_rows = len(rows)
-                                largest_table = table
-                        
-                        if largest_table and max_rows > 1:
-                            logger.info(f"Found table with {max_rows} rows, extracting to CSV")
-                            
-                            # Extract headers
-                            headers = []
-                            header_row = largest_table.find_elements(By.TAG_NAME, "th")
-                            if not header_row:
-                                # Try first row as header if no th elements
-                                rows = largest_table.find_elements(By.TAG_NAME, "tr")
-                                if rows:
-                                    header_row = rows[0].find_elements(By.TAG_NAME, "td")
-                            
-                            for header in header_row:
-                                headers.append(header.text.strip())
-                            
-                            # Extract data rows
-                            data_rows = []
-                            rows = largest_table.find_elements(By.TAG_NAME, "tr")
-                            
-                            for row_idx, row in enumerate(rows):
-                                # Skip header row
-                                if row_idx == 0:
-                                    continue
-                                
-                                cells = row.find_elements(By.TAG_NAME, "td")
-                                if cells:
-                                    row_data = []
-                                    for cell in cells:
-                                        row_data.append(cell.text.strip())
-                                    data_rows.append(row_data)
-                            
-                            # Create a CSV file from the extracted data
-                            csv_path = os.path.join(downloads_dir, f"extracted_table_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv")
-                            with open(csv_path, 'w', newline='', encoding='utf-8') as f:
-                                writer = csv.writer(f)
-                                writer.writerow(headers)
-                                writer.writerows(data_rows)
-                            
-                            logger.info(f"Created CSV file from table data: {csv_path}")
-                            
-                            # Update the download tracker
-                            download_tracker.set_last_download_time(self.source_name)
-                            logger.info(f"Updated download timestamp for {self.source_name}")
-                            
-                            return csv_path
+                    # Click the export button
+                    export_button.click()
+                    logger.info("Clicked export button, waiting for download to start")
                 except Exception as e:
-                    logger.error(f"Error extracting table data: {e}")
+                    logger.error(f"Error clicking export button: {e}")
+                    return None
+            
+            try:
+                # Get the download object
+                download = download_info.value
+                logger.info(f"Download started: {download.suggested_filename}")
                 
+                # Wait for the download to complete and save to the downloads directory
+                download_path = os.path.join(download_dir, download.suggested_filename)
+                download.save_as(download_path)
+                logger.info(f"Download completed and saved to: {download_path}")
+                
+                # Update the download tracker
+                download_tracker.set_last_download_time("Acquisition Gateway Forecast")
+                
+                # Return the path to the downloaded file
+                return download_path
+            except Exception as e:
+                logger.error(f"Error handling download: {e}")
+                
+                # Try a fallback approach if the download fails
+                logger.info("Trying fallback approach to detect downloaded file")
+                
+                # Get list of files before and after a short wait
+                before_files = set(os.listdir(download_dir))
+                time.sleep(10)  # Wait a bit more for any potential downloads
+                after_files = set(os.listdir(download_dir))
+                new_files = after_files - before_files
+                
+                if new_files:
+                    new_file = os.path.join(download_dir, list(new_files)[0])
+                    logger.info(f"Found new file using fallback method: {new_file}")
+                    
+                    # Update the download tracker
+                    download_tracker.set_last_download_time("Acquisition Gateway Forecast")
+                    
+                    return new_file
+                
+                logger.error("No download detected even with fallback method")
                 return None
-            
-            # Verify the file is not empty
-            if os.path.getsize(new_file) == 0:
-                logger.error(f"Downloaded file is empty: {new_file}")
-                return None
-            
-            # Update the download tracker
-            download_tracker.set_last_download_time(self.source_name)
-            logger.info(f"Updated download timestamp for {self.source_name}")
-            
-            return new_file
             
         except Exception as e:
-            logger.error(f"Error downloading CSV: {str(e)}")
+            logger.error(f"Error downloading CSV file: {e}")
+            
+            # Take a screenshot for debugging
+            try:
+                screenshot_path = os.path.join(LOGS_DIR, f'acquisition_gateway_error_screenshot_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.png')
+                self.page.screenshot(path=screenshot_path)
+                logger.error(f"Error screenshot saved to {screenshot_path}")
+            except Exception as screenshot_error:
+                logger.error(f"Could not take error screenshot: {screenshot_error}")
+                
             return None
     
     def process_csv(self, csv_file, session, data_source):
@@ -653,11 +454,10 @@ class AcquisitionGatewayScraper:
                 return self.process_excel(csv_file, session, data_source)
             
             # Process CSV file
-            # Try different encodings if needed
-            encodings = ['utf-8', 'latin-1', 'cp1252']
+            # Try different encodings from the configuration
             csv_data = None
             
-            for encoding in encodings:
+            for encoding in CSV_ENCODINGS:
                 try:
                     with open(csv_file, 'r', encoding=encoding) as f:
                         # Read the first few lines to check the format
@@ -1183,66 +983,71 @@ class AcquisitionGatewayScraper:
             return 0
     
     def scrape(self):
-        """Main scraping function"""
-        logger.info("Starting scrape")
+        """Scrape the Acquisition Gateway Forecast site"""
+        logger.info("Starting Acquisition Gateway Forecast scraper")
         
-        # Set up the driver
-        driver = None
         try:
-            driver = self.setup_driver()
-            
-            # Get a database session
-            session = get_session()
-            
-            # Check if the data source exists
-            data_source = session.query(DataSource).filter(DataSource.name == self.source_name).first()
-            
-            # If the data source doesn't exist, create it
-            if not data_source:
-                logger.info(f"Creating new data source: {self.source_name}")
-                data_source = DataSource(
-                    name=self.source_name,
-                    url=self.base_url,
-                    description="Acquisition Gateway data source"
-                )
-                session.add(data_source)
-                session.commit()
-            
-            # Download the CSV
-            csv_file = self.download_csv(driver)
-            
-            if not csv_file:
-                logger.error("Failed to download CSV")
-                close_session(session)
-                if driver:
-                    driver.quit()
+            # Set up the browser
+            if not self.setup_browser():
+                logger.error("Failed to set up browser")
                 return False
             
-            # Process the CSV
-            proposals_added = self.process_csv(csv_file, session, data_source)
+            # Use the session context manager to ensure proper cleanup
+            with session_scope() as session:
+                # Get or create the data source
+                data_source = session.query(DataSource).filter_by(name=self.source_name).first()
+                if not data_source:
+                    data_source = DataSource(name=self.source_name)
+                    session.add(data_source)
+                    session.commit()
+                
+                # Download the CSV file
+                csv_file = self.download_csv()
+                
+                if not csv_file:
+                    logger.warning("Could not download CSV file from the website. This might be due to authentication requirements or site issues.")
+                    
+                    # Check if we have any existing CSV files we can use
+                    download_dir = DOWNLOADS_DIR
+                    csv_files = list(pathlib.Path(download_dir).glob("*.csv"))
+                    
+                    if csv_files:
+                        # Sort by modification time (most recent first)
+                        csv_files.sort(key=os.path.getmtime, reverse=True)
+                        latest_file = str(csv_files[0])
+                        logger.info(f"Using most recent CSV file: {latest_file}")
+                        
+                        # Process the CSV file
+                        logger.info(f"Processing CSV file: {latest_file}")
+                        self.process_csv(latest_file, session, data_source)
+                        
+                        # Clean up the browser
+                        self.cleanup_browser()
+                        
+                        return True
+                    else:
+                        logger.error("No CSV files found in the downloads directory")
+                        self.cleanup_browser()
+                        return False
+                
+                # Process the CSV file
+                logger.info(f"Processing CSV file: {csv_file}")
+                self.process_csv(csv_file, session, data_source)
+                
+                # Update the last scraped timestamp
+                data_source.last_scraped = datetime.datetime.utcnow()
             
-            # Update the last scraped timestamp
-            data_source.last_scraped = datetime.datetime.utcnow()
-            session.commit()
-            
-            # Update the download tracker
-            download_tracker.set_last_download_time(self.source_name)
-            
-            logger.info(f"Scrape completed. Added {proposals_added} proposals.")
-            
-            # Close the session
-            close_session(session)
+            # Clean up the browser
+            self.cleanup_browser()
             
             return True
-            
         except Exception as e:
-            logger.error(f"Error during scrape: {e}")
-            return False
+            logger.error(f"Error scraping Acquisition Gateway Forecast: {e}")
             
-        finally:
             # Clean up
-            if driver:
-                driver.quit()
+            self.cleanup_browser()
+            
+            return False
 
 def check_last_download():
     """Check if a CSV file has been downloaded within the last 24 hours"""
@@ -1256,7 +1061,7 @@ def check_last_download():
             return False
         
         # Also verify that we have valid CSV files
-        downloads_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'data', 'downloads')
+        downloads_dir = DOWNLOADS_DIR
         csv_files = glob.glob(os.path.join(downloads_dir, "*.csv"))
         
         if not csv_files:

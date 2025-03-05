@@ -7,11 +7,21 @@ from flask import Flask, render_template, request, jsonify
 from dotenv import load_dotenv
 from sqlalchemy import func
 import logging
+from logging.handlers import RotatingFileHandler
 
 # Set up logging
+log_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'logs')
+os.makedirs(log_dir, exist_ok=True)
+log_file = os.path.join(log_dir, 'app.log')
+
+# Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        RotatingFileHandler(log_file, maxBytes=1024*1024, backupCount=5),
+        logging.StreamHandler()
+    ]
 )
 logger = logging.getLogger(__name__)
 
@@ -19,7 +29,7 @@ logger = logging.getLogger(__name__)
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from src.database.db import get_session, close_session, engine, Session, dispose_engine
-from src.database.models import Proposal, DataSource
+from src.database.models import Proposal, DataSource, ScraperStatus
 from src.scrapers.acquisition_gateway import run_scraper as run_acquisition_gateway_scraper
 from src.scrapers.ssa_contract_forecast import run_scraper as run_ssa_contract_forecast_scraper
 from src.database.init_db import init_database
@@ -63,6 +73,9 @@ def create_app():
             sort_by = request.args.get("sort_by", "release_date")
             sort_order = request.args.get("sort_order", "desc")
             
+            # Get NAICS codes filter (can be multiple)
+            naics_codes = request.args.getlist("naics_codes[]")
+            
             # Check if we should only get the latest proposals
             only_latest = request.args.get("only_latest", "true").lower() == "true"
             
@@ -78,6 +91,10 @@ def create_app():
             
             if status:
                 query = query.filter(Proposal.status == status)
+            
+            # Apply NAICS codes filter if provided
+            if naics_codes:
+                query = query.filter(Proposal.naics_code.in_(naics_codes))
             
             if search:
                 search_term = f"%{search}%"
@@ -176,9 +193,13 @@ def create_app():
             # Get unique statuses
             statuses = [r[0] for r in session.query(Proposal.status).distinct().all() if r[0]]
             
+            # Get unique NAICS codes
+            naics_codes = [r[0] for r in session.query(Proposal.naics_code).distinct().all() if r[0]]
+            
             return jsonify({
                 "agencies": agencies,
-                "statuses": statuses
+                "statuses": statuses,
+                "naics_codes": naics_codes
             })
         
         finally:
@@ -190,10 +211,9 @@ def create_app():
         # Get the current timestamp before refresh
         current_time = datetime.datetime.utcnow()
         
-        # Run the scraper in a background thread
-        thread = threading.Thread(target=run_acquisition_gateway_scraper)
-        thread.daemon = True
-        thread.start()
+        # Use Celery to run the task asynchronously
+        from src.tasks.scraper_tasks import run_all_scrapers_task
+        task = run_all_scrapers_task.delay()
         
         # Update all data sources with the current timestamp to prevent false update notifications
         session = get_session()
@@ -210,7 +230,8 @@ def create_app():
         return jsonify({
             "status": "success", 
             "message": "Data refresh initiated",
-            "timestamp": current_time.isoformat()
+            "timestamp": current_time.isoformat(),
+            "task_id": task.id
         })
     
     @app.route("/api/rebuild-db", methods=["POST"])
@@ -287,14 +308,75 @@ def create_app():
             }), 500
     
     @app.route("/api/init-db", methods=["POST"])
-    def initialize_db():
+    def init_db():
         """API endpoint to initialize the database"""
-        # Run the database initialization in a background thread
-        thread = threading.Thread(target=init_database)
-        thread.daemon = True
-        thread.start()
-        
-        return jsonify({"status": "success", "message": "Database initialization initiated"})
+        try:
+            logger.info("Starting database initialization...")
+            
+            # Get the database path
+            database_url = os.getenv("DATABASE_URL", "sqlite:///data/proposals.db")
+            db_path = database_url.replace("sqlite:///", "")
+            logger.info(f"Database path: {db_path}")
+            
+            # Ensure the data directory exists
+            data_dir = os.path.dirname(db_path)
+            if not os.path.exists(data_dir):
+                os.makedirs(data_dir)
+                logger.info(f"Created data directory: {data_dir}")
+            
+            # Check if database exists
+            if os.path.exists(db_path):
+                logger.info("Existing database found, attempting to close connections...")
+                # Close any existing connections
+                try:
+                    Session.remove()
+                    dispose_engine()
+                    logger.info("Successfully closed database connections")
+                except Exception as e:
+                    logger.warning(f"Error closing database connections: {e}")
+                
+                # Delete the existing database
+                try:
+                    os.remove(db_path)
+                    logger.info(f"Removed existing database: {db_path}")
+                except Exception as e:
+                    error_msg = f"Error removing existing database: {str(e)}"
+                    logger.error(error_msg)
+                    return jsonify({
+                        "success": False,
+                        "error": error_msg
+                    }), 500
+            
+            # Initialize the database
+            try:
+                logger.info("Calling init_database()...")
+                init_database()
+                logger.info("Database initialized successfully")
+                return jsonify({
+                    "success": True,
+                    "message": "Database initialized successfully"
+                })
+            except Exception as e:
+                error_msg = f"Error during database initialization: {str(e)}"
+                logger.error(error_msg)
+                # Log the full traceback for debugging
+                import traceback
+                logger.error(f"Traceback: {traceback.format_exc()}")
+                return jsonify({
+                    "success": False,
+                    "error": error_msg
+                }), 500
+            
+        except Exception as e:
+            error_msg = f"Unexpected error during database initialization: {str(e)}"
+            logger.error(error_msg)
+            # Log the full traceback for debugging
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            return jsonify({
+                "success": False,
+                "error": error_msg
+            }), 500
     
     @app.route("/api/stats")
     def get_stats():
@@ -466,27 +548,16 @@ def create_app():
                 close_session(session)
                 return jsonify({"success": False, "message": "Data source not found"}), 404
             
-            # Start the scraper in a separate thread
-            def run_scraper():
-                try:
-                    if data_source.name == "Acquisition Gateway Forecast":
-                        run_acquisition_gateway_scraper(force=True)
-                    elif data_source.name == "SSA Contract Forecast":
-                        run_ssa_contract_forecast_scraper(force=True)
-                    else:
-                        logger.error(f"Unknown data source: {data_source.name}")
-                except Exception as e:
-                    logger.error(f"Error running scraper: {e}")
-            
-            thread = threading.Thread(target=run_scraper)
-            thread.daemon = True
-            thread.start()
+            # Use Celery to run the task asynchronously
+            from src.tasks.scraper_tasks import force_collect_task
+            task = force_collect_task.delay(source_id)
             
             close_session(session)
             
             return jsonify({
                 "success": True,
-                "message": f"Started collecting data from {data_source.name}"
+                "message": f"Started collecting data from {data_source.name}",
+                "task_id": task.id
             })
             
         except Exception as e:
@@ -498,21 +569,14 @@ def create_app():
     def collect_from_all_sources():
         """Collect data from all sources"""
         try:
-            # Start the scrapers in separate threads
-            def run_scrapers():
-                try:
-                    run_acquisition_gateway_scraper(force=True)
-                    run_ssa_contract_forecast_scraper(force=True)
-                except Exception as e:
-                    logger.error(f"Error running scrapers: {e}")
-            
-            thread = threading.Thread(target=run_scrapers)
-            thread.daemon = True
-            thread.start()
+            # Use Celery to run all scrapers asynchronously
+            from src.tasks.scraper_tasks import run_all_scrapers_task
+            task = run_all_scrapers_task.delay()
             
             return jsonify({
                 "success": True,
-                "message": "Started collecting data from all sources"
+                "message": "Started collecting data from all sources",
+                "task_id": task.id
             })
             
         except Exception as e:
@@ -681,5 +745,98 @@ def create_app():
                 "status": "error",
                 "message": f"Error initiating reset: {str(e)}"
             }), 500
+    
+    @app.route("/api/scraper-health")
+    def get_scraper_health():
+        """Get the health status of all scrapers"""
+        session = get_session()
+        try:
+            # Join ScraperStatus with DataSource to get names
+            results = session.query(
+                DataSource.id,
+                DataSource.name,
+                ScraperStatus.status,
+                ScraperStatus.last_checked,
+                ScraperStatus.error_message,
+                ScraperStatus.response_time
+            ).outerjoin(
+                ScraperStatus, DataSource.id == ScraperStatus.source_id
+            ).all()
+            
+            # Format the results
+            status_data = []
+            for result in results:
+                status_data.append({
+                    "source_id": result[0],
+                    "source_name": result[1],
+                    "status": result[2] if result[2] else "unknown",
+                    "last_checked": result[3].isoformat() if result[3] else None,
+                    "error_message": result[4],
+                    "response_time": result[5]
+                })
+            
+            return jsonify({"success": True, "status": status_data})
+        except Exception as e:
+            logger.error(f"Error getting scraper health: {e}")
+            return jsonify({"success": False, "error": str(e)})
+        finally:
+            close_session(session)
+
+    @app.route("/api/scraper-health/check", methods=["POST"])
+    def run_health_checks():
+        """Run health checks on all scrapers"""
+        try:
+            # Use Celery to run the health checks asynchronously
+            from src.tasks.health_check_tasks import check_all_scrapers_task
+            task = check_all_scrapers_task.delay()
+            
+            return jsonify({
+                "success": True,
+                "message": "Health checks initiated",
+                "task_id": task.id
+            })
+        except Exception as e:
+            logger.error(f"Error initiating health checks: {e}")
+            return jsonify({
+                "success": False,
+                "error": str(e)
+            }), 500
+    
+    @app.route("/api/scraper-health/<int:source_id>", methods=["POST"])
+    def run_single_health_check(source_id):
+        """Run a health check for a specific scraper"""
+        session = get_session()
+        try:
+            # Get the data source
+            data_source = session.query(DataSource).filter_by(id=source_id).first()
+            if not data_source:
+                close_session(session)
+                return jsonify({"success": False, "error": "Data source not found"})
+            
+            # Use Celery to run the appropriate health check asynchronously
+            if data_source.name == "Acquisition Gateway Forecast":
+                from src.tasks.health_check_tasks import check_acquisition_gateway_task
+                task = check_acquisition_gateway_task.delay()
+            elif data_source.name == "SSA Contract Forecast":
+                from src.tasks.health_check_tasks import check_ssa_contract_forecast_task
+                task = check_ssa_contract_forecast_task.delay()
+            else:
+                close_session(session)
+                return jsonify({
+                    "success": False, 
+                    "error": f"No health check function for {data_source.name}"
+                })
+            
+            close_session(session)
+            
+            return jsonify({
+                "success": True, 
+                "message": f"Health check started for {data_source.name}",
+                "task_id": task.id
+            })
+        except Exception as e:
+            logger.error(f"Error starting health check: {e}")
+            close_session(session)
+            return jsonify({"success": False, "error": str(e)})
     
     return app 
