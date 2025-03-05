@@ -32,12 +32,18 @@ from src.config import (
     CSV_ENCODINGS, FILE_FRESHNESS_SECONDS, ACQUISITION_GATEWAY_URL,
     LOG_FORMAT, LOG_FILE_MAX_BYTES, LOG_FILE_BACKUP_COUNT
 )
+from src.utils.log_manager import cleanup_all_logs
 
 # Set up logging with a rotating file handler
 log_file = os.path.join(LOGS_DIR, 'acquisition_gateway.log')
 # Create a logger
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
+
+# Clear existing handlers to avoid duplicates
+if logger.handlers:
+    logger.handlers.clear()
+
 # Create handlers
 # RotatingFileHandler will rotate log files when they reach the configured size
 file_handler = RotatingFileHandler(log_file, maxBytes=LOG_FILE_MAX_BYTES, backupCount=LOG_FILE_BACKUP_COUNT)
@@ -1104,7 +1110,12 @@ def run_scraper(force=False):
             
             # Create and run the scraper
             scraper = AcquisitionGatewayScraper(debug_mode=os.getenv("DEBUG", "False").lower() == "true")
-            return scraper.scrape()
+            result = scraper.scrape()
+            
+            # Clean up old log files, keeping only the last 3
+            cleanup_all_logs(LOGS_DIR, keep_count=3)
+            
+            return result
         else:
             logger.info("Skipping scrape (recent download exists)")
             return True

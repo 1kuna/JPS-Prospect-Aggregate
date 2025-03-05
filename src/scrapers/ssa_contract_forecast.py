@@ -3,6 +3,7 @@ import sys
 import time
 import datetime
 import logging
+from logging.handlers import RotatingFileHandler
 import requests
 import csv
 import tempfile
@@ -20,35 +21,56 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
 from src.database.db import get_session, close_session
 from src.database.models import Proposal, DataSource
 from src.database.download_tracker import download_tracker
+from src.config import (
+    LOGS_DIR, DOWNLOADS_DIR, 
+    LOG_FORMAT, LOG_FILE_MAX_BYTES, LOG_FILE_BACKUP_COUNT,
+    SSA_CONTRACT_FORECAST_URL
+)
+from src.utils.log_manager import cleanup_all_logs
 
 # Create logs directory if it doesn't exist
-logs_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'logs')
-if not os.path.exists(logs_dir):
-    os.makedirs(logs_dir)
+if not os.path.exists(LOGS_DIR):
+    os.makedirs(LOGS_DIR, exist_ok=True)
 
 # Create downloads directory if it doesn't exist
-downloads_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'data', 'downloads')
-if not os.path.exists(downloads_dir):
-    os.makedirs(downloads_dir)
+if not os.path.exists(DOWNLOADS_DIR):
+    os.makedirs(DOWNLOADS_DIR, exist_ok=True)
 
-# Set up logging
-log_file = os.path.join(logs_dir, f'ssa_contract_forecast_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.log')
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler(log_file),
-        logging.StreamHandler()
-    ]
-)
+# Set up logging with a rotating file handler
+log_file = os.path.join(LOGS_DIR, 'ssa_contract_forecast.log')
+# Create a logger
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+# Clear existing handlers to avoid duplicates
+if logger.handlers:
+    logger.handlers.clear()
+
+# Create handlers
+# RotatingFileHandler will rotate log files when they reach the configured size
+file_handler = RotatingFileHandler(
+    log_file, 
+    maxBytes=LOG_FILE_MAX_BYTES, 
+    backupCount=LOG_FILE_BACKUP_COUNT
+)
+console_handler = logging.StreamHandler()
+
+# Create formatters and add them to handlers
+formatter = logging.Formatter(LOG_FORMAT)
+file_handler.setFormatter(formatter)
+console_handler.setFormatter(formatter)
+
+# Add handlers to the logger
+logger.addHandler(file_handler)
+logger.addHandler(console_handler)
+
 logger.info(f"Logging to {log_file}")
 
 class SSAContractForecastScraper:
     """Scraper for the SSA Contract Forecast site"""
     
     def __init__(self, debug_mode=False):
-        self.base_url = "https://www.ssa.gov/osdbu/contract-forecast-intro.html"
+        self.base_url = SSA_CONTRACT_FORECAST_URL
         self.source_name = "SSA Contract Forecast"
         self.debug_mode = debug_mode
         logger.info(f"Initializing scraper with debug_mode={debug_mode}")
@@ -297,7 +319,7 @@ class SSAContractForecastScraper:
             logger.info(f"Download started: {download.suggested_filename}")
             
             # Wait for the download to complete and save to the downloads directory
-            download_path = os.path.join(downloads_dir, download.suggested_filename)
+            download_path = os.path.join(DOWNLOADS_DIR, download.suggested_filename)
             download.save_as(download_path)
             logger.info(f"Download completed: {download_path}")
             
@@ -727,7 +749,12 @@ def run_scraper(force=False):
             
             # Create and run the scraper
             scraper = SSAContractForecastScraper(debug_mode=os.getenv("DEBUG", "False").lower() == "true")
-            return scraper.scrape()
+            result = scraper.scrape()
+            
+            # Clean up old log files, keeping only the last 3
+            cleanup_all_logs(LOGS_DIR, keep_count=3)
+            
+            return result
         else:
             logger.info(f"Skipping scrape (interval={scrape_interval_hours} hours)")
             return True

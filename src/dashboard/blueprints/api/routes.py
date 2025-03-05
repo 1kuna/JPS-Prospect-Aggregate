@@ -4,10 +4,15 @@ from flask import jsonify, request, current_app
 from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
 from . import api
-from src.database.db import session_scope
+from src.database.db import session_scope, get_session, close_session, Session, dispose_engine, reconnect
 from src.database.models import Proposal, DataSource, ScraperStatus
 import datetime
 from src.exceptions import ValidationError, ResourceNotFoundError, DatabaseError
+import os
+import glob
+import shutil
+import threading
+from src.database.init_db import init_database
 
 @api.route('/proposals')
 def get_proposals():
@@ -357,4 +362,300 @@ def get_statistics():
         return jsonify({"error": str(e)}), 500
     
     finally:
-        close_session(session) 
+        close_session(session)
+
+@api.route('/dashboard')
+def get_dashboard_data():
+    """API endpoint to get dashboard data."""
+    try:
+        with session_scope() as session:
+            # Get total number of proposals
+            total_proposals = session.query(Proposal).count()
+            
+            # Get number of active data sources
+            active_sources = session.query(DataSource).count()
+            
+            # Get last scrape time
+            last_scrape = session.query(func.max(DataSource.last_scraped)).scalar()
+            
+            # Get recent proposals (limit to 10)
+            recent_proposals = session.query(Proposal).order_by(Proposal.imported_at.desc()).limit(10).all()
+            
+            # Format the proposals
+            proposals_data = []
+            for p in recent_proposals:
+                proposals_data.append({
+                    "id": p.id,
+                    "title": p.title,
+                    "agency": p.agency,
+                    "source": p.source.name if p.source else None,
+                    "date": p.release_date.isoformat() if p.release_date else None,
+                    "status": p.status
+                })
+            
+            # Return the dashboard data
+            return jsonify({
+                "totalProposals": total_proposals,
+                "activeSources": active_sources,
+                "lastScrape": last_scrape.isoformat() if last_scrape else None,
+                "proposals": proposals_data
+            })
+            
+    except Exception as e:
+        current_app.logger.error(f"Error getting dashboard data: {e}")
+        return jsonify({
+            "status": "error",
+            "message": "Error loading proposals. Please try again."
+        }), 500
+
+@api.route('/data-sources')
+def get_data_sources():
+    """API endpoint to get all data sources."""
+    try:
+        with session_scope() as session:
+            # Get all data sources
+            sources = session.query(DataSource).all()
+            
+            # Format the data sources
+            sources_data = []
+            for s in sources:
+                # Get the latest scraper status for this source
+                status = session.query(ScraperStatus).filter(ScraperStatus.source_id == s.id).order_by(ScraperStatus.last_checked.desc()).first()
+                
+                # Get the count of proposals for this source
+                proposal_count = session.query(func.count(Proposal.id)).filter(Proposal.source_id == s.id).scalar()
+                
+                sources_data.append({
+                    "id": s.id,
+                    "name": s.name,
+                    "url": s.url,
+                    "description": s.description,
+                    "lastScraped": s.last_scraped.isoformat() if s.last_scraped else None,
+                    "status": status.status if status else "unknown",
+                    "proposalCount": proposal_count
+                })
+            
+            # Return the data sources
+            return jsonify(sources_data)
+            
+    except Exception as e:
+        current_app.logger.error(f"Error getting data sources: {e}")
+        return jsonify({
+            "status": "error",
+            "message": "Error loading data sources. Please try again."
+        }), 500
+
+@api.route('/init-db', methods=['POST'])
+def initialize_db():
+    """API endpoint to initialize the database."""
+    try:
+        # Run the database initialization in a background thread
+        def init_and_reconnect():
+            try:
+                # Initialize the database
+                current_app.logger.info("Starting database initialization process")
+                init_database()
+                
+                # Wait a moment for the initialization to complete
+                import time
+                time.sleep(2)
+                
+                # Try to reconnect to the database
+                reconnect()
+                current_app.logger.info("Database initialization completed successfully")
+            except Exception as e:
+                error_msg = f"Error during database initialization: {str(e)}"
+                current_app.logger.error(error_msg)
+                # Log the full traceback for debugging
+                import traceback
+                current_app.logger.error(f"Traceback: {traceback.format_exc()}")
+        
+        thread = threading.Thread(target=init_and_reconnect)
+        thread.daemon = True
+        thread.start()
+        
+        return jsonify({
+            "status": "success",
+            "message": "Database initialization started"
+        })
+    except Exception as e:
+        current_app.logger.error(f"Error starting initialization thread: {e}")
+        return jsonify({
+            "status": "error",
+            "message": f"Error starting initialization thread: {str(e)}"
+        }), 500
+
+@api.route('/database-backups')
+def get_database_backups():
+    """API endpoint to get all database backups."""
+    try:
+        # Get the database directory
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
+        db_dir = os.path.join(project_root, 'data')
+        
+        # Find all database backup files
+        backup_pattern = os.path.join(db_dir, 'proposals_backup_*.db')
+        backup_files = glob.glob(backup_pattern)
+        
+        # Sort files by modification time (newest first)
+        backup_files.sort(key=lambda x: os.path.getmtime(x), reverse=True)
+        
+        # Prepare the list of backups with details
+        backups = []
+        for backup in backup_files:
+            size_bytes = os.path.getsize(backup)
+            size_mb = size_bytes / (1024 * 1024)
+            mod_time = datetime.datetime.fromtimestamp(os.path.getmtime(backup))
+            backups.append({
+                'file': os.path.basename(backup),
+                'size': f"{size_mb:.2f} MB",
+                'created': mod_time.strftime("%Y-%m-%d %H:%M:%S")
+            })
+        
+        return jsonify({
+            "status": "success",
+            "backups": backups
+        })
+    except Exception as e:
+        current_app.logger.error(f"Error getting database backups: {e}")
+        return jsonify({
+            "status": "error",
+            "message": f"Error getting database backups: {str(e)}"
+        }), 500
+
+@api.route('/database-backups/cleanup', methods=['POST'])
+def cleanup_database_backups():
+    """API endpoint to clean up old database backups."""
+    try:
+        # Get the maximum number of backups to keep
+        data = request.get_json()
+        max_backups = data.get('max_backups', 5)
+        
+        # Validate the input
+        if not isinstance(max_backups, int) or max_backups < 1:
+            return jsonify({
+                "status": "error",
+                "message": "Invalid max_backups parameter. Must be a positive integer."
+            }), 400
+        
+        # Get the database directory
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
+        db_dir = os.path.join(project_root, 'data')
+        
+        # Find all database backup files
+        backup_pattern = os.path.join(db_dir, 'proposals_backup_*.db')
+        backup_files = glob.glob(backup_pattern)
+        
+        # Sort files by modification time (newest first)
+        backup_files.sort(key=lambda x: os.path.getmtime(x), reverse=True)
+        
+        # Keep only the specified number of most recent backups
+        files_to_delete = backup_files[max_backups:]
+        
+        # Delete old backups
+        for old_backup in files_to_delete:
+            try:
+                os.remove(old_backup)
+                current_app.logger.info(f"Deleted old backup: {old_backup}")
+            except Exception as e:
+                current_app.logger.warning(f"Could not delete old backup {old_backup}: {e}")
+        
+        # Get the updated list of backups
+        remaining_backup_files = glob.glob(backup_pattern)
+        remaining_backup_files.sort(key=lambda x: os.path.getmtime(x), reverse=True)
+        
+        # Prepare the list of remaining backups with details
+        backups = []
+        for backup in remaining_backup_files:
+            size_bytes = os.path.getsize(backup)
+            size_mb = size_bytes / (1024 * 1024)
+            mod_time = datetime.datetime.fromtimestamp(os.path.getmtime(backup))
+            backups.append({
+                'file': os.path.basename(backup),
+                'size': f"{size_mb:.2f} MB",
+                'created': mod_time.strftime("%Y-%m-%d %H:%M:%S")
+            })
+        
+        return jsonify({
+            "status": "success",
+            "message": f"Cleaned up old backups. Kept {len(backups)} most recent backups.",
+            "backups": backups
+        })
+    except Exception as e:
+        current_app.logger.error(f"Error cleaning up database backups: {e}")
+        return jsonify({
+            "status": "error",
+            "message": f"Error cleaning up database backups: {str(e)}"
+        }), 500
+
+@api.route('/reset-everything', methods=['POST'])
+def reset_everything():
+    """API endpoint to reset everything (downloads and database)."""
+    try:
+        # Close any existing database connections
+        try:
+            # Close all existing connections
+            Session.remove()
+            dispose_engine()
+        except Exception as e:
+            current_app.logger.warning(f"Error closing database connections: {e}")
+        
+        # Run the reset in a background thread
+        def reset_and_reconnect():
+            try:
+                # Get the project root directory
+                project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
+                
+                # Delete all downloaded files
+                downloads_dir = os.path.join(project_root, 'downloads')
+                if os.path.exists(downloads_dir):
+                    current_app.logger.info(f"Deleting downloads directory: {downloads_dir}")
+                    shutil.rmtree(downloads_dir)
+                    os.makedirs(downloads_dir, exist_ok=True)
+                
+                # Delete all database backups
+                db_dir = os.path.join(project_root, 'data')
+                backup_pattern = os.path.join(db_dir, 'proposals_backup_*.db')
+                backup_files = glob.glob(backup_pattern)
+                for backup in backup_files:
+                    current_app.logger.info(f"Deleting database backup: {backup}")
+                    os.remove(backup)
+                
+                # Delete the current database
+                db_path = os.path.join(db_dir, 'proposals.db')
+                if os.path.exists(db_path):
+                    current_app.logger.info(f"Deleting database: {db_path}")
+                    os.remove(db_path)
+                
+                # Create a new empty database
+                current_app.logger.info("Creating new empty database")
+                init_database()
+                
+                # Wait a moment for the reset to complete
+                import time
+                time.sleep(2)
+                
+                # Try to reconnect to the database
+                reconnect()
+                current_app.logger.info("Reset completed successfully")
+            except Exception as e:
+                error_msg = f"Error during reset: {str(e)}"
+                current_app.logger.error(error_msg)
+                # Log the full traceback for debugging
+                import traceback
+                current_app.logger.error(f"Traceback: {traceback.format_exc()}")
+        
+        thread = threading.Thread(target=reset_and_reconnect)
+        thread.daemon = True
+        thread.start()
+        
+        return jsonify({
+            "status": "success",
+            "message": "Reset started"
+        })
+    except Exception as e:
+        current_app.logger.error(f"Error starting reset thread: {e}")
+        return jsonify({
+            "status": "error",
+            "message": f"Error starting reset thread: {str(e)}"
+        }), 500 

@@ -11,23 +11,81 @@ import time
 import signal
 import atexit
 import shutil
+import logging
+import datetime
+from logging.handlers import RotatingFileHandler
 from dotenv import load_dotenv
+
+# Add the parent directory to the path so we can import from src
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+# Import the log manager
+try:
+    from src.utils.log_manager import cleanup_all_logs
+    from src.config import LOGS_DIR, LOG_FORMAT, LOG_FILE_MAX_BYTES, LOG_FILE_BACKUP_COUNT
+    log_manager_available = True
+except ImportError:
+    log_manager_available = False
 
 # Load environment variables
 load_dotenv()
 
 # Get configuration from environment
 HOST = os.getenv('HOST', '0.0.0.0')
-PORT = os.getenv('PORT', '5000')
+PORT = os.getenv('PORT', '5001')
 DEBUG = os.getenv('DEBUG', 'False').lower() == 'true'
 VUE_DEV_MODE = os.getenv('VUE_DEV_MODE', 'True').lower() == 'true'
+
+# Set up logging
+logs_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'logs')
+os.makedirs(logs_dir, exist_ok=True)
+
+# Use a consistent log file name with rotation instead of timestamp-based names
+log_file = os.path.join(logs_dir, 'jps_startup.log')
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+# Clear existing handlers to avoid duplicates
+if logger.handlers:
+    logger.handlers.clear()
+
+# Create handlers with rotation
+file_handler = RotatingFileHandler(
+    log_file, 
+    maxBytes=5 * 1024 * 1024 if not log_manager_available else LOG_FILE_MAX_BYTES, 
+    backupCount=3 if not log_manager_available else LOG_FILE_BACKUP_COUNT
+)
+console_handler = logging.StreamHandler()
+
+# Create formatters and add them to handlers
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+file_handler.setFormatter(formatter)
+console_handler.setFormatter(formatter)
+
+# Add handlers to the logger
+logger.addHandler(file_handler)
+logger.addHandler(console_handler)
+
+logger.info("==========================================")
+logger.info("JPS Prospect Aggregate Auto-Setup & Launch")
+logger.info("==========================================")
+logger.info(f"Logging to: {log_file}")
+logger.info(f"Started at: {datetime.datetime.now()}")
+logger.info("==========================================")
+
+# Clean up old log files if log manager is available
+if log_manager_available:
+    cleanup_results = cleanup_all_logs(logs_dir, keep_count=3)
+    for log_type, count in cleanup_results.items():
+        if count > 0:
+            logger.info(f"Cleaned up {count} old {log_type} log files")
 
 # Process tracking
 processes = []
 
 def start_process(cmd, name, cwd=None):
     """Start a subprocess and return the process object."""
-    print(f"Starting {name}...")
+    logger.info(f"Starting {name}...")
     if sys.platform == 'win32':
         # Windows needs shell=True and different creation flags
         process = subprocess.Popen(
@@ -45,14 +103,14 @@ def start_process(cmd, name, cwd=None):
             cwd=cwd
         )
     processes.append((process, name))
-    print(f"{name} started with PID {process.pid}")
+    logger.info(f"{name} started with PID {process.pid}")
     return process
 
 def cleanup():
     """Terminate all processes on exit."""
-    print("\nShutting down all processes...")
+    logger.info("\nShutting down all processes...")
     for process, name in processes:
-        print(f"Terminating {name} (PID: {process.pid})...")
+        logger.info(f"Terminating {name} (PID: {process.pid})...")
         if sys.platform == 'win32':
             # Windows
             subprocess.call(['taskkill', '/F', '/T', '/PID', str(process.pid)])
@@ -62,22 +120,22 @@ def cleanup():
                 os.killpg(os.getpgid(process.pid), signal.SIGTERM)
             except OSError:
                 pass
-    print("All processes terminated.")
+    logger.info("All processes terminated.")
 
 def check_node_npm():
     """Check if Node.js and npm are installed."""
     try:
         # Check Node.js
         node_version = subprocess.check_output(['node', '--version'], text=True).strip()
-        print(f"Node.js version: {node_version}")
+        logger.info(f"Node.js version: {node_version}")
         
         # Check npm
         npm_version = subprocess.check_output(['npm', '--version'], text=True).strip()
-        print(f"npm version: {npm_version}")
+        logger.info(f"npm version: {npm_version}")
         
         return True
     except (subprocess.SubprocessError, FileNotFoundError):
-        print("Node.js or npm not found. Please install Node.js and npm to run the Vue.js frontend.")
+        logger.warning("Node.js or npm not found. Please install Node.js and npm to run the Vue.js frontend.")
         return False
 
 def build_vue_frontend():
@@ -86,18 +144,18 @@ def build_vue_frontend():
     
     # Check if node_modules exists, if not run npm install
     if not os.path.exists(os.path.join(frontend_dir, 'node_modules')):
-        print("Installing Vue.js dependencies...")
+        logger.info("Installing Vue.js dependencies...")
         subprocess.run(['npm', 'install'], cwd=frontend_dir, check=True)
     
     # Build the Vue.js app
-    print("Building Vue.js frontend for production...")
+    logger.info("Building Vue.js frontend for production...")
     subprocess.run(['npm', 'run', 'build'], cwd=frontend_dir, check=True)
     
     # Ensure the static/vue directory exists
     static_vue_dir = os.path.join('src', 'dashboard', 'static', 'vue')
     os.makedirs(static_vue_dir, exist_ok=True)
     
-    print("Vue.js frontend built successfully!")
+    logger.info("Vue.js frontend built successfully!")
 
 def main():
     """Start all components of the application."""
@@ -107,7 +165,7 @@ def main():
     # Check if Node.js and npm are installed if Vue dev mode is enabled
     if VUE_DEV_MODE:
         if not check_node_npm():
-            print("Warning: Vue.js frontend will not be started.")
+            logger.warning("Warning: Vue.js frontend will not be started.")
             vue_available = False
         else:
             vue_available = True
@@ -142,14 +200,14 @@ def main():
         vue_cmd = "npm run serve"
         vue_process = start_process(vue_cmd, "Vue.js Dev Server", cwd=frontend_dir)
     
-    print("\nAll services started!")
-    print(f"- Flask app running at http://{HOST}:{PORT}")
-    print("- Celery worker processing tasks")
-    print("- Celery beat scheduling tasks")
-    print("- Flower monitoring available at http://localhost:5555")
+    logger.info("\nAll services started!")
+    logger.info(f"- Flask app running at http://{HOST}:{PORT}")
+    logger.info("- Celery worker processing tasks")
+    logger.info("- Celery beat scheduling tasks")
+    logger.info("- Flower monitoring available at http://localhost:5555")
     if VUE_DEV_MODE and vue_available:
-        print("- Vue.js dev server running at http://localhost:8080")
-    print("\nPress Ctrl+C to stop all services")
+        logger.info("- Vue.js dev server running at http://localhost:8080")
+    logger.info("\nPress Ctrl+C to stop all services")
     
     try:
         # Keep the script running until interrupted
@@ -159,7 +217,7 @@ def main():
             # Check if any process has terminated unexpectedly
             for i, (process, name) in enumerate(processes):
                 if process.poll() is not None:
-                    print(f"{name} terminated unexpectedly with code {process.returncode}")
+                    logger.warning(f"{name} terminated unexpectedly with code {process.returncode}")
                     # Restart the process
                     if name == "Flask App":
                         new_process = start_process(flask_cmd, name)
@@ -177,7 +235,7 @@ def main():
                     processes[i] = (new_process, name)
                     
     except KeyboardInterrupt:
-        print("Keyboard interrupt received, shutting down...")
+        logger.info("Keyboard interrupt received, shutting down...")
         # cleanup will be called by atexit
 
 if __name__ == "__main__":

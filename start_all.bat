@@ -1,13 +1,17 @@
 @echo off
 setlocal enabledelayedexpansion
 
+:: Get the project root directory
+set PROJECT_ROOT=%~dp0
+set PROJECT_ROOT=%PROJECT_ROOT:~0,-1%
+
 :: Create logs directory if it doesn't exist
-if not exist logs mkdir logs
+if not exist "%PROJECT_ROOT%\logs" mkdir "%PROJECT_ROOT%\logs"
 
 :: Set up log file with timestamp
 for /f "tokens=2-4 delims=/ " %%a in ('date /t') do (set mydate=%%c%%a%%b)
 for /f "tokens=1-2 delims=: " %%a in ('time /t') do (set mytime=%%a%%b)
-set LOG_FILE=logs\jps_startup_%mydate%_%mytime%.log
+set LOG_FILE=%PROJECT_ROOT%\logs\jps_startup_%mydate%_%mytime%.log
 
 :: Start logging - redirect all output to both console and log file
 echo ==========================================
@@ -259,36 +263,45 @@ exit /b 0
 call :print_status "Starting application components..."
 
 :: Start Flask app
-call :print_status "Starting Flask app..."
-start "Flask App" /B python app.py > logs\flask.log 2>&1
-set FLASK_PID=%ERRORLEVEL%
-echo Flask app started
+echo.
+echo Starting Flask app...
+start "Flask App" /B python app.py > "%PROJECT_ROOT%\logs\flask.log" 2>&1
+set FLASK_PID=!ERRORLEVEL!
+echo Flask app started with PID: !FLASK_PID!
 
 :: Give Flask app time to start
 timeout /t 2 /nobreak > nul
 
-:: Start Celery worker
-call :print_status "Starting Celery worker..."
-start "Celery Worker" /B celery -A src.celery_app worker --loglevel=info > logs\celery_worker.log 2>&1
-echo Celery worker started
+:: Start Celery worker if Redis is available
+if "%REDIS_INSTALLED%"=="true" (
+    echo.
+    echo Starting Celery worker...
+    start "Celery Worker" /B celery -A src.celery_app worker --loglevel=info > "%PROJECT_ROOT%\logs\celery_worker.log" 2>&1
+    set WORKER_PID=!ERRORLEVEL!
+    echo Celery worker started with PID: !WORKER_PID!
+    
+    echo.
+    echo Starting Celery beat...
+    start "Celery Beat" /B celery -A src.celery_app beat --loglevel=info > "%PROJECT_ROOT%\logs\celery_beat.log" 2>&1
+    set BEAT_PID=!ERRORLEVEL!
+    echo Celery beat started with PID: !BEAT_PID!
+    
+    echo.
+    echo Starting Flower monitoring...
+    start "Flower" /B celery -A src.celery_app flower --port=5555 > "%PROJECT_ROOT%\logs\flower.log" 2>&1
+    set FLOWER_PID=!ERRORLEVEL!
+    echo Flower started with PID: !FLOWER_PID!
+)
 
-:: Start Celery beat
-call :print_status "Starting Celery beat..."
-start "Celery Beat" /B celery -A src.celery_app beat --loglevel=info > logs\celery_beat.log 2>&1
-echo Celery beat started
-
-:: Start Flower for monitoring
-call :print_status "Starting Flower monitoring..."
-start "Flower" /B celery -A src.celery_app flower --port=5555 > logs\flower.log 2>&1
-echo Flower started
-
-:: Start Vue.js development server if in dev mode and available
+:: Start Vue.js development server if in dev mode
 if "%VUE_DEV_MODE%"=="true" if "%VUE_AVAILABLE%"=="true" (
-    call :print_status "Starting Vue.js development server..."
+    echo.
+    echo Starting Vue.js development server...
     cd src\dashboard\frontend
-    start "Vue.js Dev Server" /B npm run serve > ..\..\logs\vue.log 2>&1
+    start "Vue.js Dev Server" /B npm run serve > "%PROJECT_ROOT%\logs\vue.log" 2>&1
+    set VUE_PID=!ERRORLEVEL!
     cd ..\..\..
-    echo Vue.js development server started
+    echo Vue.js development server started with PID: !VUE_PID!
 ) else if "%VUE_DEV_MODE%"=="false" if "%VUE_AVAILABLE%"=="true" (
     :: Build Vue.js frontend for production
     call :build_vue_frontend
@@ -296,7 +309,7 @@ if "%VUE_DEV_MODE%"=="true" if "%VUE_AVAILABLE%"=="true" (
 
 :: Print success message
 call :print_status "All services started!"
-echo - Flask app running at http://localhost:5000
+echo - Flask app running at http://localhost:5001
 echo - Celery worker processing tasks
 echo - Celery beat scheduling tasks
 echo - Flower monitoring available at http://localhost:5555

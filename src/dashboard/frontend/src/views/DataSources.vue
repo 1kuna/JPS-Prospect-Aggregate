@@ -89,7 +89,7 @@ import { mapGetters } from 'vuex'
 import axios from 'axios'
 
 // Get the API base URL from environment or use default
-const apiBaseUrl = process.env.VUE_APP_API_URL || 'http://localhost:5000/api'
+const apiBaseUrl = process.env.VUE_APP_API_URL || 'http://localhost:5001/api'
 
 export default {
   name: 'DataSources',

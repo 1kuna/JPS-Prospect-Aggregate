@@ -29,7 +29,7 @@ SSA_CONTRACT_FORECAST_URL = "https://www.ssa.gov/oag/business/forecast.html"
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 LOG_FORMAT = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 LOG_FILE_MAX_BYTES = 5 * 1024 * 1024  # 5MB
-LOG_FILE_BACKUP_COUNT = 5
+LOG_FILE_BACKUP_COUNT = 3  # Keep only 3 log files (changed from 5)
 
 # Database configuration
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///" + os.path.join(DATA_DIR, "proposals.db"))

@@ -73,7 +73,7 @@ If you prefer to start components individually:
 python app.py
 ```
 
-This will start the Flask web application on the host and port specified in your `.env` file (default: http://0.0.0.0:5000).
+This will start the Flask web application on the host and port specified in your `.env` file (default: http://0.0.0.0:5001).
 
 #### Start Celery Workers
 
@@ -128,7 +128,7 @@ The application uses Celery for the following types of tasks:
 The application uses the following environment variables:
 
 - `HOST`: Host to run the Flask application on (default: 0.0.0.0)
-- `PORT`: Port to run the Flask application on (default: 5000)
+- `PORT`: Port to run the Flask application on (default: 5001)
 - `DEBUG`: Enable debug mode (default: False)
 - `DATABASE_URL`: SQLAlchemy database URL (default: sqlite:///data/proposals.db)
 - `SQL_ECHO`: Enable SQL query logging (default: False)

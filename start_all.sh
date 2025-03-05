@@ -1,10 +1,13 @@
 #!/bin/bash
 
+# Get the project root directory
+PROJECT_ROOT="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
 # Create logs directory if it doesn't exist
-mkdir -p logs
+mkdir -p "$PROJECT_ROOT/logs"
 
 # Set up logging - redirect all output to both console and log file
-LOG_FILE="logs/jps_startup_$(date +%Y%m%d_%H%M%S).log"
+LOG_FILE="$PROJECT_ROOT/logs/jps_startup_$(date +%Y%m%d_%H%M%S).log"
 exec > >(tee -a "$LOG_FILE") 2>&1
 
 echo "=========================================="
@@ -287,37 +290,37 @@ build_vue_frontend() {
 # Start the application components
 print_status "Starting application components..."
 
-# Start Flask app
-print_status "Starting Flask app..."
-python app.py > logs/flask.log 2>&1 &
+# Start Flask server
+print_status "Starting Flask server..."
+python app.py > "$PROJECT_ROOT/logs/flask.log" 2>&1 &
 FLASK_PID=$!
-echo "Flask app started with PID: $FLASK_PID"
+echo "Flask server started with PID: $FLASK_PID"
 
-# Give Flask app time to start
+# Give Flask server time to start
 sleep 2
 
 # Start Celery worker
-print_status "Starting Celery worker..."
-celery -A src.celery_app worker --loglevel=info > logs/celery_worker.log 2>&1 &
-WORKER_PID=$!
-echo "Celery worker started with PID: $WORKER_PID"
-
-# Start Celery beat
-print_status "Starting Celery beat..."
-celery -A src.celery_app beat --loglevel=info > logs/celery_beat.log 2>&1 &
-BEAT_PID=$!
-echo "Celery beat started with PID: $BEAT_PID"
-
-# Start Flower for monitoring
-print_status "Starting Flower monitoring..."
-celery -A src.celery_app flower --port=5555 > logs/flower.log 2>&1 &
-FLOWER_PID=$!
-echo "Flower started with PID: $FLOWER_PID"
+if [ "$REDIS_INSTALLED" = true ]; then
+    print_status "Starting Celery worker..."
+    celery -A src.celery_app worker --loglevel=info > "$PROJECT_ROOT/logs/celery_worker.log" 2>&1 &
+    CELERY_WORKER_PID=$!
+    echo "Celery worker started with PID: $CELERY_WORKER_PID"
+    
+    print_status "Starting Celery beat scheduler..."
+    celery -A src.celery_app beat --loglevel=info > "$PROJECT_ROOT/logs/celery_beat.log" 2>&1 &
+    CELERY_BEAT_PID=$!
+    echo "Celery beat scheduler started with PID: $CELERY_BEAT_PID"
+    
+    print_status "Starting Flower monitoring tool..."
+    celery -A src.celery_app flower --port=5555 > "$PROJECT_ROOT/logs/flower.log" 2>&1 &
+    FLOWER_PID=$!
+    echo "Flower started with PID: $FLOWER_PID"
+fi
 
 # Start Vue.js development server if in dev mode and available
 if [ "$VUE_DEV_MODE" = "true" ] && [ "$VUE_AVAILABLE" = true ]; then
     print_status "Starting Vue.js development server..."
-    cd src/dashboard/frontend && npm run serve > ../../logs/vue.log 2>&1 &
+    cd src/dashboard/frontend && npm run serve > "$PROJECT_ROOT/logs/vue.log" 2>&1 &
     VUE_PID=$!
     cd - > /dev/null
     echo "Vue.js development server started with PID: $VUE_PID"
@@ -328,10 +331,12 @@ fi
 
 # Print success message
 print_status "All services started!"
-echo "- Flask app running at http://localhost:5000"
-echo "- Celery worker processing tasks"
-echo "- Celery beat scheduling tasks"
-echo "- Flower monitoring available at http://localhost:5555"
+echo "- Flask server running at http://localhost:5001"
+if [ "$REDIS_INSTALLED" = true ]; then
+    echo "- Celery worker processing tasks"
+    echo "- Celery beat scheduling tasks"
+    echo "- Flower monitoring available at http://localhost:5555"
+fi
 if [ "$VUE_DEV_MODE" = "true" ] && [ "$VUE_AVAILABLE" = true ]; then
     echo "- Vue.js development server running at http://localhost:8080"
 fi
@@ -342,18 +347,18 @@ cleanup() {
     
     # Kill all processes
     if [ -n "$FLASK_PID" ]; then
-        echo "Terminating Flask app (PID: $FLASK_PID)..."
+        echo "Terminating Flask server (PID: $FLASK_PID)..."
         kill -TERM "$FLASK_PID" 2>/dev/null || true
     fi
     
-    if [ -n "$WORKER_PID" ]; then
-        echo "Terminating Celery worker (PID: $WORKER_PID)..."
-        kill -TERM "$WORKER_PID" 2>/dev/null || true
+    if [ -n "$CELERY_WORKER_PID" ]; then
+        echo "Terminating Celery worker (PID: $CELERY_WORKER_PID)..."
+        kill -TERM "$CELERY_WORKER_PID" 2>/dev/null || true
     fi
     
-    if [ -n "$BEAT_PID" ]; then
-        echo "Terminating Celery beat (PID: $BEAT_PID)..."
-        kill -TERM "$BEAT_PID" 2>/dev/null || true
+    if [ -n "$CELERY_BEAT_PID" ]; then
+        echo "Terminating Celery beat (PID: $CELERY_BEAT_PID)..."
+        kill -TERM "$CELERY_BEAT_PID" 2>/dev/null || true
     fi
     
     if [ -n "$FLOWER_PID" ]; then

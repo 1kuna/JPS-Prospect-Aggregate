@@ -14,7 +14,7 @@ This project now includes a Vue.js frontend with Vuetify for a modern, responsiv
 The Vue.js frontend uses the following environment variables:
 
 - `VUE_DEV_MODE`: Set to `True` to run the Vue.js development server, or `False` to build for production (default: `True`)
-- `VUE_APP_API_URL`: The URL of the API backend (default: `http://localhost:5000/api`)
+- `VUE_APP_API_URL`: The URL of the API backend (default: `http://localhost:5001/api`)
 
 ### Development Mode
 
@@ -41,7 +41,7 @@ To start the application in production mode:
    - `./start_all.sh` (Unix/Linux/macOS)
    - `start_all.bat` (Windows)
 
-3. Access the frontend at http://localhost:5000
+3. Access the frontend at http://localhost:5001
 
 ### Manual Frontend Development
 

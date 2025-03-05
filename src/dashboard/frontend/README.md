@@ -33,7 +33,7 @@ The frontend is built with Vue.js 3 and Vuetify 3. It communicates with the Flas
 Create a `.env` file in the frontend directory with the following variables:
 
 ```
-VUE_APP_API_URL=http://localhost:5000/api
+VUE_APP_API_URL=http://localhost:5001/api
 ```
 
 ### Project Structure

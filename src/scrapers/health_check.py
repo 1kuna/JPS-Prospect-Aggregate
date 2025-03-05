@@ -11,12 +11,18 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
 from src.database.db import session_scope
 from src.database.models import DataSource, ScraperStatus
 from src.config import LOGS_DIR, LOG_FORMAT, LOG_FILE_MAX_BYTES, LOG_FILE_BACKUP_COUNT
+from src.utils.log_manager import cleanup_all_logs
 
 # Set up logging
 log_file = os.path.join(LOGS_DIR, 'health_check.log')
 # Create a logger
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
+
+# Clear existing handlers to avoid duplicates
+if logger.handlers:
+    logger.handlers.clear()
+
 # Create handlers
 file_handler = RotatingFileHandler(log_file, maxBytes=LOG_FILE_MAX_BYTES, backupCount=LOG_FILE_BACKUP_COUNT)
 console_handler = logging.StreamHandler()
@@ -27,6 +33,8 @@ console_handler.setFormatter(formatter)
 # Add handlers to the logger
 logger.addHandler(file_handler)
 logger.addHandler(console_handler)
+
+logger.info(f"Logging to {log_file}")
 
 def check_scraper_health(scraper_instance, source_name):
     """
@@ -159,9 +167,15 @@ def check_all_scrapers():
             "response_time": 0
         })
     
-    # Add more scrapers as needed
+    # Clean up old log files, keeping only the last 3
+    try:
+        cleanup_results = cleanup_all_logs(LOGS_DIR, keep_count=3)
+        for log_type, count in cleanup_results.items():
+            if count > 0:
+                logger.info(f"Cleaned up {count} old {log_type} log files")
+    except Exception as e:
+        logger.error(f"Error cleaning up log files: {e}")
     
-    logger.info(f"Completed health checks for all scrapers. Results: {results}")
     return results
 
 if __name__ == "__main__":

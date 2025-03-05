@@ -60,6 +60,35 @@ class Proposal(Base):
     source = relationship("DataSource", back_populates="proposals")
     history = relationship("ProposalHistory", back_populates="proposal")
     
+    def to_dict(self):
+        """Convert the proposal object to a dictionary for JSON serialization"""
+        return {
+            'id': self.id,
+            'source_id': self.source_id,
+            'external_id': self.external_id,
+            'title': self.title,
+            'agency': self.agency,
+            'office': self.office,
+            'description': self.description,
+            'naics_code': self.naics_code,
+            'estimated_value': self.estimated_value,
+            'release_date': self.release_date.isoformat() if self.release_date else None,
+            'response_date': self.response_date.isoformat() if self.response_date else None,
+            'contact_info': self.contact_info,
+            'url': self.url,
+            'status': self.status,
+            'last_updated': self.last_updated.isoformat() if self.last_updated else None,
+            'imported_at': self.imported_at.isoformat() if self.imported_at else None,
+            'is_latest': self.is_latest,
+            'contract_type': self.contract_type,
+            'set_aside': self.set_aside,
+            'competition_type': self.competition_type,
+            'solicitation_number': self.solicitation_number,
+            'award_date': self.award_date.isoformat() if self.award_date else None,
+            'place_of_performance': self.place_of_performance,
+            'incumbent': self.incumbent
+        }
+    
     def __repr__(self):
         return f"<Proposal(title='{self.title}', agency='{self.agency}')>"
 

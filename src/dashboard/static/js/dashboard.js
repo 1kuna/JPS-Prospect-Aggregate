@@ -263,9 +263,20 @@ document.addEventListener('DOMContentLoaded', function() {
         // Fetch proposals
         fetch(`/api/proposals?${queryParams.toString()}`)
             .then(response => response.json())
-            .then(proposals => {
+            .then(data => {
                 // Hide loading indicator
                 loadingIndicator.classList.add('d-none');
+                
+                // Check if the response has the expected structure
+                if (data.status === 'error') {
+                    // Show error message
+                    noResultsMessage.classList.remove('d-none');
+                    noResultsMessage.textContent = data.message || 'Error loading proposals. Please try again.';
+                    return;
+                }
+                
+                // Get the proposals array from the data property
+                const proposals = data.data || [];
                 
                 // Update proposal count
                 proposalCount.textContent = `${proposals.length} proposals`;

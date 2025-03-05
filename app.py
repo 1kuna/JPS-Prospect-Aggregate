@@ -13,6 +13,6 @@ if __name__ == "__main__":
     # Run the Flask application
     app.run(
         host=os.getenv("HOST", "0.0.0.0"),
-        port=int(os.getenv("PORT", 5000)),
+        port=int(os.getenv("PORT", 5001)),
         debug=os.getenv("DEBUG", "False").lower() == "true"
     ) 
