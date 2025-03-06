@@ -7,7 +7,8 @@ from src.database.db import get_session, close_session, Session, dispose_engine
 from src.database.models import DataSource, ScraperStatus
 from src.scrapers.acquisition_gateway import run_scraper as run_acquisition_gateway_scraper
 from src.scrapers.ssa_contract_forecast import run_scraper as run_ssa_contract_forecast_scraper
-from scripts.rebuild_db import rebuild_database
+from src.utils.db_utils import rebuild_database
+import traceback
 
 @data_sources.route('/')
 def index():
@@ -29,11 +30,47 @@ def run_scraper(source_id):
                 "message": f"Data source with ID {source_id} not found"
             }), 404
         
+        current_app.logger.info(f"Running scraper for {data_source.name}")
+        
         # Run the appropriate scraper based on the data source name
         if data_source.name == "Acquisition Gateway Forecast":
-            success = run_acquisition_gateway_scraper(force=True)
+            try:
+                # Import the check_url_accessibility function
+                from src.scrapers.acquisition_gateway import check_url_accessibility, ACQUISITION_GATEWAY_URL
+                
+                # Check if the URL is accessible
+                if not check_url_accessibility(ACQUISITION_GATEWAY_URL):
+                    return jsonify({
+                        "status": "error",
+                        "message": f"The URL {ACQUISITION_GATEWAY_URL} is not accessible. Please check your internet connection or if the website is down."
+                    }), 500
+                
+                success = run_acquisition_gateway_scraper(force=True)
+            except ImportError as e:
+                current_app.logger.error(f"Import error: {str(e)}")
+                return jsonify({
+                    "status": "error",
+                    "message": "Playwright not installed. Please run 'pip install playwright' and 'playwright install'"
+                }), 500
         elif data_source.name == "SSA Contract Forecast":
-            success = run_ssa_contract_forecast_scraper(force=True)
+            try:
+                # Import the check_url_accessibility function
+                from src.scrapers.ssa_contract_forecast import check_url_accessibility, SSA_CONTRACT_FORECAST_URL
+                
+                # Check if the URL is accessible
+                if not check_url_accessibility(SSA_CONTRACT_FORECAST_URL):
+                    return jsonify({
+                        "status": "error",
+                        "message": f"The URL {SSA_CONTRACT_FORECAST_URL} is not accessible. Please check your internet connection or if the website is down."
+                    }), 500
+                
+                success = run_ssa_contract_forecast_scraper(force=True)
+            except ImportError as e:
+                current_app.logger.error(f"Import error: {str(e)}")
+                return jsonify({
+                    "status": "error",
+                    "message": "Playwright not installed. Please run 'pip install playwright' and 'playwright install'"
+                }), 500
         else:
             return jsonify({
                 "status": "error",
@@ -46,18 +83,19 @@ def run_scraper(source_id):
                 "message": f"Scraper for {data_source.name} ran successfully"
             })
         else:
+            current_app.logger.error(f"Scraper for {data_source.name} failed")
             return jsonify({
                 "status": "error",
-                "message": f"Scraper for {data_source.name} failed"
+                "message": f"Scraper for {data_source.name} failed. This could be due to network issues, website changes, or authentication requirements. Check the logs for more details."
             }), 500
             
     except Exception as e:
         current_app.logger.error(f"Error running scraper: {e}")
+        current_app.logger.error(traceback.format_exc())
         return jsonify({
             "status": "error",
-            "message": str(e)
+            "message": f"Error running scraper: {str(e)}"
         }), 500
-    
     finally:
         close_session(session)
 

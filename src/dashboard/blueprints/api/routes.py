@@ -13,6 +13,23 @@ import glob
 import shutil
 import threading
 from src.database.init_db import init_database
+from datetime import datetime
+import time
+import traceback
+from sqlalchemy import desc, asc, or_, and_
+from src.utils.db_utils import rebuild_database as rebuild_db_util
+
+# Helper function to format file size
+def format_file_size(size_bytes):
+    """Format file size in bytes to a human-readable format."""
+    if size_bytes < 1024:
+        return f"{size_bytes} bytes"
+    elif size_bytes < 1024 * 1024:
+        return f"{size_bytes / 1024:.2f} KB"
+    elif size_bytes < 1024 * 1024 * 1024:
+        return f"{size_bytes / (1024 * 1024):.2f} MB"
+    else:
+        return f"{size_bytes / (1024 * 1024 * 1024):.2f} GB"
 
 @api.route('/proposals')
 def get_proposals():
@@ -263,6 +280,84 @@ def get_scraper_health(source_id):
     finally:
         close_session(session)
 
+@api.route('/scraper-status/<int:source_id>/check', methods=['POST'])
+def check_specific_scraper_health(source_id):
+    """API endpoint to check the health of a specific scraper."""
+    session = get_session()
+    
+    try:
+        # Get the data source
+        data_source = session.query(DataSource).filter(DataSource.id == source_id).first()
+        
+        if not data_source:
+            return jsonify({"success": False, "error": f"No data source found with ID {source_id}"}), 404
+        
+        # Check if the URL is accessible
+        import requests
+        from datetime import datetime
+        import time
+        
+        start_time = time.time()
+        try:
+            response = requests.get(data_source.url, timeout=10)
+            status = "working" if response.status_code == 200 else "not_working"
+            message = f"HTTP Status: {response.status_code}"
+        except Exception as e:
+            status = "not_working"
+            message = str(e)
+        
+        response_time = time.time() - start_time
+        
+        # Log the status
+        current_app.logger.info(f"Health check for source {source_id} ({data_source.name}): Status = {status}, Response time = {response_time:.2f}s")
+        
+        try:
+            # Delete any existing status records for this source to avoid duplicates
+            session.query(ScraperStatus).filter(ScraperStatus.source_id == source_id).delete()
+            
+            # Create a new scraper status record
+            scraper_status = ScraperStatus(
+                source_id=source_id,
+                status=status,
+                last_checked=datetime.utcnow(),
+                error_message=message if status == "not_working" else None,
+                response_time=response_time
+            )
+            session.add(scraper_status)
+            
+            # Commit the changes
+            session.commit()
+            
+            # Verify the update
+            updated_status = session.query(ScraperStatus).filter(ScraperStatus.source_id == source_id).first()
+            if updated_status:
+                current_app.logger.info(f"After commit: ScraperStatus for source {source_id}: Status = {updated_status.status}")
+            else:
+                current_app.logger.error(f"Failed to create ScraperStatus for source {source_id}")
+                
+            return jsonify({
+                "success": True,
+                "message": f"Health check completed for {data_source.name}",
+                "status": status,
+                "response_time": response_time
+            })
+        except Exception as db_error:
+            import traceback
+            current_app.logger.error(f"Database error during health check for source {source_id}: {db_error}")
+            current_app.logger.error(f"Traceback: {traceback.format_exc()}")
+            session.rollback()
+            return jsonify({
+                "success": False,
+                "error": f"Database error: {str(db_error)}"
+            }), 500
+    
+    except Exception as e:
+        current_app.logger.error(f"Error checking scraper health: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+    
+    finally:
+        close_session(session)
+
 @api.route('/statistics')
 def get_statistics():
     """API endpoint to get statistics about the proposals."""
@@ -419,21 +514,40 @@ def get_data_sources():
             # Format the data sources
             sources_data = []
             for s in sources:
-                # Get the latest scraper status for this source
-                status = session.query(ScraperStatus).filter(ScraperStatus.source_id == s.id).order_by(ScraperStatus.last_checked.desc()).first()
-                
-                # Get the count of proposals for this source
-                proposal_count = session.query(func.count(Proposal.id)).filter(Proposal.source_id == s.id).scalar()
-                
-                sources_data.append({
-                    "id": s.id,
-                    "name": s.name,
-                    "url": s.url,
-                    "description": s.description,
-                    "lastScraped": s.last_scraped.isoformat() if s.last_scraped else None,
-                    "status": status.status if status else "unknown",
-                    "proposalCount": proposal_count
-                })
+                try:
+                    # Get the latest scraper status for this source
+                    status = session.query(ScraperStatus).filter(ScraperStatus.source_id == s.id).order_by(ScraperStatus.last_checked.desc()).first()
+                    
+                    # Log the status
+                    status_value = status.status if status else "unknown"
+                    current_app.logger.info(f"Data source {s.id} ({s.name}): Status = {status_value}")
+                    
+                    # Get the count of proposals for this source
+                    proposal_count = session.query(func.count(Proposal.id)).filter(Proposal.source_id == s.id).scalar()
+                    
+                    sources_data.append({
+                        "id": s.id,
+                        "name": s.name,
+                        "url": s.url,
+                        "description": s.description,
+                        "lastScraped": s.last_scraped.isoformat() if s.last_scraped else None,
+                        "status": status_value,
+                        "lastChecked": status.last_checked.isoformat() if status and status.last_checked else None,
+                        "proposalCount": proposal_count
+                    })
+                except Exception as source_error:
+                    current_app.logger.error(f"Error processing data source {s.id} ({s.name}): {source_error}")
+                    # Add the source with default values for the problematic fields
+                    sources_data.append({
+                        "id": s.id,
+                        "name": s.name,
+                        "url": s.url,
+                        "description": s.description,
+                        "lastScraped": s.last_scraped.isoformat() if s.last_scraped else None,
+                        "status": "unknown",
+                        "lastChecked": None,
+                        "proposalCount": 0
+                    })
             
             # Return the data sources
             return jsonify(sources_data)
@@ -443,6 +557,30 @@ def get_data_sources():
         return jsonify({
             "status": "error",
             "message": "Error loading data sources. Please try again."
+        }), 500
+
+@api.route('/data-sources/collect-all', methods=['POST'])
+def collect_all_sources():
+    """API endpoint to force collection from all data sources."""
+    try:
+        # Import the Celery task
+        from src.tasks.scraper_tasks import force_collect_task
+        
+        # Run the task with source_id=None to collect from all sources, but don't wait for it to complete
+        task = force_collect_task.delay(source_id=None)
+        
+        # Return the task ID so the client can check the status later
+        return jsonify({
+            "success": True,
+            "message": "Collection started",
+            "task_id": task.id
+        })
+            
+    except Exception as e:
+        current_app.logger.error(f"Error starting collection from all sources: {e}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
         }), 500
 
 @api.route('/init-db', methods=['POST'])
@@ -487,40 +625,37 @@ def initialize_db():
 
 @api.route('/database-backups')
 def get_database_backups():
-    """API endpoint to get all database backups."""
+    """API endpoint to get a list of database backups."""
     try:
         # Get the database directory
         project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
         db_dir = os.path.join(project_root, 'data')
         
-        # Find all database backup files
-        backup_pattern = os.path.join(db_dir, 'proposals_backup_*.db')
-        backup_files = glob.glob(backup_pattern)
+        # Get a list of backup files
+        backup_files = []
+        for file in os.listdir(db_dir):
+            if file.startswith('jps_database_backup_') and file.endswith('.db'):
+                file_path = os.path.join(db_dir, file)
+                backup_files.append({
+                    'filename': file,
+                    'size': os.path.getsize(file_path),
+                    'created': os.path.getctime(file_path)
+                })
         
-        # Sort files by modification time (newest first)
-        backup_files.sort(key=lambda x: os.path.getmtime(x), reverse=True)
+        # Sort by creation time (newest first)
+        backup_files.sort(key=lambda x: x['created'], reverse=True)
         
-        # Prepare the list of backups with details
-        backups = []
+        # Format the dates
         for backup in backup_files:
-            size_bytes = os.path.getsize(backup)
-            size_mb = size_bytes / (1024 * 1024)
-            mod_time = datetime.datetime.fromtimestamp(os.path.getmtime(backup))
-            backups.append({
-                'file': os.path.basename(backup),
-                'size': f"{size_mb:.2f} MB",
-                'created': mod_time.strftime("%Y-%m-%d %H:%M:%S")
-            })
+            backup['created'] = datetime.fromtimestamp(backup['created']).isoformat()
+            backup['size_formatted'] = format_file_size(backup['size'])
         
-        return jsonify({
-            "status": "success",
-            "backups": backups
-        })
+        return jsonify(backup_files)
+    
     except Exception as e:
         current_app.logger.error(f"Error getting database backups: {e}")
         return jsonify({
-            "status": "error",
-            "message": f"Error getting database backups: {str(e)}"
+            "error": str(e)
         }), 500
 
 @api.route('/database-backups/cleanup', methods=['POST'])
@@ -658,4 +793,178 @@ def reset_everything():
         return jsonify({
             "status": "error",
             "message": f"Error starting reset thread: {str(e)}"
-        }), 500 
+        }), 500
+
+@api.route('/data-sources/<int:source_id>/collect', methods=['POST'])
+def collect_source(source_id):
+    """API endpoint to force collection from a specific data source."""
+    try:
+        # Import the Celery task
+        from src.tasks.scraper_tasks import force_collect_task
+        
+        # Run the task with the specified source_id, but don't wait for it to complete
+        task = force_collect_task.delay(source_id=source_id)
+        
+        # Get the source name
+        with session_scope() as session:
+            source = session.query(DataSource).filter(DataSource.id == source_id).first()
+            source_name = source.name if source else f"Source ID {source_id}"
+        
+        # Return the task ID so the client can check the status later
+        return jsonify({
+            "success": True,
+            "message": f"Collection started for {source_name}",
+            "task_id": task.id,
+            "source_name": source_name
+        })
+            
+    except Exception as e:
+        current_app.logger.error(f"Error starting collection from source {source_id}: {e}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+@api.route('/tasks/<task_id>', methods=['GET'])
+def get_task_status(task_id):
+    """API endpoint to check the status of a Celery task."""
+    try:
+        # Import the Celery app
+        from src.celery_app import celery_app
+        
+        # Get the task
+        task = celery_app.AsyncResult(task_id)
+        
+        # Check if the task exists
+        if not task:
+            return jsonify({
+                "success": False,
+                "error": f"Task with ID {task_id} not found"
+            }), 404
+        
+        # Check the task state
+        if task.state == 'PENDING':
+            # Task is pending
+            response = {
+                "success": True,
+                "state": task.state,
+                "status": "pending",
+                "info": "Task is pending execution"
+            }
+        elif task.state == 'STARTED':
+            # Task is running
+            response = {
+                "success": True,
+                "state": task.state,
+                "status": "in_progress",
+                "info": "Task is in progress"
+            }
+        elif task.state == 'SUCCESS':
+            # Task completed successfully
+            result = task.result
+            response = {
+                "success": True,
+                "state": task.state,
+                "status": "completed",
+                "result": result
+            }
+        elif task.state == 'FAILURE':
+            # Task failed
+            response = {
+                "success": False,
+                "state": task.state,
+                "status": "failed",
+                "error": str(task.result)
+            }
+        else:
+            # Other states (REVOKED, RETRY, etc.)
+            response = {
+                "success": True,
+                "state": task.state,
+                "status": "unknown",
+                "info": f"Task is in state: {task.state}"
+            }
+        
+        return jsonify(response)
+            
+    except Exception as e:
+        current_app.logger.error(f"Error checking task status: {e}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+@api.route('/debug/scraper-status', methods=['GET'])
+def debug_scraper_status():
+    """API endpoint to debug scraper status."""
+    session = get_session()
+    
+    try:
+        # Get all scraper statuses
+        statuses = session.query(ScraperStatus).all()
+        
+        # Format the statuses
+        status_data = []
+        for status in statuses:
+            status_data.append({
+                "id": status.id,
+                "source_id": status.source_id,
+                "status": status.status,
+                "last_checked": status.last_checked.isoformat() if status.last_checked else None,
+                "error_message": status.error_message,
+                "response_time": status.response_time
+            })
+        
+        return jsonify(status_data)
+    
+    except Exception as e:
+        current_app.logger.error(f"Error getting scraper status: {e}")
+        return jsonify({"error": str(e)}), 500
+    
+    finally:
+        close_session(session)
+
+@api.route('/scraper-status/initialize', methods=['POST'])
+def initialize_scraper_status():
+    """API endpoint to initialize scraper status for all data sources."""
+    session = get_session()
+    
+    try:
+        # Get all data sources
+        data_sources = session.query(DataSource).all()
+        
+        # Initialize status for each data source
+        initialized_count = 0
+        for source in data_sources:
+            # Check if a status record already exists
+            existing_status = session.query(ScraperStatus).filter(ScraperStatus.source_id == source.id).first()
+            
+            if not existing_status:
+                # Create a new status record with default values
+                new_status = ScraperStatus(
+                    source_id=source.id,
+                    status="unknown",
+                    last_checked=None,
+                    error_message=None,
+                    response_time=None
+                )
+                session.add(new_status)
+                initialized_count += 1
+        
+        # Commit the changes
+        session.commit()
+        
+        return jsonify({
+            "success": True,
+            "message": f"Initialized scraper status for {initialized_count} data sources"
+        })
+    
+    except Exception as e:
+        import traceback
+        current_app.logger.error(f"Error initializing scraper status: {e}")
+        current_app.logger.error(f"Traceback: {traceback.format_exc()}")
+        session.rollback()
+        return jsonify({"success": False, "error": str(e)}), 500
+    
+    finally:
+        close_session(session) 

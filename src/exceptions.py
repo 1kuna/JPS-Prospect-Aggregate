@@ -77,4 +77,15 @@ class TaskError(BaseAppException):
 class RetryableError(BaseAppException):
     """Exception raised when an operation should be retried."""
     status_code = 503
-    error_code = "RETRYABLE_ERROR" 
+    error_code = "RETRYABLE_ERROR"
+
+# Authentication and Authorization exceptions
+class AuthenticationError(BaseAppException):
+    """Exception raised when authentication fails."""
+    status_code = 401
+    error_code = "AUTHENTICATION_ERROR"
+
+class AuthorizationError(BaseAppException):
+    """Exception raised when authorization fails."""
+    status_code = 403
+    error_code = "AUTHORIZATION_ERROR" 

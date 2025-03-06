@@ -31,14 +31,36 @@ def run_acquisition_gateway_scraper_task(self):
     """Celery task to run the Acquisition Gateway scraper"""
     logger.info("Starting Acquisition Gateway scraper task")
     task_id = self.request.id
+    start_time = datetime.utcnow()
     
     try:
         # Run the scraper with force=True to ensure it runs
         success = run_acquisition_gateway_scraper(force=True)
         
         if success:
-            logger.info("Acquisition Gateway scraper completed successfully")
-            return {"status": "success", "message": "Scraper completed successfully", "task_id": task_id}
+            # Calculate collection time
+            end_time = datetime.utcnow()
+            collection_time = (end_time - start_time).total_seconds()
+            
+            # Count proposals collected
+            with session_scope() as session:
+                from src.database.models import Proposal
+                source = session.query(DataSource).filter(DataSource.name.like('%Acquisition Gateway%')).first()
+                if source:
+                    proposal_count = session.query(Proposal).filter(
+                        Proposal.source_id == source.id
+                    ).count()
+                else:
+                    proposal_count = 0
+            
+            logger.info(f"Acquisition Gateway scraper completed successfully. Collected {proposal_count} proposals in {collection_time:.2f} seconds")
+            return {
+                "status": "success", 
+                "message": "Scraper completed successfully", 
+                "task_id": task_id,
+                "proposals_collected": proposal_count,
+                "collection_time": collection_time
+            }
         else:
             logger.error("Acquisition Gateway scraper failed")
             # Retry the task if it fails
@@ -87,14 +109,36 @@ def run_ssa_contract_forecast_scraper_task(self):
     """Celery task to run the SSA Contract Forecast scraper"""
     logger.info("Starting SSA Contract Forecast scraper task")
     task_id = self.request.id
+    start_time = datetime.utcnow()
     
     try:
         # Run the scraper with force=True to ensure it runs
         success = run_ssa_contract_forecast_scraper(force=True)
         
         if success:
-            logger.info("SSA Contract Forecast scraper completed successfully")
-            return {"status": "success", "message": "Scraper completed successfully", "task_id": task_id}
+            # Calculate collection time
+            end_time = datetime.utcnow()
+            collection_time = (end_time - start_time).total_seconds()
+            
+            # Count proposals collected
+            with session_scope() as session:
+                from src.database.models import Proposal
+                source = session.query(DataSource).filter(DataSource.name.like('%SSA Contract Forecast%')).first()
+                if source:
+                    proposal_count = session.query(Proposal).filter(
+                        Proposal.source_id == source.id
+                    ).count()
+                else:
+                    proposal_count = 0
+            
+            logger.info(f"SSA Contract Forecast scraper completed successfully. Collected {proposal_count} proposals in {collection_time:.2f} seconds")
+            return {
+                "status": "success", 
+                "message": "Scraper completed successfully", 
+                "task_id": task_id,
+                "proposals_collected": proposal_count,
+                "collection_time": collection_time
+            }
         else:
             logger.error("SSA Contract Forecast scraper failed")
             # Retry the task if it fails
@@ -143,6 +187,7 @@ def run_all_scrapers_task(self):
     """Celery task to run all scrapers in parallel"""
     logger.info("Starting all scrapers task")
     task_id = self.request.id
+    start_time = datetime.utcnow()
     
     try:
         # Import celery.group here to avoid circular imports
@@ -160,15 +205,37 @@ def run_all_scrapers_task(self):
         # Wait for all tasks to complete
         task_results = result.get()
         
+        # Calculate total collection time
+        end_time = datetime.utcnow()
+        collection_time = (end_time - start_time).total_seconds()
+        
+        # Count total proposals collected
+        total_proposals = 0
+        
         # Update the last_scraped timestamp for all data sources
         with session_scope() as session:
             data_sources = session.query(DataSource).all()
             for data_source in data_sources:
                 data_source.last_scraped = datetime.utcnow()
+                
+                # Count proposals for this source
+                from src.database.models import Proposal
+                proposal_count = session.query(Proposal).filter(
+                    Proposal.source_id == data_source.id
+                ).count()
+                total_proposals += proposal_count
+                
             session.commit()
         
-        logger.info("All scrapers completed")
-        return {"status": "success", "message": "All scrapers completed", "task_id": task_id, "results": task_results}
+        logger.info(f"All scrapers completed. Collected {total_proposals} proposals in {collection_time:.2f} seconds")
+        return {
+            "status": "success", 
+            "message": "All scrapers completed", 
+            "task_id": task_id, 
+            "results": task_results,
+            "proposals_collected": total_proposals,
+            "collection_time": collection_time
+        }
         
     except Exception as e:
         logger.exception(f"Unexpected error running all scrapers: {e}")

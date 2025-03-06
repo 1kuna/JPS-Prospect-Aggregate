@@ -25,6 +25,9 @@ document.addEventListener('DOMContentLoaded', function() {
     const modalTitle = document.getElementById('modal-title');
     const modalBody = document.getElementById('modal-body');
     const viewSourceButton = document.getElementById('view-source');
+    const paginationElement = document.getElementById('pagination');
+    const pageInfoElement = document.getElementById('page-info');
+    const perPageSelect = document.getElementById('per-page-select');
     
     // Backups elements
     const backupsModal = new bootstrap.Modal(document.getElementById('backupsModal'));
@@ -49,7 +52,9 @@ document.addEventListener('DOMContentLoaded', function() {
         status: '',
         naics_codes: [],
         sort_by: 'release_date',
-        sort_order: 'desc'
+        sort_order: 'desc',
+        page: 1,
+        per_page: 20
     };
     
     // Track the last time we checked for updates
@@ -120,6 +125,15 @@ document.addEventListener('DOMContentLoaded', function() {
         loadStatistics();
     });
     
+    // Add event listener for per-page select
+    if (perPageSelect) {
+        perPageSelect.addEventListener('change', function() {
+            currentFilters.per_page = parseInt(this.value);
+            currentFilters.page = 1; // Reset to first page when changing items per page
+            loadProposals();
+        });
+    }
+    
     // Functions
     function initializeDashboard() {
         // Load filter options
@@ -186,31 +200,52 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function applyFilters() {
-        currentFilters.search = searchInput.value;
+        // Get filter values
+        currentFilters.search = searchInput.value.trim();
         currentFilters.source_id = sourceSelect.value;
         currentFilters.agency = agencySelect.value;
         currentFilters.status = statusSelect.value;
         
         // Get selected NAICS codes
-        currentFilters.naics_codes = Array.from(naicsCodesSelect.selectedOptions).map(option => option.value);
+        currentFilters.naics_codes = [];
+        if ($(naicsCodesSelect).data('select2')) {
+            currentFilters.naics_codes = $(naicsCodesSelect).val() || [];
+        } else {
+            for (let i = 0; i < naicsCodesSelect.options.length; i++) {
+                if (naicsCodesSelect.options[i].selected) {
+                    currentFilters.naics_codes.push(naicsCodesSelect.options[i].value);
+                }
+            }
+        }
         
+        // Get sort options
+        currentFilters.sort_by = sortBySelect.value;
+        currentFilters.sort_order = sortOrderSelect.value;
+        
+        // Reset to first page when applying new filters
+        currentFilters.page = 1;
+        
+        // Load proposals with new filters
         loadProposals();
     }
     
     function resetFilters() {
+        // Reset form elements
         searchInput.value = '';
         sourceSelect.value = '';
         agencySelect.value = '';
         statusSelect.value = '';
         
-        // Clear NAICS code selections
-        for (let i = 0; i < naicsCodesSelect.options.length; i++) {
-            naicsCodesSelect.options[i].selected = false;
+        // Reset select2 for NAICS codes
+        if ($(naicsCodesSelect).data('select2')) {
+            $(naicsCodesSelect).val(null).trigger('change');
         }
         
+        // Reset sort options
         sortBySelect.value = 'release_date';
         sortOrderSelect.value = 'desc';
         
+        // Reset filter state
         currentFilters = {
             search: '',
             source_id: '',
@@ -218,9 +253,12 @@ document.addEventListener('DOMContentLoaded', function() {
             status: '',
             naics_codes: [],
             sort_by: 'release_date',
-            sort_order: 'desc'
+            sort_order: 'desc',
+            page: 1,
+            per_page: currentFilters.per_page // Keep the current per_page setting
         };
         
+        // Reload proposals with reset filters
         loadProposals();
     }
     
@@ -257,8 +295,13 @@ document.addEventListener('DOMContentLoaded', function() {
             queryParams.append('only_latest', 'true');
         }
         
+        // Add sorting parameters
         queryParams.append('sort_by', currentFilters.sort_by);
         queryParams.append('sort_order', currentFilters.sort_order);
+        
+        // Add pagination parameters
+        queryParams.append('page', currentFilters.page);
+        queryParams.append('per_page', currentFilters.per_page);
         
         // Fetch proposals
         fetch(`/api/proposals?${queryParams.toString()}`)
@@ -278,8 +321,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Get the proposals array from the data property
                 const proposals = data.data || [];
                 
-                // Update proposal count
-                proposalCount.textContent = `${proposals.length} proposals`;
+                // Update proposal count with the total count from pagination
+                const totalCount = data.pagination ? data.pagination.total_count : proposals.length;
+                proposalCount.textContent = `${totalCount} proposals`;
                 
                 if (proposals.length === 0) {
                     // Show no results message
@@ -309,6 +353,11 @@ document.addEventListener('DOMContentLoaded', function() {
                         
                         proposalsTableBody.appendChild(row);
                     });
+                    
+                    // Update pagination controls if pagination info is available
+                    if (data.pagination) {
+                        renderPagination(data.pagination);
+                    }
                 }
             })
             .catch(error => {
@@ -1038,5 +1087,111 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             }
         }
+    }
+    
+    // Function to render pagination controls
+    function renderPagination(pagination) {
+        if (!paginationElement || !pageInfoElement) return;
+        
+        // Clear existing pagination
+        paginationElement.innerHTML = '';
+        
+        // Update page info text
+        pageInfoElement.textContent = `Page ${pagination.page} of ${pagination.total_pages}`;
+        
+        // Set the per-page select value
+        if (perPageSelect) {
+            perPageSelect.value = pagination.per_page.toString();
+        }
+        
+        // Don't show pagination if there's only one page
+        if (pagination.total_pages <= 1) return;
+        
+        // Previous button
+        const prevLi = document.createElement('li');
+        prevLi.className = `page-item ${pagination.page <= 1 ? 'disabled' : ''}`;
+        prevLi.innerHTML = `<a class="page-link" href="#" aria-label="Previous"><span aria-hidden="true">&laquo;</span></a>`;
+        if (pagination.page > 1) {
+            prevLi.querySelector('a').addEventListener('click', function(e) {
+                e.preventDefault();
+                currentFilters.page = pagination.page - 1;
+                loadProposals();
+            });
+        }
+        paginationElement.appendChild(prevLi);
+        
+        // Page numbers
+        const startPage = Math.max(1, pagination.page - 2);
+        const endPage = Math.min(pagination.total_pages, pagination.page + 2);
+        
+        // First page if not in range
+        if (startPage > 1) {
+            const firstLi = document.createElement('li');
+            firstLi.className = 'page-item';
+            firstLi.innerHTML = `<a class="page-link" href="#">1</a>`;
+            firstLi.querySelector('a').addEventListener('click', function(e) {
+                e.preventDefault();
+                currentFilters.page = 1;
+                loadProposals();
+            });
+            paginationElement.appendChild(firstLi);
+            
+            // Ellipsis if needed
+            if (startPage > 2) {
+                const ellipsisLi = document.createElement('li');
+                ellipsisLi.className = 'page-item disabled';
+                ellipsisLi.innerHTML = `<a class="page-link" href="#">...</a>`;
+                paginationElement.appendChild(ellipsisLi);
+            }
+        }
+        
+        // Page numbers
+        for (let i = startPage; i <= endPage; i++) {
+            const pageLi = document.createElement('li');
+            pageLi.className = `page-item ${i === pagination.page ? 'active' : ''}`;
+            pageLi.innerHTML = `<a class="page-link" href="#">${i}</a>`;
+            if (i !== pagination.page) {
+                pageLi.querySelector('a').addEventListener('click', function(e) {
+                    e.preventDefault();
+                    currentFilters.page = i;
+                    loadProposals();
+                });
+            }
+            paginationElement.appendChild(pageLi);
+        }
+        
+        // Last page if not in range
+        if (endPage < pagination.total_pages) {
+            // Ellipsis if needed
+            if (endPage < pagination.total_pages - 1) {
+                const ellipsisLi = document.createElement('li');
+                ellipsisLi.className = 'page-item disabled';
+                ellipsisLi.innerHTML = `<a class="page-link" href="#">...</a>`;
+                paginationElement.appendChild(ellipsisLi);
+            }
+            
+            const lastLi = document.createElement('li');
+            lastLi.className = 'page-item';
+            lastLi.innerHTML = `<a class="page-link" href="#">${pagination.total_pages}</a>`;
+            lastLi.querySelector('a').addEventListener('click', function(e) {
+                e.preventDefault();
+                currentFilters.page = pagination.total_pages;
+                loadProposals();
+            });
+            paginationElement.appendChild(lastLi);
+        }
+        
+        // Next button
+        const nextLi = document.createElement('li');
+        nextLi.className = `page-item ${pagination.page >= pagination.total_pages ? 'disabled' : ''}`;
+        nextLi.innerHTML = `<a class="page-link" href="#" aria-label="Next"><span aria-hidden="true">&raquo;</span></a>`;
+        if (pagination.page < pagination.total_pages) {
+            nextLi.querySelector('a').addEventListener('click', function(e) {
+                e.preventDefault();
+                currentFilters.page = pagination.page + 1;
+                loadProposals();
+            });
+        }
+        paginationElement.appendChild(nextLi);
     }
 }); 

@@ -105,6 +105,15 @@ class BaseScraper:
         self.logger.info(f"Absolute download path: {download_dir_abs}")
         
         try:
+            # Check if Playwright is installed
+            try:
+                from playwright.sync_api import sync_playwright
+                self.logger.info("Playwright module found")
+            except ImportError as e:
+                self.logger.error("Playwright module not found. Please install it with 'pip install playwright'")
+                self.logger.error("Then run 'playwright install' to install the browsers")
+                raise ImportError("Playwright module not found") from e
+                
             # Start Playwright
             self.playwright = sync_playwright().start()
             self.logger.info("Started Playwright")
@@ -113,19 +122,25 @@ class BaseScraper:
             browser_type = self.playwright.chromium
             
             # Launch the browser with appropriate options
-            self.browser = browser_type.launch(
-                headless=not self.debug_mode,
-                downloads_path=download_dir_abs,
-                args=[
-                    "--no-sandbox",
-                    "--disable-dev-shm-usage",
-                    "--disable-gpu",
-                    "--disable-extensions",
-                    "--disable-popup-blocking",
-                    "--window-size=1920,1080"
-                ]
-            )
-            self.logger.info("Launched browser")
+            try:
+                self.browser = browser_type.launch(
+                    headless=not self.debug_mode,
+                    downloads_path=download_dir_abs,
+                    args=[
+                        "--no-sandbox",
+                        "--disable-dev-shm-usage",
+                        "--disable-gpu",
+                        "--disable-extensions",
+                        "--disable-popup-blocking",
+                        "--window-size=1920,1080"
+                    ]
+                )
+                self.logger.info("Launched browser")
+            except Exception as e:
+                self.logger.error(f"Failed to launch browser: {str(e)}")
+                self.logger.error("This might be because the browser executable is not found.")
+                self.logger.error("Try running 'playwright install chromium' to install the browser.")
+                raise
             
             # Create a new context with download options
             self.context = self.browser.new_context(

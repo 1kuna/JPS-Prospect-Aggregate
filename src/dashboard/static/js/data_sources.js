@@ -19,56 +19,18 @@ document.addEventListener('DOMContentLoaded', function() {
             })
             .then(response => response.json())
             .then(data => {
-                // Hide loading indicator
-                document.getElementById('collection-status-loading').classList.add('d-none');
-                document.getElementById('collection-status-content').classList.remove('d-none');
-                
-                // Update the status message
-                const statusMessage = document.getElementById('collection-status-message');
-                const detailsContainer = document.getElementById('collection-details');
-                
                 if (data.success) {
-                    statusMessage.textContent = 'Collection from all sources completed!';
-                    statusMessage.parentElement.classList.remove('alert-danger');
-                    statusMessage.parentElement.classList.add('alert-success');
-                    
-                    // Display collection details
-                    detailsContainer.innerHTML = `
-                        <p><strong>Sources processed:</strong> ${data.sources_processed}</p>
-                        <p><strong>Total proposals collected:</strong> ${data.total_proposals_collected}</p>
-                        <p><strong>Total collection time:</strong> ${data.total_collection_time} seconds</p>
-                    `;
-                    
-                    // Reload the data sources to update the UI
-                    loadDataSources();
+                    // Start polling for task status
+                    const taskId = data.task_id;
+                    pollTaskStatus(taskId);
                 } else {
-                    statusMessage.textContent = 'Collection failed!';
-                    statusMessage.parentElement.classList.remove('alert-success');
-                    statusMessage.parentElement.classList.add('alert-danger');
-                    
-                    // Display error details
-                    detailsContainer.innerHTML = `
-                        <p><strong>Error:</strong> ${data.error}</p>
-                    `;
+                    // Handle error
+                    showCollectionError(data.error || 'Unknown error');
                 }
             })
             .catch(error => {
-                console.error('Error refreshing all sources:', error);
-                
-                // Hide loading indicator
-                document.getElementById('collection-status-loading').classList.add('d-none');
-                document.getElementById('collection-status-content').classList.remove('d-none');
-                
-                // Update the status message
-                const statusMessage = document.getElementById('collection-status-message');
-                statusMessage.textContent = 'Collection failed due to an error!';
-                statusMessage.parentElement.classList.remove('alert-success');
-                statusMessage.parentElement.classList.add('alert-danger');
-                
-                // Display error details
-                document.getElementById('collection-details').innerHTML = `
-                    <p><strong>Error:</strong> An unexpected error occurred. Please try again later.</p>
-                `;
+                console.error('Error starting collection:', error);
+                showCollectionError('An unexpected error occurred. Please try again later.');
             });
         }
     });
@@ -76,11 +38,17 @@ document.addEventListener('DOMContentLoaded', function() {
     // Add event listener for checking all scrapers' health
     document.getElementById('refresh-all-sources').insertAdjacentHTML('afterend', 
         '<button id="check-all-health" class="btn btn-info ms-2">' +
-        '<i class="bi bi-heart-pulse"></i> Check All Health</button>'
+        '<i class="bi bi-heart-pulse"></i> Check All Health</button>' +
+        '<button id="initialize-status" class="btn btn-secondary ms-2">' +
+        '<i class="bi bi-database-check"></i> Initialize Status</button>'
     );
     
     document.getElementById('check-all-health').addEventListener('click', function() {
         runHealthChecks();
+    });
+    
+    document.getElementById('initialize-status').addEventListener('click', function() {
+        initializeScraperStatus();
     });
 
     // Set up event listeners for database operations
@@ -126,21 +94,21 @@ function loadDataSources() {
 
     // Fetch data sources and health status from the API
     Promise.all([
-        fetch('/api/sources').then(response => response.json()),
+        fetch('/api/data-sources').then(response => response.json()),
         fetch('/api/scraper-status').then(response => response.json())
     ])
-    .then(([sourceData, healthData]) => {
+    .then(([sourcesData, healthData]) => {
         // Hide loading indicator
         document.getElementById('loading').classList.add('d-none');
         
-        if (sourceData.sources && sourceData.sources.length > 0) {
+        if (sourcesData && sourcesData.length > 0) {
             // Show sources container
             document.getElementById('sources-container').classList.remove('d-none');
             
             // Create a map of source ID to health status
             const healthMap = {};
-            if (healthData.success && healthData.status) {
-                healthData.status.forEach(status => {
+            if (Array.isArray(healthData)) {
+                healthData.forEach(status => {
                     healthMap[status.source_id] = status;
                 });
             }
@@ -149,25 +117,25 @@ function loadDataSources() {
             const tableBody = document.getElementById('sources-table-body');
             tableBody.innerHTML = '';
             
-            sourceData.sources.forEach(source => {
+            sourcesData.forEach(source => {
                 const row = document.createElement('tr');
                 
                 // Get health status for this source
                 const health = healthMap[source.id] || { status: 'unknown', last_checked: null };
                 
-                // Create status badge
+                // Create status badge based on source.status from the data-sources endpoint
                 let statusBadge = '';
-                if (health.status === 'working') {
+                if (source.status === 'working') {
                     statusBadge = '<span class="badge bg-success">Working</span>';
-                } else if (health.status === 'not_working') {
+                } else if (source.status === 'not_working') {
                     statusBadge = '<span class="badge bg-danger">Not Working</span>';
                 } else {
                     statusBadge = '<span class="badge bg-secondary">Unknown</span>';
                 }
                 
                 // Add last checked time if available
-                if (health.last_checked) {
-                    const lastChecked = new Date(health.last_checked);
+                if (source.lastChecked) {
+                    const lastChecked = new Date(source.lastChecked);
                     const options = { 
                         month: 'short', 
                         day: 'numeric', 
@@ -180,24 +148,28 @@ function loadDataSources() {
                 
                 // Format the last collected date
                 let lastCollectedText = 'Never';
-                if (source.last_collected) {
+                if (source.lastScraped) {
                     // Parse the ISO string as UTC and convert to local time
-                    const lastCollected = new Date(source.last_collected);
+                    const lastCollected = new Date(source.lastScraped);
                     const now = new Date();
                     
-                    // Calculate time difference in local time
+                    // Calculate time difference in milliseconds
                     const diffTime = Math.abs(now - lastCollected);
-                    const diffMinutes = Math.floor((diffTime % (1000 * 60 * 60)) / (1000 * 60));
-                    const diffHours = Math.floor((diffTime % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                    
+                    // Calculate time components
+                    const diffMinutes = Math.floor((diffTime / (1000 * 60)) % 60);
+                    const diffHours = Math.floor((diffTime / (1000 * 60 * 60)) % 24);
                     const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
                     
                     // Format the relative time text
                     if (diffDays > 0) {
-                        lastCollectedText = `${diffDays} days, ${diffHours} hours ago`;
+                        lastCollectedText = `${diffDays} day${diffDays > 1 ? 's' : ''}, ${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
                     } else if (diffHours > 0) {
-                        lastCollectedText = `${diffHours} hours, ${diffMinutes} minutes ago`;
+                        lastCollectedText = `${diffHours} hour${diffHours > 1 ? 's' : ''}, ${diffMinutes} minute${diffMinutes > 1 ? 's' : ''} ago`;
+                    } else if (diffMinutes > 0) {
+                        lastCollectedText = `${diffMinutes} minute${diffMinutes > 1 ? 's' : ''} ago`;
                     } else {
-                        lastCollectedText = `${diffMinutes} minutes ago`;
+                        lastCollectedText = `Just now`;
                     }
                     
                     // Format the exact timestamp in local time
@@ -222,7 +194,7 @@ function loadDataSources() {
                     <td>${source.description || 'N/A'}</td>
                     <td>${statusBadge}</td>
                     <td>${lastCollectedText}</td>
-                    <td>${source.proposal_count || 0}</td>
+                    <td>${source.proposalCount || 0}</td>
                     <td>
                         <div class="btn-group">
                             <button class="btn btn-sm btn-primary force-collect" data-source-id="${source.id}">
@@ -280,57 +252,70 @@ function forceCollect(sourceId) {
     })
     .then(response => response.json())
     .then(data => {
-        // Hide loading indicator
-        document.getElementById('collection-status-loading').classList.add('d-none');
-        document.getElementById('collection-status-content').classList.remove('d-none');
-        
-        // Update the status message
-        const statusMessage = document.getElementById('collection-status-message');
-        const detailsContainer = document.getElementById('collection-details');
-        
         if (data.success) {
-            statusMessage.textContent = 'Collection completed successfully!';
-            statusMessage.parentElement.classList.remove('alert-danger');
-            statusMessage.parentElement.classList.add('alert-success');
-            
-            // Display collection details
-            detailsContainer.innerHTML = `
-                <p><strong>Source:</strong> ${data.source_name}</p>
-                <p><strong>Proposals collected:</strong> ${data.proposals_collected}</p>
-                <p><strong>Collection time:</strong> ${data.collection_time} seconds</p>
-            `;
-            
-            // Reload the data sources to update the UI
-            loadDataSources();
+            // Start polling for task status
+            const taskId = data.task_id;
+            const sourceName = data.source_name;
+            pollSourceTaskStatus(taskId, sourceName);
         } else {
-            statusMessage.textContent = 'Collection failed!';
-            statusMessage.parentElement.classList.remove('alert-success');
-            statusMessage.parentElement.classList.add('alert-danger');
-            
-            // Display error details
-            detailsContainer.innerHTML = `
-                <p><strong>Error:</strong> ${data.error}</p>
-            `;
+            // Handle error
+            showCollectionError(data.error || 'Unknown error');
         }
     })
     .catch(error => {
-        console.error('Error forcing collection:', error);
-        
-        // Hide loading indicator
-        document.getElementById('collection-status-loading').classList.add('d-none');
-        document.getElementById('collection-status-content').classList.remove('d-none');
-        
-        // Update the status message
-        const statusMessage = document.getElementById('collection-status-message');
-        statusMessage.textContent = 'Collection failed due to an error!';
-        statusMessage.parentElement.classList.remove('alert-success');
-        statusMessage.parentElement.classList.add('alert-danger');
-        
-        // Display error details
-        document.getElementById('collection-details').innerHTML = `
-            <p><strong>Error:</strong> An unexpected error occurred. Please try again later.</p>
-        `;
+        console.error('Error starting collection:', error);
+        showCollectionError('An unexpected error occurred. Please try again later.');
     });
+}
+
+// Function to poll source task status
+function pollSourceTaskStatus(taskId, sourceName, interval = 2000) {
+    // Check task status
+    fetch(`/api/tasks/${taskId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                if (data.status === 'completed') {
+                    // Task completed successfully
+                    const result = data.result;
+                    
+                    // Hide loading indicator
+                    document.getElementById('collection-status-loading').classList.add('d-none');
+                    document.getElementById('collection-status-content').classList.remove('d-none');
+                    
+                    // Update the status message
+                    const statusMessage = document.getElementById('collection-status-message');
+                    const detailsContainer = document.getElementById('collection-details');
+                    
+                    statusMessage.textContent = 'Collection completed successfully!';
+                    statusMessage.parentElement.classList.remove('alert-danger');
+                    statusMessage.parentElement.classList.add('alert-success');
+                    
+                    // Display collection details
+                    detailsContainer.innerHTML = `
+                        <p><strong>Source:</strong> ${sourceName}</p>
+                        <p><strong>Proposals collected:</strong> ${result.proposals_collected || 0}</p>
+                        <p><strong>Collection time:</strong> ${result.collection_time ? result.collection_time.toFixed(2) : 0} seconds</p>
+                    `;
+                    
+                    // Reload the data sources to update the UI
+                    loadDataSources();
+                } else if (data.status === 'failed') {
+                    // Task failed
+                    showCollectionError(data.error || 'Task failed');
+                } else {
+                    // Task still in progress, continue polling
+                    setTimeout(() => pollSourceTaskStatus(taskId, sourceName, interval), interval);
+                }
+            } else {
+                // Error checking task status
+                showCollectionError(data.error || 'Error checking task status');
+            }
+        })
+        .catch(error => {
+            console.error('Error checking task status:', error);
+            showCollectionError('Error checking task status');
+        });
 }
 
 function refreshSource(sourceId) {
@@ -673,13 +658,121 @@ function resetEverything() {
     }
 }
 
-// Add a function to run health checks for all scrapers
+// Helper function to show toast notifications
+function showToast(title, message, type = 'info') {
+    // Get or create notification area
+    const notificationArea = document.getElementById('notification-area') || document.createElement('div');
+    if (!document.getElementById('notification-area')) {
+        notificationArea.id = 'notification-area';
+        notificationArea.className = 'position-fixed bottom-0 end-0 p-3';
+        document.body.appendChild(notificationArea);
+    }
+    
+    // Create a unique ID for this toast
+    const toastId = 'toast-' + Date.now();
+    
+    // Create toast HTML
+    const toastHtml = `
+        <div id="${toastId}" class="toast show" role="alert" aria-live="assertive" aria-atomic="true">
+            <div class="toast-header bg-${type} ${type === 'warning' || type === 'info' ? 'text-dark' : 'text-white'}">
+                <strong class="me-auto">${title}</strong>
+                <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close" onclick="document.getElementById('${toastId}').remove()"></button>
+            </div>
+            <div class="toast-body">
+                ${message}
+            </div>
+        </div>
+    `;
+    
+    // Add toast to notification area
+    notificationArea.innerHTML += toastHtml;
+    
+    // Auto-remove toast after 5 seconds
+    setTimeout(() => {
+        const toast = document.getElementById(toastId);
+        if (toast) toast.remove();
+    }, 5000);
+}
+
+// Function to run health checks for all scrapers
 function runHealthChecks() {
     // Show loading indicator
     document.getElementById('loading-indicator').classList.remove('d-none');
     
-    // Call the API to run health checks
-    fetch('/api/scraper-status/check', {
+    // First get all data sources
+    fetch('/api/data-sources')
+        .then(response => response.json())
+        .then(sources => {
+            if (!sources || sources.length === 0) {
+                throw new Error('No data sources found');
+            }
+            
+            // Create an array of promises for each health check
+            const healthCheckPromises = sources.map(source => 
+                fetch(`/api/scraper-status/${source.id}/check`, {
+                    method: 'POST'
+                }).then(response => response.json())
+                .then(result => {
+                    // Add source name to the result
+                    result.sourceName = source.name;
+                    return result;
+                })
+            );
+            
+            // Wait for all health checks to complete
+            return Promise.all(healthCheckPromises);
+        })
+        .then(results => {
+            // Hide loading indicator
+            document.getElementById('loading-indicator').classList.add('d-none');
+            
+            // Count successes and failures
+            const successes = results.filter(result => result.success && result.status === 'working').length;
+            const failures = results.filter(result => result.success && result.status === 'not_working').length;
+            const errors = results.filter(result => !result.success).length;
+            
+            // Create a detailed message
+            let detailedMessage = `<strong>Results:</strong> ${successes} working, ${failures} not working, ${errors} errors.<br><br>`;
+            
+            // Add details for each source
+            results.forEach(result => {
+                if (result.success) {
+                    const statusClass = result.status === 'working' ? 'text-success' : 'text-danger';
+                    const statusText = result.status === 'working' ? 'Working' : 'Not Working';
+                    const responseTime = result.response_time ? `${result.response_time.toFixed(2)}s` : 'N/A';
+                    
+                    detailedMessage += `<strong>${result.sourceName}:</strong> <span class="${statusClass}">${statusText}</span> (${responseTime})<br>`;
+                } else {
+                    detailedMessage += `<strong>${result.sourceName}:</strong> <span class="text-danger">Error: ${result.error || 'Unknown error'}</span><br>`;
+                }
+            });
+            
+            // Show summary toast
+            showToast(
+                'Health Checks Completed', 
+                detailedMessage, 
+                successes === results.length ? 'success' : (failures > 0 ? 'warning' : 'danger')
+            );
+            
+            // Reload the data sources to show updated status
+            loadDataSources();
+        })
+        .catch(error => {
+            // Hide loading indicator
+            document.getElementById('loading-indicator').classList.add('d-none');
+            
+            // Show error toast
+            showToast('Health Check Error', error.message, 'danger');
+        });
+}
+
+// Add a function to check health for a specific scraper
+function checkScraperHealth(sourceId) {
+    // Show loading indicator
+    document.getElementById('loading-indicator').classList.remove('d-none');
+    
+    // Call the API to check the scraper's health
+    fetch(`/api/scraper-status/${sourceId}/check`, {
         method: 'POST'
     })
     .then(response => {
@@ -695,226 +788,31 @@ function runHealthChecks() {
         document.getElementById('loading-indicator').classList.add('d-none');
         
         if (data.success) {
-            // Show success message in the notification area
-            const notificationArea = document.getElementById('notification-area') || document.createElement('div');
-            if (!document.getElementById('notification-area')) {
-                notificationArea.id = 'notification-area';
-                notificationArea.className = 'position-fixed bottom-0 end-0 p-3';
-                document.body.appendChild(notificationArea);
-            }
+            // Show success toast with status information
+            const statusText = data.status === 'working' ? 'Working' : 'Not Working';
+            const responseTime = data.response_time ? `${data.response_time.toFixed(2)}s` : 'N/A';
             
-            const toastId = 'health-toast-' + Date.now();
-            notificationArea.innerHTML += `
-                <div id="${toastId}" class="toast show" role="alert" aria-live="assertive" aria-atomic="true">
-                    <div class="toast-header bg-success text-white">
-                        <strong class="me-auto">Health Checks</strong>
-                        <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close" onclick="document.getElementById('${toastId}').remove()"></button>
-                    </div>
-                    <div class="toast-body">
-                        Health checks started. The status will update shortly.
-                    </div>
-                </div>
-            `;
+            showToast(
+                'Health Check Complete', 
+                `Status: <strong>${statusText}</strong><br>Response Time: ${responseTime}<br>The page will refresh to show the updated status.`, 
+                data.status === 'working' ? 'success' : 'warning'
+            );
             
-            // Auto-remove toast after 5 seconds
+            // Reload the data sources after a short delay to show the updated status
             setTimeout(() => {
-                const toast = document.getElementById(toastId);
-                if (toast) toast.remove();
-            }, 5000);
-            
-            // Reload the data sources after a short delay
-            setTimeout(loadDataSources, 2000);
+                loadDataSources();
+            }, 2000);
         } else {
-            // Show error message in the notification area
-            const notificationArea = document.getElementById('notification-area') || document.createElement('div');
-            if (!document.getElementById('notification-area')) {
-                notificationArea.id = 'notification-area';
-                notificationArea.className = 'position-fixed bottom-0 end-0 p-3';
-                document.body.appendChild(notificationArea);
-            }
-            
-            const toastId = 'error-toast-' + Date.now();
-            notificationArea.innerHTML += `
-                <div id="${toastId}" class="toast show" role="alert" aria-live="assertive" aria-atomic="true">
-                    <div class="toast-header bg-danger text-white">
-                        <strong class="me-auto">Error</strong>
-                        <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close" onclick="document.getElementById('${toastId}').remove()"></button>
-                    </div>
-                    <div class="toast-body">
-                        Error running health checks: ${data.error || 'Unknown error'}
-                    </div>
-                </div>
-            `;
-            
-            // Auto-remove toast after 5 seconds
-            setTimeout(() => {
-                const toast = document.getElementById(toastId);
-                if (toast) toast.remove();
-            }, 5000);
+            // Show error toast
+            showToast('Health check failed', data.error || 'An error occurred while checking health.', 'danger');
         }
     })
     .catch(error => {
-        console.error('Error checking health:', error);
-        document.getElementById('loading-indicator').classList.add('d-none');
-        
-        // Show error message in the notification area
-        const notificationArea = document.getElementById('notification-area') || document.createElement('div');
-        if (!document.getElementById('notification-area')) {
-            notificationArea.id = 'notification-area';
-            notificationArea.className = 'position-fixed bottom-0 end-0 p-3';
-            document.body.appendChild(notificationArea);
-        }
-        
-        const toastId = 'error-toast-' + Date.now();
-        notificationArea.innerHTML += `
-            <div id="${toastId}" class="toast show" role="alert" aria-live="assertive" aria-atomic="true">
-                <div class="toast-header bg-danger text-white">
-                    <strong class="me-auto">Error</strong>
-                    <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close" onclick="document.getElementById('${toastId}').remove()"></button>
-                </div>
-                <div class="toast-body">
-                    ${error.message || 'An error occurred while checking health.'}
-                </div>
-            </div>
-        `;
-        
-        // Auto-remove toast after 5 seconds
-        setTimeout(() => {
-            const toast = document.getElementById(toastId);
-            if (toast) toast.remove();
-        }, 5000);
-    });
-}
-
-// Add a function to check health for a specific scraper
-function checkScraperHealth(sourceId) {
-    // Show loading indicator
-    document.getElementById('loading-indicator').classList.remove('d-none');
-    
-    // Call the API to check the scraper's health
-    fetch(`/api/scraper-status/${sourceId}`, {
-        method: 'GET'
-    })
-    .then(response => {
-        if (!response.ok) {
-            return response.json().then(err => {
-                throw new Error(err.error || `HTTP error! Status: ${response.status}`);
-            });
-        }
-        return response.json();
-    })
-    .then(data => {
         // Hide loading indicator
         document.getElementById('loading-indicator').classList.add('d-none');
         
-        if (data.status) {
-            // Show health status in a modal
-            const modalId = 'health-modal-' + Date.now();
-            const modalHtml = `
-                <div class="modal fade" id="${modalId}" tabindex="-1" aria-labelledby="${modalId}-label" aria-hidden="true">
-                    <div class="modal-dialog">
-                        <div class="modal-content">
-                            <div class="modal-header">
-                                <h5 class="modal-title" id="${modalId}-label">Scraper Health Status</h5>
-                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                            </div>
-                            <div class="modal-body">
-                                <div class="mb-3">
-                                    <strong>Status:</strong> <span class="badge ${data.status === 'active' ? 'bg-success' : 'bg-warning'}">${data.status}</span>
-                                </div>
-                                <div class="mb-3">
-                                    <strong>Last Run:</strong> ${data.last_run ? new Date(data.last_run).toLocaleString() : 'Never'}
-                                </div>
-                                <div class="mb-3">
-                                    <strong>Next Run:</strong> ${data.next_run ? new Date(data.next_run).toLocaleString() : 'Not scheduled'}
-                                </div>
-                                <div class="mb-3">
-                                    <strong>Message:</strong> ${data.message || 'No message'}
-                                </div>
-                            </div>
-                            <div class="modal-footer">
-                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `;
-            
-            // Add modal to the document
-            const modalContainer = document.createElement('div');
-            modalContainer.innerHTML = modalHtml;
-            document.body.appendChild(modalContainer);
-            
-            // Show the modal
-            const modal = new bootstrap.Modal(document.getElementById(modalId));
-            modal.show();
-            
-            // Remove modal from DOM when hidden
-            document.getElementById(modalId).addEventListener('hidden.bs.modal', function () {
-                document.body.removeChild(modalContainer);
-            });
-            
-            // Reload the data sources
-            loadDataSources();
-        } else {
-            // Show error message in the notification area
-            const notificationArea = document.getElementById('notification-area') || document.createElement('div');
-            if (!document.getElementById('notification-area')) {
-                notificationArea.id = 'notification-area';
-                notificationArea.className = 'position-fixed bottom-0 end-0 p-3';
-                document.body.appendChild(notificationArea);
-            }
-            
-            const toastId = 'error-toast-' + Date.now();
-            notificationArea.innerHTML += `
-                <div id="${toastId}" class="toast show" role="alert" aria-live="assertive" aria-atomic="true">
-                    <div class="toast-header bg-danger text-white">
-                        <strong class="me-auto">Error</strong>
-                        <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close" onclick="document.getElementById('${toastId}').remove()"></button>
-                    </div>
-                    <div class="toast-body">
-                        Error checking scraper health: ${data.error || 'Unknown error'}
-                    </div>
-                </div>
-            `;
-            
-            // Auto-remove toast after 5 seconds
-            setTimeout(() => {
-                const toast = document.getElementById(toastId);
-                if (toast) toast.remove();
-            }, 5000);
-        }
-    })
-    .catch(error => {
-        console.error('Error checking scraper health:', error);
-        document.getElementById('loading-indicator').classList.add('d-none');
-        
-        // Show error message in the notification area
-        const notificationArea = document.getElementById('notification-area') || document.createElement('div');
-        if (!document.getElementById('notification-area')) {
-            notificationArea.id = 'notification-area';
-            notificationArea.className = 'position-fixed bottom-0 end-0 p-3';
-            document.body.appendChild(notificationArea);
-        }
-        
-        const toastId = 'error-toast-' + Date.now();
-        notificationArea.innerHTML += `
-            <div id="${toastId}" class="toast show" role="alert" aria-live="assertive" aria-atomic="true">
-                <div class="toast-header bg-danger text-white">
-                    <strong class="me-auto">Error</strong>
-                    <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close" onclick="document.getElementById('${toastId}').remove()"></button>
-                </div>
-                <div class="toast-body">
-                    ${error.message || 'An error occurred while checking scraper health.'}
-                </div>
-            </div>
-        `;
-        
-        // Auto-remove toast after 5 seconds
-        setTimeout(() => {
-            const toast = document.getElementById(toastId);
-            if (toast) toast.remove();
-        }, 5000);
+        // Show error toast
+        showToast('Health check failed', error.message, 'danger');
     });
 }
 
@@ -1057,4 +955,113 @@ function loadStatistics() {
             `;
             statsContent.classList.remove('d-none');
         });
+}
+
+// Function to poll task status
+function pollTaskStatus(taskId, interval = 2000) {
+    // Check task status
+    fetch(`/api/tasks/${taskId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                if (data.status === 'completed') {
+                    // Task completed successfully
+                    const result = data.result;
+                    
+                    // Hide loading indicator
+                    document.getElementById('collection-status-loading').classList.add('d-none');
+                    document.getElementById('collection-status-content').classList.remove('d-none');
+                    
+                    // Update the status message
+                    const statusMessage = document.getElementById('collection-status-message');
+                    const detailsContainer = document.getElementById('collection-details');
+                    
+                    statusMessage.textContent = 'Collection from all sources completed!';
+                    statusMessage.parentElement.classList.remove('alert-danger');
+                    statusMessage.parentElement.classList.add('alert-success');
+                    
+                    // Display collection details
+                    detailsContainer.innerHTML = `
+                        <p><strong>Sources processed:</strong> ${result.results ? result.results.length : 0}</p>
+                        <p><strong>Total proposals collected:</strong> ${result.proposals_collected || 0}</p>
+                        <p><strong>Total collection time:</strong> ${result.collection_time ? result.collection_time.toFixed(2) : 0} seconds</p>
+                    `;
+                    
+                    // Reload the data sources to update the UI
+                    loadDataSources();
+                } else if (data.status === 'failed') {
+                    // Task failed
+                    showCollectionError(data.error || 'Task failed');
+                } else {
+                    // Task still in progress, continue polling
+                    setTimeout(() => pollTaskStatus(taskId, interval), interval);
+                }
+            } else {
+                // Error checking task status
+                showCollectionError(data.error || 'Error checking task status');
+            }
+        })
+        .catch(error => {
+            console.error('Error checking task status:', error);
+            showCollectionError('Error checking task status');
+        });
+}
+
+// Function to show collection error
+function showCollectionError(errorMessage) {
+    // Hide loading indicator
+    document.getElementById('collection-status-loading').classList.add('d-none');
+    document.getElementById('collection-status-content').classList.remove('d-none');
+    
+    // Update the status message
+    const statusMessage = document.getElementById('collection-status-message');
+    statusMessage.textContent = 'Collection failed!';
+    statusMessage.parentElement.classList.remove('alert-success');
+    statusMessage.parentElement.classList.add('alert-danger');
+    
+    // Display error details
+    document.getElementById('collection-details').innerHTML = `
+        <p><strong>Error:</strong> ${errorMessage}</p>
+    `;
+}
+
+// Function to initialize scraper status for all data sources
+function initializeScraperStatus() {
+    // Show loading indicator
+    document.getElementById('loading-indicator').classList.remove('d-none');
+    
+    // Call the API to initialize scraper status
+    fetch('/api/scraper-status/initialize', {
+        method: 'POST'
+    })
+    .then(response => {
+        if (!response.ok) {
+            return response.json().then(err => {
+                throw new Error(err.error || `HTTP error! Status: ${response.status}`);
+            });
+        }
+        return response.json();
+    })
+    .then(data => {
+        // Hide loading indicator
+        document.getElementById('loading-indicator').classList.add('d-none');
+        
+        if (data.success) {
+            // Show success toast
+            showToast('Status Initialized', data.message, 'success');
+            
+            // Reload the data sources to show the updated status
+            loadDataSources();
+        } else {
+            // Show error toast
+            showToast('Initialization Failed', data.error || 'An error occurred while initializing status.', 'danger');
+        }
+    })
+    .catch(error => {
+        // Hide loading indicator
+        document.getElementById('loading-indicator').classList.add('d-none');
+        
+        // Show error toast
+        showToast('Initialization Failed', error.message, 'danger');
+    });
 } 

@@ -19,6 +19,36 @@ from src.exceptions import ScraperError, ParsingError
 # Import from config
 from src.config import SSA_CONTRACT_FORECAST_URL
 
+import requests
+
+def check_url_accessibility(url):
+    """
+    Check if a URL is accessible.
+    
+    Args:
+        url (str): URL to check
+        
+    Returns:
+        bool: True if the URL is accessible, False otherwise
+    """
+    logger = logging.getLogger("scraper.ssa_contract_forecast")
+    logger.info(f"Checking accessibility of {url}")
+    
+    try:
+        # Set a reasonable timeout
+        response = requests.head(url, timeout=10)
+        
+        # Check if the response is successful
+        if response.status_code < 400:
+            logger.info(f"URL {url} is accessible (status code: {response.status_code})")
+            return True
+        else:
+            logger.error(f"URL {url} returned status code {response.status_code}")
+            return False
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Error checking URL {url}: {str(e)}")
+        return False
+
 class SSAContractForecastScraper(BaseScraper):
     """Scraper for the SSA Contract Forecast site."""
     
@@ -42,11 +72,33 @@ class SSAContractForecastScraper(BaseScraper):
         try:
             # Navigate to the forecast page
             self.logger.info(f"Navigating to {self.base_url}")
-            self.page.goto(self.base_url)
             
-            # Wait for the page to load
-            self.page.wait_for_load_state('networkidle')
-            self.logger.info("Page loaded")
+            try:
+                # Check if the URL is valid
+                if not self.base_url or not self.base_url.startswith("http"):
+                    self.logger.error(f"Invalid URL: {self.base_url}")
+                    raise ValueError(f"Invalid URL: {self.base_url}")
+                
+                # Try to navigate to the page with a timeout
+                response = self.page.goto(self.base_url, timeout=60000)
+                
+                # Check if the navigation was successful
+                if not response:
+                    self.logger.error(f"Failed to navigate to {self.base_url}: No response")
+                    raise Exception(f"Failed to navigate to {self.base_url}: No response")
+                
+                # Check the status code
+                if response.status >= 400:
+                    self.logger.error(f"Failed to navigate to {self.base_url}: Status code {response.status}")
+                    raise Exception(f"Failed to navigate to {self.base_url}: Status code {response.status}")
+                
+                # Wait for the page to load
+                self.page.wait_for_load_state('networkidle', timeout=60000)
+                self.logger.info("Page loaded successfully")
+            except Exception as e:
+                self.logger.error(f"Error navigating to forecast page: {str(e)}")
+                self.logger.error(traceback.format_exc())
+                raise
             
             # Look for Excel file link
             excel_link = None
@@ -59,9 +111,12 @@ class SSAContractForecastScraper(BaseScraper):
                 'a:has-text("Forecast")'
             ]
             
+            self.logger.info("Searching for Excel link...")
             for selector in selectors:
+                self.logger.info(f"Trying selector: {selector}")
                 links = self.page.query_selector_all(selector)
                 if links:
+                    self.logger.info(f"Found {len(links)} links with selector {selector}")
                     for link in links:
                         href = link.get_attribute('href')
                         if href and ('.xls' in href.lower() or 'forecast' in href.lower()):
@@ -73,26 +128,40 @@ class SSAContractForecastScraper(BaseScraper):
             
             if not excel_link:
                 self.logger.error("Could not find Excel link on the page")
+                # Save a screenshot for debugging
+                screenshot_path = os.path.join(os.path.abspath(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), 'data', 'downloads', 'page_screenshot.png')
+                self.page.screenshot(path=screenshot_path)
+                self.logger.info(f"Saved screenshot to {screenshot_path}")
+                # Save page content for debugging
+                html_path = os.path.join(os.path.abspath(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), 'data', 'downloads', 'page_content.html')
+                with open(html_path, 'w', encoding='utf-8') as f:
+                    f.write(self.page.content())
+                self.logger.info(f"Saved page content to {html_path}")
                 return None
             
             # Download the file
             self.logger.info(f"Downloading file from {excel_link}")
             
-            # Start the download
-            with self.page.expect_download() as download_info:
-                # Click the link
-                self.page.click(f'a[href="{excel_link}"]')
-            
-            # Wait for the download to complete
-            download = download_info.value
-            self.logger.info(f"Download started: {download.suggested_filename}")
-            
-            # Wait for the download to complete and save the file
-            download_path = os.path.join(os.path.abspath(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), 'data', 'downloads', download.suggested_filename)
-            download.save_as(download_path)
-            self.logger.info(f"File downloaded to: {download_path}")
-            
-            return download_path
+            try:
+                # Start the download
+                with self.page.expect_download(timeout=60000) as download_info:
+                    # Click the link
+                    self.page.click(f'a[href="{excel_link}"]')
+                
+                # Wait for the download to complete
+                download = download_info.value
+                self.logger.info(f"Download started: {download.suggested_filename}")
+                
+                # Wait for the download to complete and save the file
+                download_path = os.path.join(os.path.abspath(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), 'data', 'downloads', download.suggested_filename)
+                download.save_as(download_path)
+                self.logger.info(f"File downloaded to: {download_path}")
+                
+                return download_path
+            except Exception as e:
+                self.logger.error(f"Error during download: {str(e)}")
+                self.logger.error(traceback.format_exc())
+                raise
         except PlaywrightTimeoutError as e:
             self.logger.error(f"Timeout downloading forecast document: {str(e)}")
             raise ScraperError(f"Timeout downloading forecast document: {str(e)}")
@@ -267,26 +336,40 @@ class SSAContractForecastScraper(BaseScraper):
         
         try:
             # Set up the browser
-            self.setup_browser()
+            self.logger.info("Setting up browser...")
+            if not self.setup_browser():
+                self.logger.error("Failed to set up browser")
+                return False
+            self.logger.info("Browser setup successful")
             
             # Download the forecast document
-            excel_file = self.download_forecast_document()
-            
-            if not excel_file:
-                self.logger.error("Failed to download forecast document")
+            self.logger.info("Downloading forecast document...")
+            try:
+                excel_file = self.download_forecast_document()
+                self.logger.info(f"Downloaded forecast document: {excel_file}")
+            except Exception as e:
+                self.logger.error(f"Failed to download forecast document: {str(e)}")
+                self.logger.error(traceback.format_exc())
                 return False
             
-            # Process the data and save to the database
-            with session_scope() as session:
-                # Get or create the data source
-                data_source = self.get_or_create_data_source(session)
-                
-                # Process the Excel file
-                count = self.process_excel(excel_file, session, data_source)
-                
-                # Update the last_scraped timestamp
-                data_source.last_scraped = datetime.datetime.utcnow()
-                session.commit()
+            # Process the Excel file
+            self.logger.info("Processing Excel file...")
+            try:
+                with session_scope() as session:
+                    # Get or create the data source
+                    data_source = self.get_or_create_data_source(session)
+                    
+                    # Process the Excel file
+                    count = self.process_excel(excel_file, session, data_source)
+                    
+                    # Update the last_scraped timestamp
+                    data_source.last_scraped = datetime.datetime.utcnow()
+                    session.commit()
+                self.logger.info(f"Excel processing successful, processed {count} proposals")
+            except Exception as e:
+                self.logger.error(f"Failed to process Excel file: {str(e)}")
+                self.logger.error(traceback.format_exc())
+                return False
             
             self.logger.info(f"Scraper completed successfully, processed {count} proposals")
             return True
@@ -296,8 +379,10 @@ class SSAContractForecastScraper(BaseScraper):
             return False
         finally:
             # Clean up resources
+            self.logger.info("Cleaning up resources...")
             self.cleanup_browser()
             self.cleanup_downloads()
+            self.logger.info("Cleanup complete")
 
 def run_scraper(force=False):
     """
@@ -312,8 +397,24 @@ def run_scraper(force=False):
     logger = logging.getLogger("scraper.ssa_contract_forecast")
     
     try:
+        # Check if the URL is accessible
+        if not check_url_accessibility(SSA_CONTRACT_FORECAST_URL):
+            logger.error(f"URL {SSA_CONTRACT_FORECAST_URL} is not accessible")
+            return False
+            
+        # Check if Playwright is installed
+        try:
+            from playwright.sync_api import sync_playwright
+            logger.info("Playwright module found")
+        except ImportError:
+            logger.error("Playwright module not found. Please install it with 'pip install playwright'")
+            logger.error("Then run 'playwright install' to install the browsers")
+            return False
+            
         # Create and run the scraper
+        logger.info("Creating SSA Contract Forecast scraper")
         scraper = SSAContractForecastScraper(debug_mode=False)
+        logger.info("Running SSA Contract Forecast scraper")
         return scraper.scrape()
     except Exception as e:
         logger.error(f"Error running scraper: {str(e)}")
