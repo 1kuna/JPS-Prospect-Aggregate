@@ -967,4 +967,47 @@ def initialize_scraper_status():
         return jsonify({"success": False, "error": str(e)}), 500
     
     finally:
-        close_session(session) 
+        close_session(session)
+
+@api.route('/rebuild-db', methods=['POST'])
+def rebuild_database():
+    """API endpoint to trigger database rebuild."""
+    try:
+        # Run the database rebuild in a background thread
+        def rebuild_and_reconnect():
+            try:
+                # Import the rebuild function
+                from src.utils.db_utils import rebuild_database as rebuild_db
+                
+                # Rebuild the database
+                current_app.logger.info("Starting database rebuild process")
+                rebuild_db()
+                
+                # Wait a moment for the rebuild to complete
+                import time
+                time.sleep(2)
+                
+                # Try to reconnect to the database
+                reconnect()
+                current_app.logger.info("Database rebuild completed successfully")
+            except Exception as e:
+                error_msg = f"Error during database rebuild: {str(e)}"
+                current_app.logger.error(error_msg)
+                # Log the full traceback for debugging
+                import traceback
+                current_app.logger.error(f"Traceback: {traceback.format_exc()}")
+        
+        thread = threading.Thread(target=rebuild_and_reconnect)
+        thread.daemon = True
+        thread.start()
+        
+        return jsonify({
+            "status": "success",
+            "message": "Database rebuild started"
+        })
+    except Exception as e:
+        current_app.logger.error(f"Error starting rebuild thread: {e}")
+        return jsonify({
+            "status": "error",
+            "message": f"Error starting rebuild: {str(e)}"
+        }), 500 

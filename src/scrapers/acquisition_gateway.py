@@ -21,34 +21,6 @@ from src.exceptions import ScraperError
 # Import from config
 from src.config import ACQUISITION_GATEWAY_URL
 
-def check_url_accessibility(url):
-    """
-    Check if a URL is accessible.
-    
-    Args:
-        url (str): URL to check
-        
-    Returns:
-        bool: True if the URL is accessible, False otherwise
-    """
-    logger = logging.getLogger("scraper.acquisition_gateway")
-    logger.info(f"Checking accessibility of {url}")
-    
-    try:
-        # Set a reasonable timeout
-        response = requests.head(url, timeout=10)
-        
-        # Check if the response is successful
-        if response.status_code < 400:
-            logger.info(f"URL {url} is accessible (status code: {response.status_code})")
-            return True
-        else:
-            logger.error(f"URL {url} returned status code {response.status_code}")
-            return False
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Error checking URL {url}: {str(e)}")
-        return False
-
 class AcquisitionGatewayScraper(BaseScraper):
     """Scraper for the Acquisition Gateway site."""
     
@@ -62,45 +34,7 @@ class AcquisitionGatewayScraper(BaseScraper):
     
     def navigate_to_forecast_page(self):
         """Navigate to the forecast page."""
-        self.logger.info(f"Navigating to {self.base_url}")
-        
-        try:
-            # Check if the URL is valid
-            if not self.base_url or not self.base_url.startswith("http"):
-                self.logger.error(f"Invalid URL: {self.base_url}")
-                raise ValueError(f"Invalid URL: {self.base_url}")
-            
-            # Try to navigate to the page with a timeout
-            response = self.page.goto(self.base_url, timeout=60000)
-            
-            # Check if the navigation was successful
-            if not response:
-                self.logger.error(f"Failed to navigate to {self.base_url}: No response")
-                raise Exception(f"Failed to navigate to {self.base_url}: No response")
-            
-            # Check the status code
-            if response.status >= 400:
-                self.logger.error(f"Failed to navigate to {self.base_url}: Status code {response.status}")
-                raise Exception(f"Failed to navigate to {self.base_url}: Status code {response.status}")
-            
-            # Wait for the page to load
-            self.page.wait_for_load_state('networkidle', timeout=60000)
-            self.logger.info("Page loaded successfully")
-            
-        except Exception as e:
-            self.logger.error(f"Error navigating to forecast page: {str(e)}")
-            self.logger.error(traceback.format_exc())
-            raise
-    
-    def handle_popups(self):
-        """Handle any popups or cookie notices."""
-        try:
-            # Check for cookie notice and accept if present
-            if self.page.query_selector('button:has-text("Accept")'):
-                self.logger.info("Accepting cookies")
-                self.page.click('button:has-text("Accept")')
-        except Exception as e:
-            self.logger.warning(f"Error handling popups: {str(e)}")
+        return self.navigate_to_url()
     
     def extract_table_data(self):
         """Extract data from the forecast table."""
@@ -178,7 +112,7 @@ class AcquisitionGatewayScraper(BaseScraper):
                     'is_latest': True
                 }
                 
-                # Check if this proposal already exists
+                # Use the base class method to check for existing proposals
                 existing = self.get_proposal_query(session, proposal_data)
                 
                 if existing:
@@ -201,28 +135,6 @@ class AcquisitionGatewayScraper(BaseScraper):
         self.logger.info(f"Processed {count} proposals")
         return count
     
-    def get_proposal_query(self, session, proposal_data):
-        """
-        Get a query to find an existing proposal.
-        
-        Args:
-            session: SQLAlchemy session
-            proposal_data (dict): Proposal data
-            
-        Returns:
-            Query: SQLAlchemy query
-        """
-        query = session.query(Proposal).filter(
-            Proposal.source_id == proposal_data['source_id'],
-            Proposal.title == proposal_data['title']
-        )
-        
-        # Add additional filters if available
-        if proposal_data.get('agency'):
-            query = query.filter(Proposal.agency == proposal_data['agency'])
-        
-        return query.first()
-    
     def scrape(self):
         """
         Run the scraper to extract and process data.
@@ -230,77 +142,11 @@ class AcquisitionGatewayScraper(BaseScraper):
         Returns:
             bool: True if scraping was successful, False otherwise
         """
-        self.logger.info("Starting Acquisition Gateway scraper")
-        
-        try:
-            # Set up the browser
-            self.logger.info("Setting up browser...")
-            if not self.setup_browser():
-                self.logger.error("Failed to set up browser")
-                return False
-            self.logger.info("Browser setup successful")
-            
-            # Navigate to the forecast page
-            self.logger.info("Navigating to forecast page...")
-            try:
-                self.navigate_to_forecast_page()
-                self.logger.info("Navigation successful")
-            except Exception as e:
-                self.logger.error(f"Failed to navigate to forecast page: {str(e)}")
-                self.logger.error(traceback.format_exc())
-                return False
-            
-            # Handle any popups
-            self.logger.info("Handling popups...")
-            try:
-                self.handle_popups()
-                self.logger.info("Popups handled successfully")
-            except Exception as e:
-                self.logger.error(f"Failed to handle popups: {str(e)}")
-                self.logger.error(traceback.format_exc())
-                # Continue anyway, popups might not appear
-            
-            # Extract the table data
-            self.logger.info("Extracting table data...")
-            try:
-                table_data = self.extract_table_data()
-                self.logger.info(f"Extracted {len(table_data)} rows of data")
-            except Exception as e:
-                self.logger.error(f"Failed to extract table data: {str(e)}")
-                self.logger.error(traceback.format_exc())
-                return False
-            
-            # Process the data and save to the database
-            self.logger.info("Processing data and saving to database...")
-            try:
-                with session_scope() as session:
-                    # Get or create the data source
-                    data_source = self.get_or_create_data_source(session)
-                    
-                    # Process the table data
-                    count = self.process_table_data(table_data, session, data_source)
-                    
-                    # Update the last_scraped timestamp
-                    data_source.last_scraped = datetime.datetime.utcnow()
-                    session.commit()
-                self.logger.info(f"Database processing successful, processed {count} proposals")
-            except Exception as e:
-                self.logger.error(f"Failed to process data and save to database: {str(e)}")
-                self.logger.error(traceback.format_exc())
-                return False
-            
-            self.logger.info(f"Scraper completed successfully, processed {count} proposals")
-            return True
-        except Exception as e:
-            self.logger.error(f"Error running scraper: {str(e)}")
-            self.logger.error(traceback.format_exc())
-            return False
-        finally:
-            # Clean up resources
-            self.logger.info("Cleaning up resources...")
-            self.cleanup_browser()
-            self.cleanup_downloads()
-            self.logger.info("Cleanup complete")
+        return self.scrape_with_structure(
+            setup_func=self.navigate_to_forecast_page,
+            extract_func=self.extract_table_data,
+            process_func=self.process_table_data
+        )
 
 def check_last_download():
     """
@@ -343,8 +189,11 @@ def run_scraper(force=False):
             logger.info("Skipping scrape due to recent download")
             return True
         
-        # Check if the URL is accessible
-        if not check_url_accessibility(ACQUISITION_GATEWAY_URL):
+        # Create an instance of the scraper to use its methods
+        scraper = AcquisitionGatewayScraper(debug_mode=False)
+        
+        # Check if the URL is accessible using the scraper's method
+        if not scraper.check_url_accessibility():
             logger.error(f"URL {ACQUISITION_GATEWAY_URL} is not accessible")
             return False
         
@@ -357,9 +206,7 @@ def run_scraper(force=False):
             logger.error("Then run 'playwright install' to install the browsers")
             return False
         
-        # Create and run the scraper
-        logger.info("Creating Acquisition Gateway scraper")
-        scraper = AcquisitionGatewayScraper(debug_mode=False)
+        # Run the scraper
         logger.info("Running Acquisition Gateway scraper")
         return scraper.scrape()
     except Exception as e:

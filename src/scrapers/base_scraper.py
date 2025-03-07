@@ -340,6 +340,205 @@ class BaseScraper:
         
         return data_source
     
+    def check_url_accessibility(self, url=None):
+        """
+        Check if a URL is accessible.
+        
+        Args:
+            url (str, optional): URL to check. If None, uses self.base_url
+            
+        Returns:
+            bool: True if the URL is accessible, False otherwise
+        """
+        url = url or self.base_url
+        self.logger.info(f"Checking accessibility of {url}")
+        
+        try:
+            # Set a reasonable timeout
+            response = requests.head(url, timeout=10)
+            
+            # Check if the response is successful
+            if response.status_code < 400:
+                self.logger.info(f"URL {url} is accessible (status code: {response.status_code})")
+                return True
+            else:
+                self.logger.error(f"URL {url} returned status code {response.status_code}")
+                return False
+        except requests.exceptions.RequestException as e:
+            self.logger.error(f"Error checking URL {url}: {str(e)}")
+            return False
+    
+    def navigate_to_url(self, url=None, timeout=60000):
+        """
+        Navigate to a URL with error handling.
+        
+        Args:
+            url (str, optional): URL to navigate to. If None, uses self.base_url
+            timeout (int): Timeout in milliseconds
+            
+        Returns:
+            bool: True if navigation was successful, False otherwise
+            
+        Raises:
+            Exception: If navigation fails
+        """
+        url = url or self.base_url
+        self.logger.info(f"Navigating to {url}")
+        
+        try:
+            # Check if the URL is valid
+            if not url or not url.startswith("http"):
+                self.logger.error(f"Invalid URL: {url}")
+                raise ValueError(f"Invalid URL: {url}")
+            
+            # Try to navigate to the page with a timeout
+            response = self.page.goto(url, timeout=timeout)
+            
+            # Check if the navigation was successful
+            if not response:
+                self.logger.error(f"Failed to navigate to {url}: No response")
+                raise Exception(f"Failed to navigate to {url}: No response")
+            
+            # Check the status code
+            if response.status >= 400:
+                self.logger.error(f"Failed to navigate to {url}: Status code {response.status}")
+                raise Exception(f"Failed to navigate to {url}: Status code {response.status}")
+            
+            # Wait for the page to load
+            self.page.wait_for_load_state('networkidle', timeout=timeout)
+            self.logger.info("Page loaded successfully")
+            
+            return True
+        except Exception as e:
+            self.logger.error(f"Error navigating to URL: {str(e)}")
+            self.logger.error(traceback.format_exc())
+            raise
+    
+    def handle_popups(self):
+        """
+        Handle any popups or cookie notices.
+        Override this method in subclasses to handle specific popups.
+        """
+        try:
+            # Check for common cookie notice patterns and accept if present
+            for selector in ['button:has-text("Accept")', 'button:has-text("Accept All")', 'button:has-text("I Accept")', '.cookie-accept']:
+                if self.page.query_selector(selector):
+                    self.logger.info(f"Found popup with selector {selector}, clicking it")
+                    self.page.click(selector)
+                    return True
+            
+            return False
+        except Exception as e:
+            self.logger.warning(f"Error handling popups: {str(e)}")
+            return False
+    
+    def get_proposal_query(self, session, proposal_data):
+        """
+        Get a query to find an existing proposal.
+        
+        Args:
+            session: SQLAlchemy session
+            proposal_data (dict): Proposal data
+            
+        Returns:
+            Query: SQLAlchemy query result (first matching proposal)
+        """
+        from src.database.models import Proposal
+        query = session.query(Proposal).filter(
+            Proposal.source_id == proposal_data['source_id'],
+            Proposal.title == proposal_data['title']
+        )
+        
+        # Add additional filters if available
+        if 'agency' in proposal_data and proposal_data['agency']:
+            query = query.filter(Proposal.agency == proposal_data['agency'])
+        
+        if 'solicitation_number' in proposal_data and proposal_data['solicitation_number']:
+            query = query.filter(Proposal.solicitation_number == proposal_data['solicitation_number'])
+        
+        return query.first()
+    
+    def scrape_with_structure(self, setup_func=None, extract_func=None, process_func=None):
+        """
+        Run the scraper with a standardized structure.
+        
+        Args:
+            setup_func (callable, optional): Function to set up the scraper
+            extract_func (callable, optional): Function to extract data
+            process_func (callable, optional): Function to process data
+            
+        Returns:
+            bool: True if scraping was successful, False otherwise
+        """
+        self.logger.info(f"Starting {self.source_name} scraper")
+        
+        try:
+            # Set up the browser
+            self.logger.info("Setting up browser...")
+            if not self.setup_browser():
+                self.logger.error("Failed to set up browser")
+                return False
+            self.logger.info("Browser setup successful")
+            
+            # Run setup function if provided
+            if setup_func:
+                self.logger.info("Running setup function...")
+                try:
+                    setup_result = setup_func()
+                    if setup_result is False:  # Explicit False return means failure
+                        self.logger.error("Setup function failed")
+                        return False
+                    self.logger.info("Setup function completed successfully")
+                except Exception as e:
+                    self.logger.error(f"Error in setup function: {str(e)}")
+                    self.logger.error(traceback.format_exc())
+                    return False
+            
+            # Run extract function if provided
+            extracted_data = None
+            if extract_func:
+                self.logger.info("Running extract function...")
+                try:
+                    extracted_data = extract_func()
+                    self.logger.info("Extract function completed successfully")
+                except Exception as e:
+                    self.logger.error(f"Error in extract function: {str(e)}")
+                    self.logger.error(traceback.format_exc())
+                    return False
+            
+            # Run process function if provided
+            if process_func:
+                self.logger.info("Running process function...")
+                try:
+                    with session_scope() as session:
+                        # Get or create the data source
+                        data_source = self.get_or_create_data_source(session)
+                        
+                        # Process the data
+                        count = process_func(extracted_data, session, data_source)
+                        
+                        # Update the last_scraped timestamp
+                        data_source.last_scraped = datetime.datetime.utcnow()
+                        session.commit()
+                    self.logger.info(f"Process function completed successfully, processed {count} items")
+                except Exception as e:
+                    self.logger.error(f"Error in process function: {str(e)}")
+                    self.logger.error(traceback.format_exc())
+                    return False
+            
+            self.logger.info(f"Scraper completed successfully")
+            return True
+        except Exception as e:
+            self.logger.error(f"Error running scraper: {str(e)}")
+            self.logger.error(traceback.format_exc())
+            return False
+        finally:
+            # Clean up resources
+            self.logger.info("Cleaning up resources...")
+            self.cleanup_browser()
+            self.cleanup_downloads()
+            self.logger.info("Cleanup complete")
+    
     def scrape(self):
         """
         Abstract method to be implemented by subclasses.

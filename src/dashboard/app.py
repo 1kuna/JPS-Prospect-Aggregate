@@ -4,7 +4,7 @@ import os
 import sys
 import logging
 from logging.handlers import RotatingFileHandler
-from flask import Flask, render_template
+from flask import Flask, render_template, send_from_directory, request
 from flask_cors import CORS
 
 # Add the parent directory to the path so we can import from src
@@ -33,6 +33,13 @@ def create_app(config=None):
     
     # Register error handlers
     register_error_handlers(app)
+    
+    # Add route for serving static files from Vue.js build
+    @app.route('/static/vue/<path:filename>')
+    def vue_static(filename):
+        """Serve static files from the Vue.js build directory."""
+        static_vue_dir = os.path.join(app.static_folder, 'vue')
+        return send_from_directory(static_vue_dir, filename)
     
     return app
 
@@ -79,6 +86,21 @@ def register_error_handlers(app):
     
     @app.errorhandler(404)
     def page_not_found(error):
+        # For API routes, return a JSON 404 response
+        if request.path.startswith('/api/'):
+            return {'error': 'Not found', 'message': 'The requested resource was not found'}, 404
+        
+        # For all other routes, serve the Vue.js SPA to let the client-side router handle it
+        try:
+            static_vue_dir = os.path.join(app.static_folder, 'vue')
+            index_path = os.path.join(static_vue_dir, 'index.html')
+            if os.path.exists(index_path):
+                app.logger.info(f"404 handler serving Vue.js SPA for path: {request.path}")
+                return send_from_directory(static_vue_dir, 'index.html')
+        except Exception as e:
+            app.logger.error(f"Error in 404 handler: {str(e)}")
+        
+        # Fallback to the template if Vue build is not available or there's an error
         return render_template('main/errors/404.html'), 404
     
     @app.errorhandler(500)

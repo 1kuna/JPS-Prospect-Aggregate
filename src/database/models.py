@@ -1,6 +1,8 @@
+from __future__ import annotations
+from typing import List, Optional, Dict, Any, Union
 from sqlalchemy import Column, Integer, String, Float, DateTime, Text, create_engine, ForeignKey, Boolean
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, Session
 import os
 from dotenv import load_dotenv
 import datetime
@@ -10,7 +12,12 @@ load_dotenv()
 Base = declarative_base()
 
 class DataSource(Base):
-    """Model for tracking different data sources"""
+    """
+    Model for tracking different data sources.
+    
+    This model stores information about each data source that is scraped,
+    including its name, URL, and when it was last scraped.
+    """
     __tablename__ = 'data_sources'
     
     id = Column(Integer, primary_key=True)
@@ -22,12 +29,17 @@ class DataSource(Base):
     proposals = relationship("Proposal", back_populates="source")
     status_checks = relationship("ScraperStatus", back_populates="source")
     
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<DataSource(name='{self.name}', url='{self.url}')>"
 
 
 class Proposal(Base):
-    """Model for storing proposal forecast data"""
+    """
+    Model for storing proposal forecast data.
+    
+    This model stores information about each proposal opportunity,
+    including its title, agency, description, and important dates.
+    """
     __tablename__ = 'proposals'
     
     id = Column(Integer, primary_key=True)
@@ -60,8 +72,13 @@ class Proposal(Base):
     source = relationship("DataSource", back_populates="proposals")
     history = relationship("ProposalHistory", back_populates="proposal")
     
-    def to_dict(self):
-        """Convert the proposal object to a dictionary for JSON serialization"""
+    def to_dict(self) -> Dict[str, Any]:
+        """
+        Convert the proposal to a dictionary for API responses.
+        
+        Returns:
+            Dict[str, Any]: Dictionary representation of the proposal
+        """
         return {
             'id': self.id,
             'source_id': self.source_id,
@@ -79,22 +96,27 @@ class Proposal(Base):
             'status': self.status,
             'last_updated': self.last_updated.isoformat() if self.last_updated else None,
             'imported_at': self.imported_at.isoformat() if self.imported_at else None,
-            'is_latest': self.is_latest,
             'contract_type': self.contract_type,
             'set_aside': self.set_aside,
             'competition_type': self.competition_type,
             'solicitation_number': self.solicitation_number,
             'award_date': self.award_date.isoformat() if self.award_date else None,
             'place_of_performance': self.place_of_performance,
-            'incumbent': self.incumbent
+            'incumbent': self.incumbent,
+            'source_name': self.source.name if self.source else None
         }
     
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<Proposal(title='{self.title}', agency='{self.agency}')>"
 
 
 class ProposalHistory(Base):
-    """Model for tracking historical proposal data"""
+    """
+    Model for tracking historical proposal data.
+    
+    This model stores historical versions of proposals to track changes
+    over time.
+    """
     __tablename__ = 'proposal_history'
     
     id = Column(Integer, primary_key=True)
@@ -125,12 +147,18 @@ class ProposalHistory(Base):
     
     proposal = relationship("Proposal", back_populates="history")
     
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<ProposalHistory(proposal_id={self.proposal_id}, imported_at='{self.imported_at}')>"
 
 
 class ScraperStatus(Base):
-    """Model for tracking scraper health status"""
+    """
+    Model for tracking scraper health status.
+    
+    This model stores information about the health of each scraper,
+    including its current status, when it was last checked, and any
+    error messages.
+    """
     __tablename__ = 'scraper_status'
     
     id = Column(Integer, primary_key=True)
@@ -142,11 +170,17 @@ class ScraperStatus(Base):
     
     source = relationship("DataSource", back_populates="status_checks")
     
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<ScraperStatus(source_id={self.source_id}, status='{self.status}')>"
 
 
 def get_engine():
-    """Create and return a database engine"""
+    """
+    Get a SQLAlchemy engine instance.
+    
+    Returns:
+        Engine: SQLAlchemy engine instance
+    """
+    from sqlalchemy import create_engine
     database_url = os.getenv("DATABASE_URL", "sqlite:///data/proposals.db")
-    return create_engine(database_url) 
+    return create_engine(database_url, echo=os.getenv("SQL_ECHO", "False").lower() == "true") 

@@ -1,142 +1,207 @@
 # JPS Proposal Forecast Aggregator
 
-A dashboard application that scrapes data from various proposal forecast sites and organizes them into a searchable, sortable dashboard.
+A dashboard application that scrapes data from various government proposal forecast sites and organizes them into a searchable, sortable dashboard.
 
 ## Features
 
 - Automated scraping of proposal forecast data from government websites
-- Data storage in a structured SQLite database
+- Data storage in a structured SQLite database (configurable for other databases)
 - Web-based dashboard for viewing and analyzing proposal opportunities
 - Filtering and sorting capabilities by various criteria
 - Scheduled data refresh to keep information current
 - Asynchronous task processing with Celery for improved performance
+- Health monitoring of scrapers with automated alerts
+- Docker support for easy deployment
 
 ## Current Data Sources
 
 - [Acquisition Gateway Forecast](https://acquisitiongateway.gov/forecast)
-- [SSA Contract Forecast](https://www.ssa.gov/osdbu/contract-forecast-intro.html)
-
-## Setup Instructions
-
-### Windows
-
-1. Clone this repository
-2. Run the setup script:
-   ```
-   setup.bat
-   ```
-   This will:
-   - Create a virtual environment
-   - Install dependencies
-   - Initialize the database
-
-3. Set up environment variables (copy `.env.example` to `.env` and fill in values)
-4. Run the application:
-   ```
-   python app.py
-   ```
-
-### Manual Setup (Windows/Mac/Linux)
-
-1. Clone this repository
-2. Create a virtual environment:
-   ```
-   python -m venv venv
-   ```
-3. Activate the virtual environment:
-   - Windows: `venv\Scripts\activate`
-   - Mac/Linux: `source venv/bin/activate`
-4. Install dependencies:
-   ```
-   pip install -r requirements.txt
-   ```
-5. Set up environment variables (copy `.env.example` to `.env` and fill in values)
-6. Initialize the database:
-   ```
-   python src/database/init_db.py
-   ```
-7. Run the application:
-   ```
-   python app.py
-   ```
-
-### Running with Celery (Recommended)
-
-For improved performance and reliability, the application now supports Celery for asynchronous task processing. This allows for:
-
-- Parallel execution of scrapers
-- Background processing of health checks
-- Improved error handling and task retries
-- Task monitoring and management
-
-#### Quick Start with Celery
-
-We've provided scripts to start all components (Flask app, Celery worker, Celery beat, and Flower) with a single command:
-
-**Windows:**
-```
-start_all.bat
-```
-
-**Mac/Linux:**
-```
-./start_all.sh
-```
-
-These scripts will automatically set up the environment and start all necessary components.
-
-For detailed instructions on setting up and running the application with Celery, see [CELERY_README.md](CELERY_README.md).
-
-## Database Management
-
-The project includes scripts for database management:
-
-- `rebuild_db.py`: Rebuilds the database while preserving existing data
+- [SSA Contract Forecast](https://www.ssa.gov/oag/business/forecast.html)
 
 ## Project Structure
 
-- `app.py`: Main application entry point for the Flask dashboard
-- `src/database/init_db.py`: Script to initialize the database
-- `src/scrapers/`: Web scraping modules for different data sources
-  - `acquisition_gateway.py`: Scraper for Acquisition Gateway Forecast
-  - `ssa_contract_forecast.py`: Scraper for SSA Contract Forecast
-- `src/database/`: Database models and connection management
-- `src/dashboard/`: Flask web application for the dashboard
-- `src/scheduler/`: Scheduled tasks for data refresh
-- `src/tasks/`: Celery tasks for asynchronous processing
-- `src/celery_app.py`: Celery application configuration
-- `data/`: Directory for storing the SQLite database and downloaded files
-- `logs/`: Directory for log files
-- `start_all.py`: Python script to start all application components
-- `start_all.bat`: Windows batch script to start all components
-- `start_all.sh`: Unix shell script to start all components
+```
+.
+├── app.py                  # Main application entry point
+├── src/                    # Source code directory
+│   ├── dashboard/          # Flask web application
+│   │   ├── app.py          # Flask app factory
+│   │   ├── blueprints/     # Route definitions
+│   │   ├── static/         # Static assets (CSS, JS)
+│   │   └── templates/      # HTML templates
+│   ├── scrapers/           # Web scraper implementations
+│   │   ├── base_scraper.py # Base scraper class
+│   │   └── ...             # Specific scraper implementations
+│   ├── database/           # Database models and operations
+│   ├── tasks/              # Celery background tasks
+│   └── utils/              # Utility functions
+├── data/                   # Data storage directory
+│   └── downloads/          # Downloaded files from scrapers
+├── logs/                   # Application logs
+├── scripts/                # Utility scripts
+├── requirements.txt        # Python dependencies
+├── Dockerfile              # Docker configuration
+└── docker-compose.yml      # Docker Compose configuration
+```
 
-## Adding New Data Sources
+## Setup Instructions
 
-To add a new data source:
-1. Create a new scraper module in `src/scrapers/`
-2. Implement the scraping logic following the existing pattern
-3. Create a corresponding Celery task in `src/tasks/scraper_tasks.py`
-4. Register the new scraper in the scheduler configuration
+### Local Development Setup
 
-## Dependencies
+#### Prerequisites
 
-- beautifulsoup4==4.12.2: HTML parsing for web scraping
-- requests==2.31.0: HTTP requests
-- pandas==2.1.1: Data manipulation
-- flask==2.3.3: Web dashboard
-- sqlalchemy==2.0.21: Database ORM
-- apscheduler==3.10.4: Task scheduling
-- python-dotenv==1.0.0: Environment variable management
-- selenium==4.15.2: Browser automation for complex scraping
-- webdriver-manager==4.0.1: Selenium webdriver management
-- celery==5.3.4: Distributed task queue
-- redis==5.0.1: Message broker for Celery
-- flower==2.0.1: Monitoring tool for Celery
+- Python 3.9+
+- Redis (for Celery task queue)
+- Git
+
+#### Installation
+
+1. Clone this repository
+   ```bash
+   git clone https://github.com/yourusername/JPS-Prospect-Aggregate.git
+   cd JPS-Prospect-Aggregate
+   ```
+
+2. Create and activate a Conda environment
+   ```bash
+   # Create a new Conda environment
+   conda create -n jps_env python=3.10
+   
+   # Activate the environment
+   # On Windows
+   conda activate jps_env
+   
+   # On macOS/Linux
+   conda activate jps_env
+   ```
+
+3. Install dependencies
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+4. Install Playwright browsers
+   ```bash
+   playwright install
+   ```
+
+5. Create a `.env` file based on `.env.example`
+   ```bash
+   cp .env.example .env
+   # Edit .env with your configuration
+   ```
+
+6. Initialize the database
+   ```bash
+   python create_tables.py
+   ```
+
+### Docker Setup (Recommended for Production)
+
+1. Clone this repository
+   ```bash
+   git clone https://github.com/yourusername/JPS-Prospect-Aggregate.git
+   cd JPS-Prospect-Aggregate
+   ```
+
+2. Create a `.env` file based on `.env.example`
+   ```bash
+   cp .env.example .env
+   # Edit .env with your configuration
+   ```
+
+3. Build and start the Docker containers
+   ```bash
+   docker-compose up -d
+   ```
+
+4. Access the application at http://localhost:5001
+   
+5. Access Flower (Celery monitoring) at http://localhost:5555
+
+## Running the Application
+
+### Local Development
+
+1. Start Redis (required for Celery)
+   ```bash
+   # Install Redis if not already installed
+   # On Windows, you can use Redis for Windows or WSL
+   # On macOS: brew install redis && brew services start redis
+   # On Linux: sudo apt install redis-server && sudo systemctl start redis
+   ```
+
+2. Start the Flask application
+   ```bash
+   python app.py
+   ```
+
+3. In a separate terminal, start the Celery worker
+   ```bash
+   celery -A src.celery_app.celery_app worker --loglevel=info
+   ```
+
+4. In another terminal, start the Celery beat scheduler
+   ```bash
+   celery -A src.celery_app.celery_app beat --loglevel=info
+   ```
+
+5. (Optional) Start Flower for monitoring Celery tasks
+   ```bash
+   celery -A src.celery_app.celery_app flower
+   ```
+
+### Using Docker
+
+```bash
+# Start all services
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Stop all services
+docker-compose down
+```
+
+## Configuration
+
+The application is configured using environment variables, which can be set in the `.env` file:
+
+- `FLASK_ENV`: Set to `development`, `production`, or `testing` (default: `development`)
+- `DEBUG`: Enable debug mode (`true` or `false`, default: `false`)
+- `HOST`: Host to bind the Flask application (default: `0.0.0.0`)
+- `PORT`: Port to bind the Flask application (default: `5001`)
+- `DATABASE_URL`: Database connection URL (default: SQLite database in the data directory)
+- `REDIS_URL`: Redis connection URL (default: `redis://localhost:6379/0`)
+- `SCRAPE_INTERVAL_HOURS`: How often to run scrapers (default: `24`)
+- `HEALTH_CHECK_INTERVAL_MINUTES`: How often to check scraper health (default: `10`)
+
+See `.env.example` for a complete list of configuration options.
+
+## Adding a New Scraper
+
+1. Create a new scraper class in `src/scrapers/` that inherits from `BaseScraper`
+2. Implement the required methods: `scrape()`, `parse()`, and `save()`
+3. Register the scraper in `src/scrapers/__init__.py`
+4. Add a new Celery task in `src/tasks/scraper_tasks.py`
+5. Add the task to the beat schedule in `src/celery_app.py`
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## License
 
-Proprietary - JPS 
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Documentation
+
+Additional documentation is available in the `docs` folder:
+
+- [Celery Documentation](docs/CELERY_README.md) - Detailed information about Celery setup and configuration
+- [Vue.js Frontend Documentation](docs/VUE_README.md) - Information about the Vue.js frontend
+
 ## Scraper Health Checks
 
 The application includes an automated health check system that verifies each scraper's functionality. This helps you monitor the status of your data sources and quickly identify any issues.

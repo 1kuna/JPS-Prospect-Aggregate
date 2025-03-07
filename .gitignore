@@ -21,9 +21,15 @@ var/
 *.egg
 
 # Virtual Environment
-venv/
+# venv/ - removed since using Conda
 ENV/
 .env
+
+# Conda Environment
+.conda/
+conda-env/
+.anaconda/
+anaconda-env/
 
 # Database
 data/*.db
@@ -70,4 +76,14 @@ yarn-error.log*
 *.tmp
 *.bak
 *.swp
-*~.nib 
+*~.nib
+
+# Temp directory
+temp/
+
+# Celery beat files
+celerybeat-schedule
+celerybeat-schedule.db
+celerybeat-schedule.dat
+celerybeat-schedule.dir
+celerybeat.pid 

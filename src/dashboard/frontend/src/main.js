@@ -17,15 +17,37 @@ const vuetify = createVuetify({
       light: {
         dark: false,
         colors: {
-          primary: '#1976D2',
-          secondary: '#424242',
-          accent: '#82B1FF',
-          error: '#FF5252',
-          info: '#2196F3',
-          success: '#4CAF50',
-          warning: '#FFC107'
+          primary: '#3f51b5',    // Indigo
+          secondary: '#5c6bc0',  // Indigo Lighten-1
+          accent: '#8c9eff',     // Indigo Accent-1
+          error: '#f44336',      // Red
+          info: '#03a9f4',       // Light Blue
+          success: '#4caf50',    // Green
+          warning: '#ff9800'     // Orange
         }
       }
+    },
+    options: {
+      customProperties: true,
+      variations: true
+    }
+  },
+  defaults: {
+    VCard: {
+      elevation: 1,
+      rounded: 'lg'
+    },
+    VBtn: {
+      rounded: 'lg',
+      elevation: 0
+    },
+    VTextField: {
+      variant: 'outlined',
+      density: 'comfortable'
+    },
+    VAlert: {
+      variant: 'tonal',
+      border: 'start'
     }
   }
 })
