@@ -83,84 +83,7 @@
 
     <div class="container-fluid mt-4">
         <div class="row">
-            <div class="col-md-3">
-                <div class="card">
-                    <div class="card-header">
-                        <h5>Filters</h5>
-                    </div>
-                    <div class="card-body">
-                        <form id="filter-form">
-                            <div class="mb-3">
-                                <label for="search" class="form-label">Search</label>
-                                <input type="text" class="form-control" id="search" placeholder="Search proposals...">
-                            </div>
-                            
-                            <div class="mb-3">
-                                <label for="source" class="form-label">Data Source</label>
-                                <select class="form-select" id="source">
-                                    <option value="">All Sources</option>
-                                    <!-- Sources will be populated dynamically -->
-                                </select>
-                            </div>
-                            
-                            <div class="mb-3">
-                                <label for="agency" class="form-label">Agency</label>
-                                <select class="form-select" id="agency">
-                                    <option value="">All Agencies</option>
-                                    <!-- Agencies will be populated dynamically -->
-                                </select>
-                            </div>
-                            
-                            <div class="mb-3">
-                                <label for="status" class="form-label">Status</label>
-                                <select class="form-select" id="status">
-                                    <option value="">All Statuses</option>
-                                    <!-- Statuses will be populated dynamically -->
-                                </select>
-                            </div>
-                            
-                            <div class="mb-3">
-                                <label for="naics-codes" class="form-label">NAICS Codes</label>
-                                <select class="form-select" id="naics-codes" multiple size="5">
-                                    <!-- NAICS codes will be populated dynamically -->
-                                </select>
-                                <small class="form-text text-muted">Hold Ctrl/Cmd to select multiple codes</small>
-                            </div>
-                            
-                            <button type="submit" class="btn btn-primary">Apply Filters</button>
-                            <button type="button" class="btn btn-secondary" id="reset-filters">Reset</button>
-                        </form>
-                    </div>
-                </div>
-                
-                <div class="card mt-3">
-                    <div class="card-header">
-                        <h5>Sort Options</h5>
-                    </div>
-                    <div class="card-body">
-                        <div class="mb-3">
-                            <label for="sort-by" class="form-label">Sort By</label>
-                            <select class="form-select" id="sort-by">
-                                <option value="release_date">Release Date</option>
-                                <option value="response_date">Response Date</option>
-                                <option value="estimated_value">Estimated Value</option>
-                                <option value="title">Title</option>
-                                <option value="agency">Agency</option>
-                            </select>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label for="sort-order" class="form-label">Sort Order</label>
-                            <select class="form-select" id="sort-order">
-                                <option value="desc">Descending</option>
-                                <option value="asc">Ascending</option>
-                            </select>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="col-md-9">
+            <div class="col-md-12">
                 <div class="card">
                     <div class="card-header d-flex justify-content-between align-items-center">
                         <h5>Proposal Forecasts</h5>
@@ -168,14 +91,26 @@
                     </div>
                     <div class="card-body">
                         <div class="table-responsive">
+                            <!-- Loading indicator -->
+                            <div id="loading" class="text-center py-4 d-none">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                                <p class="mt-2">Loading proposals...</p>
+                            </div>
+                            
+                            <!-- No results message -->
+                            <div id="no-results" class="alert alert-info text-center d-none">
+                                No proposals found.
+                            </div>
+                            
                             <table class="table table-striped table-hover">
                                 <thead>
                                     <tr>
+                                        <th>ID</th>
                                         <th>Title</th>
-                                        <th>Agency</th>
+                                        <th>Source</th>
                                         <th>Release Date</th>
-                                        <th>Response Date</th>
-                                        <th>Est. Value</th>
                                         <th>Status</th>
                                         <th>Actions</th>
                                     </tr>
@@ -198,18 +133,9 @@
                                     </select>
                                 </div>
                                 <ul id="pagination" class="pagination pagination-sm"></ul>
-                                <div id="page-info" class="text-muted small">Page 1 of 1</div>
+                                <div id="page-info" class="text-muted small fw-bold">Page 1 of 1</div>
                             </div>
                         </nav>
-                        
-                        <div id="loading" class="text-center d-none">
-                            <div class="spinner-border text-primary" role="status">
-                                <span class="visually-hidden">Loading...</span>
-                            </div>
-                        </div>
-                        <div id="no-results" class="alert alert-info d-none">
-                            No proposals found matching your criteria.
-                        </div>
                     </div>
                 </div>
             </div>

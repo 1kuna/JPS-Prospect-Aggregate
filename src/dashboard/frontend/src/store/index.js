@@ -36,16 +36,32 @@ export default createStore({
     }
   },
   actions: {
-    async fetchDashboardData({ commit }) {
+    async fetchDashboardData({ commit }, { page = 1, perPage = 10 } = {}) {
       commit('SET_LOADING', true)
       commit('SET_ERROR', null)
       
+      console.log(`Store: Fetching dashboard data with page=${page}, perPage=${perPage}`)
+      
       try {
-        const response = await axios.get(`${apiBaseUrl}/dashboard`)
+        const response = await axios.get(`${apiBaseUrl}/dashboard`, {
+          params: {
+            page,
+            per_page: perPage
+          }
+        })
+        console.log('API response:', response.data)
+        
+        // Ensure pagination data is properly formatted
+        if (response.data && response.data.pagination) {
+          console.log('Pagination data from API:', response.data.pagination)
+        }
+        
         commit('SET_DASHBOARD_DATA', response.data)
+        return response.data
       } catch (error) {
         commit('SET_ERROR', error.message || 'Failed to fetch dashboard data')
         console.error('Error fetching dashboard data:', error)
+        throw error
       } finally {
         commit('SET_LOADING', false)
       }

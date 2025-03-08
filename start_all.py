@@ -289,14 +289,114 @@ def check_node_npm():
         return False
 
 
+def frontend_needs_rebuild():
+    """
+    Check if the frontend needs to be rebuilt by comparing file modification times.
+    
+    Returns:
+        bool: True if frontend needs to be rebuilt, False otherwise
+    """
+    # Define all directories and files that should trigger a rebuild when modified
+    frontend_base_dir = os.path.join('src', 'dashboard', 'frontend')
+    frontend_src_dir = os.path.join(frontend_base_dir, 'src')
+    static_vue_dir = os.path.join('src', 'dashboard', 'static', 'vue')
+    
+    # Important config files that should trigger a rebuild
+    important_files = [
+        os.path.join(frontend_base_dir, 'package.json'),
+        os.path.join(frontend_base_dir, 'package-lock.json'),
+        os.path.join(frontend_base_dir, 'vue.config.js'),
+        os.path.join(frontend_base_dir, '.eslintrc.js'),
+        os.path.join(frontend_base_dir, '.env')
+    ]
+    
+    # If static/vue directory doesn't exist, rebuild is needed
+    if not os.path.exists(static_vue_dir):
+        logger.info("Static Vue directory doesn't exist. Frontend rebuild needed.")
+        return True
+    
+    # If index.html doesn't exist in static/vue, rebuild is needed
+    index_html_path = os.path.join(static_vue_dir, 'index.html')
+    if not os.path.exists(index_html_path):
+        logger.info("index.html doesn't exist in static/vue directory. Frontend rebuild needed.")
+        return True
+    
+    # Get the most recent modification time of any file in the frontend source directory
+    latest_frontend_mtime = 0
+    
+    # Check all files in the src directory
+    for root, _, files in os.walk(frontend_src_dir):
+        for file in files:
+            file_path = os.path.join(root, file)
+            try:
+                mtime = os.path.getmtime(file_path)
+                if mtime > latest_frontend_mtime:
+                    latest_frontend_mtime = mtime
+                    latest_file = file_path
+            except OSError as e:
+                logger.warning(f"Error checking file {file_path}: {e}")
+    
+    # Check important config files
+    for file_path in important_files:
+        if os.path.exists(file_path):
+            try:
+                mtime = os.path.getmtime(file_path)
+                if mtime > latest_frontend_mtime:
+                    latest_frontend_mtime = mtime
+                    latest_file = file_path
+            except OSError as e:
+                logger.warning(f"Error checking file {file_path}: {e}")
+    
+    # Get the most recent modification time of any file in the static/vue directory
+    latest_static_mtime = 0
+    if os.path.exists(static_vue_dir):
+        for root, _, files in os.walk(static_vue_dir):
+            for file in files:
+                file_path = os.path.join(root, file)
+                try:
+                    mtime = os.path.getmtime(file_path)
+                    if mtime > latest_static_mtime:
+                        latest_static_mtime = mtime
+                except OSError as e:
+                    logger.warning(f"Error checking file {file_path}: {e}")
+    
+    # If frontend files are newer than static files, rebuild is needed
+    if latest_frontend_mtime > latest_static_mtime:
+        logger.info(f"Frontend files modified at {datetime.datetime.fromtimestamp(latest_frontend_mtime)}")
+        logger.info(f"Most recently modified file: {latest_file}")
+        logger.info(f"Static files last updated at {datetime.datetime.fromtimestamp(latest_static_mtime)}")
+        logger.info("Frontend files are newer than static files. Rebuild needed.")
+        return True
+    
+    logger.info("Frontend files are up to date. No rebuild needed.")
+    return False
+
+
 def build_vue_frontend():
     """
     Build the Vue.js frontend for production.
     
     This function installs dependencies if needed and builds the Vue.js
     application for production deployment.
+    
+    Returns:
+        bool: True if build was successful, False otherwise
     """
     frontend_dir = os.path.join('src', 'dashboard', 'frontend')
+    static_vue_dir = os.path.join('src', 'dashboard', 'static', 'vue')
+    
+    # Check if frontend needs to be rebuilt
+    rebuild_needed = frontend_needs_rebuild()
+    
+    # Force rebuild if VUE_FORCE_REBUILD environment variable is set
+    force_rebuild = os.getenv('VUE_FORCE_REBUILD', 'False').lower() == 'true'
+    if force_rebuild:
+        logger.info("VUE_FORCE_REBUILD is set to true. Forcing frontend rebuild.")
+        rebuild_needed = True
+    
+    if not rebuild_needed:
+        logger.info("Frontend is up to date. Skipping build.")
+        return True
     
     # Print a clear header for the frontend build process
     logger.info("=" * 80)
@@ -342,22 +442,77 @@ def build_vue_frontend():
         if build_process.returncode != 0:
             logger.error(f"Vue.js build failed with code {build_process.returncode}")
             logger.error("Build error details:")
+            
+            # Display the full error output for better debugging
+            logger.error("=== STDOUT ===")
+            for line in build_process.stdout.splitlines():
+                logger.error(f"  {line}")
+                
+            logger.error("=== STDERR ===")
             for line in build_process.stderr.splitlines():
                 logger.error(f"  {line}")
+                
+            # Check for common error patterns
+            if "error" in build_process.stdout.lower():
+                # Extract and display ESLint errors
+                eslint_errors = []
+                in_eslint_section = False
+                
+                for line in build_process.stdout.splitlines():
+                    if "[eslint]" in line:
+                        in_eslint_section = True
+                        eslint_errors.append(line)
+                    elif in_eslint_section and line.strip():
+                        eslint_errors.append(line)
+                    elif in_eslint_section and not line.strip():
+                        in_eslint_section = False
+                
+                if eslint_errors:
+                    logger.error("ESLint errors found:")
+                    for error in eslint_errors:
+                        logger.error(f"  {error}")
+                    
+                    logger.error("\nTo fix ESLint errors, you can:")
+                    logger.error("1. Fix the issues manually in the source files")
+                    logger.error("2. Run 'cd src/dashboard/frontend && npm run lint --fix' to attempt automatic fixes")
+                    logger.error("3. Add '// eslint-disable-next-line' comments to ignore specific warnings")
+            
             return False
         else:
             # Log build success and some output details
             logger.info("Vue.js build completed successfully")
             
+            # Check for warnings in the output
+            if "warning" in build_process.stdout.lower():
+                logger.warning("Build completed with warnings:")
+                
+                # Extract and display ESLint warnings
+                eslint_warnings = []
+                in_eslint_section = False
+                
+                for line in build_process.stdout.splitlines():
+                    if "[eslint]" in line:
+                        in_eslint_section = True
+                        eslint_warnings.append(line)
+                    elif in_eslint_section and line.strip():
+                        eslint_warnings.append(line)
+                    elif in_eslint_section and not line.strip():
+                        in_eslint_section = False
+                
+                if eslint_warnings:
+                    logger.warning("ESLint warnings found (these won't prevent the build):")
+                    for warning in eslint_warnings[:10]:  # Show only first 10 warnings
+                        logger.warning(f"  {warning}")
+                    
+                    if len(eslint_warnings) > 10:
+                        logger.warning(f"  ... and {len(eslint_warnings) - 10} more warnings")
+            
             # Extract and log important parts of the build output
             output_lines = build_process.stdout.splitlines()
             build_summary = []
-            warnings = []
             
-            # Find build summary section
+            # Find build summary section (file sizes)
             in_summary = False
-            in_warnings = False
-            
             for line in output_lines:
                 line = line.strip()
                 
@@ -369,12 +524,6 @@ def build_vue_frontend():
                 if "File" in line and "Size" in line and "Gzipped" in line:
                     in_summary = True
                     build_summary.append(line)
-                    continue
-                
-                # Detect warnings section
-                if "WARNING" in line or "warning" in line:
-                    in_warnings = True
-                    warnings.append(line)
                     continue
                 
                 # Collect build summary lines
@@ -391,72 +540,31 @@ def build_vue_frontend():
                 logger.info("Build summary:")
                 for line in build_summary:
                     logger.info(f"  {line}")
+        
+        # Step 3: Verify the build output
+        logger.info("Step 3/4: Verifying build output...")
+        
+        # Check if index.html exists in the static/vue directory
+        index_html_path = os.path.join(static_vue_dir, 'index.html')
+        
+        if os.path.exists(index_html_path):
+            # Count files in the static/vue directory
+            total_files = sum([len(files) for _, _, files in os.walk(static_vue_dir)])
             
-            # Log warnings (if any)
-            if warnings:
-                logger.warning("Build completed with warnings:")
-                for line in warnings[:5]:  # Show only first 5 warnings to avoid log spam
-                    logger.warning(f"  {line}")
-                if len(warnings) > 5:
-                    logger.warning(f"  ... and {len(warnings) - 5} more warnings")
-        
-        # Ensure the static/vue directory exists
-        logger.info("Step 3/4: Preparing static directory...")
-        static_vue_dir = os.path.join('src', 'dashboard', 'static', 'vue')
-        os.makedirs(static_vue_dir, exist_ok=True)
-        
-        # Clear the static/vue directory to avoid stale files
-        logger.info("Clearing existing static/vue directory...")
-        for item in os.listdir(static_vue_dir):
-            item_path = os.path.join(static_vue_dir, item)
-            if os.path.isfile(item_path):
-                os.unlink(item_path)
-            elif os.path.isdir(item_path):
-                shutil.rmtree(item_path)
-        
-        # Copy the built files from dist to static/vue
-        logger.info("Step 4/4: Copying built files to Flask static directory...")
-        dist_dir = os.path.join(frontend_dir, 'dist')
-        
-        if os.path.exists(dist_dir):
-            # Count files to copy for progress reporting
-            total_files = sum([len(files) for _, _, files in os.walk(dist_dir)])
-            copied_files = 0
-            
-            # Copy all files from dist to static/vue
-            for item in os.listdir(dist_dir):
-                src_path = os.path.join(dist_dir, item)
-                dst_path = os.path.join(static_vue_dir, item)
-                
-                if os.path.isfile(src_path):
-                    shutil.copy2(src_path, dst_path)
-                    copied_files += 1
-                elif os.path.isdir(src_path):
-                    if os.path.exists(dst_path):
-                        shutil.rmtree(dst_path)
-                    shutil.copytree(src_path, dst_path)
-                    copied_files += sum([len(files) for _, _, files in os.walk(src_path)])
-            
-            logger.info(f"Copied {copied_files} of {total_files} files to {static_vue_dir}")
+            logger.info(f"Found {total_files} files in {static_vue_dir}")
             logger.info("=" * 80)
             logger.info("VUE.JS FRONTEND BUILD COMPLETED SUCCESSFULLY")
             logger.info("=" * 80)
+            return True
         else:
-            logger.error(f"Build directory {dist_dir} does not exist after build!")
+            logger.error(f"index.html not found in {static_vue_dir} after build!")
             logger.error("=" * 80)
             logger.error("VUE.JS FRONTEND BUILD FAILED")
             logger.error("=" * 80)
             return False
         
-        return True
     except subprocess.SubprocessError as e:
         logger.error(f"Error building Vue.js frontend: {e}")
-        logger.error("=" * 80)
-        logger.error("VUE.JS FRONTEND BUILD FAILED")
-        logger.error("=" * 80)
-        return False
-    except Exception as e:
-        logger.error(f"Unexpected error during Vue.js frontend build: {e}")
         logger.error("=" * 80)
         logger.error("VUE.JS FRONTEND BUILD FAILED")
         logger.error("=" * 80)
@@ -784,6 +892,14 @@ def main():
     vue_available = False
     frontend_built = False
     if check_node_npm():
+        # Check if frontend needs to be rebuilt
+        rebuild_needed = frontend_needs_rebuild()
+        
+        # Set VUE_FORCE_REBUILD if needed
+        if os.getenv('VUE_FORCE_REBUILD') is None and rebuild_needed:
+            os.environ['VUE_FORCE_REBUILD'] = 'true'
+            logger.info("Setting VUE_FORCE_REBUILD=true because frontend changes were detected")
+        
         # Always build the frontend first, regardless of mode
         logger.info("\n")
         logger.info("=" * 80)
@@ -799,6 +915,17 @@ def main():
             logger.info("Frontend build completed successfully!")
         else:
             logger.error("Frontend build failed! The application may not work correctly.")
+            logger.error("Please check the logs above for ESLint errors or other build issues.")
+            logger.error("Common issues:")
+            logger.error("1. ESLint errors in your Vue.js files")
+            logger.error("2. Missing dependencies")
+            logger.error("3. Syntax errors in your JavaScript/Vue code")
+            
+            logger.error("\nTo fix ESLint errors, you can:")
+            logger.error("1. Fix the issues manually in the source files")
+            logger.error("2. Run 'cd src/dashboard/frontend && npm run lint --fix' to attempt automatic fixes")
+            logger.error("3. Add '// eslint-disable-next-line' comments to ignore specific warnings")
+            
             # Ask the user if they want to continue
             try:
                 response = input("Do you want to continue starting the application anyway? (y/n): ")

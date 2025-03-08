@@ -47,162 +47,11 @@
     
     <!-- Dashboard content -->
     <div v-else>
-      <!-- Proposals Table with Filters - Moved to top for prominence -->
-      <v-row>
-        <!-- Filters Panel -->
-        <v-col cols="12" md="3" lg="2">
-          <v-card elevation="1" class="mb-6">
-            <v-card-title class="py-3 px-4">
-              <v-icon size="small" color="primary" class="mr-2">mdi-filter</v-icon>
-              Filters
-            </v-card-title>
-            
-            <v-divider></v-divider>
-            
-            <v-card-text class="py-2">
-              <!-- Search filter -->
-              <v-text-field
-                v-model="search"
-                prepend-inner-icon="mdi-magnify"
-                label="Search proposals"
-                single-line
-                hide-details
-                density="compact"
-                variant="outlined"
-                class="mb-4"
-              ></v-text-field>
-              
-              <!-- Status filter -->
-              <v-select
-                v-model="statusFilter"
-                label="Status"
-                :items="['All', 'Active', 'Pending', 'Completed', 'Cancelled']"
-                variant="outlined"
-                density="compact"
-                hide-details
-                class="mb-4"
-              ></v-select>
-              
-              <!-- Source filter -->
-              <v-select
-                v-model="sourceFilter"
-                label="Source"
-                :items="sourceOptions"
-                variant="outlined"
-                density="compact"
-                hide-details
-                class="mb-4"
-              ></v-select>
-              
-              <!-- Date range filter -->
-              <v-menu
-                v-model="dateMenu"
-                :close-on-content-click="false"
-                location="bottom"
-              >
-                <template v-slot:activator="{ props }">
-                  <v-text-field
-                    v-bind="props"
-                    v-model="dateRangeText"
-                    label="Date Range"
-                    prepend-inner-icon="mdi-calendar"
-                    readonly
-                    variant="outlined"
-                    density="compact"
-                    hide-details
-                    class="mb-4"
-                  ></v-text-field>
-                </template>
-                <v-date-picker
-                  v-model="dateRange"
-                  range
-                  @update:model-value="dateMenu = false"
-                ></v-date-picker>
-              </v-menu>
-              
-              <!-- NAICS code filter -->
-              <v-autocomplete
-                v-model="naicsFilter"
-                label="NAICS Code"
-                :items="naicsCodes"
-                variant="outlined"
-                density="compact"
-                hide-details
-                class="mb-4"
-              ></v-autocomplete>
-              
-              <!-- Set-aside filter -->
-              <v-select
-                v-model="setAsideFilter"
-                label="Set-Aside"
-                :items="setAsideOptions"
-                variant="outlined"
-                density="compact"
-                hide-details
-                class="mb-4"
-              ></v-select>
-              
-              <!-- Reset filters button -->
-              <v-btn
-                block
-                color="primary"
-                variant="tonal"
-                prepend-icon="mdi-refresh"
-                @click="resetFilters"
-                class="mt-2"
-              >
-                Reset Filters
-              </v-btn>
-            </v-card-text>
-          </v-card>
-        </v-col>
-        
-        <!-- Proposals Table -->
-        <v-col cols="12" md="9" lg="10">
-          <v-card elevation="1" class="mb-6">
-            <v-card-title class="py-4 px-6">
-              <v-icon size="small" color="primary" class="mr-2">mdi-table</v-icon>
-              Recent Proposals
-            </v-card-title>
-            
-            <v-divider></v-divider>
-            
-            <v-data-table
-              :headers="headers"
-              :items="filteredProposals"
-              :loading="isLoading"
-              loading-text="Loading proposals..."
-              no-data-text="No proposals available"
-              class="proposal-table"
-            >
-              <template v-slot:item="{ item, columns }">
-                <tr 
-                  @click="showProposalDetails(item)"
-                  class="proposal-row"
-                >
-                  <td v-for="(column, i) in columns" :key="i">
-                    <template v-if="column.key === 'status'">
-                      <v-chip
-                        :color="getStatusColor(item.status)"
-                        size="small"
-                        variant="tonal"
-                      >
-                        {{ item.status }}
-                      </v-chip>
-                    </template>
-                    <template v-else-if="column.key === 'date'">
-                      {{ formatDate(item.date) }}
-                    </template>
-                    <template v-else>
-                      {{ item[column.key] }}
-                    </template>
-                  </td>
-                </tr>
-              </template>
-            </v-data-table>
-          </v-card>
-        </v-col>
-      </v-row>
+      <!-- Debug info (remove in production) -->
+      <v-card v-if="dashboardData && dashboardData.pagination" class="mb-4 pa-2" color="grey-lighten-4">
+        <pre>Page: {{ page }}, Items per page: {{ itemsPerPage }}, Total count: {{ totalCount }}</pre>
+        <pre>Pagination data: {{ JSON.stringify(dashboardData.pagination, null, 2) }}</pre>
+      </v-card>
       
       <!-- Summary Cards - Condensed into a single row -->
       <v-row>
@@ -216,7 +65,7 @@
               >mdi-file-document-multiple-outline</v-icon>
               <span class="text-h6 font-weight-medium mb-1">Total Proposals</span>
               <span class="text-h4 font-weight-bold primary--text">
-                {{ dashboardData.totalProposals || 0 }}
+                {{ dashboardData.total_proposals || 0 }}
               </span>
             </v-card-text>
           </v-card>
@@ -232,7 +81,7 @@
               >mdi-database-check-outline</v-icon>
               <span class="text-h6 font-weight-medium mb-1">Active Sources</span>
               <span class="text-h4 font-weight-bold success--text">
-                {{ dashboardData.activeSources || 0 }}
+                {{ dashboardData.active_sources || 0 }}
               </span>
             </v-card-text>
           </v-card>
@@ -246,114 +95,77 @@
                 color="info"
                 class="mb-1"
               >mdi-calendar-clock</v-icon>
-              <span class="text-h6 font-weight-medium mb-1">Last Scrape</span>
+              <span class="text-h6 font-weight-medium mb-1">Last Updated</span>
               <span class="text-subtitle-1 font-weight-bold info--text">
-                {{ formatDate(dashboardData.lastScrape) || 'Never' }}
+                {{ formatDate(dashboardData.last_scrape) || 'Never' }}
               </span>
             </v-card-text>
           </v-card>
         </v-col>
       </v-row>
-      
-      <!-- Advanced Features Section -->
-      <v-card elevation="1" class="mt-6">
-        <v-card-title class="py-3 px-6">
-          <v-icon size="small" color="primary" class="mr-2">mdi-tools</v-icon>
-          Advanced Features
-        </v-card-title>
-        
-        <v-divider></v-divider>
-        
-        <v-card-text class="py-4">
-          <v-row>
-            <v-col cols="12" md="6" lg="3">
+
+      <!-- Main content area -->
+      <v-row class="mt-4">
+        <v-col cols="12">
+          <v-card elevation="2" class="rounded-lg">
+            <v-card-title class="d-flex align-center">
+              <span class="text-h5">Recent Proposals</span>
+              <v-spacer></v-spacer>
               <v-btn
-                block
+                icon
+                @click="refreshData"
+                :loading="isLoading"
                 color="primary"
-                variant="tonal"
-                prepend-icon="mdi-database-refresh"
-                @click="rebuildDatabase"
-                class="mb-2"
               >
-                Rebuild Database
+                <v-icon>mdi-refresh</v-icon>
               </v-btn>
-            </v-col>
+            </v-card-title>
             
-            <v-col cols="12" md="6" lg="3">
-              <v-btn
-                block
-                color="primary"
-                variant="tonal"
-                prepend-icon="mdi-database-plus"
-                @click="initializeDatabase"
-                class="mb-2"
-              >
-                Initialize Database
-              </v-btn>
-            </v-col>
-            
-            <v-col cols="12" md="6" lg="3">
-              <v-btn
-                block
-                color="error"
-                variant="tonal"
-                prepend-icon="mdi-delete"
-                @click="deleteAllFiles"
-                class="mb-2"
-              >
-                Delete All Files
-              </v-btn>
-            </v-col>
-            
-            <v-col cols="12" md="6" lg="3">
-              <v-btn
-                block
-                color="warning"
-                variant="tonal"
-                prepend-icon="mdi-heart-pulse"
-                @click="runHealthChecks"
-                class="mb-2"
-              >
-                Run Health Checks
-              </v-btn>
-            </v-col>
-          </v-row>
-        </v-card-text>
-      </v-card>
-      
-      <!-- Health Info Section (shown when health checks are run) -->
-      <v-card v-if="healthResults.length > 0" elevation="1" class="mt-6">
-        <v-card-title class="py-3 px-6">
-          <v-icon size="small" color="warning" class="mr-2">mdi-heart-pulse</v-icon>
-          Health Information
-        </v-card-title>
-        
-        <v-divider></v-divider>
-        
-        <v-card-text class="py-4">
-          <v-row>
-            <v-col v-for="(result, index) in healthResults" :key="index" cols="12" md="6" lg="4">
-              <v-card outlined>
-                <v-card-title class="py-2">
-                  {{ result.sourceName }}
-                  <v-spacer></v-spacer>
-                  <v-icon
-                    :color="result.status === 'working' ? 'success' : 'error'"
-                  >
-                    {{ result.status === 'working' ? 'mdi-check-circle' : 'mdi-alert-circle' }}
-                  </v-icon>
-                </v-card-title>
-                <v-divider></v-divider>
-                <v-card-text>
-                  <p><strong>Status:</strong> {{ result.status === 'working' ? 'Working' : 'Not Working' }}</p>
-                  <p v-if="result.message"><strong>Message:</strong> {{ result.message }}</p>
-                  <p v-if="result.lastCheck"><strong>Last Check:</strong> {{ formatDate(result.lastCheck) }}</p>
-                </v-card-text>
-              </v-card>
-            </v-col>
-          </v-row>
-        </v-card-text>
-      </v-card>
+            <!-- Data table -->
+            <v-data-table
+              :headers="headers"
+              :items="filteredProposals"
+              :loading="isLoading"
+              :items-per-page="itemsPerPage"
+              :page="page"
+              :server-items-length="totalCount"
+              @update:page="updatePage"
+              @update:items-per-page="updateItemsPerPage"
+              class="elevation-0"
+              @click:row="showProposalDetails"
+              :footer-props="{
+                'items-per-page-options': [10, 20, 50, 100],
+                'show-current-page': true,
+                'show-first-last-page': true,
+                'items-per-page-text': 'Rows per page:'
+              }"
+            >
+              <!-- Custom formatting for table cells -->
+              <template v-slot:item.date="{ item }">
+                {{ formatDate(item.date) }}
+              </template>
+              
+              <template v-slot:item.status="{ item }">
+                <v-chip
+                  :color="getStatusColor(item.status)"
+                  text-color="white"
+                  size="small"
+                >
+                  {{ item.status }}
+                </v-chip>
+              </template>
+              
+              <!-- No data placeholder -->
+              <template v-slot:no-data>
+                <div class="text-center py-6">
+                  <v-icon size="large" color="grey-lighten-1" class="mb-2">mdi-database-off</v-icon>
+                  <div class="text-body-1 text-grey-darken-1">No proposals found</div>
+                </div>
+              </template>
+            </v-data-table>
+          </v-card>
+        </v-col>
+      </v-row>
     </div>
     
     <!-- Confirmation Dialog -->
@@ -466,16 +278,11 @@
 
 <script>
 import { mapGetters } from 'vuex'
-import axios from 'axios'
-
-// Get the API base URL from environment or use default
-const apiBaseUrl = process.env.VUE_APP_API_URL || 'http://localhost:5001/api'
 
 export default {
   name: 'Dashboard',
   data() {
     return {
-      search: '',
       headers: [
         { title: 'ID', key: 'id', align: 'start', sortable: true },
         { title: 'Title', key: 'title', align: 'start', sortable: true },
@@ -483,7 +290,6 @@ export default {
         { title: 'Date', key: 'date', align: 'start', sortable: true },
         { title: 'Status', key: 'status', align: 'start', sortable: true }
       ],
-      healthResults: [],
       confirmDialog: {
         show: false,
         title: '',
@@ -499,18 +305,13 @@ export default {
         color: 'success',
         timeout: 5000
       },
-      // New properties for filters
-      statusFilter: 'All',
-      sourceFilter: 'All',
-      dateRange: [],
-      dateMenu: false,
-      naicsFilter: null,
-      setAsideFilter: 'All',
-      // New property for proposal details dialog
+      // Proposal details dialog
       proposalDialog: {
         show: false,
         proposal: null
-      }
+      },
+      itemsPerPage: 10,
+      page: 1
     }
   },
   computed: {
@@ -527,290 +328,99 @@ export default {
         return []
       }
       
-      let filtered = [...this.dashboardData.proposals]
-      
-      // Apply search filter
-      if (this.search) {
-        const searchLower = this.search.toLowerCase()
-        filtered = filtered.filter(proposal => 
-          proposal.title.toLowerCase().includes(searchLower) ||
-          proposal.id.toString().includes(searchLower) ||
-          proposal.source.toLowerCase().includes(searchLower)
-        )
-      }
-      
-      // Apply status filter
-      if (this.statusFilter !== 'All') {
-        filtered = filtered.filter(proposal => proposal.status === this.statusFilter)
-      }
-      
-      // Apply source filter
-      if (this.sourceFilter !== 'All') {
-        filtered = filtered.filter(proposal => proposal.source === this.sourceFilter)
-      }
-      
-      // Apply date range filter
-      if (this.dateRange.length === 2) {
-        const startDate = new Date(this.dateRange[0])
-        const endDate = new Date(this.dateRange[1])
-        endDate.setHours(23, 59, 59, 999) // End of day
-        
-        filtered = filtered.filter(proposal => {
-          const proposalDate = new Date(proposal.date)
-          return proposalDate >= startDate && proposalDate <= endDate
-        })
-      }
-      
-      // Apply NAICS filter
-      if (this.naicsFilter) {
-        filtered = filtered.filter(proposal => 
-          proposal.naicsCode === this.naicsFilter
-        )
-      }
-      
-      // Apply set-aside filter
-      if (this.setAsideFilter !== 'All') {
-        filtered = filtered.filter(proposal => 
-          proposal.setAside === this.setAsideFilter
-        )
-      }
-      
-      return filtered
+      return this.dashboardData.proposals
     },
-    // Computed property for date range text
-    dateRangeText() {
-      if (!this.dateRange || this.dateRange.length === 0) {
-        return ''
+    // Computed property for total count
+    totalCount() {
+      if (!this.dashboardData || !this.dashboardData.pagination) {
+        return 0
       }
       
-      if (this.dateRange.length === 1) {
-        return this.formatDateShort(this.dateRange[0])
-      }
-      
-      return `${this.formatDateShort(this.dateRange[0])} - ${this.formatDateShort(this.dateRange[1])}`
-    },
-    // Computed property for source options
-    sourceOptions() {
-      if (!this.dashboardData || !this.dashboardData.proposals) {
-        return ['All']
-      }
-      
-      const sources = new Set(this.dashboardData.proposals.map(p => p.source))
-      return ['All', ...Array.from(sources)]
-    },
-    // Computed property for NAICS codes
-    naicsCodes() {
-      if (!this.dashboardData || !this.dashboardData.proposals) {
-        return []
-      }
-      
-      const naicsCodes = new Set()
-      this.dashboardData.proposals.forEach(p => {
-        if (p.naicsCode) {
-          naicsCodes.add(p.naicsCode)
-        }
-      })
-      
-      return Array.from(naicsCodes)
-    },
-    // Computed property for set-aside options
-    setAsideOptions() {
-      if (!this.dashboardData || !this.dashboardData.proposals) {
-        return ['All']
-      }
-      
-      const setAsides = new Set()
-      this.dashboardData.proposals.forEach(p => {
-        if (p.setAside) {
-          setAsides.add(p.setAside)
-        }
-      })
-      
-      return ['All', ...Array.from(setAsides)]
+      return this.dashboardData.pagination.total_count || 0
     }
   },
   methods: {
+    // Fetch data on component mount
+    fetchData() {
+      console.log(`Fetching dashboard data with page=${this.page}, perPage=${this.itemsPerPage}`);
+      
+      this.$store.dispatch('fetchDashboardData', {
+        page: this.page,
+        perPage: this.itemsPerPage
+      }).then(() => {
+        console.log('Dashboard data fetched:', this.dashboardData);
+        if (this.dashboardData && this.dashboardData.pagination) {
+          console.log('Pagination data:', this.dashboardData.pagination);
+        }
+      }).catch(error => {
+        console.error('Error fetching dashboard data:', error);
+      });
+    },
+    // Format date for display
     formatDate(dateString) {
       if (!dateString) return 'N/A'
+      
       const date = new Date(dateString)
-      return date.toLocaleString()
+      return date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      })
     },
-    formatDateShort(dateString) {
-      if (!dateString) return ''
-      const date = new Date(dateString)
-      return date.toLocaleDateString()
-    },
+    // Get color for status chip
     getStatusColor(status) {
-      const statusMap = {
-        'Active': 'success',
-        'Pending': 'warning',
-        'Completed': 'info',
-        'Cancelled': 'error'
+      const statusColors = {
+        'Active': 'green',
+        'Pending': 'amber-darken-2',
+        'Completed': 'blue',
+        'Cancelled': 'red',
+        'Draft': 'grey'
       }
-      return statusMap[status] || 'grey'
+      
+      return statusColors[status] || 'grey'
     },
-    // New method to reset filters
-    resetFilters() {
-      this.search = ''
-      this.statusFilter = 'All'
-      this.sourceFilter = 'All'
-      this.dateRange = []
-      this.naicsFilter = null
-      this.setAsideFilter = 'All'
+    // Method to confirm action
+    confirmAction() {
+      if (this.confirmDialog.requireInput && this.confirmDialog.input !== 'CONFIRM') {
+        this.showSnackbar('Please type CONFIRM to proceed', 'error')
+        return
+      }
+      
+      if (typeof this.confirmDialog.action === 'function') {
+        this.confirmDialog.action()
+      }
+      
+      this.confirmDialog.show = false
+      this.confirmDialog.input = ''
     },
-    // New method to show proposal details
+    // Method to show snackbar
+    showSnackbar(text, color = 'success') {
+      this.snackbar.text = text
+      this.snackbar.color = color
+      this.snackbar.show = true
+    },
+    // Show proposal details
     showProposalDetails(proposal) {
       this.proposalDialog.proposal = proposal
       this.proposalDialog.show = true
     },
-    showConfirmDialog(title, message, action, requireInput = false, inputLabel = '') {
-      this.confirmDialog = {
-        show: true,
-        title,
-        message,
-        requireInput,
-        inputLabel,
-        input: '',
-        action
-      }
+    // Method to refresh data
+    refreshData() {
+      this.fetchData()
     },
-    confirmAction() {
-      if (this.confirmDialog.requireInput && 
-          this.confirmDialog.input !== this.confirmDialog.inputLabel) {
-        this.showSnackbar('Please type the confirmation text exactly as shown', 'error')
-        return
-      }
-      
-      this.confirmDialog.show = false
-      if (typeof this.confirmDialog.action === 'function') {
-        this.confirmDialog.action()
-      }
+    // Method to update page
+    updatePage(page) {
+      this.page = page
+      this.fetchData()
     },
-    showSnackbar(text, color = 'success', timeout = 5000) {
-      this.snackbar = {
-        show: true,
-        text,
-        color,
-        timeout
-      }
-    },
-    rebuildDatabase() {
-      this.showConfirmDialog(
-        'Rebuild Database',
-        'WARNING: This will rebuild the database from scratch.<br><br>' +
-        'This operation will:<br>' +
-        '1. Create a backup of the current database<br>' +
-        '2. Rebuild the database structure<br>' +
-        '3. Preserve your data<br><br>' +
-        'The application may need to be restarted after this operation.',
-        this.performDatabaseRebuild
-      )
-    },
-    async performDatabaseRebuild() {
-      try {
-        await axios.post(`${apiBaseUrl}/rebuild-db`)
-        this.showSnackbar('Database rebuild started. The application may need to be restarted.')
-      } catch (error) {
-        console.error('Error rebuilding database:', error)
-        this.showSnackbar('Failed to rebuild database: ' + error.message, 'error')
-      }
-    },
-    initializeDatabase() {
-      this.showConfirmDialog(
-        'Initialize Database',
-        'WARNING: This will delete the current database and create a new one!<br><br>' +
-        'This operation will:<br>' +
-        '1. Delete ALL existing data<br>' +
-        '2. Create a new empty database<br>' +
-        '3. Initialize the data sources<br><br>' +
-        'This operation cannot be undone. All your data will be permanently lost.',
-        this.performDatabaseInitialization,
-        true,
-        'INIT'
-      )
-    },
-    async performDatabaseInitialization() {
-      try {
-        await axios.post(`${apiBaseUrl}/init-db`)
-        this.showSnackbar('Database initialization started. The page will reload shortly.')
-        setTimeout(() => window.location.reload(), 5000)
-      } catch (error) {
-        console.error('Error initializing database:', error)
-        this.showSnackbar('Failed to initialize database: ' + error.message, 'error')
-      }
-    },
-    deleteAllFiles() {
-      this.showConfirmDialog(
-        'Delete All Files',
-        'WARNING: This is a destructive operation!<br><br>' +
-        'This will:<br>' +
-        '1. Delete ALL downloaded files<br>' +
-        '2. Delete ALL database backups<br>' +
-        '3. Delete the current database<br>' +
-        '4. Create a new empty database<br><br>' +
-        'This operation cannot be undone. All your data will be permanently lost.',
-        this.performDeleteAllFiles,
-        true,
-        'RESET'
-      )
-    },
-    async performDeleteAllFiles() {
-      try {
-        await axios.post(`${apiBaseUrl}/reset-everything`)
-        this.showSnackbar('Reset initiated. The application will be reloaded shortly.')
-        setTimeout(() => window.location.reload(), 5000)
-      } catch (error) {
-        console.error('Error resetting everything:', error)
-        this.showSnackbar('Failed to reset: ' + error.message, 'error')
-      }
-    },
-    async runHealthChecks() {
-      try {
-        this.healthResults = []
-        this.showSnackbar('Running health checks...', 'info')
-        
-        // Get all data sources
-        const sourcesResponse = await axios.get(`${apiBaseUrl}/data-sources`)
-        const sources = sourcesResponse.data
-        
-        if (!sources || sources.length === 0) {
-          this.showSnackbar('No data sources found', 'warning')
-          return
-        }
-        
-        // Run health checks for each source
-        const healthCheckPromises = sources.map(source => 
-          axios.post(`${apiBaseUrl}/scraper-status/${source.id}/check`)
-            .then(response => {
-              const result = response.data
-              result.sourceName = source.name
-              return result
-            })
-        )
-        
-        // Wait for all health checks to complete
-        this.healthResults = await Promise.all(healthCheckPromises)
-        
-        // Count successes and failures
-        const successes = this.healthResults.filter(result => 
-          result.success && result.status === 'working'
-        ).length
-        
-        const failures = this.healthResults.filter(result => 
-          result.success && result.status === 'not_working'
-        ).length
-        
-        const errors = this.healthResults.filter(result => !result.success).length
-        
-        this.showSnackbar(`Health checks completed: ${successes} working, ${failures} not working, ${errors} errors.`)
-      } catch (error) {
-        console.error('Error running health checks:', error)
-        this.showSnackbar('Failed to run health checks: ' + error.message, 'error')
-      }
+    // Method to update items per page
+    updateItemsPerPage(itemsPerPage) {
+      this.itemsPerPage = itemsPerPage
+      this.fetchData()
     }
   },
   mounted() {
-    this.$store.dispatch('fetchDashboardData')
+    this.fetchData()
   }
 }
 </script>
