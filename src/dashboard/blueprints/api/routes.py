@@ -55,9 +55,9 @@ def get_proposals():
             raise ValidationError("Page number must be an integer")
             
         try:
-            per_page = int(request.args.get("per_page", 20))
-            if per_page < 1 or per_page > 100:
-                raise ValidationError("Items per page must be between 1 and 100")
+            per_page = int(request.args.get("per_page", 50))
+            if per_page < 1 or per_page > 500:
+                raise ValidationError("Items per page must be between 1 and 500")
         except ValueError:
             raise ValidationError("Items per page must be an integer")
         
@@ -351,11 +351,11 @@ def get_dashboard_data():
     try:
         # Get pagination parameters
         try:
-            per_page = int(request.args.get("per_page", 10))
-            if per_page < 1 or per_page > 100:
-                per_page = 10  # Default to 10 if invalid
+            per_page = int(request.args.get("per_page", 50))
+            if per_page < 1 or per_page > 500:
+                per_page = 50  # Default to 50 if invalid
         except ValueError:
-            per_page = 10  # Default to 10 if not an integer
+            per_page = 50  # Default to 50 if not an integer
             
         try:
             page = int(request.args.get("page", 1))

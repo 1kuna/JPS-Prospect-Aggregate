@@ -200,7 +200,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 Additional documentation is available in the `docs` folder:
 
 - [Celery Documentation](docs/CELERY_README.md) - Detailed information about Celery setup and configuration
-- [Vue.js Frontend Documentation](docs/VUE_README.md) - Information about the Vue.js frontend
+- [React Frontend Documentation](docs/MIGRATION_VUE_TO_REACT.md) - Information about the React frontend
 
 ## Scraper Health Checks
 

@@ -67,7 +67,7 @@ def cleanup_all_logs(logs_dir=None, keep_count=3):
         'celery_worker': 'celery_worker*.log',
         'celery_beat': 'celery_beat*.log',
         'flower': 'flower*.log',
-        'vue': 'vue*.log',
+        'react': 'react*.log',
         'acquisition_gateway': 'acquisition_gateway*.log',
         'health_check': 'health_check*.log'
     }

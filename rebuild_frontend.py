@@ -1,65 +1,113 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 """
-JPS Prospect Aggregate Frontend Rebuild Script
-=============================================
-
-This script forces a rebuild of the Vue.js frontend for the JPS Prospect Aggregate application.
-It's useful when you've made changes to the frontend and want to rebuild it without restarting
-the entire application.
-
-Usage:
-    python rebuild_frontend.py
+Script to rebuild the frontend and copy the build files to the static directory.
 """
 
 import os
-import sys
+import shutil
 import subprocess
-import logging
+import sys
+from pathlib import Path
 
-# Set up logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+# Get the absolute path of the project root directory
+PROJECT_ROOT = Path(__file__).resolve().parent
 
-def main():
-    """Force a rebuild of the Vue.js frontend."""
-    logger.info("=" * 80)
-    logger.info("FORCING REBUILD OF VUE.JS FRONTEND")
-    logger.info("=" * 80)
-    
-    # Set environment variables
-    os.environ['VUE_FORCE_REBUILD'] = 'true'
-    
-    # Import the build_vue_frontend function from start_all.py
+# Path to the React frontend directory
+FRONTEND_DIR = PROJECT_ROOT / "frontend-react"
+
+# Path to the Flask static directory
+STATIC_DIR = PROJECT_ROOT / "src" / "dashboard" / "static"
+
+def run_command(command, cwd=None):
+    """Run a shell command and print the output."""
+    print(f"Running: {' '.join(command)}")
     try:
-        sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-        from start_all import build_vue_frontend, check_node_npm
-    except ImportError as e:
-        logger.error(f"Error importing from start_all.py: {e}")
-        logger.error("Make sure you're running this script from the project root directory.")
-        sys.exit(1)
+        result = subprocess.run(
+            command,
+            cwd=cwd,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+        print(result.stdout)
+        return True
+    except subprocess.CalledProcessError as e:
+        print(f"Error: {e}")
+        print(e.stderr)
+        return False
+
+def build_frontend():
+    """Build the React frontend."""
+    print("Building React frontend...")
     
-    # Check if Node.js and npm are installed
-    if not check_node_npm():
-        logger.error("Node.js or npm not found. Please install them to build the frontend.")
-        sys.exit(1)
+    # Check if the frontend directory exists
+    if not FRONTEND_DIR.exists():
+        print(f"Error: Frontend directory not found at {FRONTEND_DIR}")
+        return False
+    
+    # Install dependencies
+    if not run_command(["npm", "install"], cwd=FRONTEND_DIR):
+        return False
     
     # Build the frontend
-    logger.info("Starting frontend rebuild...")
-    success = build_vue_frontend()
+    if not run_command(["npm", "run", "build"], cwd=FRONTEND_DIR):
+        return False
     
-    if success:
-        logger.info("=" * 80)
-        logger.info("FRONTEND REBUILD COMPLETED SUCCESSFULLY")
-        logger.info("=" * 80)
-        logger.info("You may need to restart the application to see the changes.")
-    else:
-        logger.error("=" * 80)
-        logger.error("FRONTEND REBUILD FAILED")
-        logger.error("=" * 80)
+    print("Frontend build completed successfully.")
+    return True
+
+def copy_build_to_static():
+    """Copy the build files to the Flask static directory."""
+    print("Copying build files to Flask static directory...")
+    
+    # Path to the build directory
+    build_dir = FRONTEND_DIR / "dist"
+    
+    # Check if the build directory exists
+    if not build_dir.exists():
+        print(f"Error: Build directory not found at {build_dir}")
+        return False
+    
+    # Create the static directory if it doesn't exist
+    os.makedirs(STATIC_DIR, exist_ok=True)
+    
+    # Create a 'react' directory in the static directory
+    react_static_dir = STATIC_DIR / "react"
+    os.makedirs(react_static_dir, exist_ok=True)
+    
+    # Copy the build files to the static directory
+    try:
+        # Copy static assets
+        if (build_dir / "static").exists():
+            if (react_static_dir / "static").exists():
+                shutil.rmtree(react_static_dir / "static")
+            shutil.copytree(build_dir / "static", react_static_dir / "static")
+        
+        # Copy index.html
+        if (build_dir / "index.html").exists():
+            shutil.copy2(build_dir / "index.html", react_static_dir / "index.html")
+        
+        # Copy any other files at the root level
+        for item in build_dir.glob("*"):
+            if item.is_file() and item.name != "index.html":
+                shutil.copy2(item, react_static_dir / item.name)
+        
+        print("Build files copied successfully.")
+        return True
+    except Exception as e:
+        print(f"Error copying build files: {e}")
+        return False
+
+def main():
+    """Main function."""
+    if not build_frontend():
         sys.exit(1)
+    
+    if not copy_build_to_static():
+        sys.exit(1)
+    
+    print("Frontend rebuild completed successfully.")
 
 if __name__ == "__main__":
     main() 

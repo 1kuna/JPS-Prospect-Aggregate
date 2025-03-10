@@ -12,7 +12,7 @@ Components started:
 - Celery worker for background tasks
 - Celery beat for scheduled tasks
 - Flower for Celery monitoring
-- Vue.js frontend (development server or production build)
+- React frontend (development server or production build)
 
 Features:
 - Cross-platform compatibility (Windows and Unix-like systems)
@@ -27,7 +27,7 @@ Usage:
 Requirements:
     - Python 3.10+
     - Redis (Unix) or Memurai (Windows)
-    - Node.js and npm (for Vue.js frontend)
+    - Node.js and npm (for React frontend)
 """
 
 import os
@@ -61,7 +61,7 @@ load_dotenv()
 HOST = os.getenv('HOST', '0.0.0.0')
 PORT = os.getenv('PORT', '5001')
 DEBUG = os.getenv('DEBUG', 'False').lower() == 'true'
-VUE_DEV_MODE = os.getenv('VUE_DEV_MODE', 'True').lower() == 'true'
+REACT_DEV_MODE = os.getenv('REACT_DEV_MODE', 'True').lower() == 'true'
 REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
 
 # Constants
@@ -127,7 +127,7 @@ def start_process(cmd, name, cwd=None, capture_output=False):
     Start a subprocess and return the process object.
     
     Args:
-        cmd (str): The command to run
+        cmd (str or list): The command to run, either as a string or list of arguments
         name (str): A name for the process (for logging)
         cwd (str, optional): The working directory for the process
         capture_output (bool, optional): Whether to capture and log the process output
@@ -145,7 +145,11 @@ def start_process(cmd, name, cwd=None, capture_output=False):
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     log_handle.write(f"\n\n{'=' * 80}\n")
     log_handle.write(f"PROCESS STARTED: {timestamp}\n")
-    log_handle.write(f"COMMAND: {cmd}\n")
+    
+    # Format command for logging
+    cmd_str = cmd if isinstance(cmd, str) else ' '.join(cmd)
+    log_handle.write(f"COMMAND: {cmd_str}\n")
+    
     if cwd:
         log_handle.write(f"WORKING DIRECTORY: {cwd}\n")
     log_handle.write(f"{'=' * 80}\n\n")
@@ -157,23 +161,42 @@ def start_process(cmd, name, cwd=None, capture_output=False):
     try:
         if IS_WINDOWS:
             # On Windows, we need to use shell=True to run commands with arguments
-            process = subprocess.Popen(
-                cmd,
-                shell=True,
-                cwd=cwd,
-                stdout=log_handle if capture_output else None,
-                stderr=log_handle if capture_output else None,
-                text=True
-            )
+            if isinstance(cmd, str):
+                process = subprocess.Popen(
+                    cmd,
+                    shell=True,
+                    cwd=cwd,
+                    stdout=log_handle if capture_output else None,
+                    stderr=log_handle if capture_output else None,
+                    text=True
+                )
+            else:
+                process = subprocess.Popen(
+                    cmd,
+                    shell=True,
+                    cwd=cwd,
+                    stdout=log_handle if capture_output else None,
+                    stderr=log_handle if capture_output else None,
+                    text=True
+                )
         else:
             # On Unix-like systems, we can use shell=False for better security
-            process = subprocess.Popen(
-                cmd.split(),
-                cwd=cwd,
-                stdout=log_handle if capture_output else None,
-                stderr=log_handle if capture_output else None,
-                text=True
-            )
+            if isinstance(cmd, str):
+                process = subprocess.Popen(
+                    cmd.split(),
+                    cwd=cwd,
+                    stdout=log_handle if capture_output else None,
+                    stderr=log_handle if capture_output else None,
+                    text=True
+                )
+            else:
+                process = subprocess.Popen(
+                    cmd,
+                    cwd=cwd,
+                    stdout=log_handle if capture_output else None,
+                    stderr=log_handle if capture_output else None,
+                    text=True
+                )
         
         # Store the process, its name, and log handle for later cleanup
         processes.append((process, name, log_handle))
@@ -285,7 +308,7 @@ def check_node_npm():
         
         return True
     except (subprocess.SubprocessError, FileNotFoundError):
-        logger.warning("Node.js or npm not found. Please install Node.js and npm to run the Vue.js frontend.")
+        logger.warning("Node.js or npm not found. Please install Node.js and npm to run the React frontend.")
         return False
 
 
@@ -297,35 +320,36 @@ def frontend_needs_rebuild():
         bool: True if frontend needs to be rebuilt, False otherwise
     """
     # Define all directories and files that should trigger a rebuild when modified
-    frontend_base_dir = os.path.join('src', 'dashboard', 'frontend')
-    frontend_src_dir = os.path.join(frontend_base_dir, 'src')
-    static_vue_dir = os.path.join('src', 'dashboard', 'static', 'vue')
+    react_dir = os.path.join('frontend-react')
+    react_src_dir = os.path.join(react_dir, 'src')
+    react_build_dir = os.path.join(react_dir, 'dist')
     
     # Important config files that should trigger a rebuild
     important_files = [
-        os.path.join(frontend_base_dir, 'package.json'),
-        os.path.join(frontend_base_dir, 'package-lock.json'),
-        os.path.join(frontend_base_dir, 'vue.config.js'),
-        os.path.join(frontend_base_dir, '.eslintrc.js'),
-        os.path.join(frontend_base_dir, '.env')
+        os.path.join(react_dir, 'package.json'),
+        os.path.join(react_dir, 'package-lock.json'),
+        os.path.join(react_dir, 'vite.config.ts'),
+        os.path.join(react_dir, 'tsconfig.json'),
+        os.path.join(react_dir, '.env')
     ]
     
-    # If static/vue directory doesn't exist, rebuild is needed
-    if not os.path.exists(static_vue_dir):
-        logger.info("Static Vue directory doesn't exist. Frontend rebuild needed.")
+    # If React build directory doesn't exist, rebuild is needed
+    if not os.path.exists(react_build_dir):
+        logger.info("React build directory doesn't exist. Frontend rebuild needed.")
         return True
     
-    # If index.html doesn't exist in static/vue, rebuild is needed
-    index_html_path = os.path.join(static_vue_dir, 'index.html')
+    # If index.html doesn't exist in React build directory, rebuild is needed
+    index_html_path = os.path.join(react_build_dir, 'index.html')
     if not os.path.exists(index_html_path):
-        logger.info("index.html doesn't exist in static/vue directory. Frontend rebuild needed.")
+        logger.info("index.html doesn't exist in React build directory. Frontend rebuild needed.")
         return True
     
     # Get the most recent modification time of any file in the frontend source directory
     latest_frontend_mtime = 0
+    latest_file = ""
     
     # Check all files in the src directory
-    for root, _, files in os.walk(frontend_src_dir):
+    for root, _, files in os.walk(react_src_dir):
         for file in files:
             file_path = os.path.join(root, file)
             try:
@@ -347,10 +371,10 @@ def frontend_needs_rebuild():
             except OSError as e:
                 logger.warning(f"Error checking file {file_path}: {e}")
     
-    # Get the most recent modification time of any file in the static/vue directory
+    # Get the most recent modification time of any file in the React build directory
     latest_static_mtime = 0
-    if os.path.exists(static_vue_dir):
-        for root, _, files in os.walk(static_vue_dir):
+    if os.path.exists(react_build_dir):
+        for root, _, files in os.walk(react_build_dir):
             for file in files:
                 file_path = os.path.join(root, file)
                 try:
@@ -372,26 +396,26 @@ def frontend_needs_rebuild():
     return False
 
 
-def build_vue_frontend():
+def build_react_frontend():
     """
-    Build the Vue.js frontend for production.
+    Build the React frontend for production.
     
-    This function installs dependencies if needed and builds the Vue.js
+    This function installs dependencies if needed and builds the React
     application for production deployment.
     
     Returns:
         bool: True if build was successful, False otherwise
     """
-    frontend_dir = os.path.join('src', 'dashboard', 'frontend')
-    static_vue_dir = os.path.join('src', 'dashboard', 'static', 'vue')
+    react_dir = os.path.join('frontend-react')
+    react_build_dir = os.path.join('frontend-react', 'dist')
     
     # Check if frontend needs to be rebuilt
     rebuild_needed = frontend_needs_rebuild()
     
-    # Force rebuild if VUE_FORCE_REBUILD environment variable is set
-    force_rebuild = os.getenv('VUE_FORCE_REBUILD', 'False').lower() == 'true'
+    # Force rebuild if REACT_FORCE_REBUILD environment variable is set
+    force_rebuild = os.getenv('REACT_FORCE_REBUILD', 'False').lower() == 'true'
     if force_rebuild:
-        logger.info("VUE_FORCE_REBUILD is set to true. Forcing frontend rebuild.")
+        logger.info("REACT_FORCE_REBUILD is set to true. Forcing frontend rebuild.")
         rebuild_needed = True
     
     if not rebuild_needed:
@@ -400,15 +424,15 @@ def build_vue_frontend():
     
     # Print a clear header for the frontend build process
     logger.info("=" * 80)
-    logger.info("STARTING VUE.JS FRONTEND BUILD")
+    logger.info("STARTING REACT FRONTEND BUILD")
     logger.info("=" * 80)
     
     # Always run npm install to ensure dependencies are up to date
-    logger.info("Step 1/4: Installing/updating Vue.js dependencies...")
+    logger.info("Step 1/4: Installing/updating React dependencies...")
     try:
         npm_install_process = subprocess.run(
             ['npm', 'install'], 
-            cwd=frontend_dir, 
+            cwd=react_dir, 
             check=False,
             capture_output=True,
             text=True
@@ -421,8 +445,8 @@ def build_vue_frontend():
         else:
             logger.info("npm install completed successfully")
         
-        # Build the Vue.js app for production
-        logger.info("Step 2/4: Building Vue.js frontend for production...")
+        # Build the React app for production
+        logger.info("Step 2/4: Building React frontend for production...")
         
         # Set NODE_ENV to production to ensure consistent builds
         build_env = os.environ.copy()
@@ -431,7 +455,7 @@ def build_vue_frontend():
         # Run the build process and capture output
         build_process = subprocess.run(
             ['npm', 'run', 'build'], 
-            cwd=frontend_dir, 
+            cwd=react_dir, 
             check=False,
             capture_output=True,
             text=True,
@@ -440,7 +464,7 @@ def build_vue_frontend():
         
         # Check if build was successful
         if build_process.returncode != 0:
-            logger.error(f"Vue.js build failed with code {build_process.returncode}")
+            logger.error(f"React build failed with code {build_process.returncode}")
             logger.error("Build error details:")
             
             # Display the full error output for better debugging
@@ -452,35 +476,10 @@ def build_vue_frontend():
             for line in build_process.stderr.splitlines():
                 logger.error(f"  {line}")
                 
-            # Check for common error patterns
-            if "error" in build_process.stdout.lower():
-                # Extract and display ESLint errors
-                eslint_errors = []
-                in_eslint_section = False
-                
-                for line in build_process.stdout.splitlines():
-                    if "[eslint]" in line:
-                        in_eslint_section = True
-                        eslint_errors.append(line)
-                    elif in_eslint_section and line.strip():
-                        eslint_errors.append(line)
-                    elif in_eslint_section and not line.strip():
-                        in_eslint_section = False
-                
-                if eslint_errors:
-                    logger.error("ESLint errors found:")
-                    for error in eslint_errors:
-                        logger.error(f"  {error}")
-                    
-                    logger.error("\nTo fix ESLint errors, you can:")
-                    logger.error("1. Fix the issues manually in the source files")
-                    logger.error("2. Run 'cd src/dashboard/frontend && npm run lint --fix' to attempt automatic fixes")
-                    logger.error("3. Add '// eslint-disable-next-line' comments to ignore specific warnings")
-            
             return False
         else:
             # Log build success and some output details
-            logger.info("Vue.js build completed successfully")
+            logger.info("React build completed successfully")
             
             # Check for warnings in the output
             if "warning" in build_process.stdout.lower():
@@ -544,29 +543,29 @@ def build_vue_frontend():
         # Step 3: Verify the build output
         logger.info("Step 3/4: Verifying build output...")
         
-        # Check if index.html exists in the static/vue directory
-        index_html_path = os.path.join(static_vue_dir, 'index.html')
+        # Check if index.html exists in the React build directory
+        index_html_path = os.path.join(react_build_dir, 'index.html')
         
         if os.path.exists(index_html_path):
-            # Count files in the static/vue directory
-            total_files = sum([len(files) for _, _, files in os.walk(static_vue_dir)])
+            # Count files in the React build directory
+            total_files = sum([len(files) for _, _, files in os.walk(react_build_dir)])
             
-            logger.info(f"Found {total_files} files in {static_vue_dir}")
+            logger.info(f"Found {total_files} files in {react_build_dir}")
             logger.info("=" * 80)
-            logger.info("VUE.JS FRONTEND BUILD COMPLETED SUCCESSFULLY")
+            logger.info("REACT FRONTEND BUILD COMPLETED SUCCESSFULLY")
             logger.info("=" * 80)
             return True
         else:
-            logger.error(f"index.html not found in {static_vue_dir} after build!")
+            logger.error(f"index.html not found in {react_build_dir} after build!")
             logger.error("=" * 80)
-            logger.error("VUE.JS FRONTEND BUILD FAILED")
+            logger.error("REACT FRONTEND BUILD FAILED")
             logger.error("=" * 80)
             return False
         
     except subprocess.SubprocessError as e:
-        logger.error(f"Error building Vue.js frontend: {e}")
+        logger.error(f"Error building React frontend: {e}")
         logger.error("=" * 80)
-        logger.error("VUE.JS FRONTEND BUILD FAILED")
+        logger.error("REACT FRONTEND BUILD FAILED")
         logger.error("=" * 80)
         return False
 
@@ -744,8 +743,8 @@ REDIS_URL=redis://localhost:6379/0
 CELERY_BROKER_URL=redis://localhost:6379/0
 CELERY_RESULT_BACKEND=redis://localhost:6379/0
 
-# Vue.js settings
-VUE_DEV_MODE=True  # Set to False for production
+# React settings
+REACT_DEV_MODE=True  # Set to False for production
 """)
             logger.info("Created .env file with default values")
     else:
@@ -889,16 +888,16 @@ def main():
         sys.exit(1)
     
     # Check if Node.js and npm are installed
-    vue_available = False
+    react_available = False
     frontend_built = False
     if check_node_npm():
         # Check if frontend needs to be rebuilt
         rebuild_needed = frontend_needs_rebuild()
         
-        # Set VUE_FORCE_REBUILD if needed
-        if os.getenv('VUE_FORCE_REBUILD') is None and rebuild_needed:
-            os.environ['VUE_FORCE_REBUILD'] = 'true'
-            logger.info("Setting VUE_FORCE_REBUILD=true because frontend changes were detected")
+        # Set REACT_FORCE_REBUILD if needed
+        if os.getenv('REACT_FORCE_REBUILD') is None and rebuild_needed:
+            os.environ['REACT_FORCE_REBUILD'] = 'true'
+            logger.info("Setting REACT_FORCE_REBUILD=true because frontend changes were detected")
         
         # Always build the frontend first, regardless of mode
         logger.info("\n")
@@ -908,22 +907,22 @@ def main():
         logger.info("=" * 80)
         logger.info("\n")
         
-        build_success = build_vue_frontend()
+        build_success = build_react_frontend()
         
         if build_success:
             frontend_built = True
             logger.info("Frontend build completed successfully!")
         else:
             logger.error("Frontend build failed! The application may not work correctly.")
-            logger.error("Please check the logs above for ESLint errors or other build issues.")
+            logger.error("Please check the logs above for errors or other build issues.")
             logger.error("Common issues:")
-            logger.error("1. ESLint errors in your Vue.js files")
+            logger.error("1. ESLint errors in your TypeScript/React files")
             logger.error("2. Missing dependencies")
-            logger.error("3. Syntax errors in your JavaScript/Vue code")
+            logger.error("3. Syntax errors in your TypeScript/React code")
             
             logger.error("\nTo fix ESLint errors, you can:")
             logger.error("1. Fix the issues manually in the source files")
-            logger.error("2. Run 'cd src/dashboard/frontend && npm run lint --fix' to attempt automatic fixes")
+            logger.error("2. Run 'cd frontend-react && npm run lint --fix' to attempt automatic fixes")
             logger.error("3. Add '// eslint-disable-next-line' comments to ignore specific warnings")
             
             # Ask the user if they want to continue
@@ -936,45 +935,42 @@ def main():
                 logger.info("\nExiting as requested.")
                 sys.exit(1)
         
-        # We'll always use the built files, but we'll still start the Vue dev server if in dev mode
-        # for hot reloading during development
-        if VUE_DEV_MODE:
-            vue_available = True
+        # We'll start the React dev server if in dev mode
+        if REACT_DEV_MODE:
+            react_available = True
     else:
-        logger.warning("Warning: Node.js or npm not found. Vue.js frontend will not be built or started.")
+        logger.warning("Warning: Node.js or npm not found. React frontend will not be built or started.")
     
     # Verify that the frontend static files exist
-    static_vue_dir = os.path.join('src', 'dashboard', 'static', 'vue')
-    index_html_path = os.path.join(static_vue_dir, 'index.html')
+    react_build_dir = os.path.join('frontend-react', 'dist')
+    index_html_path = os.path.join(react_build_dir, 'index.html')
     
     if not os.path.exists(index_html_path):
-        logger.warning("=" * 80)
         logger.warning("WARNING: Frontend index.html not found!")
         logger.warning("The application may not work correctly.")
-        logger.warning("=" * 80)
     
     # Define process configurations
-    frontend_dir = os.path.join('src', 'dashboard', 'frontend')
+    react_dir = os.path.join('frontend-react')
     process_configs = {
         "Flask App": {
-            "cmd": "python app.py",
+            "cmd": ["python", "-m", "flask", "run", "--host", HOST, "--port", PORT],
             "capture_output": True
         },
         "Celery Worker": {
-            "cmd": "celery -A src.celery_app worker --loglevel=info",
+            "cmd": ["celery", "-A", "app.celery", "worker", "--loglevel=info"],
             "capture_output": True
         },
         "Celery Beat": {
-            "cmd": "celery -A src.celery_app beat --loglevel=info --schedule=temp/celerybeat-schedule.db",
+            "cmd": ["celery", "-A", "app.celery", "beat", "--loglevel=info"],
             "capture_output": True
         },
         "Flower": {
-            "cmd": "celery -A src.celery_app flower --port=5555",
+            "cmd": ["celery", "-A", "app.celery", "flower", "--port=5555"],
             "capture_output": True
         },
-        "Vue.js Dev Server": {
-            "cmd": "npm run serve",
-            "cwd": frontend_dir,
+        "React Dev Server": {
+            "cmd": ["npm", "run", "dev"],
+            "cwd": react_dir,
             "capture_output": True
         }
     }
@@ -1036,18 +1032,18 @@ def main():
         capture_output=process_configs["Flower"]["capture_output"]
     )
     
-    # Start Vue.js development server if in dev mode
-    if VUE_DEV_MODE and vue_available:
+    # Start React development server if in dev mode
+    if REACT_DEV_MODE and react_available:
         logger.info("\n")
         logger.info("=" * 80)
-        logger.info("STARTING VUE.JS DEVELOPMENT SERVER")
+        logger.info("STARTING REACT DEVELOPMENT SERVER")
         logger.info("=" * 80)
         
         start_process(
-            process_configs["Vue.js Dev Server"]["cmd"],
-            "Vue.js Dev Server",
-            cwd=process_configs["Vue.js Dev Server"]["cwd"],
-            capture_output=process_configs["Vue.js Dev Server"]["capture_output"]
+            process_configs["React Dev Server"]["cmd"],
+            "React Dev Server",
+            cwd=process_configs["React Dev Server"]["cwd"],
+            capture_output=process_configs["React Dev Server"]["capture_output"]
         )
     
     logger.info("\n")
@@ -1058,8 +1054,8 @@ def main():
     logger.info("- Celery worker processing tasks")
     logger.info("- Celery beat scheduling tasks")
     logger.info("- Flower monitoring available at http://localhost:5555")
-    if VUE_DEV_MODE and vue_available:
-        logger.info("- Vue.js dev server running at http://localhost:8080")
+    if REACT_DEV_MODE and react_available:
+        logger.info("- React dev server running at http://localhost:3000")
     
     # Add frontend build status to the summary
     if frontend_built:
