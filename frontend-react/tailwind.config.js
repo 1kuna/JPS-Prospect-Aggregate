@@ -18,14 +18,17 @@ export default {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
-        background: "hsl(var(--background))",
-        foreground: "hsl(var(--foreground))",
+        background: "var(--background-color)",
+        foreground: "var(--text-color)",
         primary: {
-          DEFAULT: "hsl(var(--primary))",
+          DEFAULT: "var(--primary-color)",
+          dark: "var(--primary-dark)",
+          light: "var(--primary-light)",
           foreground: "hsl(var(--primary-foreground))",
         },
         secondary: {
-          DEFAULT: "hsl(var(--secondary))",
+          DEFAULT: "var(--secondary-color)",
+          light: "var(--secondary-light)",
           foreground: "hsl(var(--secondary-foreground))",
         },
         destructive: {
@@ -34,10 +37,10 @@ export default {
         },
         muted: {
           DEFAULT: "hsl(var(--muted))",
-          foreground: "hsl(var(--muted-foreground))",
+          foreground: "var(--muted-text)",
         },
         accent: {
-          DEFAULT: "hsl(var(--accent))",
+          DEFAULT: "var(--accent-color)",
           foreground: "hsl(var(--accent-foreground))",
         },
         popover: {
@@ -45,14 +48,42 @@ export default {
           foreground: "hsl(var(--popover-foreground))",
         },
         card: {
-          DEFAULT: "hsl(var(--card))",
+          DEFAULT: "var(--card-bg)",
           foreground: "hsl(var(--card-foreground))",
         },
+        error: "var(--error-color)",
+        success: "var(--success-color)",
+        warning: "var(--warning-color)",
+        info: "var(--info-color)",
+        "text-light": "var(--text-light)",
       },
       borderRadius: {
-        lg: "var(--radius)",
-        md: "calc(var(--radius) - 2px)",
-        sm: "calc(var(--radius) - 4px)",
+        lg: "var(--border-radius-lg)",
+        md: "var(--border-radius-md)",
+        sm: "var(--border-radius-sm)",
+      },
+      spacing: {
+        xs: "var(--spacing-xs)",
+        sm: "var(--spacing-sm)",
+        md: "var(--spacing-md)",
+        lg: "var(--spacing-lg)",
+        xl: "var(--spacing-xl)",
+        xxl: "var(--spacing-xxl)",
+      },
+      fontSize: {
+        xs: "var(--font-size-xs)",
+        sm: "var(--font-size-sm)",
+        md: "var(--font-size-md)",
+        lg: "var(--font-size-lg)",
+        xl: "var(--font-size-xl)",
+        "2xl": "var(--font-size-2xl)",
+        "3xl": "var(--font-size-3xl)",
+        "4xl": "var(--font-size-4xl)",
+      },
+      boxShadow: {
+        sm: "var(--box-shadow-sm)",
+        md: "var(--box-shadow-md)",
+        lg: "var(--box-shadow-lg)",
       },
       keyframes: {
         "accordion-down": {

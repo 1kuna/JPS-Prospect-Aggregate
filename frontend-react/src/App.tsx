@@ -3,7 +3,8 @@ import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { LoadingProvider } from './context/LoadingContext';
 import { Skeleton } from './components/ui/skeleton';
-import './App.css';
+import { Card, CardHeader } from './components/ui/card';
+import './index.css';
 
 // Lazy load pages
 const Proposals = lazy(() => import('./pages/Proposals'));
@@ -12,16 +13,16 @@ const DataSources = lazy(() => import('./pages/DataSources'));
 // Loading fallback - memoized to prevent unnecessary re-renders
 const PageSkeleton = memo(() => (
   <div className="container">
-    <div className="card">
-      <div className="card-header">
+    <Card>
+      <CardHeader>
         <Skeleton className="h-10 w-1/4 mb-6" />
-      </div>
+      </CardHeader>
       <div className="flex gap-4">
         {[1, 2, 3].map((i) => (
           <Skeleton key={i} className="h-64 w-full" />
         ))}
       </div>
-    </div>
+    </Card>
   </div>
 ));
 
