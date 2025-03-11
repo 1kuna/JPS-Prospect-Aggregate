@@ -14,7 +14,7 @@ from src.scrapers.acquisition_gateway import run_scraper as run_acquisition_gate
 from src.scrapers.ssa_contract_forecast import run_scraper as run_ssa_contract_forecast_scraper
 
 # Import database
-from src.database.db import session_scope
+from src.database.db_session_manager import session_scope
 from src.database.models import DataSource
 
 # Import exceptions

@@ -4,7 +4,7 @@ from flask import jsonify, request, current_app
 from sqlalchemy import func, desc, asc
 from sqlalchemy.exc import SQLAlchemyError
 from . import api
-from src.database.db import session_scope, check_connection, get_connection_stats
+from src.database.db_session_manager import session_scope, check_connection, get_connection_stats
 from src.database.models import Proposal, DataSource, ScraperStatus
 from src.exceptions import ValidationError, ResourceNotFoundError
 from src.celery_app import celery_app
