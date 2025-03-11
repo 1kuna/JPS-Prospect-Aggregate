@@ -84,6 +84,8 @@ class Proposal(Base):
     status = Column(String(50), nullable=True)
     last_updated = Column(DateTime, default=datetime.datetime.utcnow)
     imported_at = Column(DateTime, default=datetime.datetime.utcnow)
+    # is_latest field is used to track the most recent version of a proposal
+    # TODO: Consider replacing this with a more robust versioning system in the future
     is_latest = Column(Boolean, default=True)
     
     # Additional fields that might be in the CSV
@@ -129,7 +131,8 @@ class Proposal(Base):
             'award_date': self.award_date.isoformat() if self.award_date else None,
             'place_of_performance': self.place_of_performance,
             'incumbent': self.incumbent,
-            'source_name': self.source.name if self.source else None
+            'source_name': self.source.name if self.source else None,
+            'is_latest': self.is_latest
         }
     
     def __repr__(self) -> str:

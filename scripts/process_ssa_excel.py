@@ -3,7 +3,6 @@ import sys
 import datetime
 import logging
 import pandas as pd
-import openpyxl
 from pathlib import Path
 
 # Add the parent directory to the path so we can import from src
@@ -112,17 +111,16 @@ def process_excel_file(excel_file_path):
             session.add(data_source)
             session.commit()
         
-        # Load the workbook using openpyxl
-        logger.info("Loading workbook with openpyxl")
-        wb = openpyxl.load_workbook(excel_file_path, read_only=True, data_only=True)
-        sheet = wb['Sheet1']
+        # Load the workbook using pandas
+        logger.info("Loading workbook with pandas")
+        df = pd.read_excel(excel_file_path)
         
         # Find the header row
         header_row = None
         header_keywords = ['Site Type', 'App #', 'Requirement Type', 'Description', 'Est. Cost']
         
-        for row_idx in range(1, min(20, sheet.max_row)):
-            row_values = [cell.value for cell in sheet[row_idx] if cell.value is not None]
+        for row_idx in range(1, min(20, len(df))):
+            row_values = df.iloc[row_idx].tolist()
             row_text = ' '.join(str(val) for val in row_values).lower()
             
             # Check if this row contains multiple header keywords
@@ -137,16 +135,16 @@ def process_excel_file(excel_file_path):
             return False
         
         # Get the header values
-        header_values = [cell.value for cell in sheet[header_row]]
+        header_values = df.iloc[header_row].tolist()
         logger.info(f"Header values: {header_values}")
         
         # Process the data rows
         proposals_added = 0
         
-        for row_idx in range(header_row + 1, sheet.max_row + 1):
+        for row_idx in range(header_row + 1, len(df)):
             try:
                 # Get the row values
-                row_values = [cell.value for cell in sheet[row_idx]]
+                row_values = df.iloc[row_idx].tolist()
                 
                 # Skip empty rows
                 if not any(row_values):

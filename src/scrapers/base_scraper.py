@@ -107,7 +107,6 @@ class BaseScraper:
         try:
             # Check if Playwright is installed
             try:
-                from playwright.sync_api import sync_playwright
                 self.logger.info("Playwright module found")
             except ImportError as e:
                 self.logger.error("Playwright module not found. Please install it with 'pip install playwright'")
