@@ -12,6 +12,37 @@ DOWNLOADS_DIR = os.path.join(DATA_DIR, 'downloads')
 os.makedirs(LOGS_DIR, exist_ok=True)
 os.makedirs(DOWNLOADS_DIR, exist_ok=True)
 
+# Define all configuration variables at the module level
+# Logging configuration
+LOG_FORMAT = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+LOG_FILE_MAX_BYTES = int(os.getenv("LOG_FILE_MAX_BYTES", 5 * 1024 * 1024))  # 5MB
+LOG_FILE_BACKUP_COUNT = int(os.getenv("LOG_FILE_BACKUP_COUNT", 3))  # Keep only 3 log files
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+
+# Scraper URLs
+ACQUISITION_GATEWAY_URL = os.getenv("ACQUISITION_GATEWAY_URL", "https://acquisitiongateway.gov/forecast")
+SSA_CONTRACT_FORECAST_URL = os.getenv("SSA_CONTRACT_FORECAST_URL", "https://www.ssa.gov/oag/business/forecast.html")
+
+# Database configuration
+DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{os.path.join(DATA_DIR, 'proposals.db')}")
+
+# Redis configuration
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+
+# Scheduler configuration
+SCRAPE_INTERVAL_HOURS = int(os.getenv("SCRAPE_INTERVAL_HOURS", 24))
+HEALTH_CHECK_INTERVAL_MINUTES = int(os.getenv("HEALTH_CHECK_INTERVAL_MINUTES", 10))
+
+# File processing
+CSV_ENCODINGS = ['utf-8', 'latin-1', 'cp1252']
+FILE_FRESHNESS_SECONDS = int(os.getenv("FILE_FRESHNESS_SECONDS", 86400))   # 24 hours
+
+# Playwright timeouts (in milliseconds)
+PAGE_NAVIGATION_TIMEOUT = int(os.getenv("PAGE_NAVIGATION_TIMEOUT", 60000))  # 60 seconds
+PAGE_ELEMENT_TIMEOUT = int(os.getenv("PAGE_ELEMENT_TIMEOUT", 30000))     # 30 seconds
+TABLE_LOAD_TIMEOUT = int(os.getenv("TABLE_LOAD_TIMEOUT", 60000))       # 60 seconds
+DOWNLOAD_TIMEOUT = int(os.getenv("DOWNLOAD_TIMEOUT", 60000))         # 60 seconds
+
 # Application configuration
 class Config:
     """Base configuration class with common settings."""
@@ -22,34 +53,34 @@ class Config:
     PORT: int = int(os.getenv("PORT", 5001))
     
     # Playwright timeouts (in milliseconds)
-    PAGE_NAVIGATION_TIMEOUT: int = int(os.getenv("PAGE_NAVIGATION_TIMEOUT", 60000))  # 60 seconds
-    PAGE_ELEMENT_TIMEOUT: int = int(os.getenv("PAGE_ELEMENT_TIMEOUT", 30000))     # 30 seconds
-    TABLE_LOAD_TIMEOUT: int = int(os.getenv("TABLE_LOAD_TIMEOUT", 60000))       # 60 seconds
-    DOWNLOAD_TIMEOUT: int = int(os.getenv("DOWNLOAD_TIMEOUT", 60000))         # 60 seconds
+    PAGE_NAVIGATION_TIMEOUT: int = PAGE_NAVIGATION_TIMEOUT
+    PAGE_ELEMENT_TIMEOUT: int = PAGE_ELEMENT_TIMEOUT
+    TABLE_LOAD_TIMEOUT: int = TABLE_LOAD_TIMEOUT
+    DOWNLOAD_TIMEOUT: int = DOWNLOAD_TIMEOUT
 
     # File processing
-    CSV_ENCODINGS: List[str] = ['utf-8', 'latin-1', 'cp1252']
-    FILE_FRESHNESS_SECONDS: int = int(os.getenv("FILE_FRESHNESS_SECONDS", 86400))   # 24 hours
+    CSV_ENCODINGS: List[str] = CSV_ENCODINGS
+    FILE_FRESHNESS_SECONDS: int = FILE_FRESHNESS_SECONDS
 
     # Scraper URLs
-    ACQUISITION_GATEWAY_URL: str = os.getenv("ACQUISITION_GATEWAY_URL", "https://acquisitiongateway.gov/forecast")
-    SSA_CONTRACT_FORECAST_URL: str = os.getenv("SSA_CONTRACT_FORECAST_URL", "https://www.ssa.gov/oag/business/forecast.html")
+    ACQUISITION_GATEWAY_URL: str = ACQUISITION_GATEWAY_URL
+    SSA_CONTRACT_FORECAST_URL: str = SSA_CONTRACT_FORECAST_URL
 
     # Logging configuration
-    LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
-    LOG_FORMAT: str = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    LOG_FILE_MAX_BYTES: int = int(os.getenv("LOG_FILE_MAX_BYTES", 5 * 1024 * 1024))  # 5MB
-    LOG_FILE_BACKUP_COUNT: int = int(os.getenv("LOG_FILE_BACKUP_COUNT", 3))  # Keep only 3 log files
+    LOG_LEVEL: str = LOG_LEVEL
+    LOG_FORMAT: str = LOG_FORMAT
+    LOG_FILE_MAX_BYTES: int = LOG_FILE_MAX_BYTES
+    LOG_FILE_BACKUP_COUNT: int = LOG_FILE_BACKUP_COUNT
 
     # Database configuration
-    DATABASE_URL: str = os.getenv("DATABASE_URL", f"sqlite:///{os.path.join(DATA_DIR, 'proposals.db')}")
+    DATABASE_URL: str = DATABASE_URL
 
     # Scheduler configuration
-    SCRAPE_INTERVAL_HOURS: int = int(os.getenv("SCRAPE_INTERVAL_HOURS", 24))
-    HEALTH_CHECK_INTERVAL_MINUTES: int = int(os.getenv("HEALTH_CHECK_INTERVAL_MINUTES", 10))
+    SCRAPE_INTERVAL_HOURS: int = SCRAPE_INTERVAL_HOURS
+    HEALTH_CHECK_INTERVAL_MINUTES: int = HEALTH_CHECK_INTERVAL_MINUTES
     
     # Redis configuration
-    REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+    REDIS_URL: str = REDIS_URL
 
 
 class DevelopmentConfig(Config):
@@ -85,20 +116,13 @@ config_by_name: Dict[str, Any] = {
 # Get current configuration based on environment
 active_config = config_by_name[os.getenv('FLASK_ENV', 'default')]
 
-# For backward compatibility with existing code
-PAGE_NAVIGATION_TIMEOUT = active_config.PAGE_NAVIGATION_TIMEOUT
-PAGE_ELEMENT_TIMEOUT = active_config.PAGE_ELEMENT_TIMEOUT
-TABLE_LOAD_TIMEOUT = active_config.TABLE_LOAD_TIMEOUT
-DOWNLOAD_TIMEOUT = active_config.DOWNLOAD_TIMEOUT
-CSV_ENCODINGS = active_config.CSV_ENCODINGS
-FILE_FRESHNESS_SECONDS = active_config.FILE_FRESHNESS_SECONDS
-ACQUISITION_GATEWAY_URL = active_config.ACQUISITION_GATEWAY_URL
-SSA_CONTRACT_FORECAST_URL = active_config.SSA_CONTRACT_FORECAST_URL
-LOG_LEVEL = active_config.LOG_LEVEL
-LOG_FORMAT = active_config.LOG_FORMAT
-LOG_FILE_MAX_BYTES = active_config.LOG_FILE_MAX_BYTES
-LOG_FILE_BACKUP_COUNT = active_config.LOG_FILE_BACKUP_COUNT
-DATABASE_URL = active_config.DATABASE_URL
-SCRAPE_INTERVAL_HOURS = active_config.SCRAPE_INTERVAL_HOURS
-HEALTH_CHECK_INTERVAL_MINUTES = active_config.HEALTH_CHECK_INTERVAL_MINUTES
-REDIS_URL = active_config.REDIS_URL 
+# Export all configuration variables for convenience
+__all__ = [
+    'active_config', 'BASE_DIR', 'LOGS_DIR', 'DATA_DIR', 'DOWNLOADS_DIR',
+    'LOG_FORMAT', 'LOG_FILE_MAX_BYTES', 'LOG_FILE_BACKUP_COUNT', 'LOG_LEVEL',
+    'ACQUISITION_GATEWAY_URL', 'SSA_CONTRACT_FORECAST_URL',
+    'DATABASE_URL', 'REDIS_URL',
+    'SCRAPE_INTERVAL_HOURS', 'HEALTH_CHECK_INTERVAL_MINUTES',
+    'CSV_ENCODINGS', 'FILE_FRESHNESS_SECONDS',
+    'PAGE_NAVIGATION_TIMEOUT', 'PAGE_ELEMENT_TIMEOUT', 'TABLE_LOAD_TIMEOUT', 'DOWNLOAD_TIMEOUT'
+] 

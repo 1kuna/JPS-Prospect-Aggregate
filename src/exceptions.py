@@ -52,11 +52,6 @@ class TimeoutError(NetworkError):
     status_code = 504
     error_code = "TIMEOUT_ERROR"
 
-class ConnectionError(NetworkError):
-    """Exception raised when a connection cannot be established."""
-    status_code = 503
-    error_code = "CONNECTION_ERROR"
-
 # Data related exceptions
 class ParsingError(BaseAppException):
     """Exception raised when parsing data fails."""
@@ -68,12 +63,6 @@ class DataIntegrityError(BaseAppException):
     status_code = 400
     error_code = "DATA_INTEGRITY_ERROR"
 
-# Task related exceptions
-class TaskError(BaseAppException):
-    """Exception raised when a background task fails."""
-    status_code = 500
-    error_code = "TASK_ERROR"
-    
 class RetryableError(BaseAppException):
     """Exception raised when an operation should be retried."""
     status_code = 503

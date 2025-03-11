@@ -1,115 +1,107 @@
 """Error handlers for the API blueprint."""
 
 from flask import jsonify, current_app
+from sqlalchemy.exc import SQLAlchemyError
 from . import api
 from src.exceptions import (
-    BaseAppException, ResourceNotFoundError, ValidationError, 
-    DatabaseError, ScraperError, NetworkError, TimeoutError,
-    ConnectionError, ParsingError, DataIntegrityError,
-    AuthenticationError, AuthorizationError, TaskError
+    ValidationError, ResourceNotFoundError, BaseAppException,
+    ScraperError, DatabaseError, NetworkError, TimeoutError,
+    ParsingError, DataIntegrityError, RetryableError,
+    AuthenticationError, AuthorizationError
 )
-import traceback
-
-@api.errorhandler(ResourceNotFoundError)
-def handle_resource_not_found(error):
-    """Handle ResourceNotFoundError for API endpoints."""
-    response = jsonify(error.to_dict())
-    response.status_code = error.status_code
-    return response
 
 @api.errorhandler(ValidationError)
 def handle_validation_error(error):
-    """Handle ValidationError for API endpoints."""
-    response = jsonify(error.to_dict())
-    response.status_code = error.status_code
-    return response
+    """Handle validation errors."""
+    return jsonify({"status": "error", "message": str(error), "error_code": error.error_code}), 400
+
+@api.errorhandler(ResourceNotFoundError)
+def handle_not_found_error(error):
+    """Handle resource not found errors."""
+    return jsonify({"status": "error", "message": str(error), "error_code": error.error_code}), 404
 
 @api.errorhandler(DatabaseError)
 def handle_database_error(error):
-    """Handle DatabaseError for API endpoints."""
-    # Log the error
-    current_app.logger.error(f"Database error: {error.message}")
-    response = jsonify(error.to_dict())
-    response.status_code = error.status_code
-    return response
+    """Handle database errors."""
+    current_app.logger.error(f"Database error: {str(error)}")
+    return jsonify({"status": "error", "message": str(error), "error_code": error.error_code}), 500
+
+@api.errorhandler(SQLAlchemyError)
+def handle_sqlalchemy_error(error):
+    """Handle SQLAlchemy database errors."""
+    current_app.logger.error(f"Database error: {str(error)}")
+    return jsonify({"status": "error", "message": "Database error occurred", "error_code": "DATABASE_ERROR"}), 500
+
+@api.errorhandler(ScraperError)
+def handle_scraper_error(error):
+    """Handle scraper errors."""
+    current_app.logger.error(f"Scraper error: {str(error)}")
+    return jsonify({"status": "error", "message": str(error), "error_code": error.error_code}), 500
 
 @api.errorhandler(NetworkError)
 def handle_network_error(error):
-    """Handle NetworkError for API endpoints."""
-    # Log the error
-    current_app.logger.error(f"Network error: {error.message}")
-    response = jsonify(error.to_dict())
-    response.status_code = error.status_code
-    return response
+    """Handle network errors."""
+    current_app.logger.error(f"Network error: {str(error)}")
+    return jsonify({"status": "error", "message": str(error), "error_code": error.error_code}), 503
+
+@api.errorhandler(TimeoutError)
+def handle_timeout_error(error):
+    """Handle timeout errors."""
+    current_app.logger.error(f"Timeout error: {str(error)}")
+    return jsonify({"status": "error", "message": str(error), "error_code": error.error_code}), 504
+
+@api.errorhandler(ParsingError)
+def handle_parsing_error(error):
+    """Handle parsing errors."""
+    current_app.logger.error(f"Parsing error: {str(error)}")
+    return jsonify({"status": "error", "message": str(error), "error_code": error.error_code}), 500
+
+@api.errorhandler(DataIntegrityError)
+def handle_data_integrity_error(error):
+    """Handle data integrity errors."""
+    current_app.logger.error(f"Data integrity error: {str(error)}")
+    return jsonify({"status": "error", "message": str(error), "error_code": error.error_code}), 400
+
+@api.errorhandler(RetryableError)
+def handle_retryable_error(error):
+    """Handle retryable errors."""
+    current_app.logger.error(f"Retryable error: {str(error)}")
+    return jsonify({"status": "error", "message": str(error), "error_code": error.error_code}), 503
+
+@api.errorhandler(AuthenticationError)
+def handle_authentication_error(error):
+    """Handle authentication errors."""
+    return jsonify({"status": "error", "message": str(error), "error_code": error.error_code}), 401
+
+@api.errorhandler(AuthorizationError)
+def handle_authorization_error(error):
+    """Handle authorization errors."""
+    return jsonify({"status": "error", "message": str(error), "error_code": error.error_code}), 403
 
 @api.errorhandler(BaseAppException)
-def handle_base_app_exception(error):
-    """Handle any BaseAppException for API endpoints."""
-    # Log the error
-    current_app.logger.error(f"Application error ({error.__class__.__name__}): {error.message}")
-    response = jsonify(error.to_dict())
-    response.status_code = error.status_code
-    return response
-
-@api.errorhandler(404)
-def resource_not_found(error):
-    """Handle 404 errors for API endpoints."""
-    response = jsonify({
-        'status': 'error',
-        'message': 'Resource not found',
-        'error_code': 'RESOURCE_NOT_FOUND'
-    })
-    response.status_code = 404
-    return response
-
-@api.errorhandler(405)
-def method_not_allowed(error):
-    """Handle 405 errors for API endpoints."""
-    response = jsonify({
-        'status': 'error',
-        'message': 'Method not allowed',
-        'error_code': 'METHOD_NOT_ALLOWED'
-    })
-    response.status_code = 405
-    return response
-
-@api.errorhandler(500)
-def internal_server_error(error):
-    """Handle 500 errors for API endpoints."""
-    # Log the error
-    current_app.logger.error(f"API error: {str(error)}")
-    
-    response = jsonify({
-        'status': 'error',
-        'message': 'An internal server error occurred',
-        'error_code': 'INTERNAL_ERROR'
-    })
-    response.status_code = 500
-    return response
+def handle_app_exception(error):
+    """Handle application exceptions."""
+    return jsonify(error.to_dict()), error.status_code
 
 @api.errorhandler(Exception)
-def handle_exception(error):
-    """Handle unhandled exceptions for API endpoints."""
-    # Log the error with traceback
-    current_app.logger.error(f"Unhandled API exception: {str(error)}")
-    current_app.logger.error(traceback.format_exc())
-    
-    # In production, don't expose the actual error message to clients
-    if current_app.config.get('DEBUG', False):
-        message = str(error)
-        details = {
-            'exception_type': error.__class__.__name__,
-            'traceback': traceback.format_exc().split('\n')
-        }
-    else:
-        message = 'An unexpected error occurred'
-        details = None
-    
-    response = jsonify({
-        'status': 'error',
-        'message': message,
-        'error_code': 'INTERNAL_ERROR',
-        'details': details
-    })
-    response.status_code = 500
-    return response 
+def handle_unexpected_error(error):
+    """Handle unexpected errors."""
+    current_app.logger.error(f"Unexpected error: {str(error)}")
+    return jsonify({"status": "error", "message": "An unexpected error occurred", "error_code": "INTERNAL_ERROR"}), 500
+
+def init_error_handlers(app):
+    """Register error handlers with the Flask app."""
+    app.register_error_handler(ValidationError, handle_validation_error)
+    app.register_error_handler(ResourceNotFoundError, handle_not_found_error)
+    app.register_error_handler(DatabaseError, handle_database_error)
+    app.register_error_handler(SQLAlchemyError, handle_sqlalchemy_error)
+    app.register_error_handler(ScraperError, handle_scraper_error)
+    app.register_error_handler(NetworkError, handle_network_error)
+    app.register_error_handler(TimeoutError, handle_timeout_error)
+    app.register_error_handler(ParsingError, handle_parsing_error)
+    app.register_error_handler(DataIntegrityError, handle_data_integrity_error)
+    app.register_error_handler(RetryableError, handle_retryable_error)
+    app.register_error_handler(AuthenticationError, handle_authentication_error)
+    app.register_error_handler(AuthorizationError, handle_authorization_error)
+    app.register_error_handler(BaseAppException, handle_app_exception)
+    app.register_error_handler(Exception, handle_unexpected_error) 

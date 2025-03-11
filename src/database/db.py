@@ -1,4 +1,3 @@
-from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlalchemy.exc import SQLAlchemyError, DisconnectionError, IntegrityError, OperationalError, TimeoutError as SQLAlchemyTimeoutError
 import os
@@ -6,8 +5,10 @@ import logging
 from dotenv import load_dotenv
 from contextlib import contextmanager
 import time
+import functools
 from sqlalchemy import text
 from src.exceptions import DatabaseError, DataIntegrityError, TimeoutError as AppTimeoutError, RetryableError
+from src.database.connection_pool import get_engine, get_connection_pool
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -15,207 +16,139 @@ logger = logging.getLogger(__name__)
 # Load environment variables
 load_dotenv()
 
-# Get database URL from environment or use default
-database_url = os.getenv("DATABASE_URL", "sqlite:///data/proposals.db")
+# Maximum number of retries for database operations
+MAX_RETRIES = int(os.getenv("DB_MAX_RETRIES", 3))
+# Delay between retries in seconds
+RETRY_DELAY = int(os.getenv("DB_RETRY_DELAY", 1))
 
-# Create engine with improved connection pooling settings
-engine = create_engine(
-    database_url,
-    connect_args={"check_same_thread": False} if database_url.startswith('sqlite') else {},
-    pool_recycle=3600,  # Recycle connections after 1 hour
-    pool_pre_ping=True,  # Check connection validity before using
-    pool_size=10,  # Maximum number of connections to keep in the pool
-    max_overflow=20,  # Maximum number of connections to create above pool_size
-    pool_timeout=30,  # Timeout for getting a connection from the pool
-    echo=os.getenv("SQL_ECHO", "False").lower() == "true"  # Log SQL queries if enabled
-)
+# Create session factory using the engine from the connection pool
+Session = scoped_session(sessionmaker(bind=get_engine()))
 
-# Add event listeners for connection pooling
-@event.listens_for(engine, "connect")
-def connect(dbapi_connection, connection_record):
-    """Log when a connection is created"""
-    logger.debug("Database connection established")
+def retry_on_db_error(max_retries=MAX_RETRIES, retry_delay=RETRY_DELAY):
+    """Decorator to retry database operations on certain errors"""
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            retries = 0
+            while True:
+                try:
+                    return func(*args, **kwargs)
+                except (OperationalError, DisconnectionError) as e:
+                    retries += 1
+                    if retries > max_retries:
+                        logger.error(f"Max retries ({max_retries}) exceeded for database operation: {str(e)}")
+                        raise DatabaseError(f"Database operation failed after {max_retries} retries: {str(e)}")
+                    
+                    logger.warning(f"Database operation failed (attempt {retries}/{max_retries}): {str(e)}")
+                    logger.info(f"Retrying in {retry_delay} seconds...")
+                    time.sleep(retry_delay)
+                    
+                    # Check if we need to reconnect
+                    if "connection" in str(e).lower() or "disconnect" in str(e).lower():
+                        logger.info("Attempting to reconnect to database...")
+                        reconnect()
+        return wrapper
+    return decorator
 
-@event.listens_for(engine, "checkout")
-def checkout(dbapi_connection, connection_record, connection_proxy):
-    """Verify that the connection is still valid when it's checked out from the pool"""
-    logger.debug("Database connection checked out from pool")
-    connection_record.info.setdefault('checkout_time', time.time())
-
-@event.listens_for(engine, "checkin")
-def checkin(dbapi_connection, connection_record):
-    """Log when a connection is returned to the pool"""
-    logger.debug("Database connection returned to pool")
-    checkout_time = connection_record.info.get('checkout_time')
-    if checkout_time is not None:
-        connection_record.info.pop('checkout_time')
-        logger.debug(f"Connection was checked out for {time.time() - checkout_time:.2f} seconds")
-
-# Define ping function for SQLite
-def sqlite_ping(dbapi_connection):
-    """Check if a SQLite connection is still valid"""
-    try:
-        dbapi_connection.execute(text("SELECT 1"))
-        return True
-    except Exception:
-        return False
-
-# Register the ping function for SQLite
-if database_url.startswith('sqlite'):
-    @event.listens_for(engine, "engine_connect")
-    def ping_connection(connection, branch):
-        """Ping the connection to ensure it's still valid"""
-        if branch:
-            # Don't ping on checkout for a branch connection
-            return
-
-        # Check if the connection is valid
-        try:
-            # Run a simple query
-            connection.scalar(text("SELECT 1"))
-        except Exception as e:
-            logger.warning(f"Connection invalid: {e}")
-            # Reconnect
-            connection.connection.close()
-            raise DisconnectionError("Connection invalid")
-
-# Create session factory with better error handling
-session_factory = sessionmaker(bind=engine)
-Session = scoped_session(session_factory)
-
+@retry_on_db_error()
 def get_session():
     """Get a database session with retry logic"""
-    max_retries = 3
-    retry_delay = 1  # seconds
-    
-    for attempt in range(max_retries):
-        try:
-            session = Session()
-            # Test the connection with a simple query
-            session.execute(text("SELECT 1"))
-            return session
-        except SQLAlchemyError as e:
-            logger.warning(f"Error getting database session (attempt {attempt+1}/{max_retries}): {e}")
-            if attempt < max_retries - 1:
-                # Close any existing session
-                try:
-                    session.close()
-                except:
-                    pass
-                
-                # Dispose the engine to force new connections
-                engine.dispose()
-                
-                # Wait before retrying
-                time.sleep(retry_delay * (2 ** attempt))  # Exponential backoff
-            else:
-                # Last attempt failed, re-raise the exception
-                logger.error(f"Failed to get database session after {max_retries} attempts")
-                raise
+    try:
+        session = Session()
+        # Test the session with a simple query
+        session.execute(text("SELECT 1"))
+        return session
+    except SQLAlchemyError as e:
+        logger.error(f"Error creating database session: {str(e)}")
+        Session.remove()
+        raise DatabaseError(f"Failed to create database session: {str(e)}")
 
 def close_session(session):
     """Close a database session safely"""
     try:
-        session.close()
-        Session.remove()
-        logger.debug("Database session closed")
+        if session:
+            session.close()
     except Exception as e:
-        logger.warning(f"Error closing database session: {e}")
+        logger.error(f"Error closing database session: {str(e)}")
+    finally:
+        Session.remove()
 
 @contextmanager
 def session_scope():
-    """Provide a transactional scope around a series of operations with improved error handling.
-    
-    Usage:
-        with session_scope() as session:
-            # do database operations with session
-            # session is automatically committed or rolled back
-    """
-    session = get_session()
+    """Context manager for database sessions with automatic commit/rollback"""
+    session = None
     try:
+        session = get_session()
         yield session
+        
         try:
             session.commit()
-            logger.debug("Database transaction committed")
         except IntegrityError as e:
-            logger.warning(f"Data integrity error: {e}")
+            logger.error(f"Data integrity error: {str(e)}")
             session.rollback()
-            # Convert SQLAlchemy IntegrityError to our custom DataIntegrityError
-            error_msg = str(e)
-            if "unique constraint" in error_msg.lower():
-                raise DataIntegrityError("A record with this information already exists", payload={"original_error": error_msg})
-            elif "foreign key constraint" in error_msg.lower():
-                raise DataIntegrityError("Referenced record does not exist", payload={"original_error": error_msg})
-            else:
-                raise DataIntegrityError(f"Data integrity error: {error_msg}", payload={"original_error": error_msg})
-        except OperationalError as e:
-            logger.warning(f"Database operational error: {e}")
-            session.rollback()
-            error_msg = str(e)
-            if "deadlock" in error_msg.lower():
-                raise RetryableError("Database deadlock detected, please retry your operation", 
-                                    payload={"original_error": error_msg, "retry_suggested": True})
-            elif "timeout" in error_msg.lower() or "timed out" in error_msg.lower():
-                raise AppTimeoutError("Database operation timed out", 
-                                    payload={"original_error": error_msg, "retry_suggested": True})
-            else:
-                raise DatabaseError(f"Database operational error: {error_msg}", 
-                                   payload={"original_error": error_msg})
+            raise DataIntegrityError(f"Data integrity error: {str(e)}")
         except SQLAlchemyTimeoutError as e:
-            logger.warning(f"Database timeout error: {e}")
+            logger.error(f"Database timeout: {str(e)}")
             session.rollback()
-            raise AppTimeoutError("Database operation timed out", 
-                                payload={"original_error": str(e), "retry_suggested": True})
+            raise AppTimeoutError(f"Database operation timed out: {str(e)}")
+        except OperationalError as e:
+            logger.error(f"Database operational error: {str(e)}")
+            session.rollback()
+            
+            # Check if this is a connection error that we should retry
+            if "connection" in str(e).lower() or "disconnect" in str(e).lower():
+                raise RetryableError(f"Database connection error: {str(e)}")
+            
+            raise DatabaseError(f"Database operational error: {str(e)}")
         except SQLAlchemyError as e:
-            logger.warning(f"Database error: {e}")
+            logger.error(f"Database error: {str(e)}")
             session.rollback()
-            raise DatabaseError(f"Database error: {str(e)}", 
-                               payload={"original_error": str(e)})
-    except (DatabaseError, DataIntegrityError, AppTimeoutError, RetryableError):
-        # Re-raise our custom exceptions without modification
-        raise
+            raise DatabaseError(f"Database error: {str(e)}")
     except Exception as e:
-        logger.warning(f"Rolling back database transaction due to error: {e}")
-        session.rollback()
-        # Convert generic exceptions to DatabaseError
-        raise DatabaseError(f"Unexpected error during database operation: {str(e)}", 
-                           payload={"original_error": str(e)})
+        if session:
+            try:
+                session.rollback()
+            except Exception as rollback_error:
+                logger.error(f"Error during session rollback: {str(rollback_error)}")
+        raise
     finally:
         close_session(session)
 
+@retry_on_db_error()
 def dispose_engine():
-    """Dispose of all connections in the connection pool"""
+    """Dispose of the database engine safely"""
     try:
-        engine.dispose()
+        get_connection_pool().dispose()
         logger.info("Database engine disposed")
     except Exception as e:
-        logger.error(f"Error disposing database engine: {e}")
+        logger.error(f"Error disposing database engine: {str(e)}")
+        raise DatabaseError(f"Failed to dispose database engine: {str(e)}")
 
+@retry_on_db_error(max_retries=5, retry_delay=2)
 def reconnect():
-    """Reconnect to the database if needed"""
+    """Reconnect to the database"""
     try:
-        # Dispose the engine to force new connections
-        engine.dispose()
+        logger.info("Reconnecting to database...")
+        # Dispose of the current engine and connections
+        get_connection_pool().dispose()
         
         # Test the connection
-        with engine.connect() as connection:
-            connection.execute(text("SELECT 1"))
-        
-        logger.info("Database reconnection successful")
-        return True
+        if get_connection_pool().check_connection():
+            logger.info("Successfully reconnected to database")
+        else:
+            raise DatabaseError("Failed to reconnect to database: connection check failed")
     except Exception as e:
-        logger.error(f"Error reconnecting to database: {e}")
-        return False
+        logger.error(f"Failed to reconnect to database: {str(e)}")
+        raise DatabaseError(f"Failed to reconnect to database: {str(e)}")
 
+@retry_on_db_error()
 def check_connection():
-    """Check if the database connection is working"""
-    try:
-        with engine.connect() as connection:
-            connection.execute(text("SELECT 1"))
-        return True
-    except Exception as e:
-        logger.error(f"Database connection check failed: {e}")
-        return False
+    """Check if the database connection is valid"""
+    return get_connection_pool().check_connection()
+
+def get_connection_stats():
+    """Get statistics about the database connection pool"""
+    return get_connection_pool().get_stats()
 
 # Import this at the end to avoid circular imports
 from sqlalchemy.sql import text 

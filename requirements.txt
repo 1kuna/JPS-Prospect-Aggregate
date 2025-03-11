@@ -1,13 +1,21 @@
-beautifulsoup4==4.12.2
+beautifulsoup4==4.12.3
 requests==2.31.0
-pandas==2.1.1
-flask==2.3.3
+pandas==2.2.1
+flask==3.1.0
 flask-cors==4.0.0
-sqlalchemy==2.0.21
+sqlalchemy==2.0.28
 apscheduler==3.10.4
-python-dotenv==1.0.0
-playwright==1.40.0
+python-dotenv==1.0.1
+playwright==1.42.0
 openpyxl==3.1.2
-celery==5.3.6
+celery==5.4.0
 redis==5.0.1
-flower==2.0.1  # For monitoring Celery tasks 
+flower==2.0.1  # For monitoring Celery tasks
+gunicorn==21.2.0  # For production deployment
+pytest==8.0.0  # For testing
+black==24.1.1  # For code formatting
+mypy==1.8.0  # For type checking
+pydantic==2.6.1  # For data validation
+httpx==0.27.0  # Modern HTTP client
+tenacity==8.2.3  # For retrying operations
+psutil==5.9.8  # For system monitoring 

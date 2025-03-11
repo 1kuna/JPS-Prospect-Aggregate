@@ -1,14 +1,9 @@
 """Flask application factory for the dashboard."""
 
 import os
-import sys
 import logging
-from logging.handlers import RotatingFileHandler
-from flask import Flask, render_template, send_from_directory, request
+from flask import Flask, send_from_directory, render_template_string, request
 from flask_cors import CORS
-
-# Add the parent directory to the path so we can import from src
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 def create_app(config=None):
     """Application factory for creating Flask app instances."""
@@ -25,56 +20,52 @@ def create_app(config=None):
     if config:
         app.config.update(config)
     
-    # Set up logging
-    configure_logging(app)
+    # Set up basic logging
+    app.logger.setLevel(logging.INFO)
     
     # Register blueprints
     register_blueprints(app)
     
-    # Path to the React build directory
-    react_build_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'frontend-react/dist')
-    index_path = os.path.join(react_build_dir, 'index.html')
-    
-    # Store paths in app config for access in error handlers
-    app.config['REACT_BUILD_DIR'] = react_build_dir
-    app.config['REACT_INDEX_PATH'] = index_path
-    
-    # Register error handlers with access to the paths
+    # Register error handlers
     register_error_handlers(app)
     
-    # Add route for serving static files from React build
-    @app.route('/static/<path:filename>')
-    def serve_static(filename):
-        """Serve static files from the React build directory."""
-        return send_from_directory(os.path.join(react_build_dir, 'static'), filename)
+    # Path to the React build directory - fix the path to be relative to the project root
+    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    react_build_dir = os.path.join(project_root, 'frontend-react/dist')
     
-    # Add route for serving the React app
-    @app.route('/', defaults={'path': ''})
-    @app.route('/<path:path>')
-    def serve_react(path):
-        """Serve the React app for any non-API routes."""
-        if path.startswith('api/'):
-            return {"error": "Not found"}, 404
-        return send_from_directory(react_build_dir, 'index.html')
+    app.logger.info(f"React build directory: {react_build_dir}")
+    
+    # Check if the build directory exists
+    if not os.path.exists(react_build_dir):
+        app.logger.error(f"React build directory not found at {react_build_dir}")
+    else:
+        app.logger.info(f"React build directory found at {react_build_dir}")
+        # List files in the build directory
+        app.logger.info(f"Files in build directory: {os.listdir(react_build_dir)}")
+    
+    # Add routes for serving static files from React build
+    @app.route('/assets/<path:filename>')
+    def serve_assets(filename):
+        """Serve asset files from the React build directory."""
+        try:
+            app.logger.info(f"Serving asset: {filename}")
+            return send_from_directory(os.path.join(react_build_dir, 'assets'), filename)
+        except Exception as e:
+            app.logger.error(f"Error serving asset {filename}: {str(e)}")
+            return "", 404
+    
+    @app.route('/vite.svg')
+    def serve_vite_svg():
+        """Serve the Vite SVG icon."""
+        try:
+            return send_from_directory(react_build_dir, 'vite.svg')
+        except Exception as e:
+            app.logger.error(f"Error serving vite.svg: {str(e)}")
+            return "", 404
+    
+    # Note: We're removing the conflicting routes here since they're already defined in the main blueprint
     
     return app
-
-def configure_logging(app):
-    """Configure application logging."""
-    log_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'logs')
-    os.makedirs(log_dir, exist_ok=True)
-    log_file = os.path.join(log_dir, 'app.log')
-    
-    # Configure logging
-    handler = RotatingFileHandler(log_file, maxBytes=1024*1024, backupCount=5)
-    handler.setFormatter(logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    ))
-    app.logger.addHandler(handler)
-    app.logger.setLevel(logging.INFO)
-    
-    # Log application startup
-    app.logger.info('Application starting up')
 
 def register_blueprints(app):
     """Register Flask blueprints."""
@@ -88,47 +79,13 @@ def register_blueprints(app):
     app.register_blueprint(api)
     app.register_blueprint(data_sources)
     
-    # Log registered routes for debugging
-    app.logger.info('Registered routes:')
-    for rule in app.url_map.iter_rules():
-        app.logger.info(f"Route: {rule}, Endpoint: {rule.endpoint}")
-    
     app.logger.info('Blueprints registered')
 
 def register_error_handlers(app):
-    """Register global error handlers."""
-    # Note: Blueprint-specific error handlers take precedence over these global ones
-    # These are fallbacks for routes not covered by blueprints
+    """Register error handlers for the application."""
+    from src.dashboard.blueprints.api.errors import init_error_handlers
     
-    @app.errorhandler(404)
-    def page_not_found(error):
-        # For API routes, return a JSON 404 response
-        if request.path.startswith('/api/'):
-            return {'error': 'Not found', 'message': 'The requested resource was not found'}, 404
-        
-        # For all other routes, serve the React SPA to let the client-side router handle it
-        try:
-            # Get paths from app config
-            react_build_dir = app.config['REACT_BUILD_DIR']
-            index_path = app.config['REACT_INDEX_PATH']
-            
-            if os.path.exists(index_path):
-                app.logger.info(f"404 handler serving React SPA for path: {request.path}")
-                return send_from_directory(react_build_dir, 'index.html')
-        except Exception as e:
-            app.logger.error(f"Error in 404 handler: {str(e)}")
-        
-        # Fallback to the template if React build is not available or there's an error
-        return render_template('main/errors/404.html'), 404
-    
-    @app.errorhandler(500)
-    def internal_server_error(error):
-        app.logger.error(f"Internal server error: {str(error)}")
-        return render_template('main/errors/500.html'), 500
-    
-    @app.errorhandler(Exception)
-    def handle_unhandled_exception(error):
-        app.logger.error(f"Unhandled exception: {str(error)}")
-        return render_template('main/errors/500.html'), 500
+    # Initialize API error handlers
+    init_error_handlers(app)
     
     app.logger.info('Error handlers registered') 

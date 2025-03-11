@@ -21,15 +21,18 @@ const formSchema = z.object({
   url: z.string().url({
     message: 'Please enter a valid URL.',
   }),
-  api_key: z.string().optional(),
   description: z.string().optional(),
-  is_active: z.boolean().default(true),
 });
 
 type FormValues = z.infer<typeof formSchema>;
 
 interface DataSourceFormProps {
-  initialData?: FormValues;
+  initialData?: {
+    id?: number;
+    name: string;
+    url: string;
+    description?: string;
+  };
   onSubmit: (data: FormValues) => void;
   onCancel: () => void;
 }
@@ -41,9 +44,7 @@ export function DataSourceForm({ initialData, onSubmit, onCancel }: DataSourceFo
     defaultValues: initialData || {
       name: '',
       url: '',
-      api_key: '',
       description: '',
-      is_active: true,
     },
   });
 
@@ -83,23 +84,6 @@ export function DataSourceForm({ initialData, onSubmit, onCancel }: DataSourceFo
               </FormControl>
               <FormDescription>
                 The endpoint URL for the data source.
-              </FormDescription>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        <FormField
-          control={form.control}
-          name="api_key"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>API Key (Optional)</FormLabel>
-              <FormControl>
-                <Input placeholder="Enter API key if required" {...field} />
-              </FormControl>
-              <FormDescription>
-                API key for authentication if required.
               </FormDescription>
               <FormMessage />
             </FormItem>

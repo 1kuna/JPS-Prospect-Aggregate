@@ -9,6 +9,7 @@ and connects to Redis for message brokering.
 import os
 import logging
 from celery import Celery
+from celery.signals import task_failure, task_retry, task_success, worker_ready
 from dotenv import load_dotenv
 from src.config import active_config
 
@@ -21,63 +22,109 @@ logger = logging.getLogger(__name__)
 # Get Redis URL from environment or use default from config
 redis_url = active_config.REDIS_URL
 
+# Define task modules
+TASK_MODULES = [
+    'src.tasks.scraper_tasks',
+    'src.tasks.health_check_tasks'
+]
+
+# Define beat schedule
+BEAT_SCHEDULE = {
+    'run-acquisition-gateway-scraper': {
+        'task': 'src.tasks.scraper_tasks.run_acquisition_gateway_scraper_task',
+        'schedule': active_config.SCRAPE_INTERVAL_HOURS * 3600,  # Convert hours to seconds
+        'args': (),
+        'options': {'expires': 3600}  # Task expires if not executed within 1 hour
+    },
+    'run-ssa-contract-forecast-scraper': {
+        'task': 'src.tasks.scraper_tasks.run_ssa_contract_forecast_scraper_task',
+        'schedule': active_config.SCRAPE_INTERVAL_HOURS * 3600,  # Convert hours to seconds
+        'args': (),
+        'options': {'expires': 3600}  # Task expires if not executed within 1 hour
+    },
+    'check-all-scrapers': {
+        'task': 'src.tasks.health_check_tasks.check_all_scrapers_task',
+        'schedule': active_config.HEALTH_CHECK_INTERVAL_MINUTES * 60,  # Convert minutes to seconds
+        'args': (),
+        'options': {'expires': 600}  # Task expires if not executed within 10 minutes
+    }
+}
+
+# Celery configuration
+CELERY_CONFIG = {
+    # Task settings
+    'task_serializer': 'json',
+    'accept_content': ['json'],
+    'result_serializer': 'json',
+    'timezone': 'UTC',
+    'enable_utc': True,
+    
+    # Worker settings
+    'worker_prefetch_multiplier': int(os.getenv("WORKER_PREFETCH_MULTIPLIER", 1)),  # Fetch one task at a time
+    'worker_max_tasks_per_child': int(os.getenv("WORKER_MAX_TASKS_PER_CHILD", 100)),  # Restart worker after 100 tasks to prevent memory leaks
+    
+    # Result settings
+    'result_expires': int(os.getenv("RESULT_EXPIRES", 3600)),  # Results expire after 1 hour
+    
+    # Beat settings (for scheduled tasks)
+    'beat_schedule_filename': os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'temp', 'celerybeat-schedule'),
+    
+    # Beat schedule
+    'beat_schedule': BEAT_SCHEDULE,
+    
+    # Task retry settings
+    'task_acks_late': True,  # Tasks are acknowledged after the task is executed
+    'task_reject_on_worker_lost': True,  # Reject tasks when worker connection is lost
+    'task_default_retry_delay': 60,  # Default retry delay in seconds
+    'task_max_retries': 3,  # Maximum number of retries
+    
+    # Task time limits
+    'task_time_limit': 3600,  # Hard time limit in seconds (1 hour)
+    'task_soft_time_limit': 3000,  # Soft time limit in seconds (50 minutes)
+}
+
 # Create Celery app
 celery_app = Celery(
     'jps_prospect_aggregate',
     broker=redis_url,
     backend=redis_url,
-    include=[
-        'src.tasks.scraper_tasks',
-        'src.tasks.health_check_tasks'
-    ]
+    include=TASK_MODULES
 )
 
-# Configure Celery
-celery_app.conf.update(
-    # Task settings
-    task_serializer='json',
-    accept_content=['json'],
-    result_serializer='json',
-    timezone='UTC',
-    enable_utc=True,
-    
-    # Worker settings
-    worker_prefetch_multiplier=int(os.getenv("WORKER_PREFETCH_MULTIPLIER", 1)),  # Fetch one task at a time
-    worker_max_tasks_per_child=int(os.getenv("WORKER_MAX_TASKS_PER_CHILD", 100)),  # Restart worker after 100 tasks to prevent memory leaks
-    
-    # Result settings
-    result_expires=int(os.getenv("RESULT_EXPIRES", 3600)),  # Results expire after 1 hour
-    
-    # Beat settings (for scheduled tasks)
-    beat_schedule_filename=os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'temp', 'celerybeat-schedule'),
-    
-    beat_schedule={
-        'run-acquisition-gateway-scraper': {
-            'task': 'src.tasks.scraper_tasks.run_acquisition_gateway_scraper_task',
-            'schedule': active_config.SCRAPE_INTERVAL_HOURS * 3600,  # Convert hours to seconds
-            'args': (),
-            'options': {'expires': 3600}  # Task expires if not executed within 1 hour
-        },
-        'run-ssa-contract-forecast-scraper': {
-            'task': 'src.tasks.scraper_tasks.run_ssa_contract_forecast_scraper_task',
-            'schedule': active_config.SCRAPE_INTERVAL_HOURS * 3600,  # Convert hours to seconds
-            'args': (),
-            'options': {'expires': 3600}  # Task expires if not executed within 1 hour
-        },
-        'check-all-scrapers': {
-            'task': 'src.tasks.health_check_tasks.check_all_scrapers_task',
-            'schedule': active_config.HEALTH_CHECK_INTERVAL_MINUTES * 60,  # Convert minutes to seconds
-            'args': (),
-            'options': {'expires': 600}  # Task expires if not executed within 10 minutes
-        }
-    }
-)
+# Apply configuration
+celery_app.conf.update(CELERY_CONFIG)
 
 @celery_app.task(bind=True)
 def debug_task(self):
     """Debug task to verify Celery is working."""
     logger.info(f'Request: {self.request!r}')
     return "Celery is working!"
+
+# Task signal handlers
+@task_failure.connect
+def handle_task_failure(sender=None, task_id=None, exception=None, args=None, kwargs=None, traceback=None, einfo=None, **_):
+    """Log task failures."""
+    logger.error(f"Task {sender.name}[{task_id}] failed: {exception}")
+    logger.error(f"Task args: {args}, kwargs: {kwargs}")
+    if einfo:
+        logger.error(f"Error info: {einfo}")
+
+@task_retry.connect
+def handle_task_retry(sender=None, request=None, reason=None, einfo=None, **_):
+    """Log task retries."""
+    logger.warning(f"Task {sender.name}[{request.id}] is being retried: {reason}")
+    if einfo:
+        logger.warning(f"Error info: {einfo}")
+
+@task_success.connect
+def handle_task_success(sender=None, result=None, **_):
+    """Log task successes."""
+    logger.info(f"Task {sender.name} completed successfully")
+
+@worker_ready.connect
+def handle_worker_ready(**_):
+    """Log when a worker is ready."""
+    logger.info("Celery worker is ready")
 
 # Error handling for Celery tasks
 @celery_app.on_after_configure.connect

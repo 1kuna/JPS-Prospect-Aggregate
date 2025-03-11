@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useStore } from '@/store/useStore';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
@@ -27,44 +27,48 @@ import { DataSourceForm } from '@/components/DataSourceForm';
 
 // Define the data source type
 interface DataSource {
-  id: string;
+  id: number;
   name: string;
   url: string;
-  api_key?: string;
   description?: string;
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
+  lastScraped?: string;
+  lastChecked?: string;
+  status?: string;
+  proposalCount?: number;
 }
 
+// Create stable selectors outside the component
+const selectDataSources = (state: any) => state.dataSources;
+const selectDataSourcesLoading = (state: any) => state.loading.dataSources;
+const selectDataSourcesErrors = (state: any) => state.errors.dataSources;
+const selectFetchDataSources = (state: any) => state.fetchDataSources;
+const selectCreateDataSource = (state: any) => state.createDataSource;
+const selectUpdateDataSource = (state: any) => state.updateDataSource;
+const selectDeleteDataSource = (state: any) => state.deleteDataSource;
+
 export default function DataSources() {
-  const { 
-    dataSources, 
-    loading, 
-    errors, 
-    fetchDataSources,
-    createDataSource,
-    updateDataSource,
-    deleteDataSource
-  } = useStore(state => ({
-    dataSources: state.dataSources,
-    loading: state.loading.dataSources,
-    errors: state.errors.dataSources,
-    fetchDataSources: state.fetchDataSources,
-    createDataSource: state.createDataSource,
-    updateDataSource: state.updateDataSource,
-    deleteDataSource: state.deleteDataSource
-  }));
+  // Use individual selectors to prevent unnecessary re-renders
+  const dataSources = useStore(selectDataSources);
+  const loading = useStore(selectDataSourcesLoading);
+  const errors = useStore(selectDataSourcesErrors);
+  const fetchDataSources = useStore(selectFetchDataSources);
+  const createDataSource = useStore(selectCreateDataSource);
+  const updateDataSource = useStore(selectUpdateDataSource);
+  const deleteDataSource = useStore(selectDeleteDataSource);
 
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingDataSource, setEditingDataSource] = useState<DataSource | null>(null);
+  const isMounted = useRef(false);
 
   useEffect(() => {
-    // Fetch data on component mount
-    fetchDataSources();
-  }, [fetchDataSources]);
+    // Only fetch data if this is the first time the component is mounted
+    if (!isMounted.current) {
+      fetchDataSources();
+      isMounted.current = true;
+    }
+  }, []); // Empty dependency array to run only once on mount
 
   // Define table columns
   const columns: ColumnDef<DataSource>[] = [
@@ -90,23 +94,31 @@ export default function DataSources() {
       ),
     },
     {
-      accessorKey: 'is_active',
+      accessorKey: 'status',
       header: 'Status',
       cell: ({ row }) => {
-        const status = row.getValue('is_active') as boolean;
+        const status = row.getValue('status') as string;
         return (
           <div className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
-            ${status ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}
+            ${status === 'active' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}
           >
-            {status ? 'Active' : 'Inactive'}
+            {status || 'Unknown'}
           </div>
         );
       },
     },
     {
-      accessorKey: 'updated_at',
-      header: 'Last Updated',
-      cell: ({ row }) => formatDate(row.getValue('updated_at')),
+      accessorKey: 'proposalCount',
+      header: 'Proposals',
+      cell: ({ row }) => row.getValue('proposalCount') || 0,
+    },
+    {
+      accessorKey: 'lastScraped',
+      header: 'Last Scraped',
+      cell: ({ row }) => {
+        const date = row.getValue('lastScraped');
+        return date ? formatDate(date as string) : 'Never';
+      },
     },
     {
       id: 'actions',
@@ -125,7 +137,7 @@ export default function DataSources() {
             <Button
               variant="destructive"
               size="sm"
-              onClick={() => handleDelete(dataSource.id)}
+              onClick={() => handleDelete(dataSource.id.toString())}
             >
               Delete
             </Button>
@@ -151,10 +163,10 @@ export default function DataSources() {
     },
   });
 
-  // Handle form submission
-  const handleFormSubmit = (data: any) => {
+  // Memoize event handlers
+  const handleFormSubmit = useCallback((data: any) => {
     if (editingDataSource) {
-      updateDataSource(editingDataSource.id, data).then(() => {
+      updateDataSource(editingDataSource.id.toString(), data).then(() => {
         setIsDialogOpen(false);
         setEditingDataSource(null);
         fetchDataSources();
@@ -165,28 +177,25 @@ export default function DataSources() {
         fetchDataSources();
       });
     }
-  };
+  }, [createDataSource, updateDataSource, fetchDataSources, editingDataSource]);
 
-  // Handle edit button click
-  const handleEdit = (dataSource: DataSource) => {
+  const handleEdit = useCallback((dataSource: DataSource) => {
     setEditingDataSource(dataSource);
     setIsDialogOpen(true);
-  };
+  }, []);
 
-  // Handle delete button click
-  const handleDelete = (id: string) => {
+  const handleDelete = useCallback((id: string) => {
     if (window.confirm('Are you sure you want to delete this data source?')) {
       deleteDataSource(id).then(() => {
         fetchDataSources();
       });
     }
-  };
+  }, [deleteDataSource, fetchDataSources]);
 
-  // Handle dialog close
-  const handleDialogClose = () => {
+  const handleDialogClose = useCallback(() => {
     setIsDialogOpen(false);
     setEditingDataSource(null);
-  };
+  }, []);
 
   // Show error state
   if (errors) {
@@ -197,7 +206,7 @@ export default function DataSources() {
             <CardTitle className="text-red-500">Error Loading Data Sources</CardTitle>
           </CardHeader>
           <CardContent>
-            <p>{errors.message}</p>
+            <p>{errors.message && errors.message}</p>
             <Button 
               onClick={() => fetchDataSources()} 
               className="mt-4"
@@ -248,7 +257,13 @@ export default function DataSources() {
             <Skeleton className="h-8 w-1/4 mb-2" />
           </CardHeader>
           <CardContent>
-            <Skeleton className="h-64 w-full" />
+            <div className="space-y-2">
+              <Skeleton className="h-12 w-full" />
+              <Skeleton className="h-12 w-full" />
+              <Skeleton className="h-12 w-full" />
+              <Skeleton className="h-12 w-full" />
+              <Skeleton className="h-12 w-full" />
+            </div>
           </CardContent>
         </Card>
       )}
@@ -258,61 +273,41 @@ export default function DataSources() {
         <Alert className="mb-6">
           <AlertTitle>No data sources available</AlertTitle>
           <AlertDescription>
-            Click the "Add New Source" button to create a new data source.
+            Click the "Add Data Source" button to create your first data source.
           </AlertDescription>
         </Alert>
       )}
 
-      {/* Data sources table */}
+      {/* Data table */}
       {dataSources.length > 0 && (
         <Card>
-          <CardHeader>
-            <CardTitle>Data Sources</CardTitle>
-          </CardHeader>
-          <CardContent>
+          <CardContent className="pt-6">
             <div className="rounded-md border">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
+              <table className="w-full">
+                <thead>
                   {table.getHeaderGroups().map((headerGroup) => (
-                    <tr key={headerGroup.id}>
+                    <tr key={headerGroup.id} className="border-b bg-muted/50">
                       {headerGroup.headers.map((header) => (
                         <th
                           key={header.id}
-                          scope="col"
-                          className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                          className="h-12 px-4 text-left align-middle font-medium text-muted-foreground"
                         >
-                          {header.isPlaceholder ? null : (
-                            <div
-                              {...{
-                                className: header.column.getCanSort()
-                                  ? 'cursor-pointer select-none'
-                                  : '',
-                                onClick: header.column.getToggleSortingHandler(),
-                              }}
-                            >
-                              {flexRender(
+                          {header.isPlaceholder
+                            ? null
+                            : flexRender(
                                 header.column.columnDef.header,
                                 header.getContext()
                               )}
-                              {{
-                                asc: ' 🔼',
-                                desc: ' 🔽',
-                              }[header.column.getIsSorted() as string] ?? null}
-                            </div>
-                          )}
                         </th>
                       ))}
                     </tr>
                   ))}
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
+                <tbody>
                   {table.getRowModel().rows.map((row) => (
-                    <tr key={row.id}>
+                    <tr key={row.id} className="border-b">
                       {row.getVisibleCells().map((cell) => (
-                        <td
-                          key={cell.id}
-                          className="px-6 py-4 whitespace-nowrap text-sm"
-                        >
+                        <td key={cell.id} className="p-4 align-middle">
                           {flexRender(
                             cell.column.columnDef.cell,
                             cell.getContext()
@@ -326,33 +321,23 @@ export default function DataSources() {
             </div>
 
             {/* Pagination */}
-            <div className="flex items-center justify-between space-x-2 py-4">
-              <div className="flex-1 text-sm text-muted-foreground">
-                Showing {table.getState().pagination.pageIndex * table.getState().pagination.pageSize + 1} to{' '}
-                {Math.min(
-                  (table.getState().pagination.pageIndex + 1) * table.getState().pagination.pageSize,
-                  table.getFilteredRowModel().rows.length
-                )}{' '}
-                of {table.getFilteredRowModel().rows.length} entries
-              </div>
-              <div className="space-x-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => table.previousPage()}
-                  disabled={!table.getCanPreviousPage()}
-                >
-                  Previous
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => table.nextPage()}
-                  disabled={!table.getCanNextPage()}
-                >
-                  Next
-                </Button>
-              </div>
+            <div className="flex items-center justify-end space-x-2 py-4">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => table.previousPage()}
+                disabled={!table.getCanPreviousPage()}
+              >
+                Previous
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => table.nextPage()}
+                disabled={!table.getCanNextPage()}
+              >
+                Next
+              </Button>
             </div>
           </CardContent>
         </Card>

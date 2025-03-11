@@ -20,7 +20,7 @@ from src.database.models import DataSource
 # Import exceptions
 from src.exceptions import (
     ScraperError, NetworkError, TimeoutError as AppTimeoutError, 
-    ConnectionError as AppConnectionError, DatabaseError, TaskError
+    DatabaseError
 )
 
 # Set up logging
@@ -77,11 +77,11 @@ def run_acquisition_gateway_scraper_task(self):
         self.retry(countdown=60 * 10, exc=AppTimeoutError(f"Scraper timed out: {str(e)}"))
         return {"status": "error", "message": f"Timeout error: {str(e)}", "error_code": "TIMEOUT_ERROR", "task_id": task_id}
         
-    except (RequestsConnectionError, AppConnectionError) as e:
+    except (RequestsConnectionError) as e:
         logger.error(f"Connection error: {str(e)}")
         # Use longer delay for connection issues
-        self.retry(countdown=60 * 15, exc=AppConnectionError(f"Connection error: {str(e)}"))
-        return {"status": "error", "message": f"Connection error: {str(e)}", "error_code": "CONNECTION_ERROR", "task_id": task_id}
+        self.retry(countdown=60 * 15, exc=NetworkError(f"Connection error: {str(e)}"))
+        return {"status": "error", "message": f"Connection error: {str(e)}", "error_code": "NETWORK_ERROR", "task_id": task_id}
         
     except RequestException as e:
         logger.error(f"Network error: {str(e)}")
@@ -98,8 +98,8 @@ def run_acquisition_gateway_scraper_task(self):
         # Log the full traceback for debugging
         logger.error(traceback.format_exc())
         # Retry the task if it fails
-        self.retry(countdown=60 * 5, exc=TaskError(f"Unexpected error: {str(e)}"))
-        return {"status": "error", "message": f"Unexpected error: {str(e)}", "error_code": "TASK_ERROR", "task_id": task_id}
+        self.retry(countdown=60 * 5, exc=Exception(f"Unexpected error: {str(e)}"))
+        return {"status": "error", "message": f"Unexpected error: {str(e)}", "error_code": "INTERNAL_ERROR", "task_id": task_id}
     finally:
         # Cleanup code if needed
         pass
@@ -155,11 +155,11 @@ def run_ssa_contract_forecast_scraper_task(self):
         self.retry(countdown=60 * 10, exc=AppTimeoutError(f"Scraper timed out: {str(e)}"))
         return {"status": "error", "message": f"Timeout error: {str(e)}", "error_code": "TIMEOUT_ERROR", "task_id": task_id}
         
-    except (RequestsConnectionError, AppConnectionError) as e:
+    except (RequestsConnectionError) as e:
         logger.error(f"Connection error: {str(e)}")
         # Use longer delay for connection issues
-        self.retry(countdown=60 * 15, exc=AppConnectionError(f"Connection error: {str(e)}"))
-        return {"status": "error", "message": f"Connection error: {str(e)}", "error_code": "CONNECTION_ERROR", "task_id": task_id}
+        self.retry(countdown=60 * 15, exc=NetworkError(f"Connection error: {str(e)}"))
+        return {"status": "error", "message": f"Connection error: {str(e)}", "error_code": "NETWORK_ERROR", "task_id": task_id}
         
     except RequestException as e:
         logger.error(f"Network error: {str(e)}")
@@ -176,8 +176,8 @@ def run_ssa_contract_forecast_scraper_task(self):
         # Log the full traceback for debugging
         logger.error(traceback.format_exc())
         # Retry the task if it fails
-        self.retry(countdown=60 * 5, exc=TaskError(f"Unexpected error: {str(e)}"))
-        return {"status": "error", "message": f"Unexpected error: {str(e)}", "error_code": "TASK_ERROR", "task_id": task_id}
+        self.retry(countdown=60 * 5, exc=Exception(f"Unexpected error: {str(e)}"))
+        return {"status": "error", "message": f"Unexpected error: {str(e)}", "error_code": "INTERNAL_ERROR", "task_id": task_id}
     finally:
         # Cleanup code if needed
         pass

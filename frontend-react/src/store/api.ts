@@ -1,4 +1,4 @@
-import axios, { InternalAxiosRequestConfig } from 'axios';
+import axios from 'axios';
 
 // Create axios instance with default config
 const api = axios.create({
@@ -8,63 +8,48 @@ const api = axios.create({
   },
 });
 
-// Add request interceptor for handling auth tokens if needed
-api.interceptors.request.use(
-  (config: InternalAxiosRequestConfig) => {
-    // You can add auth tokens here if needed
-    return config;
-  },
-  (error: any) => Promise.reject(error)
-);
+// Define types
+interface PaginationParams {
+  page?: number;
+  perPage?: number;
+  sortBy?: string;
+  sortOrder?: string;
+}
 
-// Add response interceptor for error handling
-api.interceptors.response.use(
-  (response: any) => response,
-  (error: any) => {
-    // Handle common errors here
-    if (error.response) {
-      // Server responded with an error status
-      console.error('API Error:', error.response.status, error.response.data);
-    } else if (error.request) {
-      // Request was made but no response received
-      console.error('API No Response:', error.request);
-    } else {
-      // Something else happened
-      console.error('API Error:', error.message);
-    }
-    return Promise.reject(error);
-  }
-);
+interface DataSourceData {
+  name: string;
+  url: string;
+  description?: string;
+  status?: string;
+}
 
-// API functions
-export async function fetchDashboardData({ page = 1, perPage = 50 } = {}) {
-  const response = await api.get('/dashboard', {
-    params: {
-      page,
-      per_page: perPage,
-    },
-  });
-  return response.data;
+// Simplified API functions
+export async function fetchDashboardData({ page = 1, perPage = 50 }: PaginationParams = {}) {
+  return (await api.get('/dashboard', {
+    params: { page, per_page: perPage },
+  })).data;
+}
+
+export async function fetchProposals({ page = 1, perPage = 50, sortBy = 'release_date', sortOrder = 'desc' }: PaginationParams = {}) {
+  return (await api.get('/proposals', {
+    params: { page, per_page: perPage, sort_by: sortBy, sort_order: sortOrder },
+  })).data;
 }
 
 export async function fetchDataSources() {
-  const response = await api.get('/data_sources');
-  return response.data;
+  return (await api.get('/data-sources')).data;
 }
 
-export async function updateDataSource(id: string, data: any) {
-  const response = await api.put(`/data_sources/${id}`, data);
-  return response.data;
+export async function updateDataSource(id: string | number, data: DataSourceData) {
+  return (await api.put(`/data-sources/${id}`, data)).data;
 }
 
-export async function createDataSource(data: any) {
-  const response = await api.post('/data_sources', data);
-  return response.data;
+export async function createDataSource(data: DataSourceData) {
+  return (await api.post('/data-sources', data)).data;
 }
 
-export async function deleteDataSource(id: string) {
-  const response = await api.delete(`/data_sources/${id}`);
-  return response.data;
+export async function deleteDataSource(id: string | number) {
+  return (await api.delete(`/data-sources/${id}`)).data;
 }
 
 export default api; 
