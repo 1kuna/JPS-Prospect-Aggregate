@@ -7,7 +7,7 @@ from src.utils.imports import (
     logging, RotatingFileHandler
 )
 
-from src.database.db import session_scope
+from src.database.db_session_manager import session_scope
 from src.database.models import DataSource
 from src.exceptions import ScraperError, ParsingError
 from src.config import LOGS_DIR, DOWNLOADS_DIR, LOG_FORMAT, LOG_FILE_MAX_BYTES, LOG_FILE_BACKUP_COUNT

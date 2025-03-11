@@ -11,7 +11,7 @@ import os
 import sys
 import logging
 from dotenv import load_dotenv
-from src.dashboard.app import create_app
+from src.dashboard.factory import create_app
 from src.celery_app import celery_app
 
 # Load environment variables

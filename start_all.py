@@ -774,28 +774,27 @@ REACT_DEV_MODE=True  # Set to False for production
     load_dotenv(env_path, override=True)
 
 
-def check_app_py():
+def check_server_py():
     """
-    Check if app.py exists and is executable.
+    Check if server.py exists and is executable.
     
     Returns:
-        bool: True if app.py exists and is executable, False otherwise
+        bool: True if server.py exists and is executable, False otherwise
     """
-    app_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'app.py')
+    app_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'server.py')
     if not os.path.exists(app_path):
-        logger.error(f"app.py not found at {app_path}")
-        logger.error("Please make sure you're running this script from the project root directory")
+        logger.error(f"server.py not found at {app_path}")
         return False
     
-    # Try to run app.py with --help to see if it's executable
     try:
-        result = subprocess.run(['python', app_path, '--help'], capture_output=True, text=True)
+        # Try to run server.py with --help to see if it's executable
+        result = subprocess.run([sys.executable, app_path, "--help"], capture_output=True, text=True)
         if result.returncode != 0:
-            logger.error(f"app.py exists but may have errors: {result.stderr}")
+            logger.error(f"server.py exists but may have errors: {result.stderr}")
             return False
         return True
     except Exception as e:
-        logger.error(f"Error checking app.py: {str(e)}")
+        logger.error(f"Error checking server.py: {str(e)}")
         return False
 
 
@@ -882,9 +881,9 @@ def main():
             logger.warning("On macOS, you can install Redis with: brew install redis")
             logger.warning("On Linux, you can install Redis with: sudo apt-get install redis-server")
     
-    # Check if app.py exists and is executable
-    if not check_app_py():
-        logger.error("Cannot start Flask app. Please check app.py for errors.")
+    # Check if server.py exists and is executable
+    if not check_server_py():
+        logger.error("Cannot start Flask app. Please check server.py for errors.")
         sys.exit(1)
     
     # Check if Node.js and npm are installed

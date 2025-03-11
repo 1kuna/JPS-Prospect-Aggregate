@@ -29,6 +29,32 @@ class DataSource(Base):
     proposals = relationship("Proposal", back_populates="source")
     status_checks = relationship("ScraperStatus", back_populates="source")
     
+    def to_dict(self) -> Dict[str, Any]:
+        """
+        Convert the data source to a dictionary for API responses.
+        
+        Returns:
+            Dict[str, Any]: Dictionary representation of the data source
+        """
+        # Get the latest status check if available
+        latest_status = None
+        if self.status_checks:
+            latest_status = max(self.status_checks, key=lambda x: x.last_checked if x.last_checked else datetime.datetime.min)
+        
+        # Count proposals for this source
+        proposal_count = len(self.proposals) if self.proposals else 0
+        
+        return {
+            'id': self.id,
+            'name': self.name,
+            'url': self.url,
+            'description': self.description,
+            'last_scraped': self.last_scraped.isoformat() if self.last_scraped else None,
+            'status': latest_status.status if latest_status else 'unknown',
+            'last_checked': latest_status.last_checked.isoformat() if latest_status and latest_status.last_checked else None,
+            'proposalCount': proposal_count
+        }
+    
     def __repr__(self) -> str:
         return f"<DataSource(name='{self.name}', url='{self.url}')>"
 

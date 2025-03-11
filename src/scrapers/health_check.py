@@ -8,7 +8,7 @@ from logging.handlers import RotatingFileHandler
 # Add the parent directory to the path so we can import from src
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from src.database.db import session_scope
+from src.database.db_session_manager import session_scope
 from src.database.models import DataSource, ScraperStatus
 from src.config import LOGS_DIR, LOG_FORMAT, LOG_FILE_MAX_BYTES, LOG_FILE_BACKUP_COUNT
 from src.utils.log_manager import cleanup_all_logs

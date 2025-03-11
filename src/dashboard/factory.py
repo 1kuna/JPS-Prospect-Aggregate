@@ -10,6 +10,9 @@ def create_app(config=None):
     # Create and configure the app
     app = Flask(__name__)
     
+    # Configure Flask to redirect URLs with trailing slashes to URLs without trailing slashes
+    app.url_map.strict_slashes = False
+    
     # Enable CORS
     CORS(app, resources={r"/api/*": {"origins": "*"}})
     

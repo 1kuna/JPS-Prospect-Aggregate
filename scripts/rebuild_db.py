@@ -115,7 +115,7 @@ def rebuild_database(max_backups=5):
     cleanup_old_backups(db_dir, max_backups=max_backups)
     
     # Import here to avoid circular imports
-    from src.database.db import engine, Session
+    from src.database.db_session_manager import engine, Session
     
     # Close all existing connections to the database
     logger.info("Closing all existing database connections")

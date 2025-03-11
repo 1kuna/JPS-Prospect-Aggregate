@@ -1,19 +1,15 @@
 """Routes for the data sources blueprint."""
 
-from flask import render_template, current_app, jsonify, request
+from flask import render_template, current_app, jsonify, request, redirect, url_for, send_from_directory
 import threading
 from . import data_sources
-from src.database.db import get_session, close_session, Session, dispose_engine
+from src.database.db_session_manager import get_session, close_session, Session, dispose_engine
 from src.database.models import DataSource, ScraperStatus
 from src.scrapers.acquisition_gateway import run_scraper as run_acquisition_gateway_scraper
 from src.scrapers.ssa_contract_forecast import run_scraper as run_ssa_contract_forecast_scraper
 from src.utils.db_utils import rebuild_database
 import traceback
-
-@data_sources.route('/')
-def index():
-    """Render the data sources page."""
-    return render_template('data_sources/data_sources.html')
+import os
 
 @data_sources.route('/run-scraper/<int:source_id>', methods=['POST'])
 def run_scraper(source_id):
@@ -126,7 +122,7 @@ def rebuild_db():
             time.sleep(2)
             
             # Try to reconnect to the database
-            from src.database.db import reconnect
+            from src.database.db_session_manager import reconnect
             reconnect()
             current_app.logger.info("Database rebuild completed successfully")
         except Exception as e:

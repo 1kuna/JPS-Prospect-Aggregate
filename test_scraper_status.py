@@ -1,4 +1,4 @@
-from src.database.db import get_session, close_session, session_scope
+from src.database.db_session_manager import get_session, close_session, session_scope
 from src.database.models import ScraperStatus, DataSource
 from datetime import datetime
 import traceback

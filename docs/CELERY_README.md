@@ -73,7 +73,7 @@ If you prefer to start components individually:
 #### Start the Flask Web Application
 
 ```
-python app.py
+python server.py
 ```
 
 This will start the Flask web application on the host and port specified in your `.env` file (default: http://0.0.0.0:5001).

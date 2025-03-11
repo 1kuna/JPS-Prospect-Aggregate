@@ -11,7 +11,7 @@ from src.utils.imports import (
 from src.scrapers.base_scraper import BaseScraper
 
 # Import from database
-from src.database.db import session_scope
+from src.database.db_session_manager import session_scope
 
 # Import from exceptions
 from src.exceptions import ScraperError, ParsingError

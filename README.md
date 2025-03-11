@@ -22,10 +22,10 @@ A dashboard application that scrapes data from various government proposal forec
 
 ```
 .
-├── app.py                  # Main application entry point
+├── server.py                  # Main application entry point
 ├── src/                    # Source code directory
 │   ├── dashboard/          # Flask web application
-│   │   ├── app.py          # Flask app factory
+│   │   ├── factory.py          # Flask app factory
 │   │   ├── blueprints/     # Route definitions
 │   │   ├── static/         # Static assets (CSS, JS)
 │   │   └── templates/      # HTML templates
@@ -133,7 +133,7 @@ A dashboard application that scrapes data from various government proposal forec
 
 2. Start the Flask application
    ```bash
-   python app.py
+   python server.py
    ```
 
 3. In a separate terminal, start the Celery worker
