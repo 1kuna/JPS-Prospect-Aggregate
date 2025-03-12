@@ -1,10 +1,13 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
-import { Button } from '@/components/ui/button';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { formatDate } from '@/lib/utils';
+import {
+  PageLayout,
+  PageSkeleton,
+  DataTable,
+  StatsCard,
+  StatsGrid,
+} from '@/components';
 
 interface Proposal {
   id: string | number;
@@ -58,8 +61,6 @@ export default function DirectDatabaseAccess() {
         timestamp: new Date().toISOString()
       };
       
-      console.log('Combined data:', combinedData);
-      
       setData(combinedData);
       setLastUpdated(new Date());
     } catch (err: any) {
@@ -74,119 +75,83 @@ export default function DirectDatabaseAccess() {
     fetchData();
   }, []);
 
-  const formatDate = (dateString: string | null): string => {
-    if (!dateString) return 'N/A';
-    try {
-      return new Date(dateString).toLocaleString();
-    } catch (e) {
-      return dateString;
-    }
-  };
-
+  // If loading and no data, show skeleton
   if (loading && !data) {
-    return (
-      <div className="container mx-auto py-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Direct Database Access</CardTitle>
-            <CardDescription>Loading data directly from the database...</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Skeleton className="h-64 w-full" />
-          </CardContent>
-        </Card>
-      </div>
-    );
+    return <PageSkeleton cardCount={3} />;
   }
 
-  if (error) {
-    return (
-      <div className="container mx-auto py-6">
-        <Alert variant="destructive">
-          <AlertTitle>Error</AlertTitle>
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-        <Button className="mt-4" onClick={fetchData}>Retry</Button>
-      </div>
-    );
-  }
+  // Define stats for database stats card
+  const dbStats = [
+    { label: 'Total Proposals:', value: data?.totalProposals || 0 },
+    { label: 'Total Data Sources:', value: data?.totalSources || 0 },
+    { label: 'Timestamp:', value: formatDate(data?.timestamp || '') },
+  ];
+
+  // Define table columns for proposals
+  const proposalColumns = [
+    { header: 'ID', accessor: 'id' as keyof Proposal },
+    { header: 'Title', accessor: 'title' as keyof Proposal },
+    { header: 'Agency', accessor: 'agency' as keyof Proposal },
+    { header: 'Status', accessor: 'status' as keyof Proposal },
+    { 
+      header: 'Release Date', 
+      accessor: (proposal: Proposal) => formatDate(proposal.release_date)
+    },
+  ];
+
+  // Define table columns for data sources
+  const dataSourceColumns = [
+    { header: 'ID', accessor: 'id' as keyof DataSource },
+    { header: 'Name', accessor: 'name' as keyof DataSource },
+    { 
+      header: 'URL', 
+      accessor: (source: DataSource) => (
+        <div className="truncate max-w-xs">{source.url}</div>
+      )
+    },
+    { 
+      header: 'Last Scraped', 
+      accessor: (source: DataSource) => formatDate(source.last_scraped)
+    },
+  ];
 
   return (
-    <div className="container mx-auto py-6">
-      <Card className="mb-6">
-        <CardHeader>
-          <CardTitle>Direct Database Access</CardTitle>
-          <CardDescription>
-            Viewing data directly from the database
-            {lastUpdated && ` (Last updated: ${lastUpdated.toLocaleString()})`}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Database Stats</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p>Total Proposals: {data?.totalProposals || 0}</p>
-                <p>Total Data Sources: {data?.totalSources || 0}</p>
-                <p>Timestamp: {formatDate(data?.timestamp || null)}</p>
-              </CardContent>
-            </Card>
-          </div>
+    <PageLayout
+      title="Direct Database Access"
+      description="Viewing data directly from the database"
+      lastUpdated={lastUpdated}
+      onRefresh={fetchData}
+      isLoading={loading}
+      error={error}
+    >
+      <StatsGrid columns={1}>
+        <StatsCard
+          title="Database Stats"
+          stats={dbStats}
+        />
+      </StatsGrid>
 
-          <div className="mb-6">
-            <h3 className="text-lg font-medium mb-2">Recent Proposals</h3>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>ID</TableHead>
-                  <TableHead>Title</TableHead>
-                  <TableHead>Agency</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Release Date</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {data?.proposals.slice(0, 10).map((proposal) => (
-                  <TableRow key={proposal.id}>
-                    <TableCell>{proposal.id}</TableCell>
-                    <TableCell>{proposal.title}</TableCell>
-                    <TableCell>{proposal.agency}</TableCell>
-                    <TableCell>{proposal.status}</TableCell>
-                    <TableCell>{formatDate(proposal.release_date)}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+      <DataTable
+        title="Recent Proposals"
+        data={data?.proposals.slice(0, 10) || []}
+        columns={proposalColumns}
+        keyField="id"
+        emptyMessage={{
+          title: 'No proposals found',
+          description: 'There are no proposals to display.',
+        }}
+      />
 
-          <div>
-            <h3 className="text-lg font-medium mb-2">Data Sources</h3>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>ID</TableHead>
-                  <TableHead>Name</TableHead>
-                  <TableHead>URL</TableHead>
-                  <TableHead>Last Scraped</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {data?.dataSources.map((source) => (
-                  <TableRow key={source.id}>
-                    <TableCell>{source.id}</TableCell>
-                    <TableCell>{source.name}</TableCell>
-                    <TableCell className="truncate max-w-xs">{source.url}</TableCell>
-                    <TableCell>{formatDate(source.last_scraped)}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
-      <Button onClick={fetchData}>Refresh Data</Button>
-    </div>
+      <DataTable
+        title="Data Sources"
+        data={data?.dataSources || []}
+        columns={dataSourceColumns}
+        keyField="id"
+        emptyMessage={{
+          title: 'No data sources found',
+          description: 'There are no data sources to display.',
+        }}
+      />
+    </PageLayout>
   );
 } 

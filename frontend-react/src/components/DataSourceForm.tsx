@@ -1,17 +1,14 @@
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { Button } from './ui/button';
+import { FormWrapper } from './forms/FormWrapper';
 import {
-  Form,
+  FormField,
   FormControl,
   FormDescription,
-  FormField,
   FormItem,
   FormLabel,
   FormMessage,
-} from './ui/form';
-import { Input } from './ui/input';
+  Input,
+} from '@/components';
 
 // Define the form schema with Zod
 const formSchema = z.object({
@@ -35,87 +32,83 @@ interface DataSourceFormProps {
   };
   onSubmit: (data: FormValues) => void;
   onCancel: () => void;
+  isSubmitting?: boolean;
+  error?: string | null;
+  successMessage?: string | null;
 }
 
-export function DataSourceForm({ initialData, onSubmit, onCancel }: DataSourceFormProps) {
-  // Initialize the form with react-hook-form
-  const form = useForm<FormValues>({
-    resolver: zodResolver(formSchema),
-    defaultValues: initialData || {
-      name: '',
-      url: '',
-      description: '',
-    },
-  });
-
-  // Handle form submission
-  const handleSubmit = (values: FormValues) => {
-    onSubmit(values);
-  };
-
+export function DataSourceForm({
+  initialData,
+  onSubmit,
+  onCancel,
+  isSubmitting = false,
+  error = null,
+  successMessage = null,
+}: DataSourceFormProps) {
   return (
-    <Form {...form}>
-      <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
-        <FormField
-          control={form.control}
-          name="name"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Name</FormLabel>
-              <FormControl>
-                <Input placeholder="Enter data source name" {...field} />
-              </FormControl>
-              <FormDescription>
-                A descriptive name for the data source.
-              </FormDescription>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+    <FormWrapper
+      schema={formSchema}
+      defaultValues={initialData || {
+        name: '',
+        url: '',
+        description: '',
+      }}
+      onSubmit={onSubmit}
+      onCancel={onCancel}
+      submitLabel={initialData ? 'Update' : 'Create'}
+      isSubmitting={isSubmitting}
+      error={error}
+      successMessage={successMessage}
+      title={initialData ? 'Edit Data Source' : 'Create Data Source'}
+      description="Configure a data source for proposal aggregation."
+    >
+      <FormField
+        name="name"
+        render={({ field }) => (
+          <FormItem>
+            <FormLabel>Name</FormLabel>
+            <FormControl>
+              <Input placeholder="Enter data source name" {...field} />
+            </FormControl>
+            <FormDescription>
+              A descriptive name for the data source.
+            </FormDescription>
+            <FormMessage />
+          </FormItem>
+        )}
+      />
 
-        <FormField
-          control={form.control}
-          name="url"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>URL</FormLabel>
-              <FormControl>
-                <Input placeholder="https://example.com/api" {...field} />
-              </FormControl>
-              <FormDescription>
-                The endpoint URL for the data source.
-              </FormDescription>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+      <FormField
+        name="url"
+        render={({ field }) => (
+          <FormItem>
+            <FormLabel>URL</FormLabel>
+            <FormControl>
+              <Input placeholder="https://example.com/api" {...field} />
+            </FormControl>
+            <FormDescription>
+              The endpoint URL for the data source.
+            </FormDescription>
+            <FormMessage />
+          </FormItem>
+        )}
+      />
 
-        <FormField
-          control={form.control}
-          name="description"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Description (Optional)</FormLabel>
-              <FormControl>
-                <Input placeholder="Enter a description" {...field} />
-              </FormControl>
-              <FormDescription>
-                A brief description of the data source.
-              </FormDescription>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        <div className="flex justify-end space-x-4">
-          <Button type="button" variant="outline" onClick={onCancel}>
-            Cancel
-          </Button>
-          <Button type="submit">
-            {initialData ? 'Update' : 'Create'} Data Source
-          </Button>
-        </div>
-      </form>
-    </Form>
+      <FormField
+        name="description"
+        render={({ field }) => (
+          <FormItem>
+            <FormLabel>Description (Optional)</FormLabel>
+            <FormControl>
+              <Input placeholder="Enter a description" {...field} />
+            </FormControl>
+            <FormDescription>
+              A brief description of the data source.
+            </FormDescription>
+            <FormMessage />
+          </FormItem>
+        )}
+      />
+    </FormWrapper>
   );
 } 

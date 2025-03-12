@@ -1,28 +1,20 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useStore } from '@/store/useStore';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
-import { Button } from '@/components/ui/button';
-import { Skeleton } from '@/components/ui/skeleton';
 import { formatDate } from '@/lib/utils';
 import {
-  ColumnDef,
-  flexRender,
-  getCoreRowModel,
-  useReactTable,
-  getPaginationRowModel,
-  getSortedRowModel,
-  SortingState,
-  getFilteredRowModel,
-  ColumnFiltersState,
-} from '@tanstack/react-table';
-import {
+  PageLayout,
+  PageSkeleton,
+  DataTable,
+  Alert,
+  AlertTitle,
+  AlertDescription,
+  Button,
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from '@/components/ui/dialog';
+} from '@/components';
 import { DataSourceForm } from '@/components/DataSourceForm';
 
 // Define the data source type
@@ -56,8 +48,6 @@ export default function DataSources() {
   const updateDataSource = useStore(selectUpdateDataSource);
   const deleteDataSource = useStore(selectDeleteDataSource);
 
-  const [sorting, setSorting] = useState<SortingState>([]);
-  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingDataSource, setEditingDataSource] = useState<DataSource | null>(null);
   const isMounted = useRef(false);
@@ -69,99 +59,6 @@ export default function DataSources() {
       isMounted.current = true;
     }
   }, []); // Empty dependency array to run only once on mount
-
-  // Define table columns
-  const columns: ColumnDef<DataSource>[] = [
-    {
-      accessorKey: 'name',
-      header: 'Name',
-      cell: ({ row }) => <div className="font-medium">{row.getValue('name')}</div>,
-    },
-    {
-      accessorKey: 'url',
-      header: 'URL',
-      cell: ({ row }) => (
-        <div className="max-w-[300px] truncate">
-          <a 
-            href={row.getValue('url')} 
-            target="_blank" 
-            rel="noopener noreferrer"
-            className="text-blue-500 hover:underline"
-          >
-            {row.getValue('url')}
-          </a>
-        </div>
-      ),
-    },
-    {
-      accessorKey: 'status',
-      header: 'Status',
-      cell: ({ row }) => {
-        const status = row.getValue('status') as string;
-        return (
-          <div className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
-            ${status === 'active' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}
-          >
-            {status || 'Unknown'}
-          </div>
-        );
-      },
-    },
-    {
-      accessorKey: 'proposalCount',
-      header: 'Proposals',
-      cell: ({ row }) => row.getValue('proposalCount') || 0,
-    },
-    {
-      accessorKey: 'lastScraped',
-      header: 'Last Scraped',
-      cell: ({ row }) => {
-        const date = row.getValue('lastScraped');
-        return date ? formatDate(date as string) : 'Never';
-      },
-    },
-    {
-      id: 'actions',
-      header: 'Actions',
-      cell: ({ row }) => {
-        const dataSource = row.original;
-        return (
-          <div className="flex items-center space-x-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => handleEdit(dataSource)}
-            >
-              Edit
-            </Button>
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={() => handleDelete(dataSource.id.toString())}
-            >
-              Delete
-            </Button>
-          </div>
-        );
-      },
-    },
-  ];
-
-  // Initialize the table
-  const table = useReactTable({
-    data: dataSources,
-    columns,
-    getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    onSortingChange: setSorting,
-    onColumnFiltersChange: setColumnFilters,
-    state: {
-      sorting,
-      columnFilters,
-    },
-  });
 
   // Memoize event handlers
   const handleFormSubmit = useCallback((data: any) => {
@@ -197,77 +94,102 @@ export default function DataSources() {
     setEditingDataSource(null);
   }, []);
 
-  // Show error state
-  if (errors) {
-    return (
-      <div className="space-y-4">
-        <Card className="border-red-300">
-          <CardHeader>
-            <CardTitle className="text-red-500">Error Loading Data Sources</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p>{errors.message && errors.message}</p>
-            <Button 
-              onClick={() => fetchDataSources()} 
-              className="mt-4"
-            >
-              Retry
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
+  const handleRefresh = () => {
+    fetchDataSources();
+  };
+
+  // If loading and no data, show skeleton
+  if (loading && dataSources.length === 0) {
+    return <PageSkeleton cardCount={1} />;
   }
 
-  return (
-    <div className="container mx-auto py-6">
-      {/* Page header */}
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-3xl font-bold">Data Sources</h1>
-        <div className="flex items-center gap-4">
-          <Button onClick={() => fetchDataSources()} disabled={loading}>
-            {loading ? 'Refreshing...' : 'Refresh'}
-          </Button>
-          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-            <DialogTrigger asChild>
-              <Button onClick={() => setEditingDataSource(null)}>
-                Add Data Source
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-[600px]">
-              <DialogHeader>
-                <DialogTitle>
-                  {editingDataSource ? 'Edit Data Source' : 'Add Data Source'}
-                </DialogTitle>
-              </DialogHeader>
-              <DataSourceForm
-                initialData={editingDataSource || undefined}
-                onSubmit={handleFormSubmit}
-                onCancel={handleDialogClose}
-              />
-            </DialogContent>
-          </Dialog>
+  // Define table columns with proper typing
+  const columns = [
+    { header: 'Name', accessor: 'name' as keyof DataSource },
+    { 
+      header: 'URL', 
+      accessor: (dataSource: DataSource) => (
+        <div className="max-w-[300px] truncate">
+          <a 
+            href={dataSource.url} 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="text-blue-500 hover:underline"
+          >
+            {dataSource.url}
+          </a>
         </div>
-      </div>
+      )
+    },
+    { 
+      header: 'Status', 
+      accessor: (dataSource: DataSource) => (
+        <div className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+          ${dataSource.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}
+        >
+          {dataSource.status || 'Unknown'}
+        </div>
+      )
+    },
+    { header: 'Proposals', accessor: 'proposalCount' as keyof DataSource },
+    { 
+      header: 'Last Scraped', 
+      accessor: (dataSource: DataSource) => dataSource.lastScraped ? formatDate(dataSource.lastScraped) : 'Never'
+    },
+    { 
+      header: 'Actions', 
+      accessor: (dataSource: DataSource) => (
+        <div className="flex items-center space-x-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => handleEdit(dataSource)}
+          >
+            Edit
+          </Button>
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={() => handleDelete(dataSource.id.toString())}
+          >
+            Delete
+          </Button>
+        </div>
+      )
+    },
+  ];
 
-      {/* Loading state */}
-      {loading && dataSources.length === 0 && (
-        <Card>
-          <CardHeader>
-            <Skeleton className="h-8 w-1/4 mb-2" />
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              <Skeleton className="h-12 w-full" />
-              <Skeleton className="h-12 w-full" />
-              <Skeleton className="h-12 w-full" />
-              <Skeleton className="h-12 w-full" />
-              <Skeleton className="h-12 w-full" />
-            </div>
-          </CardContent>
-        </Card>
-      )}
+  // Create the add data source button
+  const addDataSourceButton = (
+    <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+      <DialogTrigger asChild>
+        <Button onClick={() => setEditingDataSource(null)}>
+          Add Data Source
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-[600px]">
+        <DialogHeader>
+          <DialogTitle>
+            {editingDataSource ? 'Edit Data Source' : 'Add Data Source'}
+          </DialogTitle>
+        </DialogHeader>
+        <DataSourceForm
+          initialData={editingDataSource || undefined}
+          onSubmit={handleFormSubmit}
+          onCancel={handleDialogClose}
+        />
+      </DialogContent>
+    </Dialog>
+  );
 
+  return (
+    <PageLayout
+      title="Data Sources"
+      onRefresh={handleRefresh}
+      isLoading={loading}
+      error={errors}
+      actions={addDataSourceButton}
+    >
       {/* No data state */}
       {!loading && dataSources.length === 0 && (
         <Alert className="mb-6">
@@ -280,68 +202,18 @@ export default function DataSources() {
 
       {/* Data table */}
       {dataSources.length > 0 && (
-        <Card>
-          <CardContent className="pt-6">
-            <div className="rounded-md border">
-              <table className="w-full">
-                <thead>
-                  {table.getHeaderGroups().map((headerGroup) => (
-                    <tr key={headerGroup.id} className="border-b bg-muted/50">
-                      {headerGroup.headers.map((header) => (
-                        <th
-                          key={header.id}
-                          className="h-12 px-4 text-left align-middle font-medium text-muted-foreground"
-                        >
-                          {header.isPlaceholder
-                            ? null
-                            : flexRender(
-                                header.column.columnDef.header,
-                                header.getContext()
-                              )}
-                        </th>
-                      ))}
-                    </tr>
-                  ))}
-                </thead>
-                <tbody>
-                  {table.getRowModel().rows.map((row) => (
-                    <tr key={row.id} className="border-b">
-                      {row.getVisibleCells().map((cell) => (
-                        <td key={cell.id} className="p-4 align-middle">
-                          {flexRender(
-                            cell.column.columnDef.cell,
-                            cell.getContext()
-                          )}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Pagination */}
-            <div className="flex items-center justify-end space-x-2 py-4">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => table.previousPage()}
-                disabled={!table.getCanPreviousPage()}
-              >
-                Previous
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => table.nextPage()}
-                disabled={!table.getCanNextPage()}
-              >
-                Next
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+        <DataTable
+          title="Data Sources"
+          description="Manage your data sources for proposal aggregation"
+          data={dataSources}
+          columns={columns}
+          keyField="id"
+          emptyMessage={{
+            title: 'No data sources found',
+            description: 'There are currently no data sources in the system.',
+          }}
+        />
       )}
-    </div>
+    </PageLayout>
   );
 } 
