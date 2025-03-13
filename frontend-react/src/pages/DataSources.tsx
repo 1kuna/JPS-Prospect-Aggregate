@@ -227,6 +227,82 @@ export default function DataSources() {
     setIsDialogOpen(true);
   }, []);
 
+  // Add a function to check the status of all data sources
+  const checkAllScraperStatuses = useCallback(async () => {
+    if (!dataSources || dataSources.length === 0) return;
+    
+    // Check status for each data source
+    for (const source of dataSources) {
+      try {
+        const statusResult = await getScraperStatus(String(source.id));
+        console.log(`Initial status check for source ID ${source.id}:`, statusResult);
+        
+        // If the scraper is currently running, update the UI state
+        if (statusResult.status === "running") {
+          setPullingProgress(source.id, true);
+          
+          // Set up polling for this source
+          startStatusPolling(source);
+        }
+      } catch (error) {
+        console.error(`Error checking status for source ID ${source.id}:`, error);
+      }
+    }
+  }, [dataSources, getScraperStatus, setPullingProgress]);
+  
+  // Function to start polling for a specific data source
+  const startStatusPolling = useCallback((dataSource: DataSource) => {
+    let statusCheckInterval = setInterval(async () => {
+      try {
+        const statusResult = await getScraperStatus(String(dataSource.id));
+        console.log(`Status check for source ID ${dataSource.id}:`, statusResult);
+        
+        // If the scraper is no longer running or has timed out, clear the interval and update UI
+        if (statusResult.status !== "running") {
+          clearInterval(statusCheckInterval);
+          
+          // Update UI based on final status
+          if (statusResult.status === "completed") {
+            const successMessage = `Successfully pulled data from ${dataSource.name}`;
+            
+            // Show success toast
+            toast({
+              title: "Success!",
+              description: successMessage,
+              variant: "success",
+              duration: 10000
+            });
+          } else if (statusResult.status === "timeout" || statusResult.status === "failed") {
+            // Show error toast
+            toast({
+              title: "Error pulling data",
+              description: statusResult.message,
+              variant: "destructive",
+              duration: 15000
+            });
+          }
+          
+          // Clear loading state
+          setPullingProgress(dataSource.id, false);
+          
+          // Refresh the data sources to show updated information
+          fetchDataSources();
+        }
+      } catch (error) {
+        console.error('Error checking scraper status:', error);
+        clearInterval(statusCheckInterval);
+        setPullingProgress(dataSource.id, false);
+      }
+    }, 2000); // Check every 2 seconds
+    
+    return statusCheckInterval;
+  }, [getScraperStatus, setPullingProgress, toast, fetchDataSources]);
+  
+  // Check scraper status when component mounts or when dataSources changes
+  useEffect(() => {
+    checkAllScraperStatuses();
+  }, [checkAllScraperStatuses]);
+
   const handlePullDataSource = useCallback(async (dataSource: DataSource) => {
     try {
       // Set loading state for this specific data source in the global store
@@ -257,95 +333,8 @@ export default function DataSources() {
       
       console.log(`Pull initiated for source ID ${dataSource.id}:`, result);
       
-      // Set up a polling interval to check the status
-      let statusCheckInterval: NodeJS.Timeout | null = setInterval(async () => {
-        try {
-          // Call our new status endpoint
-          const statusResult = await getScraperStatus(String(dataSource.id));
-          console.log(`Status check for source ID ${dataSource.id}:`, statusResult);
-          
-          // Update toast with current status
-          addToast({
-            title: `Status: ${statusResult.status}`,
-            description: statusResult.message,
-            variant: statusResult.status === "running" ? "default" : 
-                     statusResult.status === "completed" ? "success" : "destructive",
-            duration: statusResult.status === "running" ? 0 : 10000
-          });
-          
-          // If the scraper is no longer running or has timed out, clear the interval and update UI
-          if (statusResult.status !== "running") {
-            if (statusCheckInterval) {
-              clearInterval(statusCheckInterval);
-              statusCheckInterval = null;
-            }
-            
-            // Update UI based on final status
-            if (statusResult.status === "completed") {
-              const successMessage = `Successfully pulled data from ${dataSource.name}`;
-              
-              // Show success in other toasts
-              toast({
-                title: "Success!",
-                description: successMessage,
-                variant: "success",
-                duration: 10000
-              });
-              
-              addSimpleToast({
-                title: "Success!",
-                message: successMessage,
-                type: 'success'
-              });
-            } else if (statusResult.status === "timeout") {
-              // Show timeout message
-              toast({
-                title: "Scraper Timeout",
-                description: statusResult.message,
-                variant: "destructive",
-                duration: 15000
-              });
-              
-              addSimpleToast({
-                title: "Scraper Timeout",
-                message: statusResult.message,
-                type: 'error',
-                duration: 15000
-              });
-            } else {
-              // Show error in other toasts
-              toast({
-                title: "Error pulling data",
-                description: statusResult.message,
-                variant: "destructive",
-                duration: 15000
-              });
-              
-              addSimpleToast({
-                title: "Error pulling data",
-                message: statusResult.message,
-                type: 'error',
-                duration: 15000
-              });
-            }
-            
-            // Refresh the data sources to show updated information
-            await fetchDataSources();
-            
-            // Clear loading state in the global store
-            setPullingProgress(dataSource.id, false);
-          }
-        } catch (error) {
-          console.error('Error checking scraper status:', error);
-        }
-      }, 1000); // Check every 1 second
-      
-      // Clean up the interval if the component unmounts
-      return () => {
-        if (statusCheckInterval) {
-          clearInterval(statusCheckInterval);
-        }
-      };
+      // Start polling for status updates
+      startStatusPolling(dataSource);
     } catch (error: any) {
       console.error('Failed to pull data source:', error);
       
@@ -370,7 +359,7 @@ export default function DataSources() {
       // Clear loading state in the global store
       setPullingProgress(dataSource.id, false);
     }
-  }, [pullDataSource, getScraperStatus, fetchDataSources, toast, addToast, addSimpleToast, setPullingProgress]);
+  }, [pullDataSource, startStatusPolling, toast, addToast, addSimpleToast, setPullingProgress]);
 
   const handleCloseDialog = useCallback(() => {
     setIsDialogOpen(false);

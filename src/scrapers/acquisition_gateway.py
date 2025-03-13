@@ -100,6 +100,17 @@ class AcquisitionGatewayScraper(BaseScraper):
                 download_path = download.path()
                 self.logger.info(f"Download completed: {download_path}")
                 
+                # Verify the file exists and is not empty
+                if not os.path.exists(download_path):
+                    error_msg = "Download failed: File does not exist"
+                    self.logger.error(error_msg)
+                    raise ScraperError(error_msg)
+                
+                if os.path.getsize(download_path) == 0:
+                    error_msg = "Download failed: File is empty"
+                    self.logger.error(error_msg)
+                    raise ScraperError(error_msg)
+                
                 # Save a copy of the file to the data/downloads folder with a timestamp
                 import shutil
                 from datetime import datetime
@@ -116,14 +127,32 @@ class AcquisitionGatewayScraper(BaseScraper):
                 # Process the downloaded CSV file
                 import pandas as pd
                 self.logger.info(f"Reading CSV file: {download_path}")
-                df = pd.read_csv(download_path)
-                self.logger.info(f"Read CSV file with {len(df)} rows")
                 
-                # Convert DataFrame to list of dictionaries
-                data = df.to_dict('records')
-                self.logger.info(f"Converted CSV data to {len(data)} records")
+                try:
+                    df = pd.read_csv(download_path)
+                    
+                    # Verify the DataFrame has rows
+                    if df.empty:
+                        error_msg = "Download failed: CSV file has no data rows"
+                        self.logger.error(error_msg)
+                        raise ScraperError(error_msg)
+                        
+                    self.logger.info(f"Read CSV file with {len(df)} rows")
+                    
+                    # Convert DataFrame to list of dictionaries
+                    data = df.to_dict('records')
+                    self.logger.info(f"Converted CSV data to {len(data)} records")
+                    
+                    return data
+                except pd.errors.EmptyDataError:
+                    error_msg = "Download failed: CSV file is empty or has no data"
+                    self.logger.error(error_msg)
+                    raise ScraperError(error_msg)
+                except Exception as e:
+                    error_msg = f"Error processing CSV file: {str(e)}"
+                    self.logger.error(error_msg)
+                    raise ScraperError(error_msg)
                 
-                return data
             except PlaywrightTimeoutError as e:
                 error_msg = f"Timeout waiting for CSV download to start (60 seconds exceeded): {str(e)}"
                 self.logger.error(error_msg)
@@ -274,6 +303,10 @@ def run_scraper(force=False):
         if not scraper.check_url_accessibility():
             error_msg = f"URL {ACQUISITION_GATEWAY_URL} is not accessible"
             logger.error(error_msg)
+            
+            # Update the status in the database
+            update_scraper_status("error", error_msg)
+            
             raise ScraperError(error_msg)
         
         # Run the scraper
@@ -284,42 +317,18 @@ def run_scraper(force=False):
         if not success:
             error_msg = "Scraper failed without specific error"
             logger.error(error_msg)
+            
+            # Update the status in the database
+            update_scraper_status("error", error_msg)
+            
             raise ScraperError(error_msg)
         
         # Update the download tracker with the current time
         download_tracker.set_last_download_time("Acquisition Gateway Forecast")
         logger.info("Updated download tracker with current time")
         
-        # Update the ScraperStatus table
-        with session_scope() as session:
-            # Get the data source
-            data_source = session.query(DataSource).filter_by(name="Acquisition Gateway Forecast").first()
-            if data_source:
-                # Check if there's an existing status record
-                status_record = session.query(ScraperStatus).filter_by(source_id=data_source.id).first()
-                if status_record:
-                    # Update existing record
-                    status_record.status = "working"
-                    status_record.last_checked = datetime.datetime.utcnow()
-                    status_record.error_message = None
-                    logger.info(f"Updated existing status record for Acquisition Gateway Forecast")
-                else:
-                    # Create new record
-                    new_status = ScraperStatus(
-                        source_id=data_source.id,
-                        status="working",
-                        last_checked=datetime.datetime.utcnow(),
-                        error_message=None
-                    )
-                    session.add(new_status)
-                    logger.info(f"Created new status record for Acquisition Gateway Forecast")
-                
-                # Also update the last_scraped field on the data source
-                data_source.last_scraped = datetime.datetime.utcnow()
-                session.commit()
-                logger.info(f"Updated last_scraped timestamp for Acquisition Gateway Forecast")
-            else:
-                logger.warning(f"Data source not found for Acquisition Gateway Forecast")
+        # Update the ScraperStatus table to indicate success
+        update_scraper_status("working", None)
             
         return True
     except ImportError as e:
@@ -328,14 +337,25 @@ def run_scraper(force=False):
         logger.error(error_msg)
         logger.error("Playwright module not found. Please install it with 'pip install playwright'")
         logger.error("Then run 'playwright install' to install the browsers")
+        
+        # Update the status in the database
+        update_scraper_status("error", error_msg)
+        
         raise ScraperError(error_msg)
-    except ScraperError:
+    except ScraperError as e:
+        # Update the status in the database
+        update_scraper_status("error", str(e))
+        
         # Re-raise ScraperError exceptions to propagate them
         raise
     except Exception as e:
         error_msg = f"Error running scraper: {str(e)}"
         logger.error(error_msg)
         logger.error(traceback.format_exc())
+        
+        # Update the status in the database
+        update_scraper_status("error", error_msg)
+        
         raise ScraperError(error_msg)
     finally:
         # Ensure proper cleanup of resources
@@ -346,6 +366,50 @@ def run_scraper(force=False):
             except Exception as cleanup_error:
                 logger.error(f"Error during scraper cleanup: {str(cleanup_error)}")
                 logger.error(traceback.format_exc())
+
+def update_scraper_status(status, error_message=None):
+    """
+    Update the scraper status in the database.
+    
+    Args:
+        status (str): Status to set ('working', 'error', etc.)
+        error_message (str, optional): Error message to set
+    """
+    logger = logging.getLogger("scraper.acquisition_gateway")
+    
+    try:
+        with session_scope() as session:
+            # Get the data source
+            data_source = session.query(DataSource).filter_by(name="Acquisition Gateway Forecast").first()
+            if data_source:
+                # Check if there's an existing status record
+                status_record = session.query(ScraperStatus).filter_by(source_id=data_source.id).first()
+                if status_record:
+                    # Update existing record
+                    status_record.status = status
+                    status_record.last_checked = datetime.datetime.utcnow()
+                    status_record.error_message = error_message
+                    logger.info(f"Updated existing status record for Acquisition Gateway Forecast to {status}")
+                else:
+                    # Create new record
+                    new_status = ScraperStatus(
+                        source_id=data_source.id,
+                        status=status,
+                        last_checked=datetime.datetime.utcnow(),
+                        error_message=error_message
+                    )
+                    session.add(new_status)
+                    logger.info(f"Created new status record for Acquisition Gateway Forecast with status {status}")
+                
+                # Also update the last_scraped field on the data source
+                data_source.last_scraped = datetime.datetime.utcnow()
+                session.commit()
+                logger.info(f"Updated last_scraped timestamp for Acquisition Gateway Forecast")
+            else:
+                logger.warning(f"Data source not found for Acquisition Gateway Forecast")
+    except Exception as e:
+        logger.error(f"Error updating scraper status: {str(e)}")
+        logger.error(traceback.format_exc())
 
 if __name__ == "__main__":
     run_scraper() 
