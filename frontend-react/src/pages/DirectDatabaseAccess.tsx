@@ -95,7 +95,7 @@ export default function DirectDatabaseAccess() {
     { header: 'Status', accessor: 'status' as keyof Proposal },
     { 
       header: 'Release Date', 
-      accessor: (proposal: Proposal) => formatDate(proposal.release_date)
+      accessor: (proposal: Proposal) => proposal.release_date ? formatDate(proposal.release_date) : 'N/A'
     },
   ];
 
@@ -111,7 +111,7 @@ export default function DirectDatabaseAccess() {
     },
     { 
       header: 'Last Scraped', 
-      accessor: (source: DataSource) => formatDate(source.last_scraped)
+      accessor: (source: DataSource) => source.last_scraped ? formatDate(source.last_scraped) : 'Never'
     },
   ];
 

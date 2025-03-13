@@ -28,13 +28,10 @@ export function PageLayout({
   const errorMessage = typeof error === 'string' ? error : error?.message;
 
   return (
-    <div className="container mx-auto py-6">
-      {/* Page header with title and last updated info */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-3xl font-bold">{title}</h1>
-          {description && <p className="text-muted-foreground mt-1">{description}</p>}
-        </div>
+    <div className="container mx-auto py-3">
+      {/* Page header with title and actions */}
+      <div className="flex items-center justify-between mb-3">
+        <h1 className="text-2xl font-bold">{title}</h1>
         <div className="flex items-center gap-4">
           {lastUpdated && (
             <span className="text-sm text-muted-foreground">
@@ -50,9 +47,11 @@ export function PageLayout({
         </div>
       </div>
 
+      {description && <p className="text-muted-foreground mb-3">{description}</p>}
+
       {/* Error state */}
       {error && (
-        <Alert variant="destructive" className="mb-6">
+        <Alert variant="destructive" className="mb-3">
           <AlertTitle>Error</AlertTitle>
           <AlertDescription>{errorMessage}</AlertDescription>
         </Alert>

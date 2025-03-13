@@ -7,10 +7,6 @@ import {
   DataTable,
   StatsCard,
   StatsGrid,
-  Alert,
-  AlertTitle,
-  AlertDescription,
-  Button,
 } from '@/components';
 
 interface Proposal {
@@ -73,7 +69,7 @@ export default function SimpleDashboard() {
     { header: 'Status', accessor: 'status' as keyof Proposal },
     { 
       header: 'Release Date', 
-      accessor: (proposal: Proposal) => formatDate(proposal.release_date)
+      accessor: (proposal: Proposal) => proposal.release_date ? formatDate(proposal.release_date) : 'N/A'
     },
   ];
 

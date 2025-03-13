@@ -38,7 +38,7 @@ export function useDataFetching<T>({
   method = 'GET',
   params = {},
   body,
-  initialData = null,
+  initialData = null as unknown as T,
   onSuccess,
   onError,
   autoFetch = true,

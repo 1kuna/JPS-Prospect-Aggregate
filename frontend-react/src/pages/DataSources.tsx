@@ -36,7 +36,6 @@ const selectDataSourcesErrors = (state: any) => state.errors.dataSources;
 const selectFetchDataSources = (state: any) => state.fetchDataSources;
 const selectCreateDataSource = (state: any) => state.createDataSource;
 const selectUpdateDataSource = (state: any) => state.updateDataSource;
-const selectDeleteDataSource = (state: any) => state.deleteDataSource;
 
 export default function DataSources() {
   // Use individual selectors to prevent unnecessary re-renders
@@ -46,7 +45,6 @@ export default function DataSources() {
   const fetchDataSources = useStore(selectFetchDataSources);
   const createDataSource = useStore(selectCreateDataSource);
   const updateDataSource = useStore(selectUpdateDataSource);
-  const deleteDataSource = useStore(selectDeleteDataSource);
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingDataSource, setEditingDataSource] = useState<DataSource | null>(null);
@@ -75,19 +73,6 @@ export default function DataSources() {
       });
     }
   }, [createDataSource, updateDataSource, fetchDataSources, editingDataSource]);
-
-  const handleEdit = useCallback((dataSource: DataSource) => {
-    setEditingDataSource(dataSource);
-    setIsDialogOpen(true);
-  }, []);
-
-  const handleDelete = useCallback((id: string) => {
-    if (window.confirm('Are you sure you want to delete this data source?')) {
-      deleteDataSource(id).then(() => {
-        fetchDataSources();
-      });
-    }
-  }, [deleteDataSource, fetchDataSources]);
 
   const handleDialogClose = useCallback(() => {
     setIsDialogOpen(false);
@@ -135,27 +120,6 @@ export default function DataSources() {
     { 
       header: 'Last Scraped', 
       accessor: (dataSource: DataSource) => dataSource.lastScraped ? formatDate(dataSource.lastScraped) : 'Never'
-    },
-    { 
-      header: 'Actions', 
-      accessor: (dataSource: DataSource) => (
-        <div className="flex items-center space-x-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => handleEdit(dataSource)}
-          >
-            Edit
-          </Button>
-          <Button
-            variant="destructive"
-            size="sm"
-            onClick={() => handleDelete(dataSource.id.toString())}
-          >
-            Delete
-          </Button>
-        </div>
-      )
     },
   ];
 

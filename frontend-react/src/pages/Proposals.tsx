@@ -16,7 +16,6 @@ const selectProposalsPagination = (state: any) => state.proposalsPagination;
 const selectProposalsLoading = (state: any) => state.loading.proposals;
 const selectProposalsErrors = (state: any) => state.errors.proposals;
 const selectFetchProposals = (state: any) => state.fetchProposals;
-const selectLastUpdated = (state: any) => state.lastUpdated;
 
 interface Proposal {
   id: number | string;
@@ -34,7 +33,6 @@ export default function Proposals() {
   const loading = useStore(selectProposalsLoading);
   const errors = useStore(selectProposalsErrors);
   const fetchProposals = useStore(selectFetchProposals);
-  const lastUpdated = useStore(selectLastUpdated);
 
   const [sortBy, setSortBy] = useState('release_date');
   const [sortOrder, setSortOrder] = useState('desc');
@@ -49,15 +47,6 @@ export default function Proposals() {
   }, []); // Empty dependency array to run only once on mount
 
   // Memoize event handlers to prevent unnecessary re-renders
-  const handleRefresh = useCallback(() => {
-    fetchProposals({
-      sortBy,
-      sortOrder,
-      page: proposalsPagination?.page || 1,
-      perPage: proposalsPagination?.perPage || 50
-    });
-  }, [fetchProposals, sortBy, sortOrder, proposalsPagination]);
-
   const handlePageChange = useCallback((page: number) => {
     fetchProposals({
       page,
@@ -66,6 +55,15 @@ export default function Proposals() {
       sortOrder
     });
   }, [fetchProposals, sortBy, sortOrder, proposalsPagination]);
+
+  const handlePerPageChange = useCallback((perPage: number) => {
+    fetchProposals({
+      page: 1, // Reset to first page when changing items per page
+      perPage,
+      sortBy,
+      sortOrder
+    });
+  }, [fetchProposals, sortBy, sortOrder]);
 
   const handleSort = useCallback((column: string) => {
     const newSortOrder = column === sortBy && sortOrder === 'asc' ? 'desc' : 'asc';
@@ -124,8 +122,6 @@ export default function Proposals() {
   return (
     <PageLayout
       title="Proposals"
-      lastUpdated={lastUpdated}
-      onRefresh={handleRefresh}
       isLoading={loading}
       error={errors}
     >
@@ -142,11 +138,10 @@ export default function Proposals() {
       {/* Proposals Table */}
       {proposals.length > 0 && (
         <DataTable
-          title="Proposals"
-          description={proposalsPagination ? `Showing ${proposals.length} of ${proposalsPagination.totalCount} proposals` : undefined}
           data={proposals}
           columns={columns}
           keyField="id"
+          description={proposalsPagination ? `Showing ${proposals.length} of ${proposalsPagination.totalCount} proposals` : undefined}
           pagination={
             proposalsPagination
               ? {
@@ -158,6 +153,8 @@ export default function Proposals() {
               : undefined
           }
           onPageChange={handlePageChange}
+          onPerPageChange={handlePerPageChange}
+          maxHeight="calc(100vh - 200px)"
           emptyMessage={{
             title: 'No proposals found',
             description: 'There are currently no proposals in the system.',
