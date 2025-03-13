@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useStore } from '@/store/useStore';
 import { formatDate } from '@/lib/utils';
 import {
@@ -48,19 +48,27 @@ export default function DataSources() {
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingDataSource, setEditingDataSource] = useState<DataSource | null>(null);
-  const isMounted = useRef(false);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
 
-  // Fetch data sources on component mount
+  // Fetch data sources on component mount - ALWAYS fetch fresh data
   useEffect(() => {
-    if (!isMounted.current) {
-      console.log('DataSources component mounted, fetching data sources...');
-      fetchDataSources().then(() => {
+    console.log('DataSources component mounted, fetching data sources...');
+    
+    // Force a fresh fetch of data sources
+    fetchDataSources()
+      .then(() => {
         console.log('Data sources fetched successfully in component');
-      }).catch((error: Error) => {
+        setIsInitialLoad(false);
+      })
+      .catch((error: Error) => {
         console.error('Error fetching data sources in component:', error);
+        setIsInitialLoad(false);
       });
-      isMounted.current = true;
-    }
+      
+    // Cleanup function
+    return () => {
+      console.log('DataSources component unmounting');
+    };
   }, [fetchDataSources]);
 
   // Log state changes for debugging
@@ -68,12 +76,23 @@ export default function DataSources() {
     console.log('DataSources component state:', { 
       dataSources, 
       loading, 
-      errors 
+      errors,
+      isInitialLoad
     });
-  }, [dataSources, loading, errors]);
+  }, [dataSources, loading, errors, isInitialLoad]);
 
   const handleRefresh = useCallback(() => {
-    fetchDataSources();
+    console.log('Manually refreshing data sources...');
+    setIsInitialLoad(true);
+    fetchDataSources()
+      .then(() => {
+        console.log('Data sources refreshed successfully');
+        setIsInitialLoad(false);
+      })
+      .catch((error: Error) => {
+        console.error('Error refreshing data sources:', error);
+        setIsInitialLoad(false);
+      });
   }, [fetchDataSources]);
 
   const handleCreateDataSource = useCallback(async (data: Omit<DataSource, 'id'>) => {
@@ -105,7 +124,8 @@ export default function DataSources() {
     setEditingDataSource(null);
   }, []);
 
-  if (loading && !dataSources.length) {
+  // Show loading state during initial load or when explicitly loading
+  if ((isInitialLoad || loading) && !dataSources.length) {
     return (
       <PageLayout title="Data Sources" isLoading={true}>
         <div>Loading data sources...</div>
@@ -114,7 +134,7 @@ export default function DataSources() {
   }
 
   // Error state
-  if (errors && !dataSources.length) {
+  if (errors && !isInitialLoad && !dataSources.length) {
     return (
       <div className="space-y-6">
         <h1 className="text-3xl font-bold tracking-tight">Data Sources</h1>
@@ -212,6 +232,7 @@ export default function DataSources() {
           data={dataSources}
           columns={columns}
           emptyMessage="No data sources configured"
+          isLoading={loading || isInitialLoad}
         />
       </div>
     </PageLayout>

@@ -14,5 +14,4 @@ export * from './forms';
 export { ErrorBoundary } from './ErrorBoundary';
 export { DataSourceForm } from './DataSourceForm';
 export { Statistics } from './Statistics';
-export { DatabaseOperations } from './DatabaseOperations';
-export { UpdateNotification } from './UpdateNotification'; 
+export { DatabaseOperations } from './DatabaseOperations'; 

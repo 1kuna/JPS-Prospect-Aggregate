@@ -108,20 +108,35 @@ export const useStore = create<AppState>((set) => ({
   fetchDataSources: async () => {
     set((state) => ({ loading: { ...state.loading, dataSources: true } }));
     try {
+      console.log('Store: Fetching data sources from API...');
       const data = await fetchDataSources();
+      
+      if (!data || !data.data) {
+        throw new Error('Invalid response format from API');
+      }
+      
+      console.log('Store: Data sources fetched successfully:', data.data);
       set({ 
         dataSources: data.data || [], 
         lastUpdated: new Date(),
         loading: { ...useStore.getState().loading, dataSources: false },
         errors: { ...useStore.getState().errors, dataSources: null }
       });
-      console.log('Data sources fetched:', data.data);
+      return data.data;
     } catch (error: any) {
-      console.error('Error fetching data sources:', error);
+      console.error('Store: Error fetching data sources:', error);
+      
+      // Format the error message
+      const errorMessage = error.response?.data?.message || error.message || 'Unknown error';
+      const formattedError = { message: errorMessage };
+      
       set({ 
         loading: { ...useStore.getState().loading, dataSources: false },
-        errors: { ...useStore.getState().errors, dataSources: error }
+        errors: { ...useStore.getState().errors, dataSources: formattedError }
       });
+      
+      // Re-throw the error so it can be caught by the component
+      throw error;
     }
   },
   

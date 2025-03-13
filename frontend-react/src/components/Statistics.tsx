@@ -37,55 +37,62 @@ export function Statistics({ isOpen, onClose }: StatisticsProps) {
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-4xl">
+      <DialogContent 
+        className="max-w-4xl max-h-[90vh] overflow-y-auto" 
+        style={{ 
+          backgroundColor: 'white', 
+          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+          border: '2px solid #e5e7eb'
+        }}
+      >
         <DialogHeader>
-          <DialogTitle>Data Statistics</DialogTitle>
+          <DialogTitle className="text-xl font-bold text-gray-900">Data Statistics</DialogTitle>
         </DialogHeader>
 
         {loading && (
           <div className="flex flex-col items-center justify-center py-8">
             <Spinner size="lg" />
-            <p className="mt-4 text-muted-foreground">Loading statistics...</p>
+            <p className="mt-4 text-gray-600">Loading statistics...</p>
           </div>
         )}
 
         {errors && (
-          <div className="bg-destructive/10 p-4 rounded-md">
-            <p className="text-destructive font-medium">Error loading statistics</p>
-            <p className="text-sm text-destructive/80">{errors.message}</p>
+          <div className="bg-red-50 p-4 rounded-md border border-red-200">
+            <p className="text-red-600 font-medium">Error loading statistics</p>
+            <p className="text-sm text-red-500">{errors.message}</p>
           </div>
         )}
 
         {!loading && statistics && (
           <div className="space-y-6">
             <div className="grid grid-cols-1 gap-4">
-              <Card>
+              <Card className="border-2 border-blue-100 bg-white">
                 <CardContent className="pt-6 text-center">
-                  <h2 className="text-3xl font-bold">{statistics.total_proposals || 0}</h2>
-                  <p className="text-muted-foreground">Total Proposals</p>
+                  <h2 className="text-3xl font-bold text-blue-600">{statistics.total_proposals || 0}</h2>
+                  <p className="text-gray-600">Total Proposals</p>
                 </CardContent>
               </Card>
             </div>
 
             <div className="space-y-4">
-              <h3 className="text-lg font-medium">Proposals by Data Source</h3>
-              <div className="border rounded-md">
+              <h3 className="text-lg font-medium text-gray-900">Proposals by Data Source</h3>
+              <div className="border rounded-md overflow-hidden bg-white">
                 <table className="w-full">
                   <thead>
-                    <tr className="border-b bg-muted/50">
-                      <th className="px-4 py-2 text-left font-medium">Source</th>
-                      <th className="px-4 py-2 text-left font-medium">Count</th>
+                    <tr className="border-b bg-gray-100">
+                      <th className="px-4 py-2 text-left font-medium text-gray-700">Source</th>
+                      <th className="px-4 py-2 text-left font-medium text-gray-700">Count</th>
                     </tr>
                   </thead>
                   <tbody>
                     {statistics.source_stats?.map((source: any, index: number) => (
-                      <tr key={index} className={index % 2 === 0 ? 'bg-background' : 'bg-muted/30'}>
-                        <td className="px-4 py-2">{source.name}</td>
-                        <td className="px-4 py-2">{source.count}</td>
+                      <tr key={index} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                        <td className="px-4 py-2 text-gray-800">{source.name}</td>
+                        <td className="px-4 py-2 text-gray-800">{source.count}</td>
                       </tr>
                     )) || (
                       <tr>
-                        <td colSpan={2} className="px-4 py-2 text-center text-muted-foreground">
+                        <td colSpan={2} className="px-4 py-2 text-center text-gray-500">
                           No data available
                         </td>
                       </tr>
@@ -97,24 +104,24 @@ export function Statistics({ isOpen, onClose }: StatisticsProps) {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-4">
-                <h3 className="text-lg font-medium">Top Agencies</h3>
-                <div className="border rounded-md">
+                <h3 className="text-lg font-medium text-gray-900">Top Agencies</h3>
+                <div className="border rounded-md overflow-hidden bg-white">
                   <table className="w-full">
                     <thead>
-                      <tr className="border-b bg-muted/50">
-                        <th className="px-4 py-2 text-left font-medium">Agency</th>
-                        <th className="px-4 py-2 text-left font-medium">Count</th>
+                      <tr className="border-b bg-gray-100">
+                        <th className="px-4 py-2 text-left font-medium text-gray-700">Agency</th>
+                        <th className="px-4 py-2 text-left font-medium text-gray-700">Count</th>
                       </tr>
                     </thead>
                     <tbody>
                       {statistics.agency_stats?.map((agency: any, index: number) => (
-                        <tr key={index} className={index % 2 === 0 ? 'bg-background' : 'bg-muted/30'}>
-                          <td className="px-4 py-2">{agency.name}</td>
-                          <td className="px-4 py-2">{agency.count}</td>
+                        <tr key={index} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                          <td className="px-4 py-2 text-gray-800">{agency.name}</td>
+                          <td className="px-4 py-2 text-gray-800">{agency.count}</td>
                         </tr>
                       )) || (
                         <tr>
-                          <td colSpan={2} className="px-4 py-2 text-center text-muted-foreground">
+                          <td colSpan={2} className="px-4 py-2 text-center text-gray-500">
                             No data available
                           </td>
                         </tr>
@@ -125,24 +132,24 @@ export function Statistics({ isOpen, onClose }: StatisticsProps) {
               </div>
 
               <div className="space-y-4">
-                <h3 className="text-lg font-medium">Proposals by Status</h3>
-                <div className="border rounded-md">
+                <h3 className="text-lg font-medium text-gray-900">Proposals by Status</h3>
+                <div className="border rounded-md overflow-hidden bg-white">
                   <table className="w-full">
                     <thead>
-                      <tr className="border-b bg-muted/50">
-                        <th className="px-4 py-2 text-left font-medium">Status</th>
-                        <th className="px-4 py-2 text-left font-medium">Count</th>
+                      <tr className="border-b bg-gray-100">
+                        <th className="px-4 py-2 text-left font-medium text-gray-700">Status</th>
+                        <th className="px-4 py-2 text-left font-medium text-gray-700">Count</th>
                       </tr>
                     </thead>
                     <tbody>
                       {statistics.status_stats?.map((status: any, index: number) => (
-                        <tr key={index} className={index % 2 === 0 ? 'bg-background' : 'bg-muted/30'}>
-                          <td className="px-4 py-2">{status.name}</td>
-                          <td className="px-4 py-2">{status.count}</td>
+                        <tr key={index} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                          <td className="px-4 py-2 text-gray-800">{status.name}</td>
+                          <td className="px-4 py-2 text-gray-800">{status.count}</td>
                         </tr>
                       )) || (
                         <tr>
-                          <td colSpan={2} className="px-4 py-2 text-center text-muted-foreground">
+                          <td colSpan={2} className="px-4 py-2 text-center text-gray-500">
                             No data available
                           </td>
                         </tr>
@@ -156,7 +163,7 @@ export function Statistics({ isOpen, onClose }: StatisticsProps) {
         )}
 
         <DialogFooter>
-          <Button onClick={onClose}>Close</Button>
+          <Button onClick={onClose} className="mt-4 bg-blue-600 hover:bg-blue-700 text-white">Close</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

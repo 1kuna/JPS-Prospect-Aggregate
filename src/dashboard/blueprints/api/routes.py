@@ -322,4 +322,89 @@ def delete_data_source(source_id):
             "message": f"Data source with ID {source_id} deleted successfully"
         }
         
-        return jsonify(result) 
+        return jsonify(result)
+
+@api.route('/statistics', methods=['GET'])
+def get_statistics():
+    """API endpoint to get statistics about proposals."""
+    try:
+        with session_scope() as session:
+            # Get total proposals count
+            total_proposals = session.query(func.count(Proposal.id)).scalar() or 0
+            
+            # Get proposals by data source
+            source_stats = []
+            source_query = session.query(
+                DataSource.name,
+                func.count(Proposal.id).label('count')
+            ).outerjoin(
+                Proposal, DataSource.id == Proposal.source_id
+            ).group_by(
+                DataSource.name
+            ).order_by(
+                desc('count')
+            ).all()
+            
+            for name, count in source_query:
+                source_stats.append({
+                    'name': name,
+                    'count': count
+                })
+            
+            # Get proposals by agency
+            agency_stats = []
+            agency_query = session.query(
+                Proposal.agency,
+                func.count(Proposal.id).label('count')
+            ).filter(
+                Proposal.agency.isnot(None)
+            ).group_by(
+                Proposal.agency
+            ).order_by(
+                desc('count')
+            ).limit(10).all()
+            
+            for agency, count in agency_query:
+                agency_stats.append({
+                    'name': agency or 'Unknown',
+                    'count': count
+                })
+            
+            # Get proposals by status
+            status_stats = []
+            status_query = session.query(
+                Proposal.status,
+                func.count(Proposal.id).label('count')
+            ).filter(
+                Proposal.status.isnot(None)
+            ).group_by(
+                Proposal.status
+            ).order_by(
+                desc('count')
+            ).all()
+            
+            for status, count in status_query:
+                status_stats.append({
+                    'name': status or 'Unknown',
+                    'count': count
+                })
+            
+            # Return the statistics
+            return jsonify({
+                'total_proposals': total_proposals,
+                'source_stats': source_stats,
+                'agency_stats': agency_stats,
+                'status_stats': status_stats
+            })
+    except SQLAlchemyError as e:
+        current_app.logger.error(f"Database error in get_statistics: {str(e)}")
+        return jsonify({
+            'error': 'Database error',
+            'message': str(e)
+        }), 500
+    except Exception as e:
+        current_app.logger.error(f"Unexpected error in get_statistics: {str(e)}")
+        return jsonify({
+            'error': 'Server error',
+            'message': str(e)
+        }), 500 
