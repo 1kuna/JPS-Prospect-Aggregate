@@ -17,7 +17,7 @@ export function PageLayout({
   isLoading = false 
 }: PageLayoutProps) {
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div className="space-y-2">
         {title && (
           <h1 className="text-3xl font-bold tracking-tight">{title}</h1>

@@ -159,6 +159,7 @@ export default function Proposals() {
   return (
     <PageLayout title="Proposals">
       <div className="space-y-4">
+        {/* Header section */}
         <div className="flex justify-between items-center">
           <div>
             <p className="text-muted-foreground">
@@ -168,14 +169,18 @@ export default function Proposals() {
           <Button onClick={handleRefresh}>Refresh</Button>
         </div>
 
-        <DataTable
-          data={proposals}
-          columns={columns}
-          emptyMessage="No proposals found"
-          pagination={paginationInfo}
-          onPageChange={handlePageChange}
-          onPerPageChange={handlePerPageChange}
-        />
+        {/* Table section with fixed height to ensure scrolling */}
+        <div>
+          <DataTable
+            data={proposals}
+            columns={columns}
+            emptyMessage="No proposals found"
+            pagination={paginationInfo}
+            onPageChange={handlePageChange}
+            onPerPageChange={handlePerPageChange}
+            maxHeight="60vh" // Use viewport-relative height for better responsiveness
+          />
+        </div>
       </div>
     </PageLayout>
   );

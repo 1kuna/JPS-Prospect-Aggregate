@@ -3,8 +3,6 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableHead,
-  TableHeader,
   TableRow,
 } from '@/components/ui';
 import { Pagination, PaginationContent, PaginationItem, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
@@ -71,6 +69,12 @@ export function DataTable<T>({
     return row[column.accessorKey];
   };
 
+  // Calculate column widths
+  const columnWidths = columns.map(() => {
+    // Distribute width evenly or use custom widths if needed
+    return `${100 / columns.length}%`;
+  });
+
   const tableContent = (
     <>
       {description && (
@@ -79,50 +83,63 @@ export function DataTable<T>({
         </div>
       )}
       <div className="rounded-md border">
-        <div style={{ maxHeight, overflowY: 'auto' }}>
-          <Table>
-            <TableHeader className="sticky top-0 bg-background z-10">
-              <TableRow>
-                {columns.map((column, index) => (
-                  <TableHead 
-                    key={index} 
-                    className={column.className}
-                    onClick={column.onClick}
-                    style={column.onClick ? { cursor: 'pointer' } : undefined}
-                  >
-                    {column.header}
-                  </TableHead>
-                ))}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading ? (
-                <TableRow>
-                  <TableCell colSpan={columns.length} className="h-24 text-center">
-                    Loading data...
-                  </TableCell>
-                </TableRow>
-              ) : data.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={columns.length} className="h-24 text-center">
-                    <div className="flex flex-col items-center justify-center">
-                      <h3 className="font-medium">{emptyMessage}</h3>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ) : (
-                data.map((row, rowIndex) => (
-                  <TableRow key={rowIndex}>
-                    {columns.map((column, colIndex) => (
-                      <TableCell key={colIndex} className={column.className}>
-                        {column.cell ? column.cell(row) : getValue(row, column)}
-                      </TableCell>
-                    ))}
+        <div className="relative">
+          <div className="sticky top-0 z-20 bg-blue-900 w-full shadow-md">
+            <table className="w-full border-collapse">
+              <thead>
+                <tr>
+                  {columns.map((column, index) => (
+                    <th 
+                      key={index} 
+                      className="text-white font-semibold text-left p-4"
+                      onClick={column.onClick}
+                      style={{
+                        width: columnWidths[index],
+                        ...(column.onClick ? { cursor: 'pointer' } : {})
+                      }}
+                    >
+                      {column.header}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+            </table>
+          </div>
+          <div style={{ maxHeight, overflowY: 'auto' }}>
+            <Table>
+              <TableBody>
+                {isLoading ? (
+                  <TableRow>
+                    <TableCell colSpan={columns.length} className="h-24 text-center">
+                      Loading data...
+                    </TableCell>
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
+                ) : data.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={columns.length} className="h-24 text-center">
+                      <div className="flex flex-col items-center justify-center">
+                        <h3 className="font-medium">{emptyMessage}</h3>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  data.map((row, rowIndex) => (
+                    <TableRow key={rowIndex}>
+                      {columns.map((column, colIndex) => (
+                        <TableCell 
+                          key={colIndex} 
+                          className={column.className}
+                          style={{ width: columnWidths[colIndex] }}
+                        >
+                          {column.cell ? column.cell(row) : getValue(row, column)}
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
         </div>
       </div>
 
