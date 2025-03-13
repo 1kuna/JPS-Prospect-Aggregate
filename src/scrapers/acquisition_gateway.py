@@ -12,7 +12,7 @@ from src.scrapers.base_scraper import BaseScraper
 
 # Import from database
 from src.database.db_session_manager import session_scope
-from src.database.models import Proposal
+from src.database.models import Proposal, ScraperStatus, DataSource
 from src.database.download_tracker import download_tracker
 
 # Import from exceptions
@@ -20,6 +20,36 @@ from src.exceptions import ScraperError
 
 # Import from config
 from src.config import ACQUISITION_GATEWAY_URL
+
+# Add the check_url_accessibility function
+def check_url_accessibility(url=None):
+    """
+    Check if a URL is accessible.
+    
+    Args:
+        url (str, optional): URL to check. If None, uses ACQUISITION_GATEWAY_URL
+        
+    Returns:
+        bool: True if the URL is accessible, False otherwise
+    """
+    url = url or ACQUISITION_GATEWAY_URL
+    logger = logging.getLogger("scraper.acquisition_gateway")
+    logger.info(f"Checking accessibility of {url}")
+    
+    try:
+        # Set a reasonable timeout
+        response = requests.head(url, timeout=10)
+        
+        # Check if the response is successful
+        if response.status_code < 400:
+            logger.info(f"URL {url} is accessible (status code: {response.status_code})")
+            return True
+        else:
+            logger.error(f"URL {url} returned status code {response.status_code}")
+            return False
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Error checking URL {url}: {str(e)}")
+        return False
 
 class AcquisitionGatewayScraper(BaseScraper):
     """Scraper for the Acquisition Gateway site."""
@@ -36,52 +66,96 @@ class AcquisitionGatewayScraper(BaseScraper):
         """Navigate to the forecast page."""
         return self.navigate_to_url()
     
-    def extract_table_data(self):
-        """Extract data from the forecast table."""
-        self.logger.info("Extracting table data")
+    def download_csv_file(self):
+        """Download the CSV file from the Export CSV button."""
+        self.logger.info("Downloading CSV file")
         
-        # Wait for the table to load
-        self.page.wait_for_selector('table', state='visible')
-        
-        # Extract the table HTML
-        table_html = self.page.query_selector('table').inner_html()
-        
-        # Parse the HTML with BeautifulSoup
-        soup = BeautifulSoup(f"<table>{table_html}</table>", 'html.parser')
-        
-        # Extract the table rows
-        rows = soup.find_all('tr')
-        
-        # Extract the headers
-        headers = [th.text.strip() for th in rows[0].find_all('th')]
-        
-        # Extract the data rows
-        data = []
-        for row in rows[1:]:
-            cells = row.find_all('td')
-            if cells:
-                row_data = {headers[i]: cell.text.strip() for i, cell in enumerate(cells) if i < len(headers)}
-                data.append(row_data)
-        
-        self.logger.info(f"Extracted {len(data)} rows from table")
-        return data
+        try:
+            # Wait for the page to load
+            self.logger.info("Waiting for page to load...")
+            self.page.wait_for_load_state('networkidle', timeout=60000)
+            self.logger.info("Page loaded successfully")
+            
+            # Look for the Export CSV button
+            self.logger.info("Looking for Export CSV button...")
+            export_button = self.page.get_by_role('button', name='Export CSV')
+            
+            # Wait for the button to be visible
+            export_button.wait_for(state='visible', timeout=30000)
+            
+            self.logger.info("Found Export CSV button, clicking it...")
+            
+            # Set up download listener with a 60-second timeout
+            try:
+                with self.page.expect_download(timeout=60000) as download_info:
+                    # Click the export button
+                    export_button.click()
+                    self.logger.info("Clicked Export CSV button, waiting for download to start (max 60 seconds)...")
+                
+                # Wait for the download to complete
+                download = download_info.value
+                self.logger.info(f"Download started: {download.suggested_filename}")
+                
+                # Wait for the download to complete and save the file
+                download_path = download.path()
+                self.logger.info(f"Download completed: {download_path}")
+                
+                # Save a copy of the file to the data/downloads folder with a timestamp
+                import shutil
+                from datetime import datetime
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                permanent_filename = f"acquisition_gateway_forecast_{timestamp}.csv"
+                permanent_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'data', 'downloads', permanent_filename)
+                
+                # Ensure the downloads directory exists
+                os.makedirs(os.path.dirname(permanent_path), exist_ok=True)
+                
+                shutil.copy2(download_path, permanent_path)
+                self.logger.info(f"Saved permanent copy of CSV file to {permanent_path}")
+                
+                # Process the downloaded CSV file
+                import pandas as pd
+                self.logger.info(f"Reading CSV file: {download_path}")
+                df = pd.read_csv(download_path)
+                self.logger.info(f"Read CSV file with {len(df)} rows")
+                
+                # Convert DataFrame to list of dictionaries
+                data = df.to_dict('records')
+                self.logger.info(f"Converted CSV data to {len(data)} records")
+                
+                return data
+            except PlaywrightTimeoutError as e:
+                error_msg = f"Timeout waiting for CSV download to start (60 seconds exceeded): {str(e)}"
+                self.logger.error(error_msg)
+                self.logger.error("The download did not start within the 60-second timeout period.")
+                raise ScraperError(error_msg)
+                
+        except PlaywrightTimeoutError as e:
+            error_msg = f"Timeout error while waiting for page elements: {str(e)}"
+            self.logger.error(error_msg)
+            raise ScraperError(error_msg)
+        except Exception as e:
+            error_msg = f"Error downloading CSV file: {str(e)}"
+            self.logger.error(error_msg)
+            self.logger.error(traceback.format_exc())
+            raise ScraperError(error_msg)
     
-    def process_table_data(self, table_data, session, data_source):
+    def process_csv_data(self, csv_data, session, data_source):
         """
-        Process the extracted table data and save to the database.
+        Process the extracted CSV data and save to the database.
         
         Args:
-            table_data (list): List of dictionaries containing the table data
+            csv_data (list): List of dictionaries containing the CSV data
             session: SQLAlchemy session
             data_source: DataSource object
             
         Returns:
             int: Number of proposals processed
         """
-        self.logger.info(f"Processing {len(table_data)} rows of table data")
+        self.logger.info(f"Processing {len(csv_data)} rows of CSV data")
         
         count = 0
-        for row in table_data:
+        for row in csv_data:
             try:
                 # Extract the data from the row
                 title = row.get('Title', '')
@@ -144,8 +218,8 @@ class AcquisitionGatewayScraper(BaseScraper):
         """
         return self.scrape_with_structure(
             setup_func=self.navigate_to_forecast_page,
-            extract_func=self.extract_table_data,
-            process_func=self.process_table_data
+            extract_func=self.download_csv_file,
+            process_func=self.process_csv_data
         )
 
 def check_last_download():
@@ -180,8 +254,12 @@ def run_scraper(force=False):
         
     Returns:
         bool: True if scraping was successful, False otherwise
+        
+    Raises:
+        ScraperError: If an error occurs during scraping
     """
     logger = logging.getLogger("scraper.acquisition_gateway")
+    scraper = None
     
     try:
         # Check if we should run the scraper
@@ -189,30 +267,85 @@ def run_scraper(force=False):
             logger.info("Skipping scrape due to recent download")
             return True
         
-        # Create an instance of the scraper to use its methods
+        # Create an instance of the scraper
         scraper = AcquisitionGatewayScraper(debug_mode=False)
         
-        # Check if the URL is accessible using the scraper's method
+        # Check if the URL is accessible
         if not scraper.check_url_accessibility():
-            logger.error(f"URL {ACQUISITION_GATEWAY_URL} is not accessible")
-            return False
-        
-        # Check if Playwright is installed
-        try:
-            from playwright.sync_api import sync_playwright
-            logger.info("Playwright module found")
-        except ImportError:
-            logger.error("Playwright module not found. Please install it with 'pip install playwright'")
-            logger.error("Then run 'playwright install' to install the browsers")
-            return False
+            error_msg = f"URL {ACQUISITION_GATEWAY_URL} is not accessible"
+            logger.error(error_msg)
+            raise ScraperError(error_msg)
         
         # Run the scraper
         logger.info("Running Acquisition Gateway scraper")
-        return scraper.scrape()
+        success = scraper.scrape()
+        
+        # If scraper.scrape() returns False, it means an error occurred
+        if not success:
+            error_msg = "Scraper failed without specific error"
+            logger.error(error_msg)
+            raise ScraperError(error_msg)
+        
+        # Update the download tracker with the current time
+        download_tracker.set_last_download_time("Acquisition Gateway Forecast")
+        logger.info("Updated download tracker with current time")
+        
+        # Update the ScraperStatus table
+        with session_scope() as session:
+            # Get the data source
+            data_source = session.query(DataSource).filter_by(name="Acquisition Gateway Forecast").first()
+            if data_source:
+                # Check if there's an existing status record
+                status_record = session.query(ScraperStatus).filter_by(source_id=data_source.id).first()
+                if status_record:
+                    # Update existing record
+                    status_record.status = "working"
+                    status_record.last_checked = datetime.datetime.utcnow()
+                    status_record.error_message = None
+                    logger.info(f"Updated existing status record for Acquisition Gateway Forecast")
+                else:
+                    # Create new record
+                    new_status = ScraperStatus(
+                        source_id=data_source.id,
+                        status="working",
+                        last_checked=datetime.datetime.utcnow(),
+                        error_message=None
+                    )
+                    session.add(new_status)
+                    logger.info(f"Created new status record for Acquisition Gateway Forecast")
+                
+                # Also update the last_scraped field on the data source
+                data_source.last_scraped = datetime.datetime.utcnow()
+                session.commit()
+                logger.info(f"Updated last_scraped timestamp for Acquisition Gateway Forecast")
+            else:
+                logger.warning(f"Data source not found for Acquisition Gateway Forecast")
+            
+        return True
+    except ImportError as e:
+        # This will catch any ImportError that might occur when importing Playwright
+        error_msg = f"Import error: {str(e)}"
+        logger.error(error_msg)
+        logger.error("Playwright module not found. Please install it with 'pip install playwright'")
+        logger.error("Then run 'playwright install' to install the browsers")
+        raise ScraperError(error_msg)
+    except ScraperError:
+        # Re-raise ScraperError exceptions to propagate them
+        raise
     except Exception as e:
-        logger.error(f"Error running scraper: {str(e)}")
+        error_msg = f"Error running scraper: {str(e)}"
+        logger.error(error_msg)
         logger.error(traceback.format_exc())
-        return False
+        raise ScraperError(error_msg)
+    finally:
+        # Ensure proper cleanup of resources
+        if scraper:
+            try:
+                logger.info("Cleaning up scraper resources")
+                scraper.cleanup()
+            except Exception as cleanup_error:
+                logger.error(f"Error during scraper cleanup: {str(cleanup_error)}")
+                logger.error(traceback.format_exc())
 
 if __name__ == "__main__":
     run_scraper() 

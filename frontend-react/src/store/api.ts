@@ -156,6 +156,26 @@ export async function deleteDataSource(id: string | number) {
   }
 }
 
+export async function pullDataSource(id: string | number) {
+  try {
+    const response = await api.post(`/data-sources/${id}/pull`);
+    return response.data;
+  } catch (error) {
+    console.error('Error in pullDataSource:', error);
+    throw error;
+  }
+}
+
+export async function getScraperStatus(id: string | number) {
+  try {
+    const response = await api.get(`/data-sources/${id}/status`);
+    return response.data;
+  } catch (error) {
+    console.error('Error in getScraperStatus:', error);
+    throw error;
+  }
+}
+
 // New API functions for statistics and database operations
 export async function fetchStatistics() {
   try {

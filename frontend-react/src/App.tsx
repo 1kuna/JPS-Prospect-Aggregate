@@ -2,12 +2,15 @@ import { Suspense, lazy, memo, useState, useEffect } from 'react';
 import { BrowserRouter as Router, Link, useLocation } from 'react-router-dom';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { LoadingProvider } from './context/LoadingContext';
+import { ToastProvider as OldToastProvider } from './context/ToastContext';
+import { ToastProvider } from './components/ui/ToastContainer';
 import { 
   Skeleton, 
   Card, 
   CardHeader,
   Statistics,
-  DatabaseOperations
+  DatabaseOperations,
+  Toaster
 } from './components';
 import { useStore } from './store/useStore';
 import { RefreshCw } from 'lucide-react';
@@ -174,9 +177,14 @@ const RouteContainer = () => {
 function App() {
   return (
     <LoadingProvider>
-      <Router>
-        <RouteContainer />
-      </Router>
+      <OldToastProvider>
+        <ToastProvider>
+          <Router>
+            <RouteContainer />
+            <Toaster />
+          </Router>
+        </ToastProvider>
+      </OldToastProvider>
     </LoadingProvider>
   );
 }

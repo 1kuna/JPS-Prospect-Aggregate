@@ -15,6 +15,7 @@ import os
 import platform
 import psutil
 import time
+import traceback
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -324,6 +325,173 @@ def delete_data_source(source_id):
         
         return jsonify(result)
 
+@api.route('/data-sources/<int:source_id>/pull', methods=['POST'])
+def pull_data_source(source_id):
+    """API endpoint to pull/scrape a data source."""
+    with session_scope() as session:
+        source = session.query(DataSource).filter(DataSource.id == source_id).first()
+        if not source:
+            raise ResourceNotFoundError(f"Data source with ID {source_id} not found")
+        
+        current_app.logger.info(f"API: Pulling data from source {source.name} (ID: {source_id})")
+        
+        # First, check if Playwright is installed and browsers are available
+        try:
+            from playwright.sync_api import sync_playwright
+            # Try to initialize Playwright and check browser availability
+            with sync_playwright() as playwright:
+                # Check if chromium is installed by trying to launch it
+                try:
+                    browser = playwright.chromium.launch()
+                    browser.close()
+                    current_app.logger.info("Playwright and browsers are properly installed")
+                except Exception as browser_error:
+                    current_app.logger.error(f"Playwright browser error: {str(browser_error)}")
+                    # This is likely a browser installation issue
+                    return jsonify({
+                        "status": "error",
+                        "message": "Playwright browsers not installed. Please run 'playwright install'"
+                    }), 500
+        except ImportError:
+            current_app.logger.error("Playwright package not installed")
+            return jsonify({
+                "status": "error",
+                "message": "Playwright not installed. Please run 'pip install playwright' and 'playwright install'"
+            }), 500
+        except Exception as e:
+            current_app.logger.error(f"Error initializing Playwright: {str(e)}")
+            return jsonify({
+                "status": "error",
+                "message": f"Error initializing Playwright: {str(e)}. Make sure browsers are installed with 'playwright install'"
+            }), 500
+        
+        # Run the appropriate scraper based on the data source name
+        if source.name == "Acquisition Gateway Forecast":
+            try:
+                # Import the check_url_accessibility function
+                from src.scrapers.acquisition_gateway import check_url_accessibility, ACQUISITION_GATEWAY_URL, run_scraper
+                import threading
+                import queue
+                import time
+                
+                # Check if the URL is accessible
+                if not check_url_accessibility(ACQUISITION_GATEWAY_URL):
+                    return jsonify({
+                        "status": "error",
+                        "message": f"The URL {ACQUISITION_GATEWAY_URL} is not accessible. Please check your internet connection or if the website is down."
+                    }), 500
+                
+                # Create a queue to get the result from the thread
+                result_queue = queue.Queue()
+                
+                # Run the scraper in a separate thread to avoid blocking the response
+                def run_scraper_thread():
+                    try:
+                        success = run_scraper(force=True)
+                        current_app.logger.info(f"Scraper completed with success={success}")
+                        # Put the result in the queue
+                        result_queue.put(("success", success))
+                    except Exception as e:
+                        current_app.logger.error(f"Error in scraper thread: {str(e)}")
+                        current_app.logger.error(traceback.format_exc())
+                        # Put the error in the queue
+                        result_queue.put(("error", str(e)))
+                
+                # Create and start the thread
+                thread = threading.Thread(target=run_scraper_thread)
+                thread.daemon = True
+                thread.start()
+                
+                # Store the thread and start time in the application context for status checking
+                if not hasattr(current_app, 'scraper_threads'):
+                    current_app.scraper_threads = {}
+                
+                current_app.scraper_threads[source_id] = {
+                    'thread': thread,
+                    'start_time': time.time(),
+                    'source_name': source.name,
+                    'status': 'running',
+                    'result_queue': result_queue
+                }
+                
+                return jsonify({
+                    "status": "success",
+                    "message": f"Started pulling data from {source.name}. This may take a while...",
+                    "job_id": source_id
+                })
+            except Exception as e:
+                current_app.logger.error(f"Error running Acquisition Gateway scraper: {str(e)}")
+                current_app.logger.error(traceback.format_exc())
+                return jsonify({
+                    "status": "error",
+                    "message": f"Error running scraper: {str(e)}"
+                }), 500
+        elif source.name == "SSA Contract Forecast":
+            try:
+                # Import the check_url_accessibility function
+                from src.scrapers.ssa_contract_forecast import check_url_accessibility, SSA_CONTRACT_FORECAST_URL, run_scraper
+                import threading
+                import queue
+                import time
+                
+                # Check if the URL is accessible
+                if not check_url_accessibility(SSA_CONTRACT_FORECAST_URL):
+                    return jsonify({
+                        "status": "error",
+                        "message": f"The URL {SSA_CONTRACT_FORECAST_URL} is not accessible. Please check your internet connection or if the website is down."
+                    }), 500
+                
+                # Create a queue to get the result from the thread
+                result_queue = queue.Queue()
+                
+                # Run the scraper in a separate thread to avoid blocking the response
+                def run_scraper_thread():
+                    try:
+                        success = run_scraper(force=True)
+                        current_app.logger.info(f"Scraper completed with success={success}")
+                        # Put the result in the queue
+                        result_queue.put(("success", success))
+                    except Exception as e:
+                        current_app.logger.error(f"Error in scraper thread: {str(e)}")
+                        current_app.logger.error(traceback.format_exc())
+                        # Put the error in the queue
+                        result_queue.put(("error", str(e)))
+                
+                # Create and start the thread
+                thread = threading.Thread(target=run_scraper_thread)
+                thread.daemon = True
+                thread.start()
+                
+                # Store the thread and start time in the application context for status checking
+                if not hasattr(current_app, 'scraper_threads'):
+                    current_app.scraper_threads = {}
+                
+                current_app.scraper_threads[source_id] = {
+                    'thread': thread,
+                    'start_time': time.time(),
+                    'source_name': source.name,
+                    'status': 'running',
+                    'result_queue': result_queue
+                }
+                
+                return jsonify({
+                    "status": "success",
+                    "message": f"Started pulling data from {source.name}. This may take a while...",
+                    "job_id": source_id
+                })
+            except Exception as e:
+                current_app.logger.error(f"Error running SSA Contract Forecast scraper: {str(e)}")
+                current_app.logger.error(traceback.format_exc())
+                return jsonify({
+                    "status": "error",
+                    "message": f"Error running scraper: {str(e)}"
+                }), 500
+        else:
+            return jsonify({
+                "status": "error",
+                "message": f"Unknown data source: {source.name}"
+            }), 400
+
 @api.route('/statistics', methods=['GET'])
 def get_statistics():
     """API endpoint to get statistics about proposals."""
@@ -407,4 +575,103 @@ def get_statistics():
         return jsonify({
             'error': 'Server error',
             'message': str(e)
-        }), 500 
+        }), 500
+
+@api.route('/data-sources/<int:source_id>/status', methods=['GET'])
+def check_scraper_status(source_id):
+    """API endpoint to check the status of a scraper job."""
+    import time
+    
+    # Check if the scraper thread exists
+    if not hasattr(current_app, 'scraper_threads') or source_id not in current_app.scraper_threads:
+        return jsonify({
+            "status": "unknown",
+            "message": "No scraper job found for this data source"
+        })
+    
+    # Get the scraper thread info
+    scraper_info = current_app.scraper_threads[source_id]
+    thread = scraper_info['thread']
+    start_time = scraper_info['start_time']
+    source_name = scraper_info['source_name']
+    result_queue = scraper_info['result_queue']
+    
+    # Calculate elapsed time
+    elapsed_time = time.time() - start_time
+    
+    # Check if the thread is still alive
+    if not thread.is_alive():
+        # Thread has completed, check the result
+        try:
+            # Get the result from the queue if available
+            if not result_queue.empty():
+                result_type, result_value = result_queue.get(block=False)
+                if result_type == "success":
+                    # Update the status
+                    scraper_info['status'] = 'completed'
+                    return jsonify({
+                        "status": "completed",
+                        "message": f"Scraper for {source_name} completed successfully",
+                        "elapsed_time": elapsed_time
+                    })
+                else:
+                    # Error occurred
+                    scraper_info['status'] = 'failed'
+                    return jsonify({
+                        "status": "failed",
+                        "message": f"Scraper for {source_name} failed: {result_value}",
+                        "elapsed_time": elapsed_time
+                    })
+            else:
+                # Thread completed but no result in queue (unusual)
+                scraper_info['status'] = 'completed'
+                return jsonify({
+                    "status": "completed",
+                    "message": f"Scraper for {source_name} completed but no result available",
+                    "elapsed_time": elapsed_time
+                })
+        except Exception as e:
+            current_app.logger.error(f"Error checking scraper result: {str(e)}")
+            return jsonify({
+                "status": "error",
+                "message": f"Error checking scraper result: {str(e)}",
+                "elapsed_time": elapsed_time
+            })
+    
+    # Thread is still running, check for timeout
+    timeout_seconds = 180  # 3 minutes timeout (increased from 60 seconds)
+    if elapsed_time > timeout_seconds:
+        # Mark as timed out
+        scraper_info['status'] = 'timeout'
+        
+        # Try to terminate the thread (though Python threads can't be forcibly terminated)
+        # At least we can mark it as timed out for the UI
+        current_app.logger.warning(f"Scraper for {source_name} timed out after {elapsed_time:.1f} seconds")
+        
+        # Update the status in the database
+        try:
+            with session_scope() as session:
+                data_source = session.query(DataSource).filter_by(id=source_id).first()
+                if data_source:
+                    status_record = session.query(ScraperStatus).filter_by(source_id=source_id).first()
+                    if status_record:
+                        status_record.status = "error"
+                        status_record.error_message = f"Scraper timed out after {elapsed_time:.1f} seconds"
+                        status_record.last_checked = datetime.datetime.utcnow()
+                        session.commit()
+                        current_app.logger.info(f"Updated status record for {source_name} to error due to timeout")
+        except Exception as e:
+            current_app.logger.error(f"Error updating status record: {str(e)}")
+        
+        return jsonify({
+            "status": "timeout",
+            "message": f"Scraper for {source_name} timed out after {elapsed_time:.1f} seconds",
+            "elapsed_time": elapsed_time
+        })
+    
+    # Still running and within timeout
+    return jsonify({
+        "status": "running",
+        "message": f"Scraper for {source_name} is still running ({elapsed_time:.1f} seconds elapsed)",
+        "elapsed_time": elapsed_time
+    }) 

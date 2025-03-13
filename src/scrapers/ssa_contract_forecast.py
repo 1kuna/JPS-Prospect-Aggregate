@@ -330,6 +330,9 @@ def run_scraper(force=False):
         
     Returns:
         bool: True if scraping was successful, False otherwise
+        
+    Raises:
+        ScraperError: If an error occurs during scraping
     """
     logger = logging.getLogger("scraper.ssa_contract_forecast")
     
@@ -339,22 +342,33 @@ def run_scraper(force=False):
         
         # Check if the URL is accessible using the scraper's method
         if not scraper.check_url_accessibility():
-            logger.error(f"URL {SSA_CONTRACT_FORECAST_URL} is not accessible")
-            return False
-            
-        # Check if Playwright is installed
-        try:
-            from playwright.sync_api import sync_playwright
-            logger.info("Playwright module found")
-        except ImportError:
-            logger.error("Playwright module not found. Please install it with 'pip install playwright'")
-            logger.error("Then run 'playwright install' to install the browsers")
-            return False
+            error_msg = f"URL {SSA_CONTRACT_FORECAST_URL} is not accessible"
+            logger.error(error_msg)
+            raise ScraperError(error_msg)
             
         # Run the scraper
         logger.info("Running SSA Contract Forecast scraper")
-        return scraper.scrape()
+        success = scraper.scrape()
+        
+        # If scraper.scrape() returns False, it means an error occurred
+        if not success:
+            error_msg = "Scraper failed without specific error"
+            logger.error(error_msg)
+            raise ScraperError(error_msg)
+            
+        return True
+    except ImportError as e:
+        # This will catch any ImportError that might occur when importing Playwright
+        error_msg = f"Import error: {str(e)}"
+        logger.error(error_msg)
+        logger.error("Playwright module not found. Please install it with 'pip install playwright'")
+        logger.error("Then run 'playwright install' to install the browsers")
+        raise ScraperError(error_msg)
+    except ScraperError:
+        # Re-raise ScraperError exceptions to propagate them
+        raise
     except Exception as e:
-        logger.error(f"Error running scraper: {str(e)}")
+        error_msg = f"Error running scraper: {str(e)}"
+        logger.error(error_msg)
         logger.error(traceback.format_exc())
-        return False 
+        raise ScraperError(error_msg) 

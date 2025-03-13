@@ -6,11 +6,13 @@ import {
   createDataSource,
   updateDataSource,
   deleteDataSource,
+  pullDataSource,
   fetchStatistics,
   rebuildDatabase,
   initializeDatabase,
   resetEverything,
-  manageBackups
+  manageBackups,
+  getScraperStatus
 } from './api';
 
 interface LoadingState {
@@ -19,6 +21,7 @@ interface LoadingState {
   proposals: boolean;
   statistics: boolean;
   databaseOperations: boolean;
+  scraperStatus: boolean;
 }
 
 interface ErrorType {
@@ -44,6 +47,7 @@ interface AppState {
   // UI state
   loading: LoadingState;
   errors: Record<string, ErrorType | null>;
+  pullingProgress: Record<number, boolean>;
   
   // Async actions
   fetchDashboardData: (params?: { page?: number; perPage?: number }) => Promise<void>;
@@ -53,11 +57,23 @@ interface AppState {
   createDataSource: (data: any) => Promise<any>;
   updateDataSource: (id: string, data: any) => Promise<any>;
   deleteDataSource: (id: string) => Promise<any>;
+  pullDataSource: (id: string) => Promise<any>;
   rebuildDatabase: () => Promise<any>;
   initializeDatabase: () => Promise<any>;
   resetEverything: () => Promise<any>;
   manageBackups: (action: 'create' | 'restore' | 'list', backupId?: string) => Promise<any>;
+  getScraperStatus: (id: string) => Promise<any>;
+  setPullingProgress: (sourceId: number, isLoading: boolean) => void;
 }
+
+// Helper function to create a toast notification
+// This will be used by components that import the store
+export const createToast = (title: string, description: string, variant?: 'default' | 'destructive' | 'success', duration?: number) => {
+  // We'll use this function to create toast notifications from the store
+  // The actual implementation will be in the components that use the store
+  // This is just a placeholder to make the TypeScript compiler happy
+  return { title, description, variant, duration };
+};
 
 export const useStore = create<AppState>((set) => ({
   // Initial state
@@ -74,7 +90,8 @@ export const useStore = create<AppState>((set) => ({
     dataSources: false,
     proposals: false,
     statistics: false,
-    databaseOperations: false
+    databaseOperations: false,
+    scraperStatus: false
   },
   
   errors: {
@@ -82,8 +99,11 @@ export const useStore = create<AppState>((set) => ({
     dataSources: null,
     proposals: null,
     statistics: null,
-    databaseOperations: null
+    databaseOperations: null,
+    scraperStatus: null
   },
+  
+  pullingProgress: {},
   
   // Async actions
   fetchDashboardData: async (params = {}) => {
@@ -191,14 +211,13 @@ export const useStore = create<AppState>((set) => ({
     set((state) => ({ loading: { ...state.loading, dataSources: true } }));
     try {
       const response = await createDataSource(data);
-      // Refresh data sources after creation
       await useStore.getState().fetchDataSources();
       return response;
     } catch (error: any) {
-      set({ 
-        loading: { ...useStore.getState().loading, dataSources: false },
-        errors: { ...useStore.getState().errors, dataSources: { message: error.message } }
-      });
+      console.error('Error creating data source:', error);
+      set((state) => ({
+        errors: { ...state.errors, dataSources: { message: error.message } }
+      }));
       throw error;
     }
   },
@@ -207,14 +226,13 @@ export const useStore = create<AppState>((set) => ({
     set((state) => ({ loading: { ...state.loading, dataSources: true } }));
     try {
       const response = await updateDataSource(id, data);
-      // Refresh data sources after update
       await useStore.getState().fetchDataSources();
       return response;
     } catch (error: any) {
-      set({ 
-        loading: { ...useStore.getState().loading, dataSources: false },
-        errors: { ...useStore.getState().errors, dataSources: { message: error.message } }
-      });
+      console.error('Error updating data source:', error);
+      set((state) => ({
+        errors: { ...state.errors, dataSources: { message: error.message } }
+      }));
       throw error;
     }
   },
@@ -223,14 +241,40 @@ export const useStore = create<AppState>((set) => ({
     set((state) => ({ loading: { ...state.loading, dataSources: true } }));
     try {
       const response = await deleteDataSource(id);
-      // Refresh data sources after deletion
       await useStore.getState().fetchDataSources();
       return response;
     } catch (error: any) {
-      set({ 
-        loading: { ...useStore.getState().loading, dataSources: false },
-        errors: { ...useStore.getState().errors, dataSources: { message: error.message } }
-      });
+      console.error('Error deleting data source:', error);
+      set((state) => ({
+        errors: { ...state.errors, dataSources: { message: error.message } }
+      }));
+      throw error;
+    }
+  },
+  
+  pullDataSource: async (id) => {
+    try {
+      const response = await pullDataSource(id);
+      await useStore.getState().fetchDataSources();
+      return response;
+    } catch (error: any) {
+      console.error('Error pulling data source:', error);
+      set((state) => ({
+        errors: { ...state.errors, dataSources: { message: error.message } }
+      }));
+      throw error;
+    }
+  },
+  
+  getScraperStatus: async (id) => {
+    try {
+      const response = await getScraperStatus(id);
+      return response;
+    } catch (error: any) {
+      console.error('Error getting scraper status:', error);
+      set((state) => ({
+        errors: { ...state.errors, dataSources: { message: error.message } }
+      }));
       throw error;
     }
   },
@@ -308,5 +352,14 @@ export const useStore = create<AppState>((set) => ({
       });
       throw error;
     }
+  },
+  
+  setPullingProgress: (sourceId: number, isLoading: boolean) => {
+    set((state) => ({
+      pullingProgress: {
+        ...state.pullingProgress,
+        [sourceId]: isLoading
+      }
+    }));
   }
 })); 

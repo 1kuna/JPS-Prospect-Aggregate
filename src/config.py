@@ -21,7 +21,7 @@ LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 
 # Scraper URLs
 ACQUISITION_GATEWAY_URL = os.getenv("ACQUISITION_GATEWAY_URL", "https://acquisitiongateway.gov/forecast")
-SSA_CONTRACT_FORECAST_URL = os.getenv("SSA_CONTRACT_FORECAST_URL", "https://www.ssa.gov/oag/business/forecast.html")
+SSA_CONTRACT_FORECAST_URL = os.getenv("SSA_CONTRACT_FORECAST_URL", "https://www.ssa.gov/osdbu/contract-forecast-intro.html")
 
 # Database configuration
 DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{os.path.join(DATA_DIR, 'proposals.db')}")

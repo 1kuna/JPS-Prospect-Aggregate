@@ -105,14 +105,6 @@ class BaseScraper:
         self.logger.info(f"Absolute download path: {download_dir_abs}")
         
         try:
-            # Check if Playwright is installed
-            try:
-                self.logger.info("Playwright module found")
-            except ImportError as e:
-                self.logger.error("Playwright module not found. Please install it with 'pip install playwright'")
-                self.logger.error("Then run 'playwright install' to install the browsers")
-                raise ImportError("Playwright module not found") from e
-                
             # Start Playwright
             self.playwright = sync_playwright().start()
             self.logger.info("Started Playwright")
@@ -123,7 +115,7 @@ class BaseScraper:
             # Launch the browser with appropriate options
             try:
                 self.browser = browser_type.launch(
-                    headless=not self.debug_mode,
+                    headless=True,  # Always run in headless mode
                     downloads_path=download_dir_abs,
                     args=[
                         "--no-sandbox",
