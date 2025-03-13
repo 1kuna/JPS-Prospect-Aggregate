@@ -1,157 +1,157 @@
-import { useState, useEffect } from 'react';
-import axios from 'axios';
-import { formatDate } from '@/lib/utils';
-import {
-  PageLayout,
-  PageSkeleton,
-  DataTable,
-  StatsCard,
-  StatsGrid,
-} from '@/components';
+import { useState, useCallback } from 'react';
+import { useStore } from '@/store/useStore';
+import { PageLayout } from '@/components';
+import { Button, Alert, AlertTitle, AlertDescription } from '@/components/ui';
+import { Textarea } from '@/components/ui/textarea';
+import { FormWrapper } from '@/components/forms/FormWrapper';
+import * as z from 'zod';
 
-interface Proposal {
-  id: string | number;
-  title: string;
-  agency: string;
-  source_name: string;
-  release_date: string | null;
-  status: string;
-}
+// Create stable selectors
+const selectExecuteQuery = (state: any) => state.executeQuery;
+const selectQueryLoading = (state: any) => state.loading.query;
+const selectQueryErrors = (state: any) => state.errors.query;
 
-interface DataSource {
-  id: string | number;
-  name: string;
-  url: string;
-  description: string;
-  last_scraped: string | null;
-}
-
-interface DirectDBData {
-  proposals: Proposal[];
-  dataSources: DataSource[];
-  totalProposals: number;
-  totalSources: number;
-  timestamp: string;
-}
+// Define the form schema
+const formSchema = z.object({
+  query: z.string().min(1, { message: 'Query is required' }),
+});
 
 export default function DirectDatabaseAccess() {
-  const [data, setData] = useState<DirectDBData | null>(null);
-  const [loading, setLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<any>(null);
+  
+  // Use individual selectors to prevent unnecessary re-renders
+  const executeQuery = useStore(selectExecuteQuery);
+  const loading = useStore(selectQueryLoading);
+  const errors = useStore(selectQueryErrors);
 
-  const fetchData = async () => {
-    setLoading(true);
-    setError(null);
-    
-    try {
-      // Fetch data from multiple endpoints
-      const [proposalsRes, dataSourcesRes, dashboardRes] = await Promise.all([
-        axios.get('/api/proposals'),
-        axios.get('/api/data-sources'),
-        axios.get('/api/dashboard')
-      ]);
-      
-      // Combine the data
-      const combinedData: DirectDBData = {
-        proposals: proposalsRes.data.data || [],
-        dataSources: dataSourcesRes.data.data || [],
-        totalProposals: dashboardRes.data.data?.counts?.total_proposals || 0,
-        totalSources: dashboardRes.data.data?.counts?.total_sources || 0,
-        timestamp: new Date().toISOString()
-      };
-      
-      setData(combinedData);
-      setLastUpdated(new Date());
-    } catch (err: any) {
-      console.error('Error fetching data:', err);
-      setError(err.message || 'Failed to fetch data');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchData();
+  const handleQueryChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setQuery(e.target.value);
   }, []);
 
-  // If loading and no data, show skeleton
-  if (loading && !data) {
-    return <PageSkeleton cardCount={3} />;
-  }
+  const handleExecuteQuery = useCallback(async () => {
+    if (!query.trim()) return;
+    
+    try {
+      const result = await executeQuery(query);
+      setResults(result);
+    } catch (error) {
+      console.error('Error executing query:', error);
+    }
+  }, [query, executeQuery]);
 
-  // Define stats for database stats card
-  const dbStats = [
-    { label: 'Total Proposals:', value: data?.totalProposals || 0 },
-    { label: 'Total Data Sources:', value: data?.totalSources || 0 },
-    { label: 'Timestamp:', value: formatDate(data?.timestamp || '') },
-  ];
+  const handleClearResults = useCallback(() => {
+    setResults(null);
+  }, []);
 
-  // Define table columns for proposals
-  const proposalColumns = [
-    { header: 'ID', accessor: 'id' as keyof Proposal },
-    { header: 'Title', accessor: 'title' as keyof Proposal },
-    { header: 'Agency', accessor: 'agency' as keyof Proposal },
-    { header: 'Status', accessor: 'status' as keyof Proposal },
-    { 
-      header: 'Release Date', 
-      accessor: (proposal: Proposal) => proposal.release_date ? formatDate(proposal.release_date) : 'N/A'
-    },
-  ];
-
-  // Define table columns for data sources
-  const dataSourceColumns = [
-    { header: 'ID', accessor: 'id' as keyof DataSource },
-    { header: 'Name', accessor: 'name' as keyof DataSource },
-    { 
-      header: 'URL', 
-      accessor: (source: DataSource) => (
-        <div className="truncate max-w-xs">{source.url}</div>
-      )
-    },
-    { 
-      header: 'Last Scraped', 
-      accessor: (source: DataSource) => source.last_scraped ? formatDate(source.last_scraped) : 'Never'
-    },
-  ];
+  const handleSubmit = useCallback((data: { query: string }) => {
+    executeQuery(data.query).then(setResults);
+  }, [executeQuery]);
 
   return (
-    <PageLayout
-      title="Direct Database Access"
-      description="Viewing data directly from the database"
-      lastUpdated={lastUpdated}
-      onRefresh={fetchData}
-      isLoading={loading}
-      error={error}
-    >
-      <StatsGrid columns={1}>
-        <StatsCard
-          title="Database Stats"
-          stats={dbStats}
-        />
-      </StatsGrid>
+    <PageLayout title="Direct Database Access" isLoading={loading}>
+      <div className="space-y-6">
+        <Alert variant="warning">
+          <AlertTitle>Warning: Advanced Feature</AlertTitle>
+          <AlertDescription>
+            This page allows direct SQL queries to the database. Use with caution as improper queries may damage your data.
+            SELECT queries are recommended. Avoid INSERT, UPDATE, or DELETE operations unless you know what you're doing.
+          </AlertDescription>
+        </Alert>
 
-      <DataTable
-        title="Recent Proposals"
-        data={data?.proposals.slice(0, 10) || []}
-        columns={proposalColumns}
-        keyField="id"
-        emptyMessage={{
-          title: 'No proposals found',
-          description: 'There are no proposals to display.',
-        }}
-      />
+        <FormWrapper
+          schema={formSchema}
+          defaultValues={{ query: '' }}
+          onSubmit={handleSubmit}
+          submitLabel="Execute Query"
+        >
+          <div className="space-y-4">
+            <div>
+              <label htmlFor="query" className="block text-sm font-medium mb-1">
+                SQL Query
+              </label>
+              <Textarea
+                id="query"
+                value={query}
+                onChange={handleQueryChange}
+                placeholder="SELECT * FROM proposals LIMIT 10;"
+                className="h-32 font-mono"
+              />
+            </div>
+            
+            <div className="flex gap-2">
+              <Button onClick={handleExecuteQuery} disabled={!query.trim() || loading}>
+                {loading ? 'Executing...' : 'Execute Query'}
+              </Button>
+              <Button variant="outline" onClick={handleClearResults} disabled={!results}>
+                Clear Results
+              </Button>
+            </div>
+          </div>
+        </FormWrapper>
 
-      <DataTable
-        title="Data Sources"
-        data={data?.dataSources || []}
-        columns={dataSourceColumns}
-        keyField="id"
-        emptyMessage={{
-          title: 'No data sources found',
-          description: 'There are no data sources to display.',
-        }}
-      />
+        {errors && (
+          <Alert variant="destructive">
+            <AlertTitle>Query Error</AlertTitle>
+            <AlertDescription>{errors.message}</AlertDescription>
+          </Alert>
+        )}
+
+        {results && (
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+            <h3 className="text-lg font-medium mb-4">Query Results</h3>
+            
+            {results.rowCount !== undefined && (
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">
+                {results.rowCount} {results.rowCount === 1 ? 'row' : 'rows'} returned
+              </p>
+            )}
+            
+            {results.rows && results.rows.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                  <thead className="bg-gray-50 dark:bg-gray-700">
+                    <tr>
+                      {Object.keys(results.rows[0]).map((key) => (
+                        <th
+                          key={key}
+                          className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                        >
+                          {key}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                    {results.rows.map((row: any, rowIndex: number) => (
+                      <tr key={rowIndex}>
+                        {Object.values(row).map((value: any, colIndex: number) => (
+                          <td
+                            key={colIndex}
+                            className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400"
+                          >
+                            {value === null ? (
+                              <span className="text-gray-400 dark:text-gray-600 italic">NULL</span>
+                            ) : typeof value === 'object' ? (
+                              JSON.stringify(value)
+                            ) : (
+                              String(value)
+                            )}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="text-gray-500 dark:text-gray-400">
+                {results.command === 'SELECT' ? 'No rows returned' : `Query executed successfully: ${results.command}`}
+              </p>
+            )}
+          </div>
+        )}
+      </div>
     </PageLayout>
   );
 } 

@@ -1,13 +1,21 @@
 import React from 'react';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui';
+import { Pagination, PaginationContent, PaginationItem, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
+import { Alert, AlertTitle } from '@/components/ui/alert';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
-interface Column<T> {
+export interface Column<T> {
   header: string;
-  accessor: keyof T | ((item: T) => React.ReactNode);
+  accessorKey: keyof T | ((row: T) => any);
+  cell?: (row: T) => React.ReactNode;
   className?: string;
   onClick?: () => void;
 }
@@ -24,15 +32,11 @@ interface DataTableProps<T> {
   description?: string;
   data: T[];
   columns: Column<T>[];
-  keyField: keyof T;
   pagination?: PaginationInfo;
   onPageChange?: (page: number) => void;
   onPerPageChange?: (perPage: number) => void;
   isLoading?: boolean;
-  emptyMessage?: {
-    title: string;
-    description: string;
-  };
+  emptyMessage?: string;
   maxHeight?: string;
 }
 
@@ -41,12 +45,11 @@ export function DataTable<T>({
   description,
   data,
   columns,
-  keyField,
   pagination,
   onPageChange,
   onPerPageChange,
   isLoading = false,
-  emptyMessage = { title: 'No data found', description: 'There are no items to display.' },
+  emptyMessage = 'No data available',
   maxHeight = '500px',
 }: DataTableProps<T>) {
   const handlePageChange = (page: number) => {
@@ -61,11 +64,11 @@ export function DataTable<T>({
     }
   };
 
-  const renderCell = (item: T, column: Column<T>) => {
-    if (typeof column.accessor === 'function') {
-      return column.accessor(item);
+  const getValue = (row: T, column: Column<T>) => {
+    if (typeof column.accessorKey === 'function') {
+      return column.accessorKey(row);
     }
-    return item[column.accessor] as React.ReactNode;
+    return row[column.accessorKey];
   };
 
   const tableContent = (
@@ -103,17 +106,16 @@ export function DataTable<T>({
                 <TableRow>
                   <TableCell colSpan={columns.length} className="h-24 text-center">
                     <div className="flex flex-col items-center justify-center">
-                      <h3 className="font-medium">{emptyMessage.title}</h3>
-                      <p className="text-sm text-muted-foreground">{emptyMessage.description}</p>
+                      <h3 className="font-medium">{emptyMessage}</h3>
                     </div>
                   </TableCell>
                 </TableRow>
               ) : (
-                data.map((item) => (
-                  <TableRow key={String(item[keyField])}>
-                    {columns.map((column, index) => (
-                      <TableCell key={index} className={column.className}>
-                        {renderCell(item, column)}
+                data.map((row, rowIndex) => (
+                  <TableRow key={rowIndex}>
+                    {columns.map((column, colIndex) => (
+                      <TableCell key={colIndex} className={column.className}>
+                        {column.cell ? column.cell(row) : getValue(row, column)}
                       </TableCell>
                     ))}
                   </TableRow>
@@ -125,74 +127,59 @@ export function DataTable<T>({
       </div>
 
       {/* Pagination and Per Page Controls */}
-      {pagination && pagination.totalPages > 0 && (
-        <div className="flex items-center justify-between mt-4">
-          <div className="flex items-center gap-2">
+      {pagination && (
+        <div className="grid grid-cols-1 md:grid-cols-3 items-center gap-4 mt-4">
+          <div className="flex items-center gap-2 justify-start">
             <span className="text-sm text-muted-foreground">Rows per page:</span>
             <Select
               value={String(pagination.perPage)}
               onValueChange={handlePerPageChange}
+              defaultValue={String(pagination.perPage)}
             >
-              <SelectTrigger className="w-[80px] h-8">
-                <SelectValue placeholder={pagination.perPage} />
+              <SelectTrigger className="w-[80px] h-8 bg-white dark:bg-slate-800 text-black dark:text-white border">
+                <SelectValue>{pagination.perPage}</SelectValue>
               </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="10">10</SelectItem>
-                <SelectItem value="25">25</SelectItem>
-                <SelectItem value="50">50</SelectItem>
-                <SelectItem value="100">100</SelectItem>
+              <SelectContent className="bg-white dark:bg-slate-800 text-black dark:text-white border shadow-md rounded-md">
+                <SelectItem value="10" className="text-black dark:text-white hover:bg-gray-100 dark:hover:bg-slate-700">10</SelectItem>
+                <SelectItem value="20" className="text-black dark:text-white hover:bg-gray-100 dark:hover:bg-slate-700">20</SelectItem>
+                <SelectItem value="50" className="text-black dark:text-white hover:bg-gray-100 dark:hover:bg-slate-700">50</SelectItem>
               </SelectContent>
             </Select>
           </div>
           
-          <Pagination>
-            <PaginationContent>
-              <PaginationItem>
-                <PaginationPrevious
-                  onClick={() => handlePageChange(Math.max(1, pagination.page - 1))}
-                  className={pagination.page <= 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
-                />
-              </PaginationItem>
+          <div className="flex justify-center">
+            <Pagination>
+              <PaginationContent>
+                <PaginationItem>
+                  <PaginationPrevious
+                    onClick={() => handlePageChange(Math.max(1, pagination.page - 1))}
+                    className={`${pagination.page <= 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'} bg-white dark:bg-slate-800 text-black dark:text-white`}
+                  />
+                </PaginationItem>
 
-              {Array.from({ length: Math.min(5, pagination.totalPages) }, (_, i) => {
-                // Show pages around the current page
-                let pageToShow;
-                if (pagination.totalPages <= 5) {
-                  pageToShow = i + 1;
-                } else {
-                  const startPage = Math.max(1, pagination.page - 2);
-                  pageToShow = startPage + i;
-                  if (pageToShow > pagination.totalPages) {
-                    return null;
-                  }
-                }
+                <PaginationItem>
+                  <span className="flex items-center justify-center px-3 h-9 bg-white dark:bg-slate-800 text-black dark:text-white border rounded-md mx-1">
+                    Page {pagination.page} of {pagination.totalPages}
+                  </span>
+                </PaginationItem>
 
-                return (
-                  <PaginationItem key={pageToShow}>
-                    <PaginationLink
-                      onClick={() => handlePageChange(pageToShow)}
-                      isActive={pageToShow === pagination.page}
-                    >
-                      {pageToShow}
-                    </PaginationLink>
-                  </PaginationItem>
-                );
-              })}
-
-              <PaginationItem>
-                <PaginationNext
-                  onClick={() => handlePageChange(Math.min(pagination.totalPages, pagination.page + 1))}
-                  className={pagination.page >= pagination.totalPages ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
-                />
-              </PaginationItem>
-            </PaginationContent>
-          </Pagination>
+                <PaginationItem>
+                  <PaginationNext
+                    onClick={() => handlePageChange(Math.min(pagination.totalPages, pagination.page + 1))}
+                    className={`${pagination.page >= pagination.totalPages ? 'pointer-events-none opacity-50' : 'cursor-pointer'} bg-white dark:bg-slate-800 text-black dark:text-white`}
+                  />
+                </PaginationItem>
+              </PaginationContent>
+            </Pagination>
+          </div>
           
-          {pagination.totalItems && (
-            <div className="text-sm text-muted-foreground">
+          {pagination.totalItems ? (
+            <div className="text-sm text-muted-foreground text-right">
               {(pagination.page - 1) * pagination.perPage + 1}-
               {Math.min(pagination.page * pagination.perPage, pagination.totalItems)} of {pagination.totalItems}
             </div>
+          ) : (
+            <div></div> // Empty div to maintain the grid layout
           )}
         </div>
       )}
@@ -201,8 +188,7 @@ export function DataTable<T>({
 
   const emptyState = (
     <Alert>
-      <AlertTitle>{emptyMessage.title}</AlertTitle>
-      <AlertDescription>{emptyMessage.description}</AlertDescription>
+      <AlertTitle>{emptyMessage}</AlertTitle>
     </Alert>
   );
 

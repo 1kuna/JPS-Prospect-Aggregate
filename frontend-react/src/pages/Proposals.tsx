@@ -3,12 +3,13 @@ import { useStore } from '@/store/useStore';
 import { formatDate } from '@/lib/utils';
 import {
   PageLayout,
-  PageSkeleton,
   DataTable,
   Alert,
   AlertTitle,
   AlertDescription,
+  Button,
 } from '@/components';
+import type { Column } from '@/components/data-display/DataTable';
 
 // Create stable selectors outside the component
 const selectProposals = (state: any) => state.proposals;
@@ -34,133 +35,148 @@ export default function Proposals() {
   const errors = useStore(selectProposalsErrors);
   const fetchProposals = useStore(selectFetchProposals);
 
-  const [sortBy, setSortBy] = useState('release_date');
-  const [sortOrder, setSortOrder] = useState('desc');
+  const [sortBy] = useState('release_date');
+  const [sortOrder] = useState('desc');
   const isMounted = useRef(false);
 
   useEffect(() => {
     // Only fetch data if this is the first time the component is mounted
     if (!isMounted.current) {
-      fetchProposals();
+      console.log('Proposals component mounted, fetching proposals...');
+      fetchProposals().then(() => {
+        console.log('Proposals fetched successfully in component');
+      }).catch((error: Error) => {
+        console.error('Error fetching proposals in component:', error);
+      });
       isMounted.current = true;
     }
-  }, []); // Empty dependency array to run only once on mount
+  }, [fetchProposals]); // Include fetchProposals in the dependency array
+
+  // Log state changes for debugging
+  useEffect(() => {
+    console.log('Proposals component state:', { 
+      proposals, 
+      proposalsPagination, 
+      loading, 
+      errors 
+    });
+    
+    // Log pagination data specifically for debugging
+    if (proposalsPagination) {
+      console.log('Pagination data:', {
+        page: proposalsPagination.page,
+        perPage: proposalsPagination.perPage,
+        totalPages: proposalsPagination.totalPages,
+        totalCount: proposalsPagination.totalCount
+      });
+    }
+  }, [proposals, proposalsPagination, loading, errors]);
 
   // Memoize event handlers to prevent unnecessary re-renders
   const handlePageChange = useCallback((page: number) => {
-    fetchProposals({
-      page,
-      perPage: proposalsPagination?.perPage || 50,
-      sortBy,
-      sortOrder
-    });
-  }, [fetchProposals, sortBy, sortOrder, proposalsPagination]);
-
-  const handlePerPageChange = useCallback((perPage: number) => {
-    fetchProposals({
-      page: 1, // Reset to first page when changing items per page
-      perPage,
-      sortBy,
-      sortOrder
-    });
+    console.log('Changing page to:', page);
+    fetchProposals({ page, sortBy, sortOrder });
   }, [fetchProposals, sortBy, sortOrder]);
 
-  const handleSort = useCallback((column: string) => {
-    const newSortOrder = column === sortBy && sortOrder === 'asc' ? 'desc' : 'asc';
-    setSortBy(column);
-    setSortOrder(newSortOrder);
-    fetchProposals({
-      sortBy: column,
-      sortOrder: newSortOrder,
-      page: proposalsPagination?.page || 1,
-      perPage: proposalsPagination?.perPage || 50
-    });
-  }, [fetchProposals, sortBy, sortOrder, proposalsPagination]);
+  const handlePerPageChange = useCallback((perPage: number) => {
+    console.log('Changing items per page to:', perPage);
+    fetchProposals({ page: 1, perPage, sortBy, sortOrder });
+  }, [fetchProposals, sortBy, sortOrder]);
 
-  // If loading and no data, show skeleton
+  const handleRefresh = useCallback(() => {
+    console.log('Refreshing proposals...');
+    fetchProposals({ sortBy, sortOrder });
+  }, [fetchProposals, sortBy, sortOrder]);
+
   if (loading && !proposals.length) {
-    return <PageSkeleton cardCount={1} />;
+    console.log('Rendering loading state...');
+    return (
+      <PageLayout title="Proposals" isLoading={true}>
+        <div>Loading proposals...</div>
+      </PageLayout>
+    );
   }
 
-  // Define table columns with sorting
-  const columns = [
-    { 
-      header: `Title ${sortBy === 'title' ? (sortOrder === 'asc' ? '↑' : '↓') : ''}`, 
-      accessor: 'title' as keyof Proposal,
-      className: 'cursor-pointer',
-      onClick: () => handleSort('title')
+  // Error state
+  if (errors && !proposals.length) {
+    console.log('Rendering error state:', errors);
+    return (
+      <div className="space-y-6">
+        <h1 className="text-3xl font-bold tracking-tight">Proposals</h1>
+        <Alert variant="destructive">
+          <AlertTitle>Error loading proposals</AlertTitle>
+          <AlertDescription>{errors.message}</AlertDescription>
+        </Alert>
+        <Button onClick={handleRefresh}>Retry</Button>
+      </div>
+    );
+  }
+
+  console.log('Rendering proposals table with data:', proposals);
+
+  const columns: Column<Proposal>[] = [
+    {
+      header: 'ID',
+      accessorKey: 'id',
     },
-    { 
-      header: `Agency ${sortBy === 'agency' ? (sortOrder === 'asc' ? '↑' : '↓') : ''}`, 
-      accessor: 'agency' as keyof Proposal,
-      className: 'cursor-pointer',
-      onClick: () => handleSort('agency')
+    {
+      header: 'Title',
+      accessorKey: 'title',
     },
-    { 
-      header: 'Source', 
-      accessor: 'source_name' as keyof Proposal 
+    {
+      header: 'Agency',
+      accessorKey: 'agency',
     },
-    { 
-      header: `Release Date ${sortBy === 'release_date' ? (sortOrder === 'asc' ? '↑' : '↓') : ''}`, 
-      accessor: (proposal: Proposal) => proposal.release_date ? formatDate(proposal.release_date) : 'N/A',
-      className: 'cursor-pointer',
-      onClick: () => handleSort('release_date')
+    {
+      header: 'Source',
+      accessorKey: 'source_name',
     },
-    { 
-      header: `Status ${sortBy === 'status' ? (sortOrder === 'asc' ? '↑' : '↓') : ''}`, 
-      accessor: (proposal: Proposal) => (
-        <span className={`status ${proposal.status?.toLowerCase().includes('new') ? 'status-new' : 
-                           proposal.status?.toLowerCase().includes('exercise') ? 'status-exercise' : ''}`}>
-          {proposal.status}
-        </span>
+    {
+      header: 'Release Date',
+      accessorKey: (row: Proposal) => row.release_date ? formatDate(row.release_date) : 'N/A',
+    },
+    {
+      header: 'Status',
+      accessorKey: 'status',
+    },
+    {
+      header: 'Actions',
+      accessorKey: 'id',
+      cell: () => (
+        <Button variant="outline" size="sm">View</Button>
       ),
-      className: 'cursor-pointer',
-      onClick: () => handleSort('status')
     },
   ];
 
-  return (
-    <PageLayout
-      title="Proposals"
-      isLoading={loading}
-      error={errors}
-    >
-      {/* No data state */}
-      {!loading && !proposals.length && (
-        <Alert className="mb-6">
-          <AlertTitle>No proposals available</AlertTitle>
-          <AlertDescription>
-            There are currently no proposals in the system.
-          </AlertDescription>
-        </Alert>
-      )}
+  // Ensure we have a valid pagination object even if the backend doesn't provide one
+  const paginationInfo = {
+    page: proposalsPagination?.page || 1,
+    perPage: proposalsPagination?.perPage || 50,
+    totalPages: proposalsPagination?.totalPages || 1,
+    totalItems: proposalsPagination?.totalCount || proposals.length
+  };
 
-      {/* Proposals Table */}
-      {proposals.length > 0 && (
+  return (
+    <PageLayout title="Proposals">
+      <div className="space-y-4">
+        <div className="flex justify-between items-center">
+          <div>
+            <p className="text-muted-foreground">
+              Showing {proposals.length} of {paginationInfo.totalItems} proposals
+            </p>
+          </div>
+          <Button onClick={handleRefresh}>Refresh</Button>
+        </div>
+
         <DataTable
           data={proposals}
           columns={columns}
-          keyField="id"
-          description={proposalsPagination ? `Showing ${proposals.length} of ${proposalsPagination.totalCount} proposals` : undefined}
-          pagination={
-            proposalsPagination
-              ? {
-                  page: proposalsPagination.page,
-                  perPage: proposalsPagination.perPage,
-                  totalPages: proposalsPagination.totalPages,
-                  totalItems: proposalsPagination.totalCount,
-                }
-              : undefined
-          }
+          emptyMessage="No proposals found"
+          pagination={paginationInfo}
           onPageChange={handlePageChange}
           onPerPageChange={handlePerPageChange}
-          maxHeight="calc(100vh - 200px)"
-          emptyMessage={{
-            title: 'No proposals found',
-            description: 'There are currently no proposals in the system.',
-          }}
         />
-      )}
+      </div>
     </PageLayout>
   );
 } 

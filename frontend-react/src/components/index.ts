@@ -1,25 +1,18 @@
-// Layout components
-export { PageLayout, PageSkeleton } from './layout/PageLayout';
+// Re-export UI components
+export * from './ui';
 
-// Data display components
-export { DataTable } from './data-display/DataTable';
-export { StatsCard, StatsGrid } from './data-display/StatsCard';
+// Re-export layout components
+export * from './layout';
 
-// Form components
-export { FormWrapper } from './forms/FormWrapper';
+// Re-export data display components
+export * from './data-display';
 
-// Re-export UI components for convenience
-export { Button, buttonVariants } from './ui/button';
-export { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from './ui/card';
-export { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableCaption } from './ui/table';
-export { Alert, AlertTitle, AlertDescription } from './ui/alert';
-export { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
-export { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from './ui/form';
-export { Input } from './ui/input';
-export { Label } from './ui/label';
-export { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from './ui/pagination';
-export { Skeleton } from './ui/skeleton';
+// Re-export form components
+export * from './forms';
 
-// Other components
+// Re-export other components
+export { ErrorBoundary } from './ErrorBoundary';
 export { DataSourceForm } from './DataSourceForm';
-export { ErrorBoundary } from './ErrorBoundary'; 
+export { Statistics } from './Statistics';
+export { DatabaseOperations } from './DatabaseOperations';
+export { UpdateNotification } from './UpdateNotification'; 

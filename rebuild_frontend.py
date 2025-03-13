@@ -54,14 +54,14 @@ def build_frontend():
     if not run_command(["npm", "run", "build"], cwd=FRONTEND_DIR):
         return False
     
-    print("Frontend build completed successfully.")
+    print("React frontend built successfully.")
     return True
 
-def copy_build_to_static():
-    """Copy the build files to the Flask static directory."""
-    print("Copying build files to Flask static directory...")
+def copy_to_static():
+    """Copy the built frontend to the Flask static directory."""
+    print("Copying built frontend to Flask static directory...")
     
-    # Path to the build directory
+    # Path to the React build directory
     build_dir = FRONTEND_DIR / "dist"
     
     # Check if the build directory exists
@@ -69,45 +69,41 @@ def copy_build_to_static():
         print(f"Error: Build directory not found at {build_dir}")
         return False
     
-    # Create the static directory if it doesn't exist
-    os.makedirs(STATIC_DIR, exist_ok=True)
-    
-    # Create a 'react' directory in the static directory
+    # Create the react directory in the static directory if it doesn't exist
     react_static_dir = STATIC_DIR / "react"
-    os.makedirs(react_static_dir, exist_ok=True)
+    react_static_dir.mkdir(exist_ok=True)
     
-    # Copy the build files to the static directory
-    try:
-        # Copy static assets
-        if (build_dir / "static").exists():
-            if (react_static_dir / "static").exists():
-                shutil.rmtree(react_static_dir / "static")
-            shutil.copytree(build_dir / "static", react_static_dir / "static")
-        
-        # Copy index.html
-        if (build_dir / "index.html").exists():
-            shutil.copy2(build_dir / "index.html", react_static_dir / "index.html")
-        
-        # Copy any other files at the root level
-        for item in build_dir.glob("*"):
-            if item.is_file() and item.name != "index.html":
-                shutil.copy2(item, react_static_dir / item.name)
-        
-        print("Build files copied successfully.")
-        return True
-    except Exception as e:
-        print(f"Error copying build files: {e}")
-        return False
+    # Remove existing files in the react static directory
+    for item in react_static_dir.glob("*"):
+        if item.is_file():
+            item.unlink()
+        elif item.is_dir():
+            shutil.rmtree(item)
+    
+    # Copy all files from the build directory to the react static directory
+    for item in build_dir.glob("*"):
+        if item.is_file():
+            shutil.copy2(item, react_static_dir)
+        elif item.is_dir():
+            shutil.copytree(item, react_static_dir / item.name, dirs_exist_ok=True)
+    
+    print("Frontend files copied successfully.")
+    return True
 
 def main():
     """Main function."""
+    # Build the frontend
     if not build_frontend():
-        sys.exit(1)
+        print("Error: Failed to build frontend.")
+        return 1
     
-    if not copy_build_to_static():
-        sys.exit(1)
+    # Copy the built frontend to the Flask static directory
+    if not copy_to_static():
+        print("Error: Failed to copy frontend files.")
+        return 1
     
     print("Frontend rebuild completed successfully.")
+    return 0
 
 if __name__ == "__main__":
-    main() 
+    sys.exit(main()) 

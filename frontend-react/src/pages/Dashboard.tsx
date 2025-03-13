@@ -1,23 +1,14 @@
-import { useEffect } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { useStore } from '@/store/useStore';
-import { formatDate } from '@/lib/utils';
-import { 
-  PageLayout, 
-  PageSkeleton,
-  StatsCard, 
-  StatsGrid, 
-  DataTable,
-  Alert,
-  AlertTitle,
-  AlertDescription
-} from '@/components';
+import { formatDate, formatNumber } from '@/lib/utils';
+import { PageLayout, StatsCard } from '@/components';
+import { Alert, AlertTitle, AlertDescription, Button } from '@/components/ui';
 
-// Create stable selectors outside the component
+// Create stable selectors
 const selectDashboardData = (state: any) => state.dashboardData;
 const selectDashboardLoading = (state: any) => state.loading.dashboard;
 const selectDashboardErrors = (state: any) => state.errors.dashboard;
 const selectFetchDashboardData = (state: any) => state.fetchDashboardData;
-const selectLastUpdated = (state: any) => state.lastUpdated;
 
 export default function Dashboard() {
   // Use individual selectors to prevent unnecessary re-renders
@@ -25,135 +16,128 @@ export default function Dashboard() {
   const loading = useStore(selectDashboardLoading);
   const errors = useStore(selectDashboardErrors);
   const fetchDashboardData = useStore(selectFetchDashboardData);
-  const lastUpdated = useStore(selectLastUpdated);
+  
+  const isMounted = useRef(false);
 
   useEffect(() => {
-    // Fetch data on component mount
+    // Only fetch data if this is the first time the component is mounted
+    if (!isMounted.current) {
+      fetchDashboardData();
+      isMounted.current = true;
+    }
+  }, [fetchDashboardData]);
+
+  const handleRefresh = useCallback(() => {
     fetchDashboardData();
   }, [fetchDashboardData]);
 
-  const handleRefresh = () => {
-    fetchDashboardData();
-  };
-
-  const handlePageChange = (page: number) => {
-    fetchDashboardData({ page, perPage: dashboardData?.pagination?.per_page || 50 });
-  };
-
-  // If loading and no data, show skeleton
   if (loading && !dashboardData) {
-    return <PageSkeleton cardCount={3} />;
+    return (
+      <PageLayout title="Dashboard" isLoading={true}>
+        <div>Loading dashboard data...</div>
+      </PageLayout>
+    );
   }
 
-  // Define table columns
-  const columns = [
-    { header: 'Title', accessor: 'title' },
-    { header: 'Agency', accessor: 'agency' },
-    { header: 'Source', accessor: 'source_name' },
-    { 
-      header: 'Release Date', 
-      accessor: (proposal: any) => proposal.release_date ? formatDate(proposal.release_date) : 'N/A' 
-    },
-    { header: 'Status', accessor: 'status' },
-  ];
+  // Error state
+  if (errors && !dashboardData) {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+        <Alert variant="destructive">
+          <AlertTitle>Error loading dashboard data</AlertTitle>
+          <AlertDescription>{errors.message}</AlertDescription>
+        </Alert>
+        <Button onClick={handleRefresh}>Retry</Button>
+      </div>
+    );
+  }
 
-  // Define stats for summary card
-  const summaryStats = [
-    { label: 'Total Sources:', value: dashboardData?.active_sources || 0 },
-    { label: 'Total Proposals:', value: dashboardData?.total_proposals || 0 },
-    { 
-      label: 'Last Run:', 
-      value: dashboardData?.last_scrape ? formatDate(dashboardData.last_scrape) : 'Never' 
-    },
-  ];
-
-  // Define stats for status card
-  const statusStats = [
-    { 
-      label: 'System Status:', 
-      value: dashboardData?.systemStatus || 'Unknown',
-      className: dashboardData?.systemStatus === 'Running' ? 'text-green-500' : 'text-red-500'
-    },
-    { label: 'Active Jobs:', value: dashboardData?.activeJobs || 0 },
-    { label: 'Pending Jobs:', value: dashboardData?.pendingJobs || 0 },
-  ];
-
-  return (
-    <PageLayout
-      title="Dashboard"
-      lastUpdated={lastUpdated}
-      onRefresh={handleRefresh}
-      isLoading={loading}
-      error={errors}
-    >
-      {/* No data state */}
-      {!loading && !dashboardData && (
-        <Alert className="mb-6">
-          <AlertTitle>No data available</AlertTitle>
+  // If we have no data yet
+  if (!dashboardData) {
+    return (
+      <PageLayout title="Dashboard">
+        <Alert>
+          <AlertTitle>No dashboard data available</AlertTitle>
           <AlertDescription>
-            Click the refresh button to load data.
+            Dashboard data is being loaded or has not been generated yet.
           </AlertDescription>
         </Alert>
-      )}
+        <Button onClick={handleRefresh} className="mt-4">Refresh</Button>
+      </PageLayout>
+    );
+  }
 
-      {/* Dashboard content */}
-      {dashboardData && (
-        <>
-          <StatsGrid columns={3}>
-            {/* Summary Card */}
-            <StatsCard
-              title="Summary"
-              description="Overview of all data sources"
-              stats={summaryStats}
-            />
+  const { stats, lastUpdated } = dashboardData;
 
-            {/* Status Card */}
-            <StatsCard
-              title="Status"
-              description="Current system status"
-              stats={statusStats}
-            />
-
-            {/* Recent Activity Card */}
-            <StatsCard
-              title="Recent Activity"
-              description="Latest system activities"
-              stats={
-                dashboardData.recentActivity && dashboardData.recentActivity.length > 0
-                  ? dashboardData.recentActivity.slice(0, 5).map((activity: any) => ({
-                      label: activity.action,
-                      value: formatDate(activity.timestamp),
-                    }))
-                  : [{ label: 'No recent activity', value: '' }]
-              }
-            />
-          </StatsGrid>
-
-          {/* Proposals Table */}
-          <DataTable
-            title="Proposals"
-            description="Recent proposals from all sources"
-            data={dashboardData.proposals || []}
-            columns={columns}
-            keyField="id"
-            pagination={
-              dashboardData.pagination
-                ? {
-                    page: dashboardData.pagination.page,
-                    perPage: dashboardData.pagination.per_page,
-                    totalPages: dashboardData.pagination.total_pages,
-                    totalItems: dashboardData.pagination.total_items,
-                  }
-                : undefined
-            }
-            onPageChange={handlePageChange}
-            emptyMessage={{
-              title: 'No proposals found',
-              description: 'There are currently no proposals in the system.',
-            }}
+  return (
+    <PageLayout 
+      title="Dashboard" 
+      subtitle={lastUpdated ? `Last updated: ${formatDate(lastUpdated)}` : undefined}
+    >
+      <div className="space-y-6">
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <StatsCard
+            title="Total Proposals"
+            value={formatNumber(stats.totalProposals)}
+            description="All proposals in the system"
+            trend={stats.proposalsTrend}
           />
-        </>
-      )}
+          <StatsCard
+            title="Active Sources"
+            value={formatNumber(stats.activeSources)}
+            description="Data sources currently active"
+            trend={stats.sourcesTrend}
+          />
+          <StatsCard
+            title="New This Week"
+            value={formatNumber(stats.newThisWeek)}
+            description="Proposals added in the last 7 days"
+            trend={stats.newTrend}
+          />
+          <StatsCard
+            title="Success Rate"
+            value={`${stats.successRate}%`}
+            description="Successful scrapes"
+            trend={stats.successTrend}
+          />
+        </div>
+
+        {/* Recent Proposals */}
+        <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
+          <h3 className="text-lg font-medium mb-4">Recent Activity</h3>
+          <div className="space-y-2">
+            {stats.recentActivity?.map((activity: any, index: number) => (
+              <div key={index} className="flex justify-between items-center py-2 border-b last:border-0">
+                <span>{activity.description}</span>
+                <span className="text-sm text-muted-foreground">{formatDate(activity.timestamp)}</span>
+              </div>
+            )) || (
+              <p className="text-muted-foreground">No recent activity</p>
+            )}
+          </div>
+        </div>
+
+        {/* System Status */}
+        <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
+          <h3 className="text-lg font-medium mb-4">System Status</h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <p className="text-sm text-gray-500 dark:text-gray-400">Database Size</p>
+              <p className="text-xl font-semibold">{stats.databaseSize}</p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-500 dark:text-gray-400">Last Backup</p>
+              <p className="text-xl font-semibold">{stats.lastBackup ? formatDate(stats.lastBackup) : 'Never'}</p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-500 dark:text-gray-400">System Uptime</p>
+              <p className="text-xl font-semibold">{stats.uptime}</p>
+            </div>
+          </div>
+        </div>
+      </div>
     </PageLayout>
   );
 } 

@@ -5,13 +5,20 @@ import {
   fetchProposals,
   createDataSource,
   updateDataSource,
-  deleteDataSource
+  deleteDataSource,
+  fetchStatistics,
+  rebuildDatabase,
+  initializeDatabase,
+  resetEverything,
+  manageBackups
 } from './api';
 
 interface LoadingState {
   dashboard: boolean;
   dataSources: boolean;
   proposals: boolean;
+  statistics: boolean;
+  databaseOperations: boolean;
 }
 
 interface ErrorType {
@@ -30,6 +37,8 @@ interface AppState {
     totalCount: number;
     totalPages: number;
   } | null;
+  statistics: any | null;
+  backups: any[];
   lastUpdated: Date | null;
   
   // UI state
@@ -40,9 +49,14 @@ interface AppState {
   fetchDashboardData: (params?: { page?: number; perPage?: number }) => Promise<void>;
   fetchDataSources: () => Promise<void>;
   fetchProposals: (params?: { page?: number; perPage?: number; sortBy?: string; sortOrder?: string }) => Promise<void>;
+  fetchStatistics: () => Promise<void>;
   createDataSource: (data: any) => Promise<any>;
   updateDataSource: (id: string, data: any) => Promise<any>;
   deleteDataSource: (id: string) => Promise<any>;
+  rebuildDatabase: () => Promise<any>;
+  initializeDatabase: () => Promise<any>;
+  resetEverything: () => Promise<any>;
+  manageBackups: (action: 'create' | 'restore' | 'list', backupId?: string) => Promise<any>;
 }
 
 export const useStore = create<AppState>((set) => ({
@@ -51,124 +65,232 @@ export const useStore = create<AppState>((set) => ({
   dataSources: [],
   proposals: [],
   proposalsPagination: null,
+  statistics: null,
+  backups: [],
   lastUpdated: null,
   
   loading: {
     dashboard: false,
     dataSources: false,
     proposals: false,
+    statistics: false,
+    databaseOperations: false
   },
   
-  errors: {},
+  errors: {
+    dashboard: null,
+    dataSources: null,
+    proposals: null,
+    statistics: null,
+    databaseOperations: null
+  },
   
   // Async actions
   fetchDashboardData: async (params = {}) => {
-    set(state => ({ loading: { ...state.loading, dashboard: true }, errors: { ...state.errors, dashboard: null } }));
+    set((state) => ({ loading: { ...state.loading, dashboard: true } }));
     try {
       const data = await fetchDashboardData(params);
       set({ 
-        dashboardData: data.data,
-        lastUpdated: new Date()
+        dashboardData: data.data, 
+        lastUpdated: new Date(),
+        loading: { ...useStore.getState().loading, dashboard: false },
+        errors: { ...useStore.getState().errors, dashboard: null }
       });
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
-      set(state => ({ errors: { ...state.errors, dashboard: { message: errorMessage } } }));
-    } finally {
-      set(state => ({ loading: { ...state.loading, dashboard: false } }));
-    }
-  },
-  
-  fetchProposals: async (params = {}) => {
-    set(state => ({ loading: { ...state.loading, proposals: true }, errors: { ...state.errors, proposals: null } }));
-    try {
-      const response = await fetchProposals(params);
-      if (response && response.status === 'success' && Array.isArray(response.data)) {
-        set({ 
-          proposals: response.data,
-          proposalsPagination: {
-            page: response.pagination.page,
-            perPage: response.pagination.per_page,
-            totalCount: response.pagination.total_count,
-            totalPages: response.pagination.total_pages
-          },
-          lastUpdated: new Date()
-        });
-      }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
-      set(state => ({ errors: { ...state.errors, proposals: { message: errorMessage } } }));
-    } finally {
-      set(state => ({ loading: { ...state.loading, proposals: false } }));
+    } catch (error: any) {
+      console.error('Error fetching dashboard data:', error);
+      set({ 
+        loading: { ...useStore.getState().loading, dashboard: false },
+        errors: { ...useStore.getState().errors, dashboard: error }
+      });
     }
   },
   
   fetchDataSources: async () => {
-    set(state => ({ loading: { ...state.loading, dataSources: true }, errors: { ...state.errors, dataSources: null } }));
+    set((state) => ({ loading: { ...state.loading, dataSources: true } }));
     try {
-      const response = await fetchDataSources();
-      if (response && response.status === 'success' && Array.isArray(response.data)) {
-        set({ 
-          dataSources: response.data,
-          lastUpdated: new Date()
-        });
-      }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
-      set(state => ({ errors: { ...state.errors, dataSources: { message: errorMessage } } }));
-    } finally {
-      set(state => ({ loading: { ...state.loading, dataSources: false } }));
+      const data = await fetchDataSources();
+      set({ 
+        dataSources: data.data || [], 
+        lastUpdated: new Date(),
+        loading: { ...useStore.getState().loading, dataSources: false },
+        errors: { ...useStore.getState().errors, dataSources: null }
+      });
+      console.log('Data sources fetched:', data.data);
+    } catch (error: any) {
+      console.error('Error fetching data sources:', error);
+      set({ 
+        loading: { ...useStore.getState().loading, dataSources: false },
+        errors: { ...useStore.getState().errors, dataSources: error }
+      });
+    }
+  },
+  
+  fetchProposals: async (params = {}) => {
+    set((state) => ({ loading: { ...state.loading, proposals: true } }));
+    try {
+      const data = await fetchProposals(params);
+      // Normalize pagination data to ensure consistent property names
+      const normalizedPagination = data.pagination ? {
+        page: data.pagination.page,
+        perPage: data.pagination.per_page,
+        totalPages: data.pagination.total_pages,
+        totalCount: data.pagination.total_count
+      } : null;
+      
+      set({ 
+        proposals: data.data || [], 
+        proposalsPagination: normalizedPagination,
+        lastUpdated: new Date(),
+        loading: { ...useStore.getState().loading, proposals: false },
+        errors: { ...useStore.getState().errors, proposals: null }
+      });
+      console.log('Proposals fetched:', data.data);
+    } catch (error: any) {
+      console.error('Error fetching proposals:', error);
+      set({ 
+        loading: { ...useStore.getState().loading, proposals: false },
+        errors: { ...useStore.getState().errors, proposals: error }
+      });
+    }
+  },
+  
+  fetchStatistics: async () => {
+    set((state) => ({ loading: { ...state.loading, statistics: true } }));
+    try {
+      const data = await fetchStatistics();
+      set({ 
+        statistics: data, 
+        lastUpdated: new Date(),
+        loading: { ...useStore.getState().loading, statistics: false },
+        errors: { ...useStore.getState().errors, statistics: null }
+      });
+    } catch (error: any) {
+      set({ 
+        loading: { ...useStore.getState().loading, statistics: false },
+        errors: { ...useStore.getState().errors, statistics: { message: error.message } }
+      });
     }
   },
   
   createDataSource: async (data) => {
+    set((state) => ({ loading: { ...state.loading, dataSources: true } }));
     try {
       const response = await createDataSource(data);
-      if (response && response.status === 'success') {
-        set(state => ({ 
-          dataSources: [...state.dataSources, response.data],
-          lastUpdated: new Date()
-        }));
-      }
+      // Refresh data sources after creation
+      await useStore.getState().fetchDataSources();
       return response;
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
-      set(state => ({ errors: { ...state.errors, createDataSource: { message: errorMessage } } }));
+    } catch (error: any) {
+      set({ 
+        loading: { ...useStore.getState().loading, dataSources: false },
+        errors: { ...useStore.getState().errors, dataSources: { message: error.message } }
+      });
       throw error;
     }
   },
   
   updateDataSource: async (id, data) => {
+    set((state) => ({ loading: { ...state.loading, dataSources: true } }));
     try {
       const response = await updateDataSource(id, data);
-      if (response && response.status === 'success') {
-        set(state => ({ 
-          dataSources: state.dataSources.map(source => 
-            source.id === id ? response.data : source
-          ),
-          lastUpdated: new Date()
-        }));
-      }
+      // Refresh data sources after update
+      await useStore.getState().fetchDataSources();
       return response;
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
-      set(state => ({ errors: { ...state.errors, updateDataSource: { message: errorMessage } } }));
+    } catch (error: any) {
+      set({ 
+        loading: { ...useStore.getState().loading, dataSources: false },
+        errors: { ...useStore.getState().errors, dataSources: { message: error.message } }
+      });
       throw error;
     }
   },
   
   deleteDataSource: async (id) => {
+    set((state) => ({ loading: { ...state.loading, dataSources: true } }));
     try {
       const response = await deleteDataSource(id);
-      if (response && response.status === 'success') {
-        set(state => ({ 
-          dataSources: state.dataSources.filter(source => source.id !== id),
-          lastUpdated: new Date()
-        }));
-      }
+      // Refresh data sources after deletion
+      await useStore.getState().fetchDataSources();
       return response;
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
-      set(state => ({ errors: { ...state.errors, deleteDataSource: { message: errorMessage } } }));
+    } catch (error: any) {
+      set({ 
+        loading: { ...useStore.getState().loading, dataSources: false },
+        errors: { ...useStore.getState().errors, dataSources: { message: error.message } }
+      });
+      throw error;
+    }
+  },
+  
+  rebuildDatabase: async () => {
+    set((state) => ({ loading: { ...state.loading, databaseOperations: true } }));
+    try {
+      const response = await rebuildDatabase();
+      set({ 
+        loading: { ...useStore.getState().loading, databaseOperations: false },
+        errors: { ...useStore.getState().errors, databaseOperations: null }
+      });
+      return response;
+    } catch (error: any) {
+      set({ 
+        loading: { ...useStore.getState().loading, databaseOperations: false },
+        errors: { ...useStore.getState().errors, databaseOperations: { message: error.message } }
+      });
+      throw error;
+    }
+  },
+  
+  initializeDatabase: async () => {
+    set((state) => ({ loading: { ...state.loading, databaseOperations: true } }));
+    try {
+      const response = await initializeDatabase();
+      set({ 
+        loading: { ...useStore.getState().loading, databaseOperations: false },
+        errors: { ...useStore.getState().errors, databaseOperations: null }
+      });
+      return response;
+    } catch (error: any) {
+      set({ 
+        loading: { ...useStore.getState().loading, databaseOperations: false },
+        errors: { ...useStore.getState().errors, databaseOperations: { message: error.message } }
+      });
+      throw error;
+    }
+  },
+  
+  resetEverything: async () => {
+    set((state) => ({ loading: { ...state.loading, databaseOperations: true } }));
+    try {
+      const response = await resetEverything();
+      set({ 
+        loading: { ...useStore.getState().loading, databaseOperations: false },
+        errors: { ...useStore.getState().errors, databaseOperations: null }
+      });
+      return response;
+    } catch (error: any) {
+      set({ 
+        loading: { ...useStore.getState().loading, databaseOperations: false },
+        errors: { ...useStore.getState().errors, databaseOperations: { message: error.message } }
+      });
+      throw error;
+    }
+  },
+  
+  manageBackups: async (action, backupId) => {
+    set((state) => ({ loading: { ...state.loading, databaseOperations: true } }));
+    try {
+      const response = await manageBackups(action, backupId);
+      if (action === 'list') {
+        set({ backups: response.data || [] });
+      }
+      set({ 
+        loading: { ...useStore.getState().loading, databaseOperations: false },
+        errors: { ...useStore.getState().errors, databaseOperations: null }
+      });
+      return response;
+    } catch (error: any) {
+      set({ 
+        loading: { ...useStore.getState().loading, databaseOperations: false },
+        errors: { ...useStore.getState().errors, databaseOperations: { message: error.message } }
+      });
       throw error;
     }
   }

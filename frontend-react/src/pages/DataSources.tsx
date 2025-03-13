@@ -3,8 +3,6 @@ import { useStore } from '@/store/useStore';
 import { formatDate } from '@/lib/utils';
 import {
   PageLayout,
-  PageSkeleton,
-  DataTable,
   Alert,
   AlertTitle,
   AlertDescription,
@@ -16,6 +14,8 @@ import {
   DialogTrigger,
 } from '@/components';
 import { DataSourceForm } from '@/components/DataSourceForm';
+import { DataTable as DataTableComponent } from '@/components/data-display/DataTable';
+import type { Column } from '@/components/data-display/DataTable';
 
 // Define the data source type
 interface DataSource {
@@ -50,134 +50,170 @@ export default function DataSources() {
   const [editingDataSource, setEditingDataSource] = useState<DataSource | null>(null);
   const isMounted = useRef(false);
 
+  // Fetch data sources on component mount
   useEffect(() => {
-    // Only fetch data if this is the first time the component is mounted
     if (!isMounted.current) {
-      fetchDataSources();
+      console.log('DataSources component mounted, fetching data sources...');
+      fetchDataSources().then(() => {
+        console.log('Data sources fetched successfully in component');
+      }).catch((error: Error) => {
+        console.error('Error fetching data sources in component:', error);
+      });
       isMounted.current = true;
     }
-  }, []); // Empty dependency array to run only once on mount
+  }, [fetchDataSources]);
 
-  // Memoize event handlers
-  const handleFormSubmit = useCallback((data: any) => {
-    if (editingDataSource) {
-      updateDataSource(editingDataSource.id.toString(), data).then(() => {
-        setIsDialogOpen(false);
-        setEditingDataSource(null);
-        fetchDataSources();
-      });
-    } else {
-      createDataSource(data).then(() => {
-        setIsDialogOpen(false);
-        fetchDataSources();
-      });
+  // Log state changes for debugging
+  useEffect(() => {
+    console.log('DataSources component state:', { 
+      dataSources, 
+      loading, 
+      errors 
+    });
+  }, [dataSources, loading, errors]);
+
+  const handleRefresh = useCallback(() => {
+    fetchDataSources();
+  }, [fetchDataSources]);
+
+  const handleCreateDataSource = useCallback(async (data: Omit<DataSource, 'id'>) => {
+    try {
+      await createDataSource(data);
+      setIsDialogOpen(false);
+    } catch (error) {
+      console.error('Failed to create data source:', error);
     }
-  }, [createDataSource, updateDataSource, fetchDataSources, editingDataSource]);
+  }, [createDataSource]);
 
-  const handleDialogClose = useCallback(() => {
+  const handleUpdateDataSource = useCallback(async (data: DataSource) => {
+    try {
+      await updateDataSource(String(data.id), data);
+      setIsDialogOpen(false);
+      setEditingDataSource(null);
+    } catch (error) {
+      console.error('Failed to update data source:', error);
+    }
+  }, [updateDataSource]);
+
+  const handleEditDataSource = useCallback((dataSource: DataSource) => {
+    setEditingDataSource(dataSource);
+    setIsDialogOpen(true);
+  }, []);
+
+  const handleCloseDialog = useCallback(() => {
     setIsDialogOpen(false);
     setEditingDataSource(null);
   }, []);
 
-  const handleRefresh = () => {
-    fetchDataSources();
-  };
-
-  // If loading and no data, show skeleton
-  if (loading && dataSources.length === 0) {
-    return <PageSkeleton cardCount={1} />;
+  if (loading && !dataSources.length) {
+    return (
+      <PageLayout title="Data Sources" isLoading={true}>
+        <div>Loading data sources...</div>
+      </PageLayout>
+    );
   }
 
-  // Define table columns with proper typing
-  const columns = [
-    { header: 'Name', accessor: 'name' as keyof DataSource },
-    { 
-      header: 'URL', 
-      accessor: (dataSource: DataSource) => (
-        <div className="max-w-[300px] truncate">
-          <a 
-            href={dataSource.url} 
-            target="_blank" 
-            rel="noopener noreferrer"
-            className="text-blue-500 hover:underline"
+  // Error state
+  if (errors && !dataSources.length) {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-3xl font-bold tracking-tight">Data Sources</h1>
+        <Alert variant="destructive">
+          <AlertTitle>Error loading data sources</AlertTitle>
+          <AlertDescription>{errors.message}</AlertDescription>
+        </Alert>
+        <Button onClick={handleRefresh}>Retry</Button>
+      </div>
+    );
+  }
+
+  const columns: Column<DataSource>[] = [
+    {
+      header: 'Name',
+      accessorKey: 'name',
+    },
+    {
+      header: 'URL',
+      accessorKey: 'url',
+    },
+    {
+      header: 'Status',
+      accessorKey: 'status',
+    },
+    {
+      header: 'Last Checked',
+      accessorKey: (row: DataSource) => row.lastChecked ? formatDate(row.lastChecked) : 'Never',
+    },
+    {
+      header: 'Proposals',
+      accessorKey: (row: DataSource) => row.proposalCount?.toString() || '0',
+    },
+    {
+      header: 'Actions',
+      accessorKey: 'id',
+      cell: (row: DataSource) => (
+        <div className="flex space-x-2">
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={() => handleEditDataSource(row)}
           >
-            {dataSource.url}
-          </a>
+            Edit
+          </Button>
         </div>
-      )
-    },
-    { 
-      header: 'Status', 
-      accessor: (dataSource: DataSource) => (
-        <div className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
-          ${dataSource.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}
-        >
-          {dataSource.status || 'Unknown'}
-        </div>
-      )
-    },
-    { header: 'Proposals', accessor: 'proposalCount' as keyof DataSource },
-    { 
-      header: 'Last Scraped', 
-      accessor: (dataSource: DataSource) => dataSource.lastScraped ? formatDate(dataSource.lastScraped) : 'Never'
+      ),
     },
   ];
 
-  // Create the add data source button
-  const addDataSourceButton = (
-    <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-      <DialogTrigger asChild>
-        <Button onClick={() => setEditingDataSource(null)}>
-          Add Data Source
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-[600px]">
-        <DialogHeader>
-          <DialogTitle>
-            {editingDataSource ? 'Edit Data Source' : 'Add Data Source'}
-          </DialogTitle>
-        </DialogHeader>
-        <DataSourceForm
-          initialData={editingDataSource || undefined}
-          onSubmit={handleFormSubmit}
-          onCancel={handleDialogClose}
-        />
-      </DialogContent>
-    </Dialog>
-  );
-
   return (
-    <PageLayout
-      title="Data Sources"
-      onRefresh={handleRefresh}
-      isLoading={loading}
-      error={errors}
-      actions={addDataSourceButton}
-    >
-      {/* No data state */}
-      {!loading && dataSources.length === 0 && (
-        <Alert className="mb-6">
-          <AlertTitle>No data sources available</AlertTitle>
-          <AlertDescription>
-            Click the "Add Data Source" button to create your first data source.
-          </AlertDescription>
-        </Alert>
-      )}
+    <PageLayout title="Data Sources">
+      <div className="space-y-4">
+        <div className="flex justify-between items-center">
+          <p className="text-muted-foreground">
+            {dataSources.length} data sources configured
+          </p>
+          <div className="flex gap-2">
+            <Button onClick={handleRefresh}>Refresh</Button>
+            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+              <DialogTrigger asChild>
+                <Button>Add Data Source</Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>
+                    {editingDataSource ? 'Edit Data Source' : 'Add Data Source'}
+                  </DialogTitle>
+                </DialogHeader>
+                <DataSourceForm
+                  initialData={editingDataSource ? {
+                    id: editingDataSource.id,
+                    name: editingDataSource.name,
+                    url: editingDataSource.url,
+                    description: editingDataSource.description
+                  } : undefined}
+                  onSubmit={(data) => {
+                    if (editingDataSource) {
+                      handleUpdateDataSource({
+                        ...data,
+                        id: editingDataSource.id
+                      });
+                    } else {
+                      handleCreateDataSource(data);
+                    }
+                  }}
+                  onCancel={handleCloseDialog}
+                />
+              </DialogContent>
+            </Dialog>
+          </div>
+        </div>
 
-      {/* Data table */}
-      {dataSources.length > 0 && (
-        <DataTable
-          title="Data Sources"
-          description="Manage your data sources for proposal aggregation"
+        <DataTableComponent
           data={dataSources}
           columns={columns}
-          keyField="id"
-          emptyMessage={{
-            title: 'No data sources found',
-            description: 'There are currently no data sources in the system.',
-          }}
+          emptyMessage="No data sources configured"
         />
-      )}
+      </div>
     </PageLayout>
   );
 } 

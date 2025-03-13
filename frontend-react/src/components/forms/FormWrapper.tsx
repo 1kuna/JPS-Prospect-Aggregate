@@ -3,7 +3,7 @@ import { useForm, FormProvider, FieldValues, DefaultValues, SubmitHandler, UseFo
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 
 interface FormWrapperProps<T extends FieldValues> {
@@ -19,6 +19,7 @@ interface FormWrapperProps<T extends FieldValues> {
   error?: string | null;
   successMessage?: string | null;
   children: React.ReactNode;
+  footer?: React.ReactNode;
   className?: string;
   formOptions?: Omit<UseFormProps<T>, 'defaultValues' | 'resolver'>;
   cardless?: boolean;
@@ -37,6 +38,7 @@ export function FormWrapper<T extends FieldValues>({
   error = null,
   successMessage = null,
   children,
+  footer,
   className,
   formOptions,
   cardless = false,
@@ -90,13 +92,14 @@ export function FormWrapper<T extends FieldValues>({
 
   return (
     <Card className={className}>
-      {title && (
+      {(title || description) && (
         <CardHeader>
-          <CardTitle>{title}</CardTitle>
+          {title && <CardTitle>{title}</CardTitle>}
           {description && <CardDescription>{description}</CardDescription>}
         </CardHeader>
       )}
       <CardContent>{formContent}</CardContent>
+      {footer && <CardFooter>{footer}</CardFooter>}
     </Card>
   );
 } 
