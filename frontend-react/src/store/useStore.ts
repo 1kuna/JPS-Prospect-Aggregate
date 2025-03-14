@@ -169,7 +169,7 @@ export const useStore = create<AppState>((set) => ({
         page: data.pagination.page,
         perPage: data.pagination.per_page,
         totalPages: data.pagination.total_pages,
-        totalCount: data.pagination.total_count
+        totalCount: data.pagination.total_items
       } : null;
       
       set({ 

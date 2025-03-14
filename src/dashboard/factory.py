@@ -74,21 +74,24 @@ def register_blueprints(app):
     """Register Flask blueprints."""
     # Import blueprints
     from src.dashboard.blueprints.main import main
-    from src.dashboard.blueprints.api import api
+    from src.api import api  # This is the main API blueprint we're using
     from src.dashboard.blueprints.data_sources import data_sources
+    
+    # We've disabled the dashboard API blueprint (src/dashboard/blueprints/api)
+    # and are only using the main API blueprint (src/api) to avoid conflicts
+    
+    # Initialize API error handlers before registering the blueprint
+    from src.api.errors import init_error_handlers
+    init_error_handlers(api)
     
     # Register blueprints
     app.register_blueprint(main)
-    app.register_blueprint(api)
+    app.register_blueprint(api)  # Register the main API blueprint
     app.register_blueprint(data_sources)
     
     app.logger.info('Blueprints registered')
 
 def register_error_handlers(app):
     """Register error handlers for the application."""
-    from src.dashboard.blueprints.api.errors import init_error_handlers
-    
-    # Initialize API error handlers
-    init_error_handlers(app)
-    
+    # This function is now only for app-level error handlers, not blueprint-specific ones
     app.logger.info('Error handlers registered') 

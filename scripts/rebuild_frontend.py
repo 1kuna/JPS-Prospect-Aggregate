@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 # Get the absolute path of the project root directory
-PROJECT_ROOT = Path(__file__).resolve().parent
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 # Path to the React frontend directory
 FRONTEND_DIR = PROJECT_ROOT / "frontend-react"

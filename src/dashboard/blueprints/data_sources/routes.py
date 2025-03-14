@@ -5,8 +5,8 @@ import threading
 from . import data_sources
 from src.database.db_session_manager import get_session, close_session, Session, dispose_engine, session_scope
 from src.database.models import DataSource, ScraperStatus
-from src.scrapers.acquisition_gateway import run_scraper as run_acquisition_gateway_scraper
-from src.scrapers.ssa_contract_forecast import run_scraper as run_ssa_contract_forecast_scraper
+from src.data_collectors.acquisition_gateway import run_scraper as run_acquisition_gateway_scraper
+from src.data_collectors.ssa_contract_forecast import run_scraper as run_ssa_contract_forecast_scraper
 from src.utils.db_utils import rebuild_database, cleanup_old_backups
 from src.exceptions import ScraperError
 import traceback
@@ -66,7 +66,7 @@ def run_scraper(source_id):
         if data_source.name == "Acquisition Gateway Forecast":
             try:
                 # Import the check_url_accessibility function
-                from src.scrapers.acquisition_gateway import check_url_accessibility, ACQUISITION_GATEWAY_URL
+                from src.data_collectors.acquisition_gateway import check_url_accessibility, ACQUISITION_GATEWAY_URL
                 
                 # Check if the URL is accessible
                 if not check_url_accessibility(ACQUISITION_GATEWAY_URL):
@@ -167,7 +167,7 @@ def run_scraper(source_id):
         elif data_source.name == "SSA Contract Forecast":
             try:
                 # Import the check_url_accessibility function
-                from src.scrapers.ssa_contract_forecast import check_url_accessibility, SSA_CONTRACT_FORECAST_URL
+                from src.data_collectors.ssa_contract_forecast import check_url_accessibility, SSA_CONTRACT_FORECAST_URL
                 
                 # Check if the URL is accessible
                 if not check_url_accessibility(SSA_CONTRACT_FORECAST_URL):

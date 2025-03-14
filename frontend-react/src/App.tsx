@@ -2,7 +2,6 @@ import { Suspense, lazy, memo, useState, useEffect } from 'react';
 import { BrowserRouter as Router, Link, useLocation } from 'react-router-dom';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { LoadingProvider } from './context/LoadingContext';
-import { ToastProvider as OldToastProvider } from './context/ToastContext';
 import { ToastProvider } from './components/ui/ToastContainer';
 import { 
   Skeleton, 
@@ -160,11 +159,20 @@ const RouteContainer = () => {
       {/* Main content */}
       <main className="flex-1 py-6">
         <div className="container mx-auto px-4">
-          <ErrorBoundary>
-            <Suspense fallback={<PageSkeleton />}>
-              {renderRouteContent()}
-            </Suspense>
-          </ErrorBoundary>
+          {/* Stable container to prevent flickering */}
+          <div className="min-h-[600px] bg-background transition-all duration-300 ease-in-out">
+            <ErrorBoundary 
+              resetOnPropsChange={true}
+              onError={(error, errorInfo) => {
+                console.error('App error caught:', error);
+                console.error('Component stack:', errorInfo.componentStack);
+              }}
+            >
+              <Suspense fallback={<PageSkeleton />}>
+                {renderRouteContent()}
+              </Suspense>
+            </ErrorBoundary>
+          </div>
         </div>
       </main>
 
@@ -177,14 +185,12 @@ const RouteContainer = () => {
 function App() {
   return (
     <LoadingProvider>
-      <OldToastProvider>
-        <ToastProvider>
-          <Router>
-            <RouteContainer />
-            <Toaster />
-          </Router>
-        </ToastProvider>
-      </OldToastProvider>
+      <ToastProvider>
+        <Router>
+          <RouteContainer />
+          <Toaster />
+        </Router>
+      </ToastProvider>
     </LoadingProvider>
   );
 }

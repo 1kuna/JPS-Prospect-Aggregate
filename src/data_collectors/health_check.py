@@ -125,14 +125,14 @@ def check_scraper_health(scraper_instance, source_name):
 
 def check_acquisition_gateway():
     """Check the health of the Acquisition Gateway scraper"""
-    from src.scrapers.acquisition_gateway import AcquisitionGatewayScraper
+    from src.data_collectors.acquisition_gateway import AcquisitionGatewayScraper
     logger.info("Starting health check for Acquisition Gateway Forecast")
     scraper = AcquisitionGatewayScraper()
     return check_scraper_health(scraper, "Acquisition Gateway Forecast")
 
 def check_ssa_contract_forecast():
     """Check the health of the SSA Contract Forecast scraper"""
-    from src.scrapers.ssa_contract_forecast import SSAContractForecastScraper
+    from src.data_collectors.ssa_contract_forecast import SSAContractForecastScraper
     logger.info("Starting health check for SSA Contract Forecast")
     scraper = SSAContractForecastScraper()
     return check_scraper_health(scraper, "SSA Contract Forecast")

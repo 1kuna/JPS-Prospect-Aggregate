@@ -2,8 +2,6 @@ import { useEffect, useState, useCallback } from 'react';
 import { useStore } from '@/store/useStore';
 import { formatDate } from '@/lib/utils';
 import { useToast } from '@/hooks';
-import { useGlobalToast } from '@/context/ToastContext';
-import { useToastContainer } from '@/components/ui/ToastContainer';
 import {
   PageLayout,
   Alert,
@@ -58,8 +56,6 @@ export default function DataSources() {
   const pullingProgress = useStore(selectPullingProgress);
   const setPullingProgress = useStore(selectSetPullingProgress);
   const { toast } = useToast();
-  const { addToast } = useGlobalToast();
-  const { addToast: addSimpleToast } = useToastContainer();
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingDataSource, setEditingDataSource] = useState<DataSource | null>(null);
@@ -252,6 +248,8 @@ export default function DataSources() {
   
   // Function to start polling for a specific data source
   const startStatusPolling = useCallback((dataSource: DataSource) => {
+    console.log(`Starting status polling for source ID ${dataSource.id}`);
+    
     let statusCheckInterval = setInterval(async () => {
       try {
         const statusResult = await getScraperStatus(String(dataSource.id));
@@ -259,11 +257,13 @@ export default function DataSources() {
         
         // If the scraper is no longer running or has timed out, clear the interval and update UI
         if (statusResult.status !== "running") {
+          console.log(`Scraper for source ID ${dataSource.id} is no longer running. Status: ${statusResult.status}`);
           clearInterval(statusCheckInterval);
           
           // Update UI based on final status
-          if (statusResult.status === "completed") {
+          if (statusResult.status === "completed" || statusResult.status === "success") {
             const successMessage = `Successfully pulled data from ${dataSource.name}`;
+            console.log(`Success for source ID ${dataSource.id}: ${successMessage}`);
             
             // Show success toast
             toast({
@@ -273,6 +273,8 @@ export default function DataSources() {
               duration: 10000
             });
           } else if (statusResult.status === "timeout" || statusResult.status === "failed") {
+            console.log(`Error for source ID ${dataSource.id}: ${statusResult.message}`);
+            
             // Show error toast
             toast({
               title: "Error pulling data",
@@ -282,11 +284,11 @@ export default function DataSources() {
             });
           }
           
-          // Clear loading state
-          setPullingProgress(dataSource.id, false);
-          
           // Refresh the data sources to show updated information
           fetchDataSources();
+          
+          // Clear loading state
+          setPullingProgress(dataSource.id, false);
         }
       } catch (error) {
         console.error('Error checking scraper status:', error);
@@ -303,63 +305,75 @@ export default function DataSources() {
     checkAllScraperStatuses();
   }, [checkAllScraperStatuses]);
 
+  // Function to start pulling data from a data source
   const handlePullDataSource = useCallback(async (dataSource: DataSource) => {
     try {
-      // Set loading state for this specific data source in the global store
+      // Set loading state in the global store
       setPullingProgress(dataSource.id, true);
       
       // Show toast notifications that we're starting to pull
       const startMessage = `Starting to pull data from ${dataSource.name}. This may take a while...`;
       
-      // Global toast for persistent status
-      addToast({
+      // Show toast notification
+      toast({
         title: "Pulling data",
         description: startMessage,
         variant: "default",
         duration: 0 // 0 means it won't auto-dismiss
       });
       
-      // Simple toast for additional visibility
-      addSimpleToast({
-        title: "Pulling data",
-        message: startMessage,
-        type: 'info'
-      });
-      
       console.log(`Starting to pull data from source ID ${dataSource.id}: ${dataSource.name}`);
       
-      // Call the API to pull the data source
+      // Start the pull operation
       const result = await pullDataSource(String(dataSource.id));
+      console.log('Pull result:', result);
       
-      console.log(`Pull initiated for source ID ${dataSource.id}:`, result);
+      // If the pull operation returns immediately (which it shouldn't normally do)
+      if (result && result.status === "success") {
+        const successMessage = `Successfully pulled data from ${dataSource.name}`;
+        
+        toast({
+          title: "Success!",
+          description: successMessage,
+          variant: "success",
+          duration: 10000
+        });
+        
+        // Refresh the data sources to show updated information
+        await fetchDataSources();
+        
+        // Clear loading state in the global store
+        setPullingProgress(dataSource.id, false);
+      } else if (result && result.status === "error") {
+        const errorMessage = result.message || `Failed to pull data from ${dataSource.name}`;
+        
+        toast({
+          title: "Error pulling data",
+          description: errorMessage,
+          variant: "destructive",
+          duration: 15000
+        });
+        
+        // Clear loading state in the global store
+        setPullingProgress(dataSource.id, false);
+      }
+      // If no immediate result, the status polling will handle updates
       
-      // Start polling for status updates
-      startStatusPolling(dataSource);
-    } catch (error: any) {
-      console.error('Failed to pull data source:', error);
+    } catch (error) {
+      console.error('Error pulling data:', error);
       
-      // Get a more detailed error message
-      const errorMessage = error.response?.data?.message || error.message || "An unknown error occurred";
-      
-      // Show error in toasts
+      // Show error toast
       toast({
         title: "Error pulling data",
-        description: errorMessage,
+        description: `An unexpected error occurred: ${(error as Error).message}`,
         variant: "destructive",
-        duration: 15000
-      });
-      
-      addSimpleToast({
-        title: "Error pulling data",
-        message: errorMessage,
-        type: 'error',
         duration: 15000
       });
       
       // Clear loading state in the global store
       setPullingProgress(dataSource.id, false);
     }
-  }, [pullDataSource, startStatusPolling, toast, addToast, addSimpleToast, setPullingProgress]);
+  }, [pullDataSource, fetchDataSources, setPullingProgress, toast]);
 
   const handleCloseDialog = useCallback(() => {
     setIsDialogOpen(false);
@@ -420,9 +434,10 @@ export default function DataSources() {
             size="sm"
             onClick={() => handlePullDataSource(row)}
             disabled={pullingProgress[row.id]}
+            className="min-w-[100px] transition-all duration-300 ease-in-out"
           >
             {pullingProgress[row.id] ? (
-              <span className="flex items-center">
+              <span className="flex items-center justify-center w-full">
                 <Spinner className="mr-2 h-4 w-4" />
                 Pulling...
               </span>
@@ -444,7 +459,7 @@ export default function DataSources() {
 
   return (
     <PageLayout title="Data Sources">
-      <div className="space-y-4">
+      <div className="space-y-4 min-h-[500px] bg-background transition-all duration-300">
         <div className="flex justify-between items-center">
           <p className="text-muted-foreground">
             {dataSources.length} data sources configured

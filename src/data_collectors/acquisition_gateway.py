@@ -8,7 +8,7 @@ from src.utils.imports import (
 )
 
 # Import from base scraper
-from src.scrapers.base_scraper import BaseScraper
+from src.data_collectors.base_scraper import BaseScraper
 
 # Import from database
 from src.database.db_session_manager import session_scope

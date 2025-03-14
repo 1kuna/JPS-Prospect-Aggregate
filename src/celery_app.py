@@ -24,33 +24,19 @@ redis_url = active_config.REDIS_URL
 
 # Define task modules
 TASK_MODULES = [
-    'src.tasks.scraper_tasks',
-    'src.tasks.health_check_tasks'
+    'src.background_tasks.scraper_tasks',
+    'src.background_tasks.health_check_tasks'
 ]
 
-# Define beat schedule
-BEAT_SCHEDULE = {
-    'run-acquisition-gateway-scraper': {
-        'task': 'src.tasks.scraper_tasks.run_acquisition_gateway_scraper_task',
-        'schedule': active_config.SCRAPE_INTERVAL_HOURS * 3600,  # Convert hours to seconds
-        'args': (),
-        'options': {'expires': 3600}  # Task expires if not executed within 1 hour
-    },
-    'run-ssa-contract-forecast-scraper': {
-        'task': 'src.tasks.scraper_tasks.run_ssa_contract_forecast_scraper_task',
-        'schedule': active_config.SCRAPE_INTERVAL_HOURS * 3600,  # Convert hours to seconds
-        'args': (),
-        'options': {'expires': 3600}  # Task expires if not executed within 1 hour
-    },
-    'check-all-scrapers': {
-        'task': 'src.tasks.health_check_tasks.check_all_scrapers_task',
-        'schedule': active_config.HEALTH_CHECK_INTERVAL_MINUTES * 60,  # Convert minutes to seconds
-        'args': (),
-        'options': {'expires': 600}  # Task expires if not executed within 10 minutes
-    }
-}
+# Create Celery app
+celery_app = Celery(
+    'jps_prospect_aggregate',
+    broker=redis_url,
+    backend=redis_url,
+    include=TASK_MODULES
+)
 
-# Celery configuration
+# Celery configuration (without beat schedule for now)
 CELERY_CONFIG = {
     # Task settings
     'task_serializer': 'json',
@@ -69,9 +55,6 @@ CELERY_CONFIG = {
     # Beat settings (for scheduled tasks)
     'beat_schedule_filename': os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'temp', 'celerybeat-schedule'),
     
-    # Beat schedule
-    'beat_schedule': BEAT_SCHEDULE,
-    
     # Task retry settings
     'task_acks_late': True,  # Tasks are acknowledged after the task is executed
     'task_reject_on_worker_lost': True,  # Reject tasks when worker connection is lost
@@ -82,14 +65,6 @@ CELERY_CONFIG = {
     'task_time_limit': 3600,  # Hard time limit in seconds (1 hour)
     'task_soft_time_limit': 3000,  # Soft time limit in seconds (50 minutes)
 }
-
-# Create Celery app
-celery_app = Celery(
-    'jps_prospect_aggregate',
-    broker=redis_url,
-    backend=redis_url,
-    include=TASK_MODULES
-)
 
 # Apply configuration
 celery_app.conf.update(CELERY_CONFIG)
@@ -134,8 +109,20 @@ def setup_error_handlers(sender, **kwargs):
 
 @celery_app.on_after_finalize.connect
 def setup_periodic_tasks(sender, **kwargs):
-    """Log that periodic tasks have been set up."""
-    logger.info("Periodic tasks have been set up")
+    """Set up periodic tasks using the task registry and dynamic beat schedule."""
+    logger.info("Setting up periodic tasks")
+    
+    # Import the task registry and schedule generator
+    from src.background_tasks.registry import task_registry
+    from src.background_tasks.schedule import generate_beat_schedule
+    
+    # Generate the beat schedule
+    beat_schedule = generate_beat_schedule(task_registry)
+    
+    # Update the Celery configuration with the beat schedule
+    sender.conf.beat_schedule = beat_schedule
+    
+    # Log the registered periodic tasks
     for task_name in sender.conf.beat_schedule.keys():
         logger.info(f"Registered periodic task: {task_name}")
 

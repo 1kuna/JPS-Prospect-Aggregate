@@ -1,4 +1,15 @@
-"""Routes for the API blueprint."""
+"""
+API routes for the dashboard blueprint.
+
+NOTE: THIS FILE IS CURRENTLY DISABLED DUE TO CONFLICTS WITH src/api
+The main API routes in src/api/routes.py are being used instead.
+None of these routes will be registered because we've disabled the imports in __init__.py.
+"""
+
+# This file is intentionally kept for reference
+
+'''
+# Original code preserved for reference:
 
 from flask import jsonify, request, current_app
 from sqlalchemy import func, desc, asc
@@ -16,6 +27,7 @@ import platform
 import psutil
 import time
 import traceback
+from celery.result import AsyncResult
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -327,7 +339,7 @@ def delete_data_source(source_id):
 
 @api.route('/data-sources/<int:source_id>/pull', methods=['POST'])
 def pull_data_source(source_id):
-    """API endpoint to pull/scrape a data source."""
+    """API endpoint to pull/scrape a data source using Celery tasks."""
     with session_scope() as session:
         source = session.query(DataSource).filter(DataSource.id == source_id).first()
         if not source:
@@ -365,132 +377,37 @@ def pull_data_source(source_id):
                 "message": f"Error initializing Playwright: {str(e)}. Make sure browsers are installed with 'playwright install'"
             }), 500
         
-        # Run the appropriate scraper based on the data source name
-        if source.name == "Acquisition Gateway Forecast":
-            try:
-                # Import the check_url_accessibility function
-                from src.scrapers.acquisition_gateway import check_url_accessibility, ACQUISITION_GATEWAY_URL, run_scraper
-                import threading
-                import queue
-                import time
-                
-                # Check if the URL is accessible
-                if not check_url_accessibility(ACQUISITION_GATEWAY_URL):
-                    return jsonify({
-                        "status": "error",
-                        "message": f"The URL {ACQUISITION_GATEWAY_URL} is not accessible. Please check your internet connection or if the website is down."
-                    }), 500
-                
-                # Create a queue to get the result from the thread
-                result_queue = queue.Queue()
-                
-                # Run the scraper in a separate thread to avoid blocking the response
-                def run_scraper_thread():
-                    try:
-                        success = run_scraper(force=True)
-                        current_app.logger.info(f"Scraper completed with success={success}")
-                        # Put the result in the queue
-                        result_queue.put(("success", success))
-                    except Exception as e:
-                        current_app.logger.error(f"Error in scraper thread: {str(e)}")
-                        current_app.logger.error(traceback.format_exc())
-                        # Put the error in the queue
-                        result_queue.put(("error", str(e)))
-                
-                # Create and start the thread
-                thread = threading.Thread(target=run_scraper_thread)
-                thread.daemon = True
-                thread.start()
-                
-                # Store the thread and start time in the application context for status checking
-                if not hasattr(current_app, 'scraper_threads'):
-                    current_app.scraper_threads = {}
-                
-                current_app.scraper_threads[source_id] = {
-                    'thread': thread,
-                    'start_time': time.time(),
-                    'source_name': source.name,
-                    'status': 'running',
-                    'result_queue': result_queue
-                }
-                
-                return jsonify({
-                    "status": "success",
-                    "message": f"Started pulling data from {source.name}. This may take a while...",
-                    "job_id": source_id
-                })
-            except Exception as e:
-                current_app.logger.error(f"Error running Acquisition Gateway scraper: {str(e)}")
-                current_app.logger.error(traceback.format_exc())
-                return jsonify({
-                    "status": "error",
-                    "message": f"Error running scraper: {str(e)}"
-                }), 500
-        elif source.name == "SSA Contract Forecast":
-            try:
-                # Import the check_url_accessibility function
-                from src.scrapers.ssa_contract_forecast import check_url_accessibility, SSA_CONTRACT_FORECAST_URL, run_scraper
-                import threading
-                import queue
-                import time
-                
-                # Check if the URL is accessible
-                if not check_url_accessibility(SSA_CONTRACT_FORECAST_URL):
-                    return jsonify({
-                        "status": "error",
-                        "message": f"The URL {SSA_CONTRACT_FORECAST_URL} is not accessible. Please check your internet connection or if the website is down."
-                    }), 500
-                
-                # Create a queue to get the result from the thread
-                result_queue = queue.Queue()
-                
-                # Run the scraper in a separate thread to avoid blocking the response
-                def run_scraper_thread():
-                    try:
-                        success = run_scraper(force=True)
-                        current_app.logger.info(f"Scraper completed with success={success}")
-                        # Put the result in the queue
-                        result_queue.put(("success", success))
-                    except Exception as e:
-                        current_app.logger.error(f"Error in scraper thread: {str(e)}")
-                        current_app.logger.error(traceback.format_exc())
-                        # Put the error in the queue
-                        result_queue.put(("error", str(e)))
-                
-                # Create and start the thread
-                thread = threading.Thread(target=run_scraper_thread)
-                thread.daemon = True
-                thread.start()
-                
-                # Store the thread and start time in the application context for status checking
-                if not hasattr(current_app, 'scraper_threads'):
-                    current_app.scraper_threads = {}
-                
-                current_app.scraper_threads[source_id] = {
-                    'thread': thread,
-                    'start_time': time.time(),
-                    'source_name': source.name,
-                    'status': 'running',
-                    'result_queue': result_queue
-                }
-                
-                return jsonify({
-                    "status": "success",
-                    "message": f"Started pulling data from {source.name}. This may take a while...",
-                    "job_id": source_id
-                })
-            except Exception as e:
-                current_app.logger.error(f"Error running SSA Contract Forecast scraper: {str(e)}")
-                current_app.logger.error(traceback.format_exc())
-                return jsonify({
-                    "status": "error",
-                    "message": f"Error running scraper: {str(e)}"
-                }), 500
-        else:
+        # Import the force_collect_task from the task registry
+        from src.background_tasks.scraper_tasks import force_collect_task
+        
+        try:
+            # Run the task asynchronously
+            task_result = force_collect_task.delay(source_id)
+            
+            # Store the task ID for status checking
+            if not hasattr(current_app, 'celery_tasks'):
+                current_app.celery_tasks = {}
+            
+            current_app.celery_tasks[source_id] = {
+                'task_id': task_result.id,
+                'start_time': datetime.datetime.utcnow(),
+                'source_name': source.name,
+                'status': 'running'
+            }
+            
+            return jsonify({
+                "status": "success",
+                "message": f"Started pulling data from {source.name}. This may take a while...",
+                "job_id": source_id,
+                "task_id": task_result.id
+            })
+        except Exception as e:
+            current_app.logger.error(f"Error running scraper task: {str(e)}")
+            current_app.logger.error(traceback.format_exc())
             return jsonify({
                 "status": "error",
-                "message": f"Unknown data source: {source.name}"
-            }), 400
+                "message": f"Error running scraper task: {str(e)}"
+            }), 500
 
 @api.route('/statistics', methods=['GET'])
 def get_statistics():
@@ -579,99 +496,94 @@ def get_statistics():
 
 @api.route('/data-sources/<int:source_id>/status', methods=['GET'])
 def check_scraper_status(source_id):
-    """API endpoint to check the status of a scraper job."""
-    import time
+    """API endpoint to check the status of a Celery scraper task."""
     
-    # Check if the scraper thread exists
-    if not hasattr(current_app, 'scraper_threads') or source_id not in current_app.scraper_threads:
-        return jsonify({
-            "status": "unknown",
-            "message": "No scraper job found for this data source"
-        })
-    
-    # Get the scraper thread info
-    scraper_info = current_app.scraper_threads[source_id]
-    thread = scraper_info['thread']
-    start_time = scraper_info['start_time']
-    source_name = scraper_info['source_name']
-    result_queue = scraper_info['result_queue']
-    
-    # Calculate elapsed time
-    elapsed_time = time.time() - start_time
-    
-    # Check if the thread is still alive
-    if not thread.is_alive():
-        # Thread has completed, check the result
-        try:
-            # Get the result from the queue if available
-            if not result_queue.empty():
-                result_type, result_value = result_queue.get(block=False)
-                if result_type == "success":
-                    # Update the status
-                    scraper_info['status'] = 'completed'
+    # Check if the Celery task exists
+    if not hasattr(current_app, 'celery_tasks') or source_id not in current_app.celery_tasks:
+        # Check if there's a recent scraper status in the database
+        with session_scope() as session:
+            source = session.query(DataSource).filter(DataSource.id == source_id).first()
+            if not source:
+                return jsonify({
+                    "status": "unknown",
+                    "message": "Data source not found"
+                })
+            
+            # Check if the source was recently scraped
+            if source.last_scraped:
+                # Calculate time since last scrape
+                time_since_scrape = (datetime.datetime.utcnow() - source.last_scraped).total_seconds()
+                if time_since_scrape < 3600:  # Within the last hour
                     return jsonify({
                         "status": "completed",
-                        "message": f"Scraper for {source_name} completed successfully",
-                        "elapsed_time": elapsed_time
+                        "message": f"Data source was recently scraped ({int(time_since_scrape / 60)} minutes ago)",
+                        "last_scraped": source.last_scraped.isoformat()
                     })
-                else:
-                    # Error occurred
-                    scraper_info['status'] = 'failed'
-                    return jsonify({
-                        "status": "failed",
-                        "message": f"Scraper for {source_name} failed: {result_value}",
-                        "elapsed_time": elapsed_time
-                    })
-            else:
-                # Thread completed but no result in queue (unusual)
-                scraper_info['status'] = 'completed'
-                return jsonify({
-                    "status": "completed",
-                    "message": f"Scraper for {source_name} completed but no result available",
-                    "elapsed_time": elapsed_time
-                })
-        except Exception as e:
-            current_app.logger.error(f"Error checking scraper result: {str(e)}")
-            return jsonify({
-                "status": "error",
-                "message": f"Error checking scraper result: {str(e)}",
-                "elapsed_time": elapsed_time
-            })
-    
-    # Thread is still running, check for timeout
-    timeout_seconds = 180  # 3 minutes timeout (increased from 60 seconds)
-    if elapsed_time > timeout_seconds:
-        # Mark as timed out
-        scraper_info['status'] = 'timeout'
-        
-        # Try to terminate the thread (though Python threads can't be forcibly terminated)
-        # At least we can mark it as timed out for the UI
-        current_app.logger.warning(f"Scraper for {source_name} timed out after {elapsed_time:.1f} seconds")
-        
-        # Update the status in the database
-        try:
-            with session_scope() as session:
-                data_source = session.query(DataSource).filter_by(id=source_id).first()
-                if data_source:
-                    status_record = session.query(ScraperStatus).filter_by(source_id=source_id).first()
-                    if status_record:
-                        status_record.status = "error"
-                        status_record.error_message = f"Scraper timed out after {elapsed_time:.1f} seconds"
-                        status_record.last_checked = datetime.datetime.utcnow()
-                        session.commit()
-                        current_app.logger.info(f"Updated status record for {source_name} to error due to timeout")
-        except Exception as e:
-            current_app.logger.error(f"Error updating status record: {str(e)}")
         
         return jsonify({
-            "status": "timeout",
-            "message": f"Scraper for {source_name} timed out after {elapsed_time:.1f} seconds",
-            "elapsed_time": elapsed_time
+            "status": "unknown",
+            "message": "No active scraper task found for this data source"
         })
     
-    # Still running and within timeout
-    return jsonify({
-        "status": "running",
-        "message": f"Scraper for {source_name} is still running ({elapsed_time:.1f} seconds elapsed)",
-        "elapsed_time": elapsed_time
-    }) 
+    # Get the Celery task info
+    task_info = current_app.celery_tasks[source_id]
+    task_id = task_info['task_id']
+    start_time = task_info['start_time']
+    source_name = task_info['source_name']
+    
+    # Calculate elapsed time
+    elapsed_time = (datetime.datetime.utcnow() - start_time).total_seconds()
+    
+    # Check the task status
+    task_result = AsyncResult(task_id)
+    
+    if task_result.ready():
+        # Task has completed
+        if task_result.successful():
+            # Task completed successfully
+            result = task_result.get()
+            task_info['status'] = 'completed'
+            
+            # Clean up the task info after successful completion
+            if source_id in current_app.celery_tasks:
+                del current_app.celery_tasks[source_id]
+            
+            return jsonify({
+                "status": "completed",
+                "message": f"Scraper for {source_name} completed successfully",
+                "elapsed_time": elapsed_time,
+                "result": result
+            })
+        else:
+            # Task failed
+            task_info['status'] = 'failed'
+            error = str(task_result.result) if task_result.result else "Unknown error"
+            
+            # Clean up the task info after failure
+            if source_id in current_app.celery_tasks:
+                del current_app.celery_tasks[source_id]
+            
+            return jsonify({
+                "status": "failed",
+                "message": f"Scraper for {source_name} failed: {error}",
+                "elapsed_time": elapsed_time
+            })
+    else:
+        # Task is still running, check for timeout
+        timeout_seconds = 600  # 10 minutes timeout
+        if elapsed_time > timeout_seconds:
+            # Mark as timed out but don't revoke the task
+            task_info['status'] = 'timeout'
+            return jsonify({
+                "status": "timeout",
+                "message": f"Scraper for {source_name} timed out after {elapsed_time:.1f} seconds",
+                "elapsed_time": elapsed_time
+            })
+        
+        # Task is still running
+        return jsonify({
+            "status": "running",
+            "message": f"Scraper for {source_name} is still running ({elapsed_time:.1f} seconds elapsed)",
+            "elapsed_time": elapsed_time
+        })
+''' 
