@@ -35,13 +35,15 @@ import sys
 import time
 import atexit
 import logging
+import signal
 from dotenv import load_dotenv
+import traceback
 
 # Add the parent directory to the path so we can import from src
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Import our modular components
-from scripts.process_manager import start_process, cleanup, monitor_processes
+from scripts.process_manager import start_process, cleanup, monitor_processes, processes
 from scripts.dependency_checker import (
     test_redis_connection, check_memurai, check_server_py, 
     check_node_npm, frontend_needs_rebuild, ensure_env_file
@@ -76,15 +78,25 @@ def main():
     4. Monitors processes and restarts them if they fail
     """
     # Register cleanup handler
+    logger.info("Registering cleanup handler...")
     atexit.register(cleanup)
     
+    # Register signal handlers for graceful shutdown
+    # This is crucial for proper cleanup of Celery worker processes
+    logger.info("Setting up signal handlers...")
+    signal.signal(signal.SIGINT, handle_shutdown)
+    signal.signal(signal.SIGTERM, handle_shutdown)
+    
     # Clean up old log files
+    logger.info("Cleaning up old log files...")
     cleanup_logs(logs_dir, keep_count=3)
     
     # Ensure .env file exists with Redis configuration
+    logger.info("Checking .env file...")
     ensure_env_file()
     
     # Check Redis/Memurai based on platform
+    logger.info("Checking Redis/Memurai...")
     if IS_WINDOWS:
         if not check_memurai():
             logger.error("Cannot start Celery without Redis/Memurai. Exiting.")
@@ -98,11 +110,13 @@ def main():
             logger.warning("On Linux, you can install Redis with: sudo apt-get install redis-server")
     
     # Check if server.py exists and is executable
+    logger.info("Checking server.py...")
     if not check_server_py():
         logger.error("Cannot start Flask app. Please check server.py for errors.")
         sys.exit(1)
     
     # Check if Node.js and npm are installed
+    logger.info("Checking Node.js and npm...")
     react_available = False
     frontend_built = False
     if check_node_npm():
@@ -117,10 +131,12 @@ def main():
             logger.info("Setting REACT_FORCE_REBUILD=true because frontend changes were detected")
     
     # Get the frontend directory
+    logger.info("Setting up project paths...")
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     react_dir = os.path.join(project_root, 'frontend-react')
     
     # Define process configurations
+    logger.info("Defining process configurations...")
     process_configs = {
         "Flask App": {
             "cmd": [sys.executable, os.path.join(project_root, "server.py")],
@@ -143,8 +159,13 @@ def main():
         }
     }
     
+    # Before starting new processes, ensure any lingering Celery processes are terminated
+    logger.info("Checking for and terminating any lingering Celery processes before startup...")
+    cleanup()
+    
     # Add React process configuration if available
     if react_available:
+        logger.info("Setting up React configuration...")
         if REACT_DEV_MODE:
             process_configs["React Dev Server"] = {
                 "cmd": ["npm", "run", "dev"],
@@ -191,13 +212,21 @@ def main():
     logger.info("STARTING FLASK APPLICATION")
     logger.info("=" * 80)
     
-    flask_process = start_process(
-        process_configs["Flask App"]["cmd"],
-        "Flask App",
-        capture_output=process_configs["Flask App"]["capture_output"]
-    )
+    try:
+        logger.info("Attempting to start Flask app...")
+        flask_process = start_process(
+            process_configs["Flask App"]["cmd"],
+            "Flask App",
+            capture_output=process_configs["Flask App"]["capture_output"]
+        )
+        logger.info(f"Flask app started with PID {flask_process.pid}")
+    except Exception as e:
+        logger.error(f"Failed to start Flask app: {str(e)}")
+        logger.error(traceback.format_exc())
+        sys.exit(1)
     
     # Give Flask app time to start
+    logger.info("Waiting for Flask app to initialize...")
     time.sleep(2)
     
     # Check if Flask app is still running
@@ -212,12 +241,27 @@ def main():
     logger.info("STARTING CELERY WORKER")
     logger.info("=" * 80)
     
-    start_process(
-        process_configs["Celery Worker"]["cmd"],
-        "Celery Worker",
-        capture_output=process_configs["Celery Worker"]["capture_output"],
-        env=process_configs["Celery Worker"]["env"]
-    )
+    try:
+        logger.info("Attempting to start Celery worker...")
+        celery_worker_process = start_process(
+            process_configs["Celery Worker"]["cmd"],
+            "Celery Worker",
+            capture_output=process_configs["Celery Worker"]["capture_output"],
+            env=process_configs["Celery Worker"]["env"]
+        )
+        logger.info(f"Celery worker started with PID {celery_worker_process.pid}")
+    except Exception as e:
+        logger.error(f"Failed to start Celery worker: {str(e)}")
+        logger.error(traceback.format_exc())
+        # Continue with the rest of the startup, as Flask can still run without Celery
+    
+    # Check if Celery worker started properly
+    logger.info("Waiting for Celery worker to initialize...")
+    time.sleep(2)
+    if celery_worker_process.poll() is not None:
+        logger.error(f"Celery worker failed to start (exit code {celery_worker_process.returncode})")
+        logger.error("Check the celery_worker.log file in the logs directory for details")
+        # Continue with the rest of the startup, as Flask can still run without Celery
     
     # Start Celery beat
     logger.info("\n")
@@ -225,12 +269,27 @@ def main():
     logger.info("STARTING CELERY BEAT")
     logger.info("=" * 80)
     
-    start_process(
-        process_configs["Celery Beat"]["cmd"],
-        "Celery Beat",
-        capture_output=process_configs["Celery Beat"]["capture_output"],
-        env=process_configs["Celery Beat"]["env"]
-    )
+    try:
+        logger.info("Attempting to start Celery beat...")
+        celery_beat_process = start_process(
+            process_configs["Celery Beat"]["cmd"],
+            "Celery Beat",
+            capture_output=process_configs["Celery Beat"]["capture_output"],
+            env=process_configs["Celery Beat"]["env"]
+        )
+        logger.info(f"Celery beat started with PID {celery_beat_process.pid}")
+    except Exception as e:
+        logger.error(f"Failed to start Celery beat: {str(e)}")
+        logger.error(traceback.format_exc())
+        # Continue with the rest of the startup, as Flask can still run without Celery Beat
+    
+    # Check if Celery beat started properly
+    logger.info("Waiting for Celery beat to initialize...")
+    time.sleep(2)
+    if celery_beat_process.poll() is not None:
+        logger.error(f"Celery beat failed to start (exit code {celery_beat_process.returncode})")
+        logger.error("Check the celery_beat.log file in the logs directory for details")
+        # Continue with the rest of the startup, as Flask can still run without Celery Beat
     
     # Start Flower
     logger.info("\n")
@@ -238,12 +297,19 @@ def main():
     logger.info("STARTING FLOWER")
     logger.info("=" * 80)
     
-    start_process(
-        process_configs["Flower"]["cmd"],
-        "Flower",
-        capture_output=process_configs["Flower"]["capture_output"],
-        env=process_configs["Flower"]["env"]
-    )
+    try:
+        logger.info("Attempting to start Flower...")
+        flower_process = start_process(
+            process_configs["Flower"]["cmd"],
+            "Flower",
+            capture_output=process_configs["Flower"]["capture_output"],
+            env=process_configs["Flower"]["env"]
+        )
+        logger.info(f"Flower started with PID {flower_process.pid}")
+    except Exception as e:
+        logger.error(f"Failed to start Flower: {str(e)}")
+        logger.error(traceback.format_exc())
+        # Continue with the rest of the startup, as Flask can still run without Flower
     
     # Start React dev server if in dev mode
     if react_available and REACT_DEV_MODE:
@@ -252,28 +318,93 @@ def main():
         logger.info("STARTING REACT DEV SERVER")
         logger.info("=" * 80)
         
-        start_process(
-            process_configs["React Dev Server"]["cmd"],
-            "React Dev Server",
-            cwd=process_configs["React Dev Server"]["cwd"],
-            capture_output=process_configs["React Dev Server"]["capture_output"]
-        )
+        try:
+            logger.info("Attempting to start React dev server...")
+            react_process = start_process(
+                process_configs["React Dev Server"]["cmd"],
+                "React Dev Server",
+                cwd=process_configs["React Dev Server"]["cwd"],
+                capture_output=process_configs["React Dev Server"]["capture_output"]
+            )
+            logger.info(f"React dev server started with PID {react_process.pid}")
+        except Exception as e:
+            logger.error(f"Failed to start React dev server: {str(e)}")
+            logger.error(traceback.format_exc())
+            # Continue with the rest of the startup, as the app can run without React
     
-    # Log startup complete
+    # Display information
     logger.info("\n")
     logger.info("=" * 80)
     logger.info("ALL COMPONENTS STARTED")
     logger.info("=" * 80)
-    logger.info(f"Flask app running at: http://{HOST}:{PORT}")
-    logger.info(f"Flower dashboard running at: http://{HOST}:5555")
-    
+    logger.info(f"Flask app:     http://{HOST}:{PORT}")
+    logger.info(f"Flower:        http://{HOST}:5555")
     if react_available and REACT_DEV_MODE:
-        logger.info(f"React dev server running at: http://localhost:5173")
+        logger.info(f"React app:     http://{HOST}:3000")
+    logger.info("=" * 80)
     
-    logger.info("\nPress Ctrl+C to stop all components\n")
+    # Log the number of processes being monitored
+    logger.info(f"Monitoring {len(processes)} processes...")
+    if processes:
+        for i, (process, name, _) in enumerate(processes):
+            logger.info(f"  {i+1}. {name} (PID {process.pid})")
+    else:
+        logger.warning("No processes are being monitored! This is likely an error.")
+        logger.warning("Check if start_process() is correctly adding processes to the global processes list.")
     
-    # Monitor processes and restart them if they fail
-    monitor_processes(process_configs)
+    try:
+        # Monitor processes
+        logger.info("Starting process monitoring...")
+        monitor_processes(process_configs)
+    except KeyboardInterrupt:
+        logger.info("Keyboard interrupt received. Shutting down...")
+        cleanup()
+        # Use os._exit instead of sys.exit for more forceful termination
+        logger.info("Using os._exit(0) to ensure application termination")
+        os._exit(0)
+    except Exception as e:
+        logger.error(f"Error in monitor_processes: {str(e)}")
+        logger.error(traceback.format_exc())
+        cleanup()
+        # Use os._exit instead of sys.exit for more forceful termination
+        logger.info("Using os._exit(1) to ensure application termination")
+        os._exit(1)
+
+# Signal handler for graceful shutdown
+def handle_shutdown(signum, frame):
+    """Handle shutdown signals by cleaning up and exiting."""
+    logger.info(f"Received signal {signum}. Shutting down gracefully...")
+    try:
+        # Call cleanup to terminate all processes
+        cleanup()
+        logger.info("Cleanup completed successfully")
+    except Exception as e:
+        logger.error(f"Error during cleanup: {e}")
+    finally:
+        logger.info("Exiting application...")
+        # Force exit to avoid any potential hanging
+        try:
+            # Forcibly terminate any remaining threads
+            import threading
+            for thread in threading.enumerate():
+                if thread is not threading.current_thread():
+                    logger.info(f"Force terminating thread: {thread.name}")
+                    try:
+                        # We can't actually force-terminate threads in Python,
+                        # but we can at least log which threads are still running
+                        if hasattr(thread, "daemon"):
+                            thread.daemon = True
+                    except Exception as e:
+                        logger.warning(f"Error setting thread as daemon: {e}")
+            
+            # Ensure we exit no matter what
+            import os
+            logger.info("Using os._exit(0) to ensure application termination")
+            os._exit(0)  # This is a more forceful exit that doesn't call cleanup handlers
+        except Exception as e:
+            logger.error(f"Error during forced exit: {e}")
+            # If all else fails, use the highest force exit
+            os._exit(1)
 
 
 if __name__ == "__main__":

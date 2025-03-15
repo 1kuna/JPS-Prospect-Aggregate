@@ -10,6 +10,7 @@ and provides a clean entry point for running the application.
 import os
 import sys
 import logging
+import argparse
 from dotenv import load_dotenv
 from src.dashboard.factory import create_app
 from src.celery_app import celery_app
@@ -36,16 +37,25 @@ except Exception as e:
     sys.exit(1)
 
 if __name__ == "__main__":
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='JPS Prospect Aggregate Flask Application')
+    parser.add_argument('--host', default=os.getenv("HOST", "0.0.0.0"), help='Host to bind to')
+    parser.add_argument('--port', type=int, default=int(os.getenv("PORT", 5001)), help='Port to bind to')
+    parser.add_argument('--debug', action='store_true', default=os.getenv("DEBUG", "False").lower() == "true", 
+                        help='Enable debug mode')
+    
+    args = parser.parse_args()
+    
     # Log startup information
-    logger.info(f"Starting application on {os.getenv('HOST', '0.0.0.0')}:{os.getenv('PORT', 5001)}")
-    logger.info(f"Debug mode: {os.getenv('DEBUG', 'False').lower() == 'true'}")
+    logger.info(f"Starting application on {args.host}:{args.port}")
+    logger.info(f"Debug mode: {args.debug}")
     
     try:
         # Run the Flask application
         app.run(
-            host=os.getenv("HOST", "0.0.0.0"),
-            port=int(os.getenv("PORT", 5001)),
-            debug=os.getenv("DEBUG", "False").lower() == "true"
+            host=args.host,
+            port=args.port,
+            debug=args.debug
         )
     except Exception as e:
         logger.error(f"Error running Flask application: {str(e)}")

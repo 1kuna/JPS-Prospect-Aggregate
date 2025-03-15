@@ -11,13 +11,6 @@ type ToasterToast = ToastProps & {
   action?: ToastActionElement;
 };
 
-const actionTypes = {
-  ADD_TOAST: "ADD_TOAST",
-  UPDATE_TOAST: "UPDATE_TOAST",
-  DISMISS_TOAST: "DISMISS_TOAST",
-  REMOVE_TOAST: "REMOVE_TOAST",
-} as const;
-
 let count = 0;
 
 function generateId() {
@@ -25,150 +18,134 @@ function generateId() {
   return count.toString();
 }
 
-type ActionType = typeof actionTypes;
-
-type Action =
-  | {
-      type: ActionType["ADD_TOAST"];
-      toast: ToasterToast;
-    }
-  | {
-      type: ActionType["UPDATE_TOAST"];
-      toast: Partial<ToasterToast>;
-      id: string;
-    }
-  | {
-      type: ActionType["DISMISS_TOAST"];
-      id: string;
-    }
-  | {
-      type: ActionType["REMOVE_TOAST"];
-      id: string;
-    };
-
 interface State {
   toasts: ToasterToast[];
 }
 
 const toastTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
 
-const reducer = (state: State, action: Action): State => {
-  switch (action.type) {
-    case actionTypes.ADD_TOAST:
-      return {
-        ...state,
-        toasts: [action.toast, ...state.toasts].slice(0, TOAST_LIMIT),
-      };
+// Create a singleton state that persists across hook instances
+let globalToasts: ToasterToast[] = [];
+let listeners: ((toasts: ToasterToast[]) => void)[] = [];
 
-    case actionTypes.UPDATE_TOAST:
-      return {
-        ...state,
-        toasts: state.toasts.map((t) =>
-          t.id === action.id ? { ...t, ...action.toast } : t
-        ),
-      };
-
-    case actionTypes.DISMISS_TOAST: {
-      const { id } = action;
-
-      // Cancel any existing timeout
-      if (toastTimeouts.has(id)) {
-        clearTimeout(toastTimeouts.get(id));
-        toastTimeouts.delete(id);
-      }
-
-      return {
-        ...state,
-        toasts: state.toasts.map((t) =>
-          t.id === id
-            ? {
-                ...t,
-                open: false,
-              }
-            : t
-        ),
-      };
-    }
-
-    case actionTypes.REMOVE_TOAST:
-      if (toastTimeouts.has(action.id)) {
-        clearTimeout(toastTimeouts.get(action.id));
-        toastTimeouts.delete(action.id);
-      }
-
-      return {
-        ...state,
-        toasts: state.toasts.filter((t) => t.id !== action.id),
-      };
-
-    default:
-      return state;
-  }
-};
+// Function to update global state and notify all listeners
+function updateGlobalToasts(updater: (toasts: ToasterToast[]) => ToasterToast[]) {
+  globalToasts = updater(globalToasts);
+  listeners.forEach(listener => listener(globalToasts));
+}
 
 export function useToast() {
-  const [state, setState] = useState<State>({ toasts: [] });
+  const [state, setState] = useState<State>({ toasts: globalToasts });
 
-  const dispatch = useCallback((action: Action) => {
-    setState((prevState) => reducer(prevState, action));
+  // Register this component as a listener for global toast updates
+  useEffect(() => {
+    const listener = (toasts: ToasterToast[]) => {
+      setState({ toasts });
+    };
+    
+    listeners.push(listener);
+    return () => {
+      listeners = listeners.filter(l => l !== listener);
+    };
   }, []);
 
   const toast = useCallback(
     ({ ...props }: Omit<ToasterToast, "id">) => {
       const id = generateId();
+      console.log(`[useToast] Creating toast with ID: ${id}`, props);
 
-      const update = (props: Partial<ToasterToast>) =>
-        dispatch({
-          type: actionTypes.UPDATE_TOAST,
-          id,
-          toast: { ...props },
-        });
-
-      const dismiss = () =>
-        dispatch({ type: actionTypes.DISMISS_TOAST, id });
-
-      dispatch({
-        type: actionTypes.ADD_TOAST,
-        toast: {
-          ...props,
-          id,
-          open: true,
-          onOpenChange: (open) => {
-            if (!open) dismiss();
-          },
+      // Create the toast object
+      const newToast: ToasterToast = {
+        ...props,
+        id,
+        open: true,
+        onOpenChange: (open) => {
+          if (!open) {
+            console.log(`[useToast] Dismissing toast with ID: ${id}`);
+            updateGlobalToasts(toasts => 
+              toasts.map(t => t.id === id ? { ...t, open: false } : t)
+            );
+            
+            // Schedule removal after animation
+            setTimeout(() => {
+              console.log(`[useToast] Removing toast with ID: ${id}`);
+              updateGlobalToasts(toasts => toasts.filter(t => t.id !== id));
+            }, 300);
+          }
         },
-      });
+      };
+
+      // Add toast to global state
+      console.log(`[useToast] Adding toast to global state: ${id}`);
+      updateGlobalToasts(toasts => [newToast, ...toasts].slice(0, TOAST_LIMIT));
+
+      // Set up auto-dismiss timeout
+      const duration = props.duration || TOAST_REMOVE_DELAY;
+      const timeout = setTimeout(() => {
+        console.log(`[useToast] Auto-dismissing toast with ID: ${id}`);
+        updateGlobalToasts(toasts => 
+          toasts.map(t => t.id === id ? { ...t, open: false } : t)
+        );
+        
+        // Schedule removal after animation
+        setTimeout(() => {
+          console.log(`[useToast] Auto-removing toast with ID: ${id}`);
+          updateGlobalToasts(toasts => toasts.filter(t => t.id !== id));
+        }, 300);
+      }, duration);
+
+      toastTimeouts.set(id, timeout);
 
       return {
         id,
-        dismiss,
-        update,
+        dismiss: () => {
+          console.log(`[useToast] Manually dismissing toast with ID: ${id}`);
+          if (toastTimeouts.has(id)) {
+            clearTimeout(toastTimeouts.get(id));
+            toastTimeouts.delete(id);
+          }
+          
+          updateGlobalToasts(toasts => 
+            toasts.map(t => t.id === id ? { ...t, open: false } : t)
+          );
+          
+          // Schedule removal after animation
+          setTimeout(() => {
+            console.log(`[useToast] Manually removing toast with ID: ${id}`);
+            updateGlobalToasts(toasts => toasts.filter(t => t.id !== id));
+          }, 300);
+        },
+        update: (props: Partial<ToasterToast>) => {
+          console.log(`[useToast] Updating toast with ID: ${id}`, props);
+          updateGlobalToasts(toasts => 
+            toasts.map(t => t.id === id ? { ...t, ...props } : t)
+          );
+        },
       };
     },
-    [dispatch]
+    []
   );
 
-  useEffect(() => {
-    state.toasts.forEach((t) => {
-      if (t.open && !toastTimeouts.has(t.id)) {
-        const timeout = setTimeout(() => {
-          dispatch({ type: actionTypes.DISMISS_TOAST, id: t.id });
-        }, TOAST_REMOVE_DELAY);
-
-        toastTimeouts.set(t.id, timeout);
-      }
-    });
-
-    return () => {
-      toastTimeouts.forEach((timeout) => clearTimeout(timeout));
-      toastTimeouts.clear();
-    };
-  }, [state.toasts, dispatch]);
-
   return {
-    ...state,
+    toasts: state.toasts,
     toast,
-    dismiss: (id: string) => dispatch({ type: actionTypes.DISMISS_TOAST, id }),
+    dismiss: (id: string) => {
+      console.log(`[useToast] Dismissing toast with ID: ${id} from dismiss function`);
+      if (toastTimeouts.has(id)) {
+        clearTimeout(toastTimeouts.get(id));
+        toastTimeouts.delete(id);
+      }
+      
+      updateGlobalToasts(toasts => 
+        toasts.map(t => t.id === id ? { ...t, open: false } : t)
+      );
+      
+      // Schedule removal after animation
+      setTimeout(() => {
+        console.log(`[useToast] Removing toast with ID: ${id} from dismiss function`);
+        updateGlobalToasts(toasts => toasts.filter(t => t.id !== id));
+      }, 300);
+    },
   };
 }
 

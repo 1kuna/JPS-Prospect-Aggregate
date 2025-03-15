@@ -506,6 +506,26 @@ def pull_data_source(source_id):
             
             # Update the source's last_scraped timestamp
             source.last_scraped = datetime.datetime.now()
+            
+            # Create or update the ScraperStatus record
+            status_record = session.query(ScraperStatus).filter_by(source_id=source_id).first()
+            if status_record:
+                # Update existing record
+                status_record.status = "running"
+                status_record.last_checked = datetime.datetime.now()
+                status_record.error_message = None
+                status_record.subtask_id = task.id
+            else:
+                # Create new record
+                new_status = ScraperStatus(
+                    source_id=source_id,
+                    status="running",
+                    last_checked=datetime.datetime.now(),
+                    error_message=None,
+                    subtask_id=task.id
+                )
+                session.add(new_status)
+            
             session.commit()
             
             return jsonify({
@@ -749,21 +769,26 @@ def check_scraper_status(source_id):
                     }
                 })
             
-            # Return status information
-            return jsonify({
-                "status": "success",
+            # Return the status with subtask_id if available
+            response_data = {
+                "status": status.status,
+                "message": status.error_message,
                 "data": {
                     "source_id": source_id,
                     "source_name": source.name,
                     "status": status.status,
-                    "last_check": status.last_check.isoformat() if status.last_check else None,
-                    "last_success": status.last_success.isoformat() if status.last_success else None,
-                    "error_count": status.error_count,
-                    "message": status.message
+                    "message": status.error_message
                 }
-            })
+            }
+            
+            # Include subtask_id if it exists
+            if hasattr(status, 'subtask_id') and status.subtask_id:
+                response_data["data"]["subtask_id"] = status.subtask_id
+            
+            return jsonify(response_data)
+            
         except ResourceNotFoundError as e:
-            return jsonify({"status": "error", "message": str(e)}), e.status_code
+            return jsonify({"status": "error", "message": str(e)}), 404
         except Exception as e:
             current_app.logger.error(f"Error in check_scraper_status: {str(e)}")
             return jsonify({"status": "error", "message": str(e)}), 500

@@ -12,6 +12,7 @@ import subprocess
 import logging
 from typing import Tuple, Optional
 from dotenv import load_dotenv
+import importlib.util
 
 # Platform detection
 IS_WINDOWS = sys.platform == 'win32'
@@ -122,12 +123,23 @@ def check_server_py() -> bool:
         return False
     
     try:
-        # Try to run server.py with --help to see if it's executable
-        result = subprocess.run([sys.executable, app_path, "--help"], capture_output=True, text=True)
-        if result.returncode != 0:
-            logger.error(f"server.py exists but may have errors: {result.stderr}")
+        # Check if server.py is a valid Python file by importing it as a module
+        # This is safer than executing it with --help
+        spec = importlib.util.spec_from_file_location("server_module", app_path)
+        if spec is None:
+            logger.error(f"Failed to load server.py as a module")
             return False
-        return True
+            
+        # Try to compile the module to check for syntax errors
+        with open(app_path, 'r') as f:
+            source = f.read()
+        try:
+            compile(source, app_path, 'exec')
+            logger.info(f"server.py successfully validated")
+            return True
+        except SyntaxError as e:
+            logger.error(f"server.py contains syntax errors: {str(e)}")
+            return False
     except Exception as e:
         logger.error(f"Error checking server.py: {str(e)}")
         return False

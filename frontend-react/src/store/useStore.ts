@@ -253,15 +253,22 @@ export const useStore = create<AppState>((set) => ({
   },
   
   pullDataSource: async (id) => {
+    console.log('[store] pullDataSource called with ID:', id);
     try {
+      // Don't set any loading state here - the component handles that
+      console.log('[store] Calling API pullDataSource function');
+      
+      // Make the API call directly without any state updates
       const response = await pullDataSource(id);
-      await useStore.getState().fetchDataSources();
+      console.log('[store] API pullDataSource response:', response);
+      
+      // Return the response without any additional processing
       return response;
     } catch (error: any) {
-      console.error('Error pulling data source:', error);
-      set((state) => ({
-        errors: { ...state.errors, dataSources: { message: error.message } }
-      }));
+      console.error('[store] Error in store.pullDataSource:', error);
+      console.error('[store] Error message:', error.message);
+      
+      // Just throw the error without updating any state
       throw error;
     }
   },
@@ -272,9 +279,8 @@ export const useStore = create<AppState>((set) => ({
       return response;
     } catch (error: any) {
       console.error('Error getting scraper status:', error);
-      set((state) => ({
-        errors: { ...state.errors, dataSources: { message: error.message } }
-      }));
+      // Don't update global error state here - this causes a re-render
+      // Instead, return the error and let the component handle it
       throw error;
     }
   },
@@ -355,11 +361,20 @@ export const useStore = create<AppState>((set) => ({
   },
   
   setPullingProgress: (sourceId: number, isLoading: boolean) => {
-    set((state) => ({
-      pullingProgress: {
-        ...state.pullingProgress,
-        [sourceId]: isLoading
+    // Only update state if the value is actually changing
+    set((state) => {
+      // If the current value is the same as the new value, don't update state
+      if (state.pullingProgress[sourceId] === isLoading) {
+        return state; // Return unchanged state to prevent rerender
       }
-    }));
+      
+      // Otherwise, update the state
+      return {
+        pullingProgress: {
+          ...state.pullingProgress,
+          [sourceId]: isLoading
+        }
+      };
+    });
   }
 })); 

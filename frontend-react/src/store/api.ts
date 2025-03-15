@@ -11,6 +11,13 @@ const api = axios.create({
   timeout: 10000, // 10 seconds timeout
 });
 
+// Log the API configuration
+console.log('API Configuration:', {
+  baseURL: api.defaults.baseURL,
+  timeout: api.defaults.timeout,
+  headers: api.defaults.headers
+});
+
 // Add response interceptor for debugging
 api.interceptors.response.use(
   response => {
@@ -19,6 +26,13 @@ api.interceptors.response.use(
   },
   error => {
     console.error(`API Error [${error.config?.url}]:`, error.response?.data || error.message);
+    if (error.response) {
+      console.error('Error Response Status:', error.response.status);
+      console.error('Error Response Headers:', error.response.headers);
+      console.error('Error Response Data:', error.response.data);
+    } else if (error.request) {
+      console.error('Error Request:', error.request);
+    }
     return Promise.reject(error);
   }
 );
@@ -158,20 +172,72 @@ export async function deleteDataSource(id: string | number) {
 
 export async function pullDataSource(id: string | number) {
   try {
-    const response = await api.post(`/data-sources/${id}/pull`);
+    console.log(`[pullDataSource] Starting API call for data source ID: ${id}`);
+    console.log(`[pullDataSource] Full API URL: ${api.defaults.baseURL}/data-sources/${id}/pull`);
+    
+    // Send the force parameter in the request body to override the cooldown period
+    console.log('[pullDataSource] Request payload:', { force: true });
+    
+    // Add a small delay to ensure the UI has time to update before the API call
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    // Make the API call with a timeout to prevent hanging
+    const response = await api.post(`/data-sources/${id}/pull`, { force: true }, {
+      timeout: 30000 // 30 second timeout
+    });
+    
+    console.log('[pullDataSource] Raw response:', response);
+    console.log('[pullDataSource] Response data:', response.data);
+    console.log('[pullDataSource] Response status:', response.status);
+    
+    // Log the subtask_id if it exists in the response
+    if (response.data && response.data.data && response.data.data.subtask_id) {
+      console.log('[pullDataSource] Subtask ID:', response.data.data.subtask_id);
+    }
+    
     return response.data;
   } catch (error) {
-    console.error('Error in pullDataSource:', error);
+    console.error('[pullDataSource] Error details:', error);
+    
+    if (axios.isAxiosError(error)) {
+      console.error('[pullDataSource] Axios error details:', {
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        headers: error.response?.headers,
+        config: error.config
+      });
+    }
+    
+    // Rethrow the error to be handled by the caller
     throw error;
   }
 }
 
 export async function getScraperStatus(id: string | number) {
   try {
+    console.log(`[getScraperStatus] Checking status for source ID: ${id}`);
     const response = await api.get(`/data-sources/${id}/status`);
+    console.log(`[getScraperStatus] Raw response for source ID ${id}:`, response);
+    console.log(`[getScraperStatus] Response data for source ID ${id}:`, response.data);
+    
+    // Check if the response contains a subtask_id
+    if (response.data && response.data.data && response.data.data.subtask_id) {
+      console.log(`[getScraperStatus] Found subtask ID: ${response.data.data.subtask_id}`);
+    }
+    
     return response.data;
   } catch (error) {
-    console.error('Error in getScraperStatus:', error);
+    console.error(`[getScraperStatus] Error checking status for source ID ${id}:`, error);
+    if (axios.isAxiosError(error)) {
+      console.error('[getScraperStatus] Axios error details:', {
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        headers: error.response?.headers,
+        config: error.config
+      });
+    }
     throw error;
   }
 }

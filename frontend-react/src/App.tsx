@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Link, useLocation } from 'react-router-dom';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { LoadingProvider } from './context/LoadingContext';
 import { ToastProvider } from './components/ui/ToastContainer';
+import { PullingProvider } from './contexts/PullingContext';
 import { 
   Skeleton, 
   Card, 
@@ -186,10 +187,12 @@ function App() {
   return (
     <LoadingProvider>
       <ToastProvider>
-        <Router>
-          <RouteContainer />
-          <Toaster />
-        </Router>
+        <PullingProvider>
+          <Router>
+            <RouteContainer />
+            <Toaster />
+          </Router>
+        </PullingProvider>
       </ToastProvider>
     </LoadingProvider>
   );
