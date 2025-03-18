@@ -1,4 +1,12 @@
 import { create } from 'zustand';
+import { devtools } from 'zustand/middleware';
+import { proposalsSlice } from './slices/proposalsSlice';
+import { dataSourcesSlice } from './slices/dataSourcesSlice';
+import { uiSlice } from './slices/uiSlice';
+import { statisticsSlice } from './slices/statisticsSlice';
+import { systemSlice } from './slices/systemSlice';
+import { StoreState } from './types';
+import { logger, perfMonitor } from './middleware/logger';
 import { 
   fetchDashboardData, 
   fetchDataSources,
@@ -66,344 +74,82 @@ interface AppState {
   setPullingProgress: (sourceId: number, isLoading: boolean) => void;
 }
 
-// Helper function to create a toast notification
-// This will be used by components that import the store
-export const createToast = (title: string, description: string, variant?: 'default' | 'destructive' | 'success', duration?: number) => {
-  // We'll use this function to create toast notifications from the store
-  // The actual implementation will be in the components that use the store
-  // This is just a placeholder to make the TypeScript compiler happy
-  return { title, description, variant, duration };
+// Function to create the store with middleware composition
+const createStore = () => {
+  // Define the middleware chain for the store
+  // Order matters: the first middleware in the array is the outermost wrapper
+  return create<StoreState>()(
+    // Development tools for debugging (only in non-production)
+    process.env.NODE_ENV !== 'production'
+      ? devtools(
+          // Logger for tracking state changes (innermost)
+          logger<StoreState>('MainStore')(
+            // Performance monitoring
+            perfMonitor<StoreState>('MainStore')(
+              // Combine all slices
+              (...args) => ({
+                ...proposalsSlice(...args),
+                ...dataSourcesSlice(...args),
+                ...uiSlice(...args),
+                ...statisticsSlice(...args),
+                ...systemSlice(...args),
+              })
+            )
+          ),
+          { name: 'JPSProspectStore', enabled: true }
+        )
+      : // In production, skip the dev middlewares
+        (...args) => ({
+          ...proposalsSlice(...args),
+          ...dataSourcesSlice(...args),
+          ...uiSlice(...args),
+          ...statisticsSlice(...args),
+          ...systemSlice(...args),
+        })
+  );
 };
 
-export const useStore = create<AppState>((set) => ({
-  // Initial state
-  dashboardData: null,
-  dataSources: [],
-  proposals: [],
-  proposalsPagination: null,
-  statistics: null,
-  backups: [],
-  lastUpdated: null,
-  
-  loading: {
-    dashboard: false,
-    dataSources: false,
-    proposals: false,
-    statistics: false,
-    databaseOperations: false,
-    scraperStatus: false
-  },
-  
-  errors: {
-    dashboard: null,
-    dataSources: null,
-    proposals: null,
-    statistics: null,
-    databaseOperations: null,
-    scraperStatus: null
-  },
-  
-  pullingProgress: {},
-  
-  // Async actions
-  fetchDashboardData: async (params = {}) => {
-    set((state) => ({ loading: { ...state.loading, dashboard: true } }));
-    try {
-      const data = await fetchDashboardData(params);
-      set({ 
-        dashboardData: data.data, 
-        lastUpdated: new Date(),
-        loading: { ...useStore.getState().loading, dashboard: false },
-        errors: { ...useStore.getState().errors, dashboard: null }
-      });
-    } catch (error: any) {
-      console.error('Error fetching dashboard data:', error);
-      set({ 
-        loading: { ...useStore.getState().loading, dashboard: false },
-        errors: { ...useStore.getState().errors, dashboard: error }
-      });
-    }
-  },
-  
-  fetchDataSources: async () => {
-    set((state) => ({ loading: { ...state.loading, dataSources: true } }));
-    try {
-      console.log('Store: Fetching data sources from API...');
-      const data = await fetchDataSources();
-      
-      if (!data || !data.data) {
-        throw new Error('Invalid response format from API');
-      }
-      
-      console.log('Store: Data sources fetched successfully:', data.data);
-      // Log each data source to inspect fields
-      data.data.forEach((source: any, index: number) => {
-        console.log(`Source ${index} (${source.name}):`, {
-          id: source.id,
-          lastChecked: source.lastChecked,
-          last_checked: source.last_checked,
-          status: source.status
-        });
-        
-        // Print date parsing information
-        if (source.last_checked) {
-          console.log(`Date parsing for source ${index}:`, {
-            original: source.last_checked,
-            parsed: new Date(source.last_checked),
-            localString: new Date(source.last_checked).toString(),
-            isoString: new Date(source.last_checked).toISOString(),
-            userTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone
-          });
-        }
-      });
-      
-      // Transform API field names to frontend field names
-      const transformedData = data.data.map((source: any) => ({
-        ...source,
-        lastChecked: source.last_checked || source.lastChecked,
-        lastScraped: source.last_scraped || source.lastScraped,
-        proposalCount: source.proposalCount || 0
-      }));
-      
-      set({ 
-        dataSources: transformedData || [], 
-        lastUpdated: new Date(),
-        loading: { ...useStore.getState().loading, dataSources: false },
-        errors: { ...useStore.getState().errors, dataSources: null }
-      });
-      return transformedData;
-    } catch (error: any) {
-      console.error('Store: Error fetching data sources:', error);
-      
-      // Format the error message
-      const errorMessage = error.response?.data?.message || error.message || 'Unknown error';
-      const formattedError = { message: errorMessage };
-      
-      set({ 
-        loading: { ...useStore.getState().loading, dataSources: false },
-        errors: { ...useStore.getState().errors, dataSources: formattedError }
-      });
-      
-      // Re-throw the error so it can be caught by the component
-      throw error;
-    }
-  },
-  
-  fetchProposals: async (params = {}) => {
-    set((state) => ({ loading: { ...state.loading, proposals: true } }));
-    try {
-      const data = await fetchProposals(params);
-      // Normalize pagination data to ensure consistent property names
-      const normalizedPagination = data.pagination ? {
-        page: data.pagination.page,
-        perPage: data.pagination.per_page,
-        totalPages: data.pagination.total_pages,
-        totalCount: data.pagination.total_items
-      } : null;
-      
-      set({ 
-        proposals: data.data || [], 
-        proposalsPagination: normalizedPagination,
-        lastUpdated: new Date(),
-        loading: { ...useStore.getState().loading, proposals: false },
-        errors: { ...useStore.getState().errors, proposals: null }
-      });
-      console.log('Proposals fetched:', data.data);
-    } catch (error: any) {
-      console.error('Error fetching proposals:', error);
-      set({ 
-        loading: { ...useStore.getState().loading, proposals: false },
-        errors: { ...useStore.getState().errors, proposals: error }
-      });
-    }
-  },
-  
-  fetchStatistics: async () => {
-    set((state) => ({ loading: { ...state.loading, statistics: true } }));
-    try {
-      const data = await fetchStatistics();
-      set({ 
-        statistics: data, 
-        lastUpdated: new Date(),
-        loading: { ...useStore.getState().loading, statistics: false },
-        errors: { ...useStore.getState().errors, statistics: null }
-      });
-    } catch (error: any) {
-      set({ 
-        loading: { ...useStore.getState().loading, statistics: false },
-        errors: { ...useStore.getState().errors, statistics: { message: error.message } }
-      });
-    }
-  },
-  
-  createDataSource: async (data) => {
-    set((state) => ({ loading: { ...state.loading, dataSources: true } }));
-    try {
-      const response = await createDataSource(data);
-      await useStore.getState().fetchDataSources();
-      return response;
-    } catch (error: any) {
-      console.error('Error creating data source:', error);
-      set((state) => ({
-        errors: { ...state.errors, dataSources: { message: error.message } }
-      }));
-      throw error;
-    }
-  },
-  
-  updateDataSource: async (id, data) => {
-    set((state) => ({ loading: { ...state.loading, dataSources: true } }));
-    try {
-      const response = await updateDataSource(id, data);
-      await useStore.getState().fetchDataSources();
-      return response;
-    } catch (error: any) {
-      console.error('Error updating data source:', error);
-      set((state) => ({
-        errors: { ...state.errors, dataSources: { message: error.message } }
-      }));
-      throw error;
-    }
-  },
-  
-  deleteDataSource: async (id) => {
-    set((state) => ({ loading: { ...state.loading, dataSources: true } }));
-    try {
-      const response = await deleteDataSource(id);
-      await useStore.getState().fetchDataSources();
-      return response;
-    } catch (error: any) {
-      console.error('Error deleting data source:', error);
-      set((state) => ({
-        errors: { ...state.errors, dataSources: { message: error.message } }
-      }));
-      throw error;
-    }
-  },
-  
-  pullDataSource: async (id) => {
-    console.log('[store] pullDataSource called with ID:', id);
-    try {
-      // Don't set any loading state here - the component handles that
-      console.log('[store] Calling API pullDataSource function');
-      
-      // Make the API call directly without any state updates
-      const response = await pullDataSource(id);
-      console.log('[store] API pullDataSource response:', response);
-      
-      // Return the response without any additional processing
-      return response;
-    } catch (error: any) {
-      console.error('[store] Error in store.pullDataSource:', error);
-      console.error('[store] Error message:', error.message);
-      
-      // Just throw the error without updating any state
-      throw error;
-    }
-  },
-  
-  getScraperStatus: async (id) => {
-    try {
-      const response = await getScraperStatus(id);
-      return response;
-    } catch (error: any) {
-      console.error('Error getting scraper status:', error);
-      // Don't update global error state here - this causes a re-render
-      // Instead, return the error and let the component handle it
-      throw error;
-    }
-  },
-  
-  rebuildDatabase: async () => {
-    set((state) => ({ loading: { ...state.loading, databaseOperations: true } }));
-    try {
-      const response = await rebuildDatabase();
-      set({ 
-        loading: { ...useStore.getState().loading, databaseOperations: false },
-        errors: { ...useStore.getState().errors, databaseOperations: null }
-      });
-      return response;
-    } catch (error: any) {
-      set({ 
-        loading: { ...useStore.getState().loading, databaseOperations: false },
-        errors: { ...useStore.getState().errors, databaseOperations: { message: error.message } }
-      });
-      throw error;
-    }
-  },
-  
-  initializeDatabase: async () => {
-    set((state) => ({ loading: { ...state.loading, databaseOperations: true } }));
-    try {
-      const response = await initializeDatabase();
-      set({ 
-        loading: { ...useStore.getState().loading, databaseOperations: false },
-        errors: { ...useStore.getState().errors, databaseOperations: null }
-      });
-      return response;
-    } catch (error: any) {
-      set({ 
-        loading: { ...useStore.getState().loading, databaseOperations: false },
-        errors: { ...useStore.getState().errors, databaseOperations: { message: error.message } }
-      });
-      throw error;
-    }
-  },
-  
-  resetEverything: async () => {
-    set((state) => ({ loading: { ...state.loading, databaseOperations: true } }));
-    try {
-      const response = await resetEverything();
-      set({ 
-        loading: { ...useStore.getState().loading, databaseOperations: false },
-        errors: { ...useStore.getState().errors, databaseOperations: null }
-      });
-      return response;
-    } catch (error: any) {
-      set({ 
-        loading: { ...useStore.getState().loading, databaseOperations: false },
-        errors: { ...useStore.getState().errors, databaseOperations: { message: error.message } }
-      });
-      throw error;
-    }
-  },
-  
-  manageBackups: async (action, backupId) => {
-    set((state) => ({ loading: { ...state.loading, databaseOperations: true } }));
-    try {
-      const response = await manageBackups(action, backupId);
-      if (action === 'list') {
-        set({ backups: response.data || [] });
-      }
-      set({ 
-        loading: { ...useStore.getState().loading, databaseOperations: false },
-        errors: { ...useStore.getState().errors, databaseOperations: null }
-      });
-      return response;
-    } catch (error: any) {
-      set({ 
-        loading: { ...useStore.getState().loading, databaseOperations: false },
-        errors: { ...useStore.getState().errors, databaseOperations: { message: error.message } }
-      });
-      throw error;
-    }
-  },
-  
-  setPullingProgress: (sourceId: number, isLoading: boolean) => {
-    // Only update state if the value is actually changing
-    set((state) => {
-      // If the current value is the same as the new value, don't update state
-      if (state.pullingProgress[sourceId] === isLoading) {
-        return state; // Return unchanged state to prevent rerender
-      }
-      
-      // Otherwise, update the state
-      return {
-        pullingProgress: {
-          ...state.pullingProgress,
-          [sourceId]: isLoading
-        }
-      };
-    });
-  }
-})); 
+// Create the store
+export const useStore = createStore();
+
+// Helper function to create a toast notification
+// This is exported for backwards compatibility
+export const createToast = (
+  title: string, 
+  description: string, 
+  variant?: 'default' | 'destructive' | 'success', 
+  duration?: number
+) => {
+  useStore.getState().addToast({ title, description, variant, duration });
+};
+
+// Export selectors for components to use
+export const selectProposals = (state: StoreState) => state.proposals;
+export const selectProposalsPagination = (state: StoreState) => state.proposalsPagination;
+
+export const selectDataSources = (state: StoreState) => state.dataSources;
+export const selectPullingProgress = (state: StoreState) => state.pullingProgress;
+
+export const selectDashboardData = (state: StoreState) => state.dashboardData;
+export const selectStatistics = (state: StoreState) => state.statistics;
+
+export const selectToasts = (state: StoreState) => state.toasts;
+export const selectNavOpen = (state: StoreState) => state.isNavOpen;
+
+export const selectBackups = (state: StoreState) => state.backups;
+export const selectLastUpdated = (state: StoreState) => state.lastUpdated;
+
+// Loading selectors
+export const selectLoadingProposals = (state: StoreState) => state.loading.proposals;
+export const selectLoadingDataSources = (state: StoreState) => state.loading.dataSources;
+export const selectLoadingDashboard = (state: StoreState) => state.loading.dashboard;
+export const selectLoadingStatistics = (state: StoreState) => state.loading.statistics;
+export const selectLoadingDatabaseOperations = (state: StoreState) => state.loading.databaseOperations;
+
+// Error selectors
+export const selectErrorsProposals = (state: StoreState) => state.errors.proposals;
+export const selectErrorsDataSources = (state: StoreState) => state.errors.dataSources;
+export const selectErrorsDashboard = (state: StoreState) => state.errors.dashboard;
+export const selectErrorsStatistics = (state: StoreState) => state.errors.statistics;
+export const selectErrorsDatabaseOperations = (state: StoreState) => state.errors.databaseOperations;
+

@@ -1,7 +1,6 @@
 import { useEffect, useState, useCallback, memo } from 'react';
-import { useStore } from '@/store/useStore';
 import { formatDate } from '@/lib/utils';
-import { useToast, useStoreData } from '@/hooks';
+import { useToast, useDataSourcesSelectors } from '@/hooks';
 import {
   Button,
   Dialog,

@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useStore } from '@/store/useStore';
+import { useStatisticsSelectors, useUISelectors } from '@/hooks/useStoreSelectors';
 import {
   Dialog,
   DialogContent,
@@ -11,12 +11,7 @@ import {
   Card,
   CardContent,
 } from '@/components/ui';
-
-// Create stable selectors
-const selectStatistics = (state: any) => state.statistics;
-const selectStatisticsLoading = (state: any) => state.loading.statistics;
-const selectStatisticsErrors = (state: any) => state.errors.statistics;
-const selectFetchStatistics = (state: any) => state.fetchStatistics;
+import { useProposalsTrend } from '@/store/selectors';
 
 interface StatisticsProps {
   isOpen: boolean;
@@ -24,148 +19,149 @@ interface StatisticsProps {
 }
 
 export function Statistics({ isOpen, onClose }: StatisticsProps) {
-  const statistics = useStore(selectStatistics);
-  const loading = useStore(selectStatisticsLoading);
-  const errors = useStore(selectStatisticsErrors);
-  const fetchStatistics = useStore(selectFetchStatistics);
-
+  const { statistics, loading, errors, fetchStatistics } = useStatisticsSelectors();
+  const { addToast } = useUISelectors();
+  const proposalsTrend = useProposalsTrend();
+  
   useEffect(() => {
-    if (isOpen && !statistics) {
-      fetchStatistics();
+    if (isOpen) {
+      fetchStatistics().catch(error => {
+        console.error('Failed to fetch statistics:', error);
+        addToast({
+          title: 'Error',
+          description: 'Failed to load statistics. Please try again.',
+          variant: 'destructive'
+        });
+      });
     }
-  }, [isOpen, statistics, fetchStatistics]);
-
+  }, [isOpen, fetchStatistics, addToast]);
+  
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent 
-        className="max-w-4xl max-h-[90vh] overflow-y-auto" 
-        style={{ 
-          backgroundColor: 'white', 
-          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
-          border: '2px solid #e5e7eb'
-        }}
-      >
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-[600px]">
         <DialogHeader>
-          <DialogTitle className="text-xl font-bold text-gray-900">Data Statistics</DialogTitle>
+          <DialogTitle>Statistics</DialogTitle>
         </DialogHeader>
-
-        {loading && (
-          <div className="flex flex-col items-center justify-center py-8">
+        
+        {loading.statistics ? (
+          <div className="flex justify-center py-8">
             <Spinner size="lg" />
-            <p className="mt-4 text-gray-600">Loading statistics...</p>
           </div>
-        )}
-
-        {errors && (
-          <div className="bg-red-50 p-4 rounded-md border border-red-200">
-            <p className="text-red-600 font-medium">Error loading statistics</p>
-            <p className="text-sm text-red-500">{errors.message}</p>
+        ) : errors.statistics ? (
+          <div className="bg-red-100 p-4 rounded-md text-red-800">
+            {errors.statistics.message || 'An error occurred while loading statistics'}
           </div>
-        )}
-
-        {!loading && statistics && (
-          <div className="space-y-6">
-            <div className="grid grid-cols-1 gap-4">
-              <Card className="border-2 border-blue-100 bg-white">
-                <CardContent className="pt-6 text-center">
-                  <h2 className="text-3xl font-bold text-blue-600">{statistics.total_proposals || 0}</h2>
-                  <p className="text-gray-600">Total Proposals</p>
+        ) : !statistics ? (
+          <div className="text-center py-8 text-gray-500">
+            No statistics available
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <Card>
+              <CardContent className="pt-6">
+                <h3 className="text-lg font-semibold mb-2">Overview</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <StatItem 
+                    label="Total Proposals" 
+                    value={statistics.total_proposals || 0} 
+                  />
+                  <StatItem 
+                    label="Data Sources" 
+                    value={statistics.total_sources || 0} 
+                  />
+                  <StatItem 
+                    label="Active Sources" 
+                    value={statistics.active_sources || 0} 
+                  />
+                  <StatItem 
+                    label="Last Updated" 
+                    value={formatDate(statistics.last_updated)} 
+                  />
+                </div>
+              </CardContent>
+            </Card>
+            
+            {proposalsTrend && proposalsTrend.length > 0 && (
+              <Card>
+                <CardContent className="pt-6">
+                  <h3 className="text-lg font-semibold mb-2">Proposal Trends</h3>
+                  <div className="h-40 flex items-end space-x-2">
+                    {proposalsTrend.map((item, index) => {
+                      const maxValue = Math.max(...proposalsTrend.map(i => i.count));
+                      const height = `${Math.max(10, (item.count / maxValue) * 100)}%`;
+                      
+                      return (
+                        <div key={index} className="flex flex-col items-center flex-1">
+                          <div 
+                            className="bg-blue-500 w-full rounded-t-sm" 
+                            style={{ height }}
+                            title={`${item.count} proposals`}
+                          />
+                          <div className="text-xs mt-1 text-center truncate w-full">
+                            {item.month}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </CardContent>
               </Card>
-            </div>
-
-            <div className="space-y-4">
-              <h3 className="text-lg font-medium text-gray-900">Proposals by Data Source</h3>
-              <div className="border rounded-md overflow-hidden bg-white">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b bg-gray-100">
-                      <th className="px-4 py-2 text-left font-medium text-gray-700">Source</th>
-                      <th className="px-4 py-2 text-left font-medium text-gray-700">Count</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {statistics.source_stats?.map((source: any, index: number) => (
-                      <tr key={index} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                        <td className="px-4 py-2 text-gray-800">{source.name}</td>
-                        <td className="px-4 py-2 text-gray-800">{source.count}</td>
-                      </tr>
-                    )) || (
-                      <tr>
-                        <td colSpan={2} className="px-4 py-2 text-center text-gray-500">
-                          No data available
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-4">
-                <h3 className="text-lg font-medium text-gray-900">Top Agencies</h3>
-                <div className="border rounded-md overflow-hidden bg-white">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b bg-gray-100">
-                        <th className="px-4 py-2 text-left font-medium text-gray-700">Agency</th>
-                        <th className="px-4 py-2 text-left font-medium text-gray-700">Count</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {statistics.agency_stats?.map((agency: any, index: number) => (
-                        <tr key={index} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                          <td className="px-4 py-2 text-gray-800">{agency.name}</td>
-                          <td className="px-4 py-2 text-gray-800">{agency.count}</td>
-                        </tr>
-                      )) || (
-                        <tr>
-                          <td colSpan={2} className="px-4 py-2 text-center text-gray-500">
-                            No data available
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <h3 className="text-lg font-medium text-gray-900">Proposals by Status</h3>
-                <div className="border rounded-md overflow-hidden bg-white">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b bg-gray-100">
-                        <th className="px-4 py-2 text-left font-medium text-gray-700">Status</th>
-                        <th className="px-4 py-2 text-left font-medium text-gray-700">Count</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {statistics.status_stats?.map((status: any, index: number) => (
-                        <tr key={index} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                          <td className="px-4 py-2 text-gray-800">{status.name}</td>
-                          <td className="px-4 py-2 text-gray-800">{status.count}</td>
-                        </tr>
-                      )) || (
-                        <tr>
-                          <td colSpan={2} className="px-4 py-2 text-center text-gray-500">
-                            No data available
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
+            )}
+            
+            {statistics.top_sources && statistics.top_sources.length > 0 && (
+              <Card>
+                <CardContent className="pt-6">
+                  <h3 className="text-lg font-semibold mb-2">Top Sources</h3>
+                  <div className="space-y-2">
+                    {statistics.top_sources.map((source, index) => (
+                      <div key={index} className="flex justify-between items-center">
+                        <span className="truncate max-w-[70%]">{source.name}</span>
+                        <span className="font-medium">{source.count} proposals</span>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </div>
         )}
-
+        
         <DialogFooter>
-          <Button onClick={onClose} className="mt-4 bg-blue-600 hover:bg-blue-700 text-white">Close</Button>
+          <Button onClick={onClose}>Close</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
+}
+
+interface StatItemProps {
+  label: string;
+  value: string | number;
+}
+
+function StatItem({ label, value }: StatItemProps) {
+  return (
+    <div>
+      <p className="text-sm text-gray-500">{label}</p>
+      <p className="text-2xl font-bold">{value}</p>
+    </div>
+  );
+}
+
+function formatDate(dateString?: string): string {
+  if (!dateString) return 'Never';
+  
+  try {
+    const date = new Date(dateString);
+    return date.toLocaleDateString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  } catch (error) {
+    console.error('Error formatting date:', error);
+    return 'Invalid date';
+  }
 } 

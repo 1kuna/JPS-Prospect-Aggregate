@@ -1,20 +1,12 @@
-import { useState, useCallback } from 'react';
-import { useStore } from '@/store/useStore';
+import { useState, useCallback, useEffect } from 'react';
+import { useProposalsSelectors } from '@/hooks';
 import { formatDate } from '@/lib/utils';
-import { useStoreData } from '@/hooks';
 import {
   Button,
   DataTable,
 } from '@/components';
 import { DataPageLayout } from '@/components/layout';
 import type { Column } from '@/components/data-display/DataTable';
-
-// Create stable selectors outside the component
-const selectProposals = (state: any) => state.proposals;
-const selectProposalsPagination = (state: any) => state.proposalsPagination;
-const selectProposalsLoading = (state: any) => state.loading.proposals;
-const selectProposalsErrors = (state: any) => state.errors.proposals;
-const selectFetchProposals = (state: any) => state.fetchProposals;
 
 interface Proposal {
   id: number | string;
@@ -29,99 +21,96 @@ export default function Proposals() {
   const [sortBy] = useState('release_date');
   const [sortOrder] = useState('desc');
 
-  // Use the custom hook for data fetching and state management
-  const { data: proposals, loading, errors, refresh } = useStoreData({
-    dataSelector: selectProposals,
-    loadingSelector: selectProposalsLoading,
-    errorSelector: selectProposalsErrors,
-    fetchAction: selectFetchProposals,
-    fetchParams: { sortBy, sortOrder },
-    dependencies: [sortBy, sortOrder]
-  });
-
-  // Use individual selector for pagination
-  const proposalsPagination = useStore(selectProposalsPagination);
+  // Use the typed selector hook for proposals
+  const {
+    proposals,
+    pagination,
+    loading,
+    errors,
+    fetchProposals
+  } = useProposalsSelectors();
+  
+  // Fetch proposals when component mounts or sort params change
+  useEffect(() => {
+    fetchProposals({ sortBy, sortOrder });
+  }, [fetchProposals, sortBy, sortOrder]);
 
   // Memoize event handlers to prevent unnecessary re-renders
   const handlePageChange = useCallback((page: number) => {
     console.log('Changing page to:', page);
-    refresh();
-  }, [refresh]);
+    fetchProposals({ 
+      page,
+      sortBy, 
+      sortOrder,
+      perPage: pagination?.perPage || 10
+    });
+  }, [fetchProposals, sortBy, sortOrder, pagination?.perPage]);
 
   const handlePerPageChange = useCallback((perPage: number) => {
-    console.log('Changing items per page to:', perPage);
-    refresh();
-  }, [refresh]);
+    console.log('Changing per page to:', perPage);
+    fetchProposals({
+      page: 1,
+      perPage,
+      sortBy,
+      sortOrder
+    });
+  }, [fetchProposals, sortBy, sortOrder]);
 
+  // Define columns for the data table
   const columns: Column<Proposal>[] = [
     {
-      header: 'ID',
-      accessorKey: 'id',
-    },
-    {
-      header: 'Title',
       accessorKey: 'title',
+      header: 'Title',
     },
     {
-      header: 'Agency',
       accessorKey: 'agency',
+      header: 'Agency',
     },
     {
-      header: 'Source',
       accessorKey: 'source_name',
+      header: 'Source',
     },
     {
+      accessorKey: 'release_date',
       header: 'Release Date',
-      accessorKey: (row: Proposal) => row.release_date ? formatDate(row.release_date) : 'N/A',
+      cell: ({ row }) => formatDate(row.original.release_date),
     },
     {
-      header: 'Status',
       accessorKey: 'status',
-    },
-    {
-      header: 'Actions',
-      accessorKey: 'id',
-      cell: () => (
-        <Button variant="outline" size="sm">View</Button>
-      ),
+      header: 'Status',
     },
   ];
 
-  // Ensure we have a valid pagination object even if the backend doesn't provide one
-  const paginationInfo = {
-    page: proposalsPagination?.page || 1,
-    perPage: proposalsPagination?.perPage || 50,
-    totalPages: proposalsPagination?.totalPages || 1,
-    totalItems: proposalsPagination?.totalCount || (proposals?.length || 0)
-  };
-
   return (
-    <DataPageLayout
-      title="Proposals"
-      data={proposals}
-      loading={loading}
-      error={errors}
-      onRefresh={refresh}
-      emptyMessage="No proposals found"
-      renderHeader={() => (
-        <>
-          <p className="text-muted-foreground">
-            Showing {proposals?.length || 0} of {paginationInfo.totalItems} proposals
-          </p>
-          <Button onClick={refresh}>Refresh</Button>
-        </>
-      )}
-      renderContent={(data) => (
+    <DataPageLayout title="Proposals" subtitle="View all proposals from your data sources">
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-semibold">All Proposals</h2>
+          <Button onClick={() => fetchProposals({ sortBy, sortOrder })}>
+            Refresh
+          </Button>
+        </div>
+
         <DataTable
-          data={data as Proposal[]}
+          data={proposals || []}
           columns={columns}
-          emptyMessage="No proposals found"
-          pagination={paginationInfo}
-          onPageChange={handlePageChange}
-          onPerPageChange={handlePerPageChange}
-          maxHeight="60vh" // Use viewport-relative height for better responsiveness
+          isLoading={loading}
+          pagination={{
+            page: pagination?.page || 1,
+            pageCount: pagination?.totalPages || 1,
+            perPage: pagination?.perPage || 10,
+            total: pagination?.totalCount || 0,
+            onPageChange: handlePageChange,
+            onPerPageChange: handlePerPageChange,
+          }}
         />
-      )}
-    />
+
+        {errors && (
+          <div className="p-4 text-red-500 bg-red-50 rounded-md">
+            Error: {errors.message || 'Unknown error occurred'}
+          </div>
+        )}
+      </div>
+    </DataPageLayout>
   );
 } 
