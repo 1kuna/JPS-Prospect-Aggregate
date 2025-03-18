@@ -504,9 +504,10 @@ def pull_data_source(source_id):
                     "message": f"Data source was recently scraped at {source.last_scraped.isoformat()}. Use force=true to override the cooldown period."
                 }), 200
             
-            # Start the scraper task
-            task_name = 'src.background_tasks.scraper_tasks.force_collect_task'
-            task = celery_app.send_task(task_name, args=[source_id])
+            # Start the scraper task using the new class-based approach
+            from src.background_tasks.scraper_tasks import ForceCollectTaskImpl
+            task_result = ForceCollectTaskImpl().delay(source_id)
+            task = task_result
             
             # Update the source's last_scraped timestamp
             source.last_scraped = datetime.datetime.now()
@@ -818,14 +819,17 @@ def trigger_health_check(source_id):
             
             # Determine which health check task to use based on the source name
             if "Acquisition Gateway" in source.name:
-                task_name = 'src.background_tasks.health_check_tasks.check_acquisition_gateway_task'
+                from src.background_tasks.health_check_tasks import AcquisitionGatewayHealthCheckTask
+                task_result = AcquisitionGatewayHealthCheckTask().delay()
             elif "SSA Contract Forecast" in source.name:
-                task_name = 'src.background_tasks.health_check_tasks.check_ssa_contract_forecast_task'
+                from src.background_tasks.health_check_tasks import SSAContractForecastHealthCheckTask
+                task_result = SSAContractForecastHealthCheckTask().delay()
             else:
                 # Default to all scrapers task if source name doesn't match
-                task_name = 'src.background_tasks.health_check_tasks.check_all_scrapers_task'
+                from src.background_tasks.health_check_tasks import AllScrapersHealthCheckTask
+                task_result = AllScrapersHealthCheckTask().delay()
             
-            task = celery_app.send_task(task_name, args=[])
+            task = task_result
             
             return jsonify({
                 "status": "success",

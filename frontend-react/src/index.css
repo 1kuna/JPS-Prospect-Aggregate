@@ -383,3 +383,19 @@
     opacity: 0;
   }
 }
+
+/* Pull button transitions */
+.pull-button-transition {
+  transition: all 0.3s ease-in-out;
+}
+
+.pull-button-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+}
+
+.pull-spinner {
+  transition: opacity 0.3s ease-in-out;
+}

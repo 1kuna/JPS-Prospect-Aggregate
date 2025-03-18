@@ -19,7 +19,6 @@ class TaskRegistry:
         """Initialize the task registry."""
         self.scraper_tasks = {}
         self.health_check_tasks = {}
-        self.all_scrapers_task = None
         self.force_collect_task = None
     
     def register_scraper_task(self, scraper_name, task):
@@ -43,16 +42,6 @@ class TaskRegistry:
         """
         logger.info(f"Registering health check task for {check_name}")
         self.health_check_tasks[check_name] = task
-    
-    def register_all_scrapers_task(self, task):
-        """
-        Register the task that runs all scrapers.
-        
-        Args:
-            task (function): Celery task function
-        """
-        logger.info("Registering all scrapers task")
-        self.all_scrapers_task = task
     
     def register_force_collect_task(self, task):
         """
@@ -81,10 +70,6 @@ class TaskRegistry:
         for name, task in self.health_check_tasks.items():
             all_tasks[f"check_{name.lower().replace(' ', '_')}_task"] = task
         
-        # Add all scrapers task
-        if self.all_scrapers_task:
-            all_tasks["run_all_scrapers_task"] = self.all_scrapers_task
-        
         # Add force collect task
         if self.force_collect_task:
             all_tasks["force_collect_task"] = self.force_collect_task
@@ -110,10 +95,6 @@ class TaskRegistry:
         for name, task in self.health_check_tasks.items():
             if task_name == f"check_{name.lower().replace(' ', '_')}_task":
                 return task
-        
-        # Check all scrapers task
-        if self.all_scrapers_task and task_name == "run_all_scrapers_task":
-            return self.all_scrapers_task
         
         # Check force collect task
         if self.force_collect_task and task_name == "force_collect_task":

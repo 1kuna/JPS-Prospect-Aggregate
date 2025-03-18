@@ -1,12 +1,8 @@
 import { useEffect, useState, useCallback, memo } from 'react';
 import { useStore } from '@/store/useStore';
 import { formatDate } from '@/lib/utils';
-import { useToast } from '@/hooks';
+import { useToast, useStoreData } from '@/hooks';
 import {
-  PageLayout,
-  Alert,
-  AlertTitle,
-  AlertDescription,
   Button,
   Dialog,
   DialogContent,
@@ -14,7 +10,8 @@ import {
   DialogTitle,
   DialogTrigger,
   Spinner,
-} from '@/components';
+} from '@/components/ui';
+import { DataPageLayout } from '@/components/layout';
 import { DataSourceForm } from '@/components/DataSourceForm';
 import { DataTable as DataTableComponent } from '@/components/data-display/DataTable';
 import type { Column } from '@/components/data-display/DataTable';
@@ -57,7 +54,6 @@ const selectGetScraperStatus = (state: any) => state.getScraperStatus;
 
 // Global state for tracking which sources are being pulled
 // This ensures the state persists even if the component rerenders
-const pullingSourceIds: Record<number, boolean> = {};
 const statusCheckIntervals: Record<number, NodeJS.Timeout> = {};
 
 // Memoized PullButton component to prevent unnecessary rerenders
@@ -68,33 +64,15 @@ const PullButton = memo(({
   dataSource: DataSource; 
   onPull: (dataSource: DataSource) => void;
 }) => {
-  // Use local state that's initialized from the global state
-  const [isPulling, setIsPulling] = useState(!!pullingSourceIds[dataSource.id]);
-  
-  // Update local state when global state changes
-  useEffect(() => {
-    const checkPullingState = () => {
-      const newIsPulling = !!pullingSourceIds[dataSource.id];
-      if (newIsPulling !== isPulling) {
-        setIsPulling(newIsPulling);
-      }
-    };
-    
-    // Check immediately
-    checkPullingState();
-    
-    // Set up an interval to check regularly
-    const interval = setInterval(checkPullingState, 500);
-    
-    return () => clearInterval(interval);
-  }, [dataSource.id, isPulling]);
+  // Get the pulling state from the store
+  const pullingProgress = useStore(state => state.pullingProgress);
+  const isPulling = pullingProgress[dataSource.id] || false;
   
   const handleClick = useCallback(() => {
-    // Update local state immediately
-    setIsPulling(true);
-    // Call the parent handler
-    onPull(dataSource);
-  }, [dataSource, onPull]);
+    if (!isPulling) {
+      onPull(dataSource);
+    }
+  }, [dataSource, isPulling, onPull]);
   
   return (
     <Button 
@@ -102,16 +80,12 @@ const PullButton = memo(({
       size="sm"
       onClick={handleClick}
       disabled={isPulling}
-      className="min-w-[100px] transition-all duration-300 ease-in-out"
+      className="min-w-[100px] relative transition-all duration-300 ease-in-out"
     >
-      {isPulling ? (
-        <span className="flex items-center justify-center w-full">
-          <Spinner className="mr-2 h-4 w-4" />
-          Pulling...
-        </span>
-      ) : (
-        'Pull Source'
-      )}
+      <span className="flex items-center justify-center w-full">
+        {isPulling && <Spinner className="mr-2 h-4 w-4" />}
+        {isPulling ? 'Pulling...' : 'Pull Source'}
+      </span>
     </Button>
   );
 });
@@ -146,11 +120,15 @@ ActionCell.displayName = 'ActionCell';
 
 // Define data sources page component
 export default function DataSources() {
-  // Use store selectors
-  const dataSources = useStore(selectDataSources);
-  const loading = useStore(selectDataSourcesLoading);
-  const errors = useStore(selectDataSourcesErrors);
-  const fetchDataSources = useStore(selectFetchDataSources);
+  // Use the custom hook for data fetching and state management
+  const { data: dataSources, loading, errors, refresh } = useStoreData({
+    dataSelector: selectDataSources,
+    loadingSelector: selectDataSourcesLoading,
+    errorSelector: selectDataSourcesErrors,
+    fetchAction: selectFetchDataSources
+  });
+  
+  // Get additional actions from the store
   const createDataSource = useStore(selectCreateDataSource);
   const updateDataSource = useStore(selectUpdateDataSource);
   const pullDataSource = useStore(selectPullDataSource);
@@ -160,257 +138,144 @@ export default function DataSources() {
   // Local state
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingDataSource, setEditingDataSource] = useState<DataSource | null>(null);
-  const [isInitialLoad, setIsInitialLoad] = useState(true);
 
-  // Fetch data sources on component mount
-  useEffect(() => {
-    if (isInitialLoad) {
-      fetchDataSources()
-        .then(() => setIsInitialLoad(false))
-        .catch(() => setIsInitialLoad(false));
-    }
-  }, [fetchDataSources, isInitialLoad]);
-
-  // Function to start polling for a data source
-  const startPolling = useCallback((dataSource: DataSource) => {
-    const id = dataSource.id;
-    
-    // Clear any existing interval
-    if (statusCheckIntervals[id]) {
-      clearInterval(statusCheckIntervals[id]);
-    }
-    
-    // Set up a new interval
-    let checkCount = 0;
-    let lastStatus = "";
-    let subtaskId = ""; // Track the subtask ID
-    
-    console.log(`[DataSources] Setting up polling for source ${id}`);
-    
-    statusCheckIntervals[id] = setInterval(async () => {
-      try {
-        checkCount++;
-        console.log(`[DataSources] Checking status for source ${id} (check #${checkCount})`);
-        
-        const statusResponse: ScraperStatusResponse = await getScraperStatus(String(id));
-        console.log(`[DataSources] Status response for source ${id}:`, statusResponse);
-        
-        // Extract the actual status from the response
-        // The API returns nested status information
-        const actualStatus = statusResponse.data?.status || statusResponse.status;
-        const statusMessage = statusResponse.data?.message || statusResponse.message || "";
-        
-        // Check if we have a subtask ID
-        if (statusResponse.data?.subtask_id && !subtaskId) {
-          subtaskId = statusResponse.data.subtask_id;
-          console.log(`[DataSources] Found subtask ID: ${subtaskId} for source ${id}`);
-        }
-        
-        console.log(`[DataSources] Actual status for source ${id}: ${actualStatus}, message: ${statusMessage}`);
-        
-        // If the status hasn't changed, don't do anything
-        if (actualStatus === lastStatus && checkCount > 1) {
-          console.log(`[DataSources] Status hasn't changed for source ${id}, continuing to poll`);
-          return;
-        }
-        
-        // Update the last status
-        lastStatus = actualStatus;
-        
-        // If the scraper is no longer running, update UI
-        if (actualStatus !== "running" && actualStatus !== "pending") {
-          console.log(`[DataSources] Source ${id} is no longer running (${actualStatus}), updating state`);
-          
-          // Clear the interval
-          clearInterval(statusCheckIntervals[id]);
-          delete statusCheckIntervals[id];
-          
-          // Update the global state
-          pullingSourceIds[id] = false;
-          
-          // Show appropriate toast
-          const sourceName = dataSource.name || `Source #${id}`;
-          
-          if (actualStatus === "completed" || actualStatus === "success" || actualStatus === "working") {
-            console.log(`[DataSources] Source ${id} completed successfully, showing toast`);
-            toast({
-              title: "Success!",
-              description: `Successfully pulled data from ${sourceName}`,
-              variant: "success",
-              duration: 10000
-            });
-            
-            // Refresh data sources
-            fetchDataSources().catch(() => {});
-          } else {
-            console.log(`[DataSources] Source ${id} failed (${actualStatus}), showing error toast`);
-            toast({
-              title: "Error pulling data",
-              description: statusMessage || "An unknown error occurred",
-              variant: "destructive",
-              duration: 15000
-            });
-          }
-        } else if (checkCount >= 150) {
-          // After 5 minutes (150 checks at 2-second intervals), force stop polling
-          console.log(`[DataSources] Source ${id} polling timeout after ${checkCount} checks`);
-          
-          // Clear the interval
-          clearInterval(statusCheckIntervals[id]);
-          delete statusCheckIntervals[id];
-          
-          // Update the global state
-          pullingSourceIds[id] = false;
-          
-          // Show timeout toast
-          toast({
-            title: "Operation taking too long",
-            description: `The operation for ${dataSource.name} is still running in the background, but we've stopped checking its status. You can check the status later by refreshing the page.`,
-            variant: "default",
-            duration: 15000
-          });
-        }
-      } catch (error) {
-        console.error(`[DataSources] Error checking status for source ${id}:`, error);
-        
-        // If we've been polling for a while and still getting errors, stop polling
-        if (checkCount > 10) {
-          console.log(`[DataSources] Too many errors checking status for source ${id}, stopping polling`);
-          clearInterval(statusCheckIntervals[id]);
-          delete statusCheckIntervals[id];
-          
-          // Update the global state
-          pullingSourceIds[id] = false;
-          
-          // Show error toast
-          toast({
-            title: "Error checking status",
-            description: `Failed to check status for ${dataSource.name || `Source #${id}`}`,
-            variant: "destructive",
-            duration: 10000
-          });
-        }
-      }
-    }, 2000); // Poll every 2 seconds
-  }, [getScraperStatus, toast, fetchDataSources]);
-
-  // Handle pulling data from a source
-  const handlePullDataSource = useCallback(async (dataSource: DataSource) => {
-    const id = dataSource.id;
-    
-    // Prevent pulling if already in progress
-    if (pullingSourceIds[id]) {
-      console.log(`[DataSources] Source ${id} is already being pulled, ignoring request`);
-      return;
-    }
-    
-    console.log(`[DataSources] Starting pull for source ${id}`);
-    
-    // Update the global state immediately
-    pullingSourceIds[id] = true;
-    
-    // Show toast notification
-    console.log(`[DataSources] Showing toast for source ${id}`);
-    toast({
-      title: "Pulling data",
-      description: `Starting to pull data from ${dataSource.name}. This may take a while...`,
-      variant: "default",
-      duration: 30000
-    });
-    
-    try {
-      // Call the API
-      console.log(`[DataSources] Calling pullDataSource API for source ${id}`);
-      const response = await pullDataSource(String(id));
-      console.log(`[DataSources] API call successful for source ${id}:`, response);
-      
-      // Start polling for status updates
-      startPolling(dataSource);
-    } catch (error) {
-      // Show error toast
-      console.error(`[DataSources] Error pulling source ${id}:`, error);
-      toast({
-        title: "Error pulling data",
-        description: `An unexpected error occurred: ${(error as Error).message}`,
-        variant: "destructive",
-        duration: 15000
-      });
-      
-      // Reset the global state
-      pullingSourceIds[id] = false;
-    }
-  }, [pullDataSource, toast, startPolling]);
-
-  // Clean up intervals when component unmounts
+  // Clear intervals on component unmount
   useEffect(() => {
     return () => {
-      console.log('[DataSources] Cleaning up all intervals');
-      Object.keys(statusCheckIntervals).forEach(id => {
-        clearInterval(statusCheckIntervals[Number(id)]);
-        delete statusCheckIntervals[Number(id)];
+      // Clean up any existing intervals when the component unmounts
+      Object.values(statusCheckIntervals).forEach(interval => {
+        clearInterval(interval);
       });
     };
   }, []);
 
-  const handleRefresh = useCallback(() => {
-    fetchDataSources().catch(() => {});
-  }, [fetchDataSources]);
-
+  // Handle data source creation
   const handleCreateDataSource = async (data: any) => {
     try {
       await createDataSource(data);
       setIsDialogOpen(false);
-    } catch (error) {
-      // Handle error
+      toast({
+        title: "Success",
+        description: "Data source created successfully",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to create data source",
+        variant: "destructive",
+      });
     }
   };
 
+  // Handle data source update
   const handleUpdateDataSource = async (data: any) => {
     try {
-      await updateDataSource(String(data.id), data);
+      await updateDataSource({ id: editingDataSource?.id, ...data });
       setIsDialogOpen(false);
       setEditingDataSource(null);
-    } catch (error) {
-      // Handle error
+      toast({
+        title: "Success",
+        description: "Data source updated successfully",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update data source",
+        variant: "destructive",
+      });
     }
   };
 
+  // Handle edit button click
   const handleEditDataSource = useCallback((dataSource: DataSource) => {
     setEditingDataSource(dataSource);
     setIsDialogOpen(true);
   }, []);
 
-  const handleCloseDialog = useCallback(() => {
-    setIsDialogOpen(false);
-    setEditingDataSource(null);
+  // Handle dialog close - reset editing state
+  const handleDialogOpenChange = useCallback((open: boolean) => {
+    setIsDialogOpen(open);
+    if (!open) {
+      setEditingDataSource(null);
+    }
   }, []);
 
-  // Show loading state during initial load
-  if ((isInitialLoad || loading) && !dataSources.length) {
-    return (
-      <PageLayout title="Data Sources" isLoading={true}>
-        <div className="flex justify-center items-center h-[500px]">
-          <Spinner />
-        </div>
-      </PageLayout>
-    );
-  }
+  // Fetch scraper status periodically while pulling
+  const createStatusChecker = useCallback((sourceId: number, sourceName: string) => {
+    // Clear any existing interval for this source
+    if (statusCheckIntervals[sourceId]) {
+      clearInterval(statusCheckIntervals[sourceId]);
+    }
+    
+    // Set up new status checking interval
+    const statusInterval = setInterval(async () => {
+      try {
+        const response: ScraperStatusResponse = await getScraperStatus(sourceId);
+        console.log('Status update for source:', sourceId, response);
+        
+        if (response.status === 'completed' || response.status === 'failed') {
+          // Clear the interval when the task is done
+          clearInterval(statusCheckIntervals[sourceId]);
+          delete statusCheckIntervals[sourceId];
+          
+          // Update UI based on status
+          if (response.status === 'completed') {
+            toast({
+              title: "Task completed",
+              description: `Data source "${sourceName}" pull completed successfully`,
+            });
+          } else {
+            toast({
+              title: "Task failed",
+              description: response.message || `Failed to pull data from "${sourceName}"`,
+              variant: "destructive",
+            });
+          }
+          
+          // Refresh data sources list
+          refresh();
+        }
+      } catch (error) {
+        console.error('Error checking status:', error);
+      }
+    }, 2000); // Check every 2 seconds
+    
+    // Store the interval so we can clear it later
+    statusCheckIntervals[sourceId] = statusInterval;
+  }, [getScraperStatus, toast, refresh]);
 
-  // Error state
-  if (errors && !isInitialLoad && !dataSources.length) {
-    return (
-      <div className="space-y-6">
-        <Alert variant="destructive">
-          <AlertTitle>Error loading data sources</AlertTitle>
-          <AlertDescription>{errors.message}</AlertDescription>
-        </Alert>
-        <Button onClick={handleRefresh}>Retry</Button>
-      </div>
-    );
-  }
+  // Handle pull button click
+  const handlePullDataSource = useCallback(async (dataSource: DataSource) => {
+    try {
+      // Update UI to show pulling state for this source
+      console.log('Pulling data from source:', dataSource.id);
+      
+      // Call the API to start the pull
+      const response = await pullDataSource(dataSource.id);
+      console.log('Pull response:', response);
+      
+      toast({
+        title: "Pull initiated",
+        description: `Started pulling data from "${dataSource.name}"`,
+      });
+      
+      // Start checking status periodically
+      createStatusChecker(dataSource.id, dataSource.name);
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || `Failed to pull data from "${dataSource.name}"`,
+        variant: "destructive",
+      });
+    }
+  }, [pullDataSource, toast, createStatusChecker]);
 
   // Define table columns
   const columns: Column<DataSource>[] = [
+    {
+      header: 'ID',
+      accessorKey: 'id',
+    },
     {
       header: 'Name',
       accessorKey: 'name',
@@ -418,85 +283,105 @@ export default function DataSources() {
     {
       header: 'URL',
       accessorKey: 'url',
+      cell: (dataSource) => {
+        const url = dataSource.url;
+        // Truncate long URLs for display
+        const displayUrl = url.length > 30 ? url.substring(0, 30) + '...' : url;
+        return (
+          <a 
+            href={url.startsWith('http') ? url : `https://${url}`} 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="text-blue-500 hover:underline"
+          >
+            {displayUrl}
+          </a>
+        );
+      },
     },
     {
-      header: 'Status',
-      accessorKey: 'status',
+      header: 'Description',
+      accessorKey: 'description',
+      cell: (dataSource) => dataSource.description || 'N/A',
     },
     {
       header: 'Last Checked',
       accessorKey: (row: DataSource) => {
-        // Check for the field using both naming conventions
-        const checkDate = row.lastChecked || row.last_checked;
-        // Use the fixed formatDate function which properly handles UTC dates
-        return checkDate ? formatDate(checkDate) : 'Never';
-      },
+        const date = row.lastChecked || row.last_checked;
+        return date ? formatDate(date) : 'Never';
+      }
     },
     {
-      header: 'Proposals',
-      accessorKey: (row: DataSource) => row.proposalCount?.toString() || '0',
+      header: 'Status',
+      accessorKey: 'status',
+      cell: (dataSource) => dataSource.status || 'Unknown',
     },
     {
       header: 'Actions',
-      accessorKey: 'id',
-      cell: (row: DataSource) => (
+      accessorKey: 'id', // Use id as the accessor
+      cell: (dataSource) => (
         <ActionCell 
-          row={row} 
+          row={dataSource} 
           onPull={handlePullDataSource} 
-          onEdit={handleEditDataSource} 
+          onEdit={handleEditDataSource}
         />
       ),
     },
   ];
 
+  // The Dialog for creating/editing data sources
+  const dataSourceDialog = (
+    <Dialog open={isDialogOpen} onOpenChange={handleDialogOpenChange}>
+      <DialogContent className="sm:max-w-[425px]">
+        <DialogHeader>
+          <DialogTitle>
+            {editingDataSource ? 'Edit Data Source' : 'Create Data Source'}
+          </DialogTitle>
+        </DialogHeader>
+        <DataSourceForm
+          initialData={editingDataSource || undefined}
+          onSubmit={editingDataSource ? handleUpdateDataSource : handleCreateDataSource}
+          onCancel={() => setIsDialogOpen(false)}
+        />
+      </DialogContent>
+    </Dialog>
+  );
+
   return (
-    <PageLayout title="Data Sources">
-      <div className="space-y-4 min-h-[500px] bg-background transition-all duration-300">
-        <div className="flex justify-between items-center">
+    <DataPageLayout
+      title="Data Sources"
+      data={dataSources}
+      loading={loading}
+      error={errors}
+      onRefresh={refresh}
+      emptyMessage="No data sources configured"
+      renderHeader={() => (
+        <>
           <p className="text-muted-foreground">
-            {dataSources.length} data sources configured
+            {dataSources ? `${dataSources.length} data sources configured` : ''}
           </p>
           <div className="flex gap-2">
-            <Button onClick={handleRefresh}>Refresh</Button>
+            <Button onClick={refresh}>Refresh</Button>
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
               <DialogTrigger asChild>
                 <Button>Add Data Source</Button>
               </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>
-                    {editingDataSource ? 'Edit Data Source' : 'Add Data Source'}
-                  </DialogTitle>
-                </DialogHeader>
-                <DataSourceForm
-                  initialData={editingDataSource ? {
-                    id: editingDataSource.id,
-                    name: editingDataSource.name,
-                    url: editingDataSource.url,
-                    description: editingDataSource.description
-                  } : undefined}
-                  onSubmit={(data) => {
-                    if (editingDataSource) {
-                      handleUpdateDataSource(data);
-                    } else {
-                      handleCreateDataSource(data);
-                    }
-                  }}
-                  onCancel={handleCloseDialog}
-                />
-              </DialogContent>
             </Dialog>
           </div>
-        </div>
-
-        <DataTableComponent
-          key="data-sources-table"
-          data={dataSources}
-          columns={columns}
-          emptyMessage="No data sources configured"
-          isLoading={loading}
-        />
-      </div>
-    </PageLayout>
+        </>
+      )}
+      renderContent={(data) => (
+        <>
+          <DataTableComponent
+            key="data-sources-table"
+            data={data as DataSource[]}
+            columns={columns}
+            emptyMessage="No data sources configured"
+            isLoading={loading}
+          />
+          {dataSourceDialog}
+        </>
+      )}
+    />
   );
 } 
