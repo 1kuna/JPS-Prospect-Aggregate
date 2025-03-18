@@ -4,23 +4,22 @@ from flask import jsonify, request, current_app
 from sqlalchemy import func, desc, asc
 from sqlalchemy.exc import SQLAlchemyError
 from src.api import api
-from src.database.db_session_manager import session_scope, check_connection, get_connection_stats
+from src.database.db import session_scope, check_connection
 from src.database.models import Proposal, DataSource, ScraperStatus
-from src.exceptions import ValidationError, ResourceNotFoundError
+from src.exceptions import ValidationError, NotFoundError
 from src.celery_app import celery_app
 import math
 import datetime
-import logging
 import os
 import platform
 import psutil
 import time
 import traceback
 from celery.result import AsyncResult
-from src.utils.logging import get_component_logger
+from src.utils.logger import logger
 
 # Set up logging using the centralized utility
-logger = get_component_logger('api.routes')
+logger = logger.bind(name="api.routes")
 
 def paginate_query(query, page, per_page):
     """Helper function to paginate query results."""
@@ -359,45 +358,57 @@ def get_data_sources():
 @api.route('/data-sources/<int:source_id>', methods=['PUT'])
 def update_data_source(source_id):
     """Update a data source."""
-    with session_scope() as session:
-        try:
-            # Find the data source
-            source = session.query(DataSource).filter_by(id=source_id).first()
-            if not source:
-                raise ResourceNotFoundError(f"Data source with ID {source_id} not found")
-            
-            # Get request data
-            data = request.json
-            if not data:
-                raise ValidationError("No data provided")
+    try:
+        # Validate input
+        data = request.json
+        if not data:
+            raise ValidationError("No data provided")
+        
+        required_fields = ['name', 'url', 'frequency']
+        for field in required_fields:
+            if field not in data:
+                raise ValidationError(f"Missing required field: {field}")
+        
+        # Validate frequency
+        valid_frequencies = ['daily', 'weekly', 'monthly', 'manual']
+        if data['frequency'] not in valid_frequencies:
+            raise ValidationError(f"Invalid frequency. Must be one of: {', '.join(valid_frequencies)}")
+        
+        # Update data source
+        with session_scope() as session:
+            data_source = session.query(DataSource).filter(DataSource.id == source_id).first()
+            if not data_source:
+                raise NotFoundError(f"Data source with ID {source_id} not found")
             
             # Update fields
-            if 'name' in data:
-                source.name = data['name']
-            if 'url' in data:
-                source.url = data['url']
+            data_source.name = data['name']
+            data_source.url = data['url']
+            data_source.frequency = data['frequency']
             if 'description' in data:
-                source.description = data['description']
+                data_source.description = data['description']
+            if 'active' in data:
+                data_source.active = data['active']
+            
+            # Additional fields
+            if 'settings' in data:
+                data_source.settings = data['settings']
+            if 'credentials' in data:
+                data_source.credentials = data['credentials']
+            
+            # Update timestamps
+            data_source.updated_at = datetime.datetime.utcnow()
             
             # Commit changes
-            session.commit()
-            
-            # Return updated data source
-            return jsonify({
-                "status": "success",
-                "data": {
-                    "id": source.id,
-                    "name": source.name,
-                    "url": source.url,
-                    "description": source.description,
-                    "last_scraped": source.last_scraped.isoformat() if source.last_scraped else None
-                }
-            })
-        except (ResourceNotFoundError, ValidationError) as e:
-            return jsonify({"status": "error", "message": str(e)}), e.status_code
-        except Exception as e:
-            current_app.logger.error(f"Error in update_data_source: {str(e)}")
-            return jsonify({"status": "error", "message": str(e)}), 500
+            session.add(data_source)
+        
+        return jsonify({"status": "success", "message": f"Data source {source_id} updated successfully"}), 200
+    except ValidationError as e:
+        return jsonify({"status": "error", "message": str(e)}), 400
+    except NotFoundError as e:
+        return jsonify({"status": "error", "message": str(e)}), 404
+    except Exception as e:
+        logger.error(f"Error updating data source: {str(e)}")
+        return jsonify({"status": "error", "message": "An error occurred while updating the data source"}), 500
 
 
 @api.route('/data-sources', methods=['POST'])
@@ -451,7 +462,7 @@ def delete_data_source(source_id):
             # Find the data source
             source = session.query(DataSource).filter_by(id=source_id).first()
             if not source:
-                raise ResourceNotFoundError(f"Data source with ID {source_id} not found")
+                raise NotFoundError(f"Data source with ID {source_id} not found")
             
             # Check if there are proposals associated with this source
             proposal_count = session.query(func.count(Proposal.id)).filter(Proposal.source_id == source_id).scalar()
@@ -466,7 +477,7 @@ def delete_data_source(source_id):
                 "status": "success",
                 "message": f"Data source with ID {source_id} deleted successfully"
             })
-        except (ResourceNotFoundError, ValidationError) as e:
+        except NotFoundError as e:
             return jsonify({"status": "error", "message": str(e)}), e.status_code
         except Exception as e:
             current_app.logger.error(f"Error in delete_data_source: {str(e)}")
@@ -486,7 +497,7 @@ def pull_data_source(source_id):
             # Find the data source
             source = session.query(DataSource).filter_by(id=source_id).first()
             if not source:
-                raise ResourceNotFoundError(f"Data source with ID {source_id} not found")
+                raise NotFoundError(f"Data source with ID {source_id} not found")
             
             # Get task parameters
             params = request.json or {}
@@ -504,9 +515,18 @@ def pull_data_source(source_id):
                     "message": f"Data source was recently scraped at {source.last_scraped.isoformat()}. Use force=true to override the cooldown period."
                 }), 200
             
-            # Start the scraper task using the new class-based approach
-            from src.background_tasks.scraper_tasks import ForceCollectTaskImpl
-            task_result = ForceCollectTaskImpl().delay(source_id)
+            # Start the scraper task using the new simplified task system
+            from src.tasks.scrapers import run_all_scrapers, run_acquisition_gateway, run_ssa_contract_forecast
+            
+            # Choose the appropriate task based on the source name
+            if "Acquisition Gateway" in source.name:
+                task_result = run_acquisition_gateway.delay(force=True)
+            elif "SSA Contract Forecast" in source.name:
+                task_result = run_ssa_contract_forecast.delay(force=True)
+            else:
+                # Use a general task
+                task_result = run_all_scrapers.delay(force=True)
+            
             task = task_result
             
             # Update the source's last_scraped timestamp
@@ -542,7 +562,7 @@ def pull_data_source(source_id):
                     "source_name": source.name
                 }
             })
-        except ResourceNotFoundError as e:
+        except NotFoundError as e:
             return jsonify({"status": "error", "message": str(e)}), e.status_code
         except Exception as e:
             current_app.logger.error(f"Error in pull_data_source: {str(e)}")
@@ -753,7 +773,7 @@ def check_scraper_status(source_id):
             # Find the data source
             source = session.query(DataSource).filter_by(id=source_id).first()
             if not source:
-                raise ResourceNotFoundError(f"Data source with ID {source_id} not found")
+                raise NotFoundError(f"Data source with ID {source_id} not found")
             
             # Get the status record
             status = session.query(ScraperStatus).filter_by(source_id=source_id).first()
@@ -795,7 +815,7 @@ def check_scraper_status(source_id):
             
             return jsonify(response_data)
             
-        except ResourceNotFoundError as e:
+        except NotFoundError as e:
             return jsonify({"status": "error", "message": str(e)}), 404
         except Exception as e:
             current_app.logger.error(f"Error in check_scraper_status: {str(e)}")
@@ -805,7 +825,7 @@ def check_scraper_status(source_id):
 @api.route('/data-sources/<int:source_id>/health-check', methods=['POST'])
 def trigger_health_check(source_id):
     """
-    Trigger a health check for a data source.
+    Trigger a health check for a specific data source.
     
     This endpoint starts a Celery task to check the health of a data source.
     It returns the task ID which can be used to check the status of the task.
@@ -815,19 +835,18 @@ def trigger_health_check(source_id):
             # Find the data source
             source = session.query(DataSource).filter_by(id=source_id).first()
             if not source:
-                raise ResourceNotFoundError(f"Data source with ID {source_id} not found")
+                raise NotFoundError(f"Data source with ID {source_id} not found")
             
             # Determine which health check task to use based on the source name
+            from src.tasks.health import check_acquisition_gateway, check_ssa_contract_forecast, check_all_scrapers
+            
             if "Acquisition Gateway" in source.name:
-                from src.background_tasks.health_check_tasks import AcquisitionGatewayHealthCheckTask
-                task_result = AcquisitionGatewayHealthCheckTask().delay()
+                task_result = check_acquisition_gateway.delay()
             elif "SSA Contract Forecast" in source.name:
-                from src.background_tasks.health_check_tasks import SSAContractForecastHealthCheckTask
-                task_result = SSAContractForecastHealthCheckTask().delay()
+                task_result = check_ssa_contract_forecast.delay()
             else:
                 # Default to all scrapers task if source name doesn't match
-                from src.background_tasks.health_check_tasks import AllScrapersHealthCheckTask
-                task_result = AllScrapersHealthCheckTask().delay()
+                task_result = check_all_scrapers.delay()
             
             task = task_result
             
@@ -840,7 +859,7 @@ def trigger_health_check(source_id):
                     "source_name": source.name
                 }
             })
-        except ResourceNotFoundError as e:
+        except NotFoundError as e:
             return jsonify({"status": "error", "message": str(e)}), e.status_code
         except Exception as e:
             current_app.logger.error(f"Error in trigger_health_check: {str(e)}")

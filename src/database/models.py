@@ -1,15 +1,13 @@
 from __future__ import annotations
 from typing import List, Optional, Dict, Any, Union
 from sqlalchemy import Column, Integer, String, Float, DateTime, Text, create_engine, ForeignKey, Boolean
-from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, Session
 import os
 from dotenv import load_dotenv
 import datetime
+from src.database.db import Base
 
 load_dotenv()
-
-Base = declarative_base()
 
 class DataSource(Base):
     """

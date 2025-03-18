@@ -6,14 +6,13 @@ import datetime
 # Add the parent directory to the path so we can import from src
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from src.database.db_session_manager import session_scope
+from src.database.db import session_scope
 from src.database.models import DataSource, ScraperStatus
 from src.config import LOGS_DIR
-from src.utils.logging import cleanup_all_logs
-from src.utils.logging import get_component_logger
+from src.utils.logger import logger, cleanup_logs
 
 # Set up logging with the centralized utility
-logger = get_component_logger('health_check')
+logger = logger.bind(name="health_check")
 
 logger.info("Health check module initialized")
 
@@ -150,7 +149,7 @@ def check_all_scrapers():
     
     # Clean up old log files, keeping only the last 3
     try:
-        cleanup_results = cleanup_all_logs(LOGS_DIR, keep_count=3)
+        cleanup_results = cleanup_logs(LOGS_DIR, keep_count=3)
         for log_type, count in cleanup_results.items():
             if count > 0:
                 logger.info(f"Cleaned up {count} old {log_type} log files")

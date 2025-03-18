@@ -1,29 +1,30 @@
 """
-Database rebuild script.
-This script will:
-1. Back up the existing database
-2. Create a new database with the updated schema
-3. Copy all data from the old database to the new one
+Database rebuild script for the JPS Prospect Aggregate application.
+
+This script rebuilds the database with the new schema.
 """
 
+import os
 import sys
-import sqlite3
+import datetime
+import shutil
 import argparse
+import time
 from pathlib import Path
 
-# Add the root directory to the Python path
-project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, project_root)
+# Add the parent directory to the Python path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.utils.imports import (
-    os, datetime, time, glob, traceback, 
-    shutil, re, logging
-)
-from src.utils.logging import get_component_logger
-from src.utils.file_utils import ensure_directories, find_valid_files, cleanup_files
+# Import application modules
+from src.database.models import Base
+from src.database.models import setup_initial_data
+from src.database.db import engine, Session, session_scope, init_db
+from src.utils.file_utils import ensure_directory, clean_old_files, find_files
+from src.config import DATA_DIR
+from src.utils.logger import logger
 
-# Set up logging using the centralized utility
-logger = get_component_logger('rebuild_db')
+# Set up logging
+logger = logger.bind(name="rebuild_db")
 
 # Define paths
 ROOT_DIR = Path(__file__).parent.parent.absolute()
@@ -39,11 +40,10 @@ def cleanup_old_backups(backup_dir, max_backups=5):
         backup_dir (str): Directory containing the backups
         max_backups (int): Maximum number of backups to keep
     """
-    # Use the centralized cleanup_files function from file_utils
     pattern = "proposals_backup_*.db"
-    deleted_count = cleanup_files(backup_dir, pattern, max_backups)
-    
-    logger.info(f"Cleaned up {deleted_count} old database backups, keeping {max_backups} most recent ones")
+    deleted = clean_old_files(backup_dir, pattern, max_backups)
+    logger.info(f"Cleaned up {deleted} old database backup(s), keeping {max_backups} most recent")
+    return deleted
 
 def list_backups(backup_dir):
     """
@@ -55,8 +55,8 @@ def list_backups(backup_dir):
     Returns:
         list: List of backup files with their creation time and size
     """
-    # Find all database backup files using find_valid_files
-    backup_files = find_valid_files(backup_dir, 'proposals_backup_*.db')
+    # Find all database backup files using find_files
+    backup_files = find_files(backup_dir, 'proposals_backup_*.db')
     
     # Sort files by modification time (newest first)
     backup_files = sorted(backup_files, key=lambda x: os.path.getmtime(x), reverse=True)
@@ -88,7 +88,7 @@ def rebuild_database(max_backups=5):
     db_path = os.path.join(db_dir, 'proposals.db')
     
     # Ensure the directory exists
-    ensure_directories(db_dir)
+    ensure_directory(db_dir)
     
     # Check if the database exists
     if not os.path.exists(db_path):
@@ -107,7 +107,7 @@ def rebuild_database(max_backups=5):
     cleanup_old_backups(db_dir, max_backups=max_backups)
     
     # Import here to avoid circular imports
-    from src.database.db_session_manager import engine, Session
+    from src.database.db import engine, Session
     
     # Close all existing connections to the database
     logger.info("Closing all existing database connections")

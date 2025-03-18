@@ -4,14 +4,14 @@ from datetime import datetime
 
 from src.background_tasks.base_task import ScraperTask, ForceCollectTask
 from src.background_tasks.decorators import celery_task
-from src.utils.logging import get_component_logger
-from src.database.db_session_manager import session_scope
+from src.utils.logger import logger
+from src.database.db import session_scope
 from src.data_collectors.acquisition_gateway import run_scraper as run_acquisition_gateway_scraper
 from src.data_collectors.ssa_contract_forecast import run_scraper as run_ssa_contract_forecast_scraper
 from src.exceptions import ScraperError
 
 # Set up logging
-logger = get_component_logger('tasks.scraper')
+logger = logger.bind(name="tasks.scraper")
 
 @celery_task(task_type="scraper")
 class AcquisitionGatewayScraperTask(ScraperTask):

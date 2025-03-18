@@ -9,18 +9,17 @@ import os
 import sys
 import socket
 import subprocess
-import logging
+import importlib.util
 from typing import Tuple, Optional
 from dotenv import load_dotenv
-import importlib.util
-from src.utils.logging import get_component_logger
-from src.utils.file_utils import ensure_directories
+from src.utils.logger import logger
+from src.utils.file_utils import ensure_directory
+
+# Get component-specific logger
+logger = logger.bind(name="dependency_checker")
 
 # Platform detection
 IS_WINDOWS = sys.platform == 'win32'
-
-# Set up logging using the centralized utility
-logger = get_component_logger('dependency_checker')
 
 
 def test_redis_connection() -> bool:

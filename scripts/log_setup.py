@@ -7,43 +7,40 @@ for the application and its components.
 
 import os
 import sys
-import logging
 import datetime
 from typing import Dict, Optional
 
 # Import our centralized logging utilities
-from src.utils.logging import configure_root_logger, get_component_logger
-from src.utils.file_utils import ensure_directories
+from src.utils.logger import logger, cleanup_logs as loguru_cleanup_logs
+from src.utils.file_utils import ensure_directory
 
 # Set up logging for this module
-logger = get_component_logger('log_setup')
+logger = logger.bind(name="log_setup")
 
 
 def setup_logging(logs_dir: str = 'logs', 
                  log_file: str = 'jps_startup.log',
                  log_level: str = 'INFO',
                  max_bytes: int = 5 * 1024 * 1024,
-                 backup_count: int = 3) -> logging.Logger:
+                 backup_count: int = 3):
     """
     Set up logging for the application.
     
-    This function now leverages the centralized logging configuration utility.
+    This function now leverages the centralized Loguru logging configuration utility.
+    Many parameters are kept for backward compatibility but are no longer used.
     
     Args:
         logs_dir: Directory to store log files (now mainly for compatibility)
         log_file: Name of the log file (now mainly for compatibility)
         log_level: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
-        max_bytes: Maximum size of log file before rotation (now handled by logging)
-        backup_count: Number of backup log files to keep (now handled by logging)
+        max_bytes: Maximum size of log file before rotation (now handled by Loguru)
+        backup_count: Number of backup log files to keep (now handled by Loguru)
         
     Returns:
-        The configured root logger
+        The logger
     """
     # Ensure the logs directory exists
-    ensure_directories(logs_dir)
-    
-    # Configure the root logger using our centralized utility
-    root_logger = configure_root_logger(log_level)
+    ensure_directory(logs_dir)
     
     # Log startup information
     logger.info("==========================================")
@@ -53,7 +50,7 @@ def setup_logging(logs_dir: str = 'logs',
     logger.info(f"Platform: {'Windows' if sys.platform == 'win32' else 'Unix-like'}")
     logger.info("==========================================")
     
-    return root_logger
+    return logger
 
 
 def cleanup_logs(logs_dir: str, keep_count: int = 3) -> Dict[str, int]:
@@ -68,11 +65,8 @@ def cleanup_logs(logs_dir: str, keep_count: int = 3) -> Dict[str, int]:
         Dictionary with log types as keys and number of deleted files as values
     """
     try:
-        # Import the log manager if available
-        from src.utils.logging import cleanup_all_logs
-        
-        # Clean up logs using the log manager
-        cleanup_results = cleanup_all_logs(logs_dir, keep_count=keep_count)
+        # Use the Loguru-based cleanup function
+        cleanup_results = loguru_cleanup_logs(logs_dir, keep_count)
         
         # Log cleanup results
         for log_type, count in cleanup_results.items():
@@ -80,9 +74,6 @@ def cleanup_logs(logs_dir: str, keep_count: int = 3) -> Dict[str, int]:
                 logger.info(f"Cleaned up {count} old {log_type} log files")
         
         return cleanup_results
-    except ImportError:
-        logger.warning("Log manager not available, skipping log cleanup")
-        return {}
     except Exception as e:
         logger.error(f"Error cleaning up logs: {str(e)}")
         return {} 

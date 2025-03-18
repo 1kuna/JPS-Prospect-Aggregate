@@ -1,14 +1,13 @@
 import os
 import sys
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy import create_engine
-from src.database.models import Base, DataSource
+from src.database.db import init_db, get_db
+from src.database.models import DataSource
 from dotenv import load_dotenv
-from src.utils.logging import get_component_logger
-from src.utils.file_utils import ensure_directories
+from src.utils.logger import logger
+from src.utils.file_utils import ensure_directory
 
 # Set up logging using the centralized utility
-logger = get_component_logger('database.init')
+logger = logger.bind(name="database.init")
 
 # Add the project root directory to the Python path
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -29,58 +28,47 @@ def init_database():
         # Ensure the data directory exists
         db_path = database_url.replace("sqlite:///", "")
         data_dir = os.path.dirname(db_path)
-        ensure_directories(data_dir)
+        ensure_directory(data_dir)
         logger.info(f"Ensured data directory exists: {data_dir}")
         
-        # Create engine and tables
-        logger.info("Creating database engine...")
-        engine = create_engine(database_url)
-        
+        # Initialize database tables
         logger.info("Creating database tables...")
-        Base.metadata.create_all(engine)
+        init_db()
         logger.info("Database tables created successfully")
-        
-        # Create a session
-        logger.info("Creating database session...")
-        Session = sessionmaker(bind=engine)
-        session = Session()
         
         # Add initial data sources if they don't exist
         logger.info("Checking for existing data sources...")
         
-        acquisition_gateway = session.query(DataSource).filter_by(
-            name="Acquisition Gateway Forecast"
-        ).first()
-        
-        if not acquisition_gateway:
-            logger.info("Creating Acquisition Gateway Forecast data source...")
-            acquisition_gateway = DataSource(
-                name="Acquisition Gateway Forecast",
-                url="https://acquisitiongateway.gov/forecast",
-                description="GSA Acquisition Gateway Forecast"
-            )
-            session.add(acquisition_gateway)
-            logger.info("Added Acquisition Gateway Forecast data source")
-        
-        # Add SSA Contract Forecast data source if it doesn't exist
-        ssa_forecast = session.query(DataSource).filter_by(
-            name="SSA Contract Forecast"
-        ).first()
-        
-        if not ssa_forecast:
-            logger.info("Creating SSA Contract Forecast data source...")
-            ssa_forecast = DataSource(
-                name="SSA Contract Forecast",
-                url="https://www.ssa.gov/foia/contract_forecast.html",
-                description="SSA Contract Forecast"
-            )
-            session.add(ssa_forecast)
-            logger.info("Added SSA Contract Forecast data source")
-        
-        # Commit changes
-        logger.info("Committing changes to database...")
-        session.commit()
-        session.close()
+        with get_db() as session:
+            acquisition_gateway = session.query(DataSource).filter_by(
+                name="Acquisition Gateway Forecast"
+            ).first()
+            
+            if not acquisition_gateway:
+                logger.info("Creating Acquisition Gateway Forecast data source...")
+                acquisition_gateway = DataSource(
+                    name="Acquisition Gateway Forecast",
+                    url="https://acquisitiongateway.gov/forecast",
+                    description="GSA Acquisition Gateway Forecast"
+                )
+                session.add(acquisition_gateway)
+                logger.info("Added Acquisition Gateway Forecast data source")
+            
+            # Add SSA Contract Forecast data source if it doesn't exist
+            ssa_forecast = session.query(DataSource).filter_by(
+                name="SSA Contract Forecast"
+            ).first()
+            
+            if not ssa_forecast:
+                logger.info("Creating SSA Contract Forecast data source...")
+                ssa_forecast = DataSource(
+                    name="SSA Contract Forecast",
+                    url="https://www.ssa.gov/foia/contract_forecast.html",
+                    description="SSA Contract Forecast"
+                )
+                session.add(ssa_forecast)
+                logger.info("Added SSA Contract Forecast data source")
+            
         logger.info("Database initialization completed successfully!")
         
     except Exception as e:

@@ -2,11 +2,11 @@ import os
 import json
 import datetime
 from pathlib import Path
-from src.utils.file_utils import ensure_directories, find_valid_files
-from src.utils.logging import get_component_logger
+from src.utils.file_utils import ensure_directory, find_files
+from src.utils.logger import logger
 
 # Set up logging using the centralized utility
-logger = get_component_logger('database.download_tracker')
+logger = logger.bind(name="database.download_tracker")
 
 class DownloadTracker:
     """
@@ -20,11 +20,11 @@ class DownloadTracker:
         self.data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'data')
         
         # Ensure the data directory exists
-        ensure_directories(self.data_dir)
-        logger.info(f"Ensured data directory exists: {self.data_dir}")
+        self.tracker_dir = os.path.join(self.data_dir, 'tracker')
+        ensure_directory(self.tracker_dir)
         
         # Path to the timestamps file
-        self.timestamps_file = os.path.join(self.data_dir, "download_timestamps.json")
+        self.timestamps_file = os.path.join(self.tracker_dir, "download_timestamps.json")
         
         # Load existing timestamps or create a new file
         self.timestamps = self._load_timestamps()
@@ -127,28 +127,27 @@ class DownloadTracker:
         Verify that a file matching the pattern exists and is not empty.
         
         Args:
-            source_name (str): The name of the data source.
-            file_pattern (str): The glob pattern to match files.
-            min_size (int, optional): The minimum file size in bytes. Defaults to 0.
+            source_name (str): The name of the data source
+            file_pattern (str): The pattern to match files against (e.g., "*.csv")
+            min_size (int): Minimum file size in bytes
             
         Returns:
-            bool: True if a valid file exists, False otherwise.
+            bool: True if a valid file exists, False otherwise
         """
-        # Get the downloads directory
-        downloads_dir = os.path.join(self.data_dir, 'downloads')
+        source_dir = os.path.join(self.data_dir, 'downloads', source_name.lower().replace(' ', '_'))
         
-        # Ensure the downloads directory exists (now handled by file_utils)
-        ensure_directories(downloads_dir)
+        if not os.path.exists(source_dir):
+            logger.warning(f"Source directory not found for {source_name}: {source_dir}")
+            return False
         
-        # Find valid files using our utility function
-        valid_files = find_valid_files(downloads_dir, file_pattern, min_size)
+        files = find_files(source_dir, file_pattern, min_size=min_size)
         
-        if valid_files:
-            logger.info(f"Found valid file for {source_name}: {valid_files[0]}")
-            return True
+        if not files:
+            logger.warning(f"No valid files found for {source_name} matching pattern {file_pattern}")
+            return False
         
-        logger.info(f"No valid files found for {source_name} with pattern '{file_pattern}'")
-        return False
+        logger.info(f"Found {len(files)} valid file(s) for {source_name}")
+        return True
 
 # Create a singleton instance
 download_tracker = DownloadTracker() 

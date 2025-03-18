@@ -2,17 +2,20 @@
 
 from flask import render_template, current_app, jsonify, request, redirect, url_for, send_from_directory
 import threading
+import os
+import datetime
+import traceback
+import glob
+import sqlite3
 from . import data_sources
-from src.database.db_session_manager import get_session, close_session, Session, dispose_engine, session_scope
+from src.database.db import get_session, close_session, Session, dispose_engine, session_scope
 from src.database.models import DataSource, ScraperStatus
 from src.data_collectors.acquisition_gateway import run_scraper as run_acquisition_gateway_scraper
 from src.data_collectors.ssa_contract_forecast import run_scraper as run_ssa_contract_forecast_scraper
 from src.utils.db_utils import rebuild_database, cleanup_old_backups
 from src.exceptions import ScraperError
-from src.utils.imports import (
-    os, datetime, traceback, glob, sqlite3
-)
-from src.utils.file_utils import find_valid_files, ensure_directories
+from src.utils.file_utils import find_files, ensure_directory
+from src.tasks.scrapers import run_acquisition_gateway, run_ssa_contract_forecast
 
 @data_sources.route('/run-scraper/<int:source_id>', methods=['POST'])
 def run_scraper(source_id):
@@ -20,8 +23,8 @@ def run_scraper(source_id):
     session = get_session()
     
     try:
-        # Get the data source
-        data_source = session.query(DataSource).filter(DataSource.id == source_id).first()
+        # Find the data source
+        data_source = session.query(DataSource).filter_by(id=source_id).first()
         
         if not data_source:
             return jsonify({
@@ -29,40 +32,15 @@ def run_scraper(source_id):
                 "message": f"Data source with ID {source_id} not found"
             }), 404
         
-        current_app.logger.info(f"Running scraper for {data_source.name}")
+        # Get options
+        force = request.json.get('force', True) if request.json else True
+        debug = request.json.get('debug', False) if request.json else False
         
-        # First, check if Playwright is installed and browsers are available
-        try:
-            from playwright.sync_api import sync_playwright
-            # Try to initialize Playwright and check browser availability
-            with sync_playwright() as playwright:
-                # Check if chromium is installed by trying to launch it
-                try:
-                    browser = playwright.chromium.launch()
-                    browser.close()
-                    current_app.logger.info("Playwright and browsers are properly installed")
-                except Exception as browser_error:
-                    current_app.logger.error(f"Playwright browser error: {str(browser_error)}")
-                    # This is likely a browser installation issue
-                    return jsonify({
-                        "status": "error",
-                        "message": "Playwright browsers not installed. Please run 'playwright install'"
-                    }), 500
-        except ImportError:
-            current_app.logger.error("Playwright package not installed")
-            return jsonify({
-                "status": "error",
-                "message": "Playwright not installed. Please run 'pip install playwright' and 'playwright install'"
-            }), 500
-        except Exception as e:
-            current_app.logger.error(f"Error initializing Playwright: {str(e)}")
-            return jsonify({
-                "status": "error",
-                "message": f"Error initializing Playwright: {str(e)}. Make sure browsers are installed with 'playwright install'"
-            }), 500
+        # Import the new simplified tasks
+        from src.data_collectors.acquisition_gateway import check_url_accessibility, ACQUISITION_GATEWAY_URL
         
         # Run the appropriate scraper based on the data source name
-        if data_source.name == "Acquisition Gateway Forecast":
+        if "Acquisition Gateway" in data_source.name:
             try:
                 # Import the check_url_accessibility function
                 from src.data_collectors.acquisition_gateway import check_url_accessibility, ACQUISITION_GATEWAY_URL
@@ -74,87 +52,36 @@ def run_scraper(source_id):
                         "message": f"The URL {ACQUISITION_GATEWAY_URL} is not accessible. Please check your internet connection or if the website is down."
                     }), 500
                 
-                # Run the scraper in a separate thread to avoid blocking the response
-                def run_scraper_thread():
-                    try:
-                        # Update the scraper status to "running"
-                        with session_scope() as session:
-                            scraper_status = session.query(ScraperStatus).filter(
-                                ScraperStatus.data_source_id == data_source.id
-                            ).first()
-                            
-                            if not scraper_status:
-                                scraper_status = ScraperStatus(
-                                    data_source_id=data_source.id,
-                                    status="running",
-                                    message="Scraper is running...",
-                                    last_updated=datetime.datetime.utcnow()
-                                )
-                                session.add(scraper_status)
-                            else:
-                                scraper_status.status = "running"
-                                scraper_status.message = "Scraper is running..."
-                                scraper_status.last_updated = datetime.datetime.utcnow()
-                            
-                            session.commit()
-                        
-                        current_app.logger.info(f"Starting scraper for {data_source.name}")
-                        
-                        try:
-                            # Run the scraper - this will now raise ScraperError on failure
-                            run_acquisition_gateway_scraper(force=True)
-                            
-                            # If we get here, the scraper was successful
-                            with session_scope() as session:
-                                scraper_status = session.query(ScraperStatus).filter(
-                                    ScraperStatus.data_source_id == data_source.id
-                                ).first()
-                                
-                                if scraper_status:
-                                    scraper_status.status = "success"
-                                    scraper_status.message = "Scraper completed successfully"
-                                    scraper_status.last_updated = datetime.datetime.utcnow()
-                                    session.commit()
-                            
-                            current_app.logger.info(f"Scraper completed successfully")
-                        except ScraperError as se:
-                            # Handle specific scraper errors with detailed messages
-                            error_msg = str(se)
-                            current_app.logger.error(f"Scraper error: {error_msg}")
-                            
-                            with session_scope() as session:
-                                scraper_status = session.query(ScraperStatus).filter(
-                                    ScraperStatus.data_source_id == data_source.id
-                                ).first()
-                                
-                                if scraper_status:
-                                    scraper_status.status = "error"
-                                    scraper_status.message = f"Error: {error_msg}"
-                                    scraper_status.last_updated = datetime.datetime.utcnow()
-                                    session.commit()
-                    except Exception as e:
-                        current_app.logger.error(f"Error in scraper thread: {str(e)}")
-                        current_app.logger.error(traceback.format_exc())
-                        
-                        # Update the scraper status to "error"
-                        with session_scope() as session:
-                            scraper_status = session.query(ScraperStatus).filter(
-                                ScraperStatus.data_source_id == data_source.id
-                            ).first()
-                            
-                            if scraper_status:
-                                scraper_status.status = "error"
-                                scraper_status.message = f"Error: {str(e)}"
-                                scraper_status.last_updated = datetime.datetime.utcnow()
-                                session.commit()
+                # Update the scraper status to "running"
+                with session_scope() as session:
+                    scraper_status = session.query(ScraperStatus).filter(
+                        ScraperStatus.source_id == data_source.id
+                    ).first()
+                    
+                    if not scraper_status:
+                        scraper_status = ScraperStatus(
+                            source_id=data_source.id,
+                            status="running",
+                            error_message="Scraper is running...",
+                            last_checked=datetime.datetime.utcnow()
+                        )
+                        session.add(scraper_status)
+                    else:
+                        scraper_status.status = "running"
+                        scraper_status.error_message = "Scraper is running..."
+                        scraper_status.last_checked = datetime.datetime.utcnow()
+                    
+                    session.commit()
                 
-                thread = threading.Thread(target=run_scraper_thread)
-                thread.daemon = True
-                thread.start()
+                current_app.logger.info(f"Starting scraper task for {data_source.name}")
+                
+                # Launch the scraper as a Celery task
+                task = run_acquisition_gateway.delay(force=force)
                 
                 return jsonify({
                     "status": "success",
-                    "message": f"Started pulling data from {data_source.name}. This may take a while..."
+                    "message": f"Started pulling data from {data_source.name}. This may take a while...",
+                    "task_id": task.id
                 })
             except Exception as e:
                 current_app.logger.error(f"Error running Acquisition Gateway scraper: {str(e)}")
@@ -163,7 +90,7 @@ def run_scraper(source_id):
                     "status": "error",
                     "message": f"Error running scraper: {str(e)}"
                 }), 500
-        elif data_source.name == "SSA Contract Forecast":
+        elif "SSA Contract Forecast" in data_source.name:
             try:
                 # Import the check_url_accessibility function
                 from src.data_collectors.ssa_contract_forecast import check_url_accessibility, SSA_CONTRACT_FORECAST_URL
@@ -175,87 +102,36 @@ def run_scraper(source_id):
                         "message": f"The URL {SSA_CONTRACT_FORECAST_URL} is not accessible. Please check your internet connection or if the website is down."
                     }), 500
                 
-                # Run the scraper in a separate thread to avoid blocking the response
-                def run_scraper_thread():
-                    try:
-                        # Update the scraper status to "running"
-                        with session_scope() as session:
-                            scraper_status = session.query(ScraperStatus).filter(
-                                ScraperStatus.data_source_id == data_source.id
-                            ).first()
-                            
-                            if not scraper_status:
-                                scraper_status = ScraperStatus(
-                                    data_source_id=data_source.id,
-                                    status="running",
-                                    message="Scraper is running...",
-                                    last_updated=datetime.datetime.utcnow()
-                                )
-                                session.add(scraper_status)
-                            else:
-                                scraper_status.status = "running"
-                                scraper_status.message = "Scraper is running..."
-                                scraper_status.last_updated = datetime.datetime.utcnow()
-                            
-                            session.commit()
-                        
-                        current_app.logger.info(f"Starting scraper for {data_source.name}")
-                        
-                        try:
-                            # Run the scraper - this will now raise ScraperError on failure
-                            run_ssa_contract_forecast_scraper(force=True)
-                            
-                            # If we get here, the scraper was successful
-                            with session_scope() as session:
-                                scraper_status = session.query(ScraperStatus).filter(
-                                    ScraperStatus.data_source_id == data_source.id
-                                ).first()
-                                
-                                if scraper_status:
-                                    scraper_status.status = "success"
-                                    scraper_status.message = "Scraper completed successfully"
-                                    scraper_status.last_updated = datetime.datetime.utcnow()
-                                    session.commit()
-                            
-                            current_app.logger.info(f"Scraper completed successfully")
-                        except ScraperError as se:
-                            # Handle specific scraper errors with detailed messages
-                            error_msg = str(se)
-                            current_app.logger.error(f"Scraper error: {error_msg}")
-                            
-                            with session_scope() as session:
-                                scraper_status = session.query(ScraperStatus).filter(
-                                    ScraperStatus.data_source_id == data_source.id
-                                ).first()
-                                
-                                if scraper_status:
-                                    scraper_status.status = "error"
-                                    scraper_status.message = f"Error: {error_msg}"
-                                    scraper_status.last_updated = datetime.datetime.utcnow()
-                                    session.commit()
-                    except Exception as e:
-                        current_app.logger.error(f"Error in scraper thread: {str(e)}")
-                        current_app.logger.error(traceback.format_exc())
-                        
-                        # Update the scraper status to "error"
-                        with session_scope() as session:
-                            scraper_status = session.query(ScraperStatus).filter(
-                                ScraperStatus.data_source_id == data_source.id
-                            ).first()
-                            
-                            if scraper_status:
-                                scraper_status.status = "error"
-                                scraper_status.message = f"Error: {str(e)}"
-                                scraper_status.last_updated = datetime.datetime.utcnow()
-                                session.commit()
+                # Update the scraper status to "running"
+                with session_scope() as session:
+                    scraper_status = session.query(ScraperStatus).filter(
+                        ScraperStatus.source_id == data_source.id
+                    ).first()
+                    
+                    if not scraper_status:
+                        scraper_status = ScraperStatus(
+                            source_id=data_source.id,
+                            status="running",
+                            error_message="Scraper is running...",
+                            last_checked=datetime.datetime.utcnow()
+                        )
+                        session.add(scraper_status)
+                    else:
+                        scraper_status.status = "running"
+                        scraper_status.error_message = "Scraper is running..."
+                        scraper_status.last_checked = datetime.datetime.utcnow()
+                    
+                    session.commit()
                 
-                thread = threading.Thread(target=run_scraper_thread)
-                thread.daemon = True
-                thread.start()
+                current_app.logger.info(f"Starting scraper task for {data_source.name}")
+                
+                # Launch the scraper as a Celery task
+                task = run_ssa_contract_forecast.delay(force=force)
                 
                 return jsonify({
                     "status": "success",
-                    "message": f"Started pulling data from {data_source.name}. This may take a while..."
+                    "message": f"Started pulling data from {data_source.name}. This may take a while...",
+                    "task_id": task.id
                 })
             except Exception as e:
                 current_app.logger.error(f"Error running SSA Contract Forecast scraper: {str(e)}")
@@ -361,7 +237,7 @@ def rebuild_db():
             time.sleep(2)
             
             # Try to reconnect to the database
-            from src.database.db_session_manager import reconnect
+            from src.database.db import reconnect
             reconnect()
             current_app.logger.info("Database rebuild completed successfully")
         except Exception as e:
@@ -395,8 +271,8 @@ def list_backups():
         project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
         db_dir = os.path.join(project_root, 'data')
         
-        # Find all database backup files using find_valid_files
-        backup_files = find_valid_files(db_dir, 'proposals_backup_*.db')
+        # Find all database backup files using find_files
+        backup_files = find_files(db_dir, 'proposals_backup_*.db')
         
         # Sort files by modification time (newest first)
         backup_files = sorted(backup_files, key=lambda x: os.path.getmtime(x), reverse=True)

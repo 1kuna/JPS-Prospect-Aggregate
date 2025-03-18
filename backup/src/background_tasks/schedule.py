@@ -7,10 +7,10 @@ and registered tasks.
 """
 
 from src.config import active_config
-from src.utils.logging import get_component_logger
+from src.utils.logger import logger
 
 # Set up logging
-logger = get_component_logger('tasks.schedule')
+logger = logger.bind(name="tasks.schedule")
 
 def generate_beat_schedule(task_registry):
     """Generate the Celery beat schedule."""

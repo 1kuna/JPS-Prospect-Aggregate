@@ -6,19 +6,31 @@ with common functionality for browser management, logging, error handling,
 and data processing.
 """
 
-# Import from common imports module
-from src.utils.imports import (
-    os, sys, time, datetime, traceback, glob, pathlib, re,
-    requests, BeautifulSoup, sync_playwright, PlaywrightTimeoutError,
-    logging, RotatingFileHandler
-)
+# Standard library imports
+import os
+import sys
+import time
+import datetime
+import traceback
+import glob
+import pathlib
+import re
+import logging
+from logging.handlers import RotatingFileHandler
 
-from src.database.db_session_manager import session_scope
+# Third-party imports
+import requests
+from bs4 import BeautifulSoup
+from playwright.sync_api import sync_playwright
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+
+# Local application imports
+from src.database.db import get_db, session_scope
 from src.database.models import DataSource
-from src.exceptions import ScraperError, ParsingError
+from src.exceptions import ScraperError
 from src.config import LOGS_DIR, DOWNLOADS_DIR, LOG_FORMAT, LOG_FILE_MAX_BYTES, LOG_FILE_BACKUP_COUNT
-from src.utils.file_utils import cleanup_files, find_valid_files
-from src.utils.logging import get_scraper_logger
+from src.utils.file_utils import clean_old_files, find_files
+from src.utils.logger import logger
 
 # Directory creation is now centralized in config.py, no need to create them here
 
@@ -35,11 +47,12 @@ class BaseScraper:
         source_name (str): Name of the data source
         base_url (str): Base URL for the data source
         debug_mode (bool): Whether to run in debug mode
-        logger (logging.Logger): Logger for this scraper
+        logger: Logger instance for this scraper
         playwright (Playwright): Playwright instance
         browser (Browser): Browser instance
         context (BrowserContext): Browser context
         page (Page): Browser page
+        download_path (str): Path to download directory for this scraper
     """
     
     def __init__(self, source_name, base_url, debug_mode=False):
@@ -55,8 +68,12 @@ class BaseScraper:
         self.base_url = base_url
         self.debug_mode = debug_mode
         
-        # Initialize logger
-        self.logger = self.setup_logging()
+        # Create a download directory specific to this scraper
+        self.download_path = os.path.join(DOWNLOADS_DIR, source_name.lower().replace(' ', '_'))
+        os.makedirs(self.download_path, exist_ok=True)
+        
+        # Setup logging
+        self.setup_logging()
         
         # Initialize playwright attributes (will be set in setup_browser)
         self.playwright = None
@@ -71,12 +88,12 @@ class BaseScraper:
     def setup_logging(self):
         """
         Set up logging for this scraper.
-        
-        Returns:
-            logging.Logger: Configured logger
         """
-        # Use the centralized logging utility instead of custom implementation
-        return get_scraper_logger(self.source_name, debug_mode=self.debug_mode)
+        # Use the centralized Loguru logger with scraper-specific context
+        self.logger = logger.bind(name=f"scraper.{self.source_name.lower().replace(' ', '_')}")
+        self.logger.info(f"Initialized {self.source_name} scraper")
+        if self.debug_mode:
+            self.logger.debug("Debug mode enabled")
     
     def setup_browser(self):
         """
@@ -137,7 +154,7 @@ class BaseScraper:
             filename = download.suggested_filename
             
             # Create the download path
-            download_path = os.path.join(DOWNLOADS_DIR, filename)
+            download_path = os.path.join(self.download_path, filename)
             
             # Save the file
             download.save_as(download_path)
@@ -185,23 +202,28 @@ class BaseScraper:
     
     def cleanup_downloads(self, file_pattern=None):
         """
-        Clean up downloaded files.
+        Clean up old download files for this scraper, keeping the most recent ones.
         
         Args:
-            file_pattern (str, optional): Glob pattern for files to clean up.
-                If None, all files in the downloads directory will be removed.
+            file_pattern (str, optional): Pattern to match files (default: scraper's name + "*.csv")
         
         Returns:
-            int: Number of files removed
+            int: Number of files deleted
         """
-        try:
-            pattern = file_pattern or "*"
-            count = cleanup_files(DOWNLOADS_DIR, pattern)
-            self.logger.info(f"Removed {count} files from downloads directory")
-            return count
-        except Exception as e:
-            self.logger.error(f"Error cleaning up downloads: {str(e)}")
+        # Use default pattern if not specified
+        if file_pattern is None:
+            file_pattern = f"{self.source_name.lower().replace(' ', '_')}*.csv"
+        
+        download_dir = os.path.join(DOWNLOADS_DIR, self.source_name.lower().replace(' ', '_'))
+        
+        if not os.path.exists(download_dir):
+            logger.warning(f"Download directory doesn't exist: {download_dir}")
             return 0
+        
+        # Keep the 2 most recent files
+        deleted = clean_old_files(download_dir, file_pattern, keep_count=2)
+        logger.info(f"Cleaned up {deleted} old download files for {self.source_name}")
+        return deleted
     
     def get_or_create_data_source(self, session):
         """
@@ -245,44 +267,50 @@ class BaseScraper:
         Parse a date string into a datetime object.
         
         Args:
-            date_str (str): Date string to parse
-        
+            date_str (str): String representation of a date
+            
         Returns:
-            datetime.datetime: Parsed date, or None if parsing fails
-        
+            datetime: Parsed datetime object
+            
         Raises:
-            ParsingError: If date parsing fails
+            ScraperError: If the date string cannot be parsed
         """
-        if not date_str or date_str.strip() == "":
+        if not date_str or not isinstance(date_str, str):
             return None
-        
-        # Remove extra whitespace
+            
         date_str = date_str.strip()
-        
-        # Try different date formats
-        formats = [
+        if not date_str:
+            return None
+            
+        # Try common date formats
+        date_formats = [
             "%m/%d/%Y",
-            "%m-%d-%Y",
             "%Y-%m-%d",
-            "%Y/%m/%d",
             "%B %d, %Y",
             "%b %d, %Y",
             "%d %B %Y",
             "%d %b %Y",
             "%m/%d/%y",
-            "%m-%d-%y"
+            "%Y/%m/%d",
+            "%d-%m-%Y",
+            "%d/%m/%Y",
         ]
         
-        for fmt in formats:
+        for fmt in date_formats:
             try:
-                return datetime.datetime.strptime(date_str, fmt)
+                return datetime.datetime.strptime(date_str, fmt).date()
             except ValueError:
                 continue
-        
-        # If we get here, none of the formats worked
-        error_msg = f"Failed to parse date: {date_str}"
-        self.logger.error(error_msg)
-        raise ParsingError(error_msg)
+                
+        # If none of the formats match, try parsing with dateutil
+        try:
+            from dateutil import parser
+            return parser.parse(date_str).date()
+        except Exception as e:
+            logger.warning(f"Failed to parse date: {date_str}, error: {str(e)}")
+            
+        # If all attempts fail
+        raise ScraperError(f"Could not parse date: {date_str}", error_type="parsing_error")
     
     def parse_value(self, value_str):
         """

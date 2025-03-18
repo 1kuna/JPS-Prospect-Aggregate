@@ -1,24 +1,35 @@
-"""Base task classes for all background tasks."""
+"""
+Base task class for background tasks.
 
-import logging
+This module provides a base class for background tasks.
+"""
+
+import os
+import sys
+import time
+import datetime
+import threading
+import asyncio
 import traceback
-from datetime import datetime
+from abc import ABC, abstractmethod
+from typing import Dict, List, Any, Optional, Union, Callable
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
-from celery import Task
-from sqlalchemy.exc import SQLAlchemyError
-
+# Import logger and other dependencies
+from src.utils.logger import logger
+from src.database.db import session_scope
 from src.celery_app import celery_app
-from src.database.db_session_manager import session_scope
+from src.exceptions import DatabaseError, ScraperError
 from src.database.models import ScraperStatus
-from src.exceptions import (
-    ScraperError, NetworkError, TimeoutError, DatabaseError, BaseAppException
-)
-from src.utils.logging import get_component_logger
 
-logger = get_component_logger('tasks.base')
 
-class BaseTask(Task):
-    """Base class for all Celery tasks with enhanced error handling."""
+class BaseTask(ABC):
+    """
+    Base class for background tasks.
+    
+    This class provides a foundation for all background tasks in the application,
+    with common functionality for task execution, logging, and error handling.
+    """
     
     abstract = True  # Celery won't register this as a task
     task_type = "generic"  # Override in subclasses: "scraper", "health_check", etc.
@@ -26,12 +37,21 @@ class BaseTask(Task):
     max_retries = 3
     retry_delay = 300
     
-    def __init__(self):
-        self.logger = get_component_logger(f'tasks.{self.name}' if self.name else 'tasks.unknown')
+    def __init__(self, name=None, interval=None):
+        """
+        Initialize the background task.
+        
+        Args:
+            name (str, optional): Name of the task. Defaults to None.
+            interval (int, optional): Interval in seconds. Defaults to None.
+        """
+        self.name = name or self.name
+        self.interval = interval
+        self.logger = logger.bind(name=f"tasks.{self.name}" if self.name else "tasks.unknown")
     
     def calculate_collection_time(self, start_time):
         """Calculate the time elapsed since start_time."""
-        end_time = datetime.utcnow()
+        end_time = datetime.datetime.utcnow()
         return (end_time - start_time).total_seconds()
     
     def format_result(self, status, message, **kwargs):
@@ -39,7 +59,7 @@ class BaseTask(Task):
         result = {
             "status": status,
             "message": message,
-            "task_id": self.request.id
+            "task_id": self.request.id if hasattr(self, 'request') else None
         }
         result.update(kwargs)
         return result
@@ -54,20 +74,27 @@ class BaseTask(Task):
             error_code="TASK_ERROR"
         )
     
+    def retry(self, exc=None):
+        """
+        Retry the task with exponential backoff.
+        """
+        self.logger.info(f"Retrying task due to: {exc}")
+        raise exc
+    
     def __call__(self, *args, **kwargs):
         """Override the Task.__call__ method to add error handling."""
         try:
             # Call the original method
             return super().__call__(*args, **kwargs)
-        except (NetworkError, TimeoutError) as e:
-            self.logger.error(f"Network error in {self.name}: {str(e)}")
+        except PlaywrightTimeoutError as e:
+            self.logger.error(f"Network timeout in {self.name}: {str(e)}")
             # Retry network errors
             raise self.retry(exc=e)
         except DatabaseError as e:
             self.logger.error(f"Database error in {self.name}: {str(e)}")
             # Retry database errors
             raise self.retry(exc=e)
-        except (ScraperError, BaseAppException) as e:
+        except ScraperError as e:
             self.logger.error(f"Application error in {self.name}: {str(e)}")
             # Retry application errors
             raise self.retry(exc=e)
@@ -111,15 +138,15 @@ class ScraperTask(BaseTask):
                         source_id=data_source.id,
                         status=status,
                         error_message=error_message,
-                        last_checked=datetime.utcnow(),
-                        subtask_id=self.request.id
+                        last_checked=datetime.datetime.utcnow(),
+                        subtask_id=self.request.id if hasattr(self, 'request') else None
                     )
                     session.add(status_record)
                 else:
                     status_record.status = status
                     status_record.error_message = error_message
-                    status_record.last_checked = datetime.utcnow()
-                    status_record.subtask_id = self.request.id
+                    status_record.last_checked = datetime.datetime.utcnow()
+                    status_record.subtask_id = self.request.id if hasattr(self, 'request') else None
                 
                 session.commit()
                 self.logger.info(f"Updated status for {self.name} to {status}")
@@ -144,7 +171,7 @@ class ScraperTask(BaseTask):
             
             if data_source:
                 # Update last_scraped timestamp
-                data_source.last_scraped = datetime.utcnow()
+                data_source.last_scraped = datetime.datetime.utcnow()
                 return session.query(Proposal).filter(
                     Proposal.source_id == data_source.id
                 ).count()

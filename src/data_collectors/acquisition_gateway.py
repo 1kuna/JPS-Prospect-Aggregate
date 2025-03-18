@@ -1,35 +1,32 @@
 """Acquisition Gateway scraper."""
 
-# Import from common imports module
-from src.utils.imports import (
-    os, sys, time, datetime, traceback,
-    requests, BeautifulSoup, PlaywrightTimeoutError,
-    logging
-)
+# Standard library imports
+import os
+import sys
+import time
+import datetime
+import traceback
+import logging
 
-# Import from base scraper
+# Third-party imports
+import requests
+from bs4 import BeautifulSoup
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+
+# Local application imports
 from src.data_collectors.base_scraper import BaseScraper
-
-# Import from database
-from src.database.db_session_manager import session_scope
+from src.database.db import session_scope
 from src.database.models import Proposal, ScraperStatus, DataSource
 from src.database.download_tracker import download_tracker
-
-# Import from exceptions
+from src.config import LOGS_DIR, DOWNLOADS_DIR, ACQUISITION_GATEWAY_URL, PAGE_NAVIGATION_TIMEOUT
 from src.exceptions import ScraperError
-
-# Import from config
-from src.config import ACQUISITION_GATEWAY_URL
-
-# Import from utils
-from src.utils.logging import get_scraper_logger
-from src.utils.file_utils import ensure_directories
+from src.utils.file_utils import ensure_directory
 from src.utils.db_utils import update_scraper_status
+from src.utils.logger import logger
 
-# Set up logging using the centralized utility
-logger = get_scraper_logger('acquisition_gateway')
+# Set up logging
+logger = logger.bind(name="scraper.acquisition_gateway")
 
-# Add the check_url_accessibility function
 def check_url_accessibility(url=None):
     """
     Check if a URL is accessible.
@@ -126,7 +123,7 @@ class AcquisitionGatewayScraper(BaseScraper):
                 permanent_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'data', 'downloads', permanent_filename)
                 
                 # Ensure the downloads directory exists
-                ensure_directories(os.path.dirname(permanent_path))
+                ensure_directory(os.path.dirname(permanent_path))
                 
                 shutil.copy2(download_path, permanent_path)
                 self.logger.info(f"Saved permanent copy of CSV file to {permanent_path}")
@@ -266,7 +263,7 @@ def check_last_download():
         bool: True if a download was performed in the last 24 hours, False otherwise
     """
     # Use the scraper logger from logging
-    logger = get_scraper_logger('acquisition_gateway')
+    logger = logger.bind(name="scraper.acquisition_gateway")
     
     try:
         # Check if we should download using the download tracker
@@ -295,14 +292,14 @@ def run_scraper(force=False):
     Raises:
         ScraperError: If an error occurs during scraping
     """
-    # Use the scraper logger from logging
-    logger = get_scraper_logger('acquisition_gateway')
+    # Use a local logger from the module-level logger
+    local_logger = logger 
     scraper = None
     
     try:
         # Check if we should run the scraper
         if not force and check_last_download():
-            logger.info("Skipping scrape due to recent download")
+            local_logger.info("Skipping scrape due to recent download")
             return True
         
         # Create an instance of the scraper
@@ -311,7 +308,7 @@ def run_scraper(force=False):
         # Check if the URL is accessible
         if not scraper.check_url_accessibility():
             error_msg = f"URL {ACQUISITION_GATEWAY_URL} is not accessible"
-            logger.error(error_msg)
+            local_logger.error(error_msg)
             
             # Update the status in the database
             update_scraper_status("Acquisition Gateway Forecast", "error", error_msg)
@@ -319,13 +316,13 @@ def run_scraper(force=False):
             raise ScraperError(error_msg)
         
         # Run the scraper
-        logger.info("Running Acquisition Gateway scraper")
+        local_logger.info("Running Acquisition Gateway scraper")
         success = scraper.scrape()
         
         # If scraper.scrape() returns False, it means an error occurred
         if not success:
             error_msg = "Scraper failed without specific error"
-            logger.error(error_msg)
+            local_logger.error(error_msg)
             
             # Update the status in the database
             update_scraper_status("Acquisition Gateway Forecast", "error", error_msg)
@@ -334,7 +331,7 @@ def run_scraper(force=False):
         
         # Update the download tracker with the current time
         download_tracker.set_last_download_time("Acquisition Gateway Forecast")
-        logger.info("Updated download tracker with current time")
+        local_logger.info("Updated download tracker with current time")
         
         # Update the ScraperStatus table to indicate success
         update_scraper_status("Acquisition Gateway Forecast", "working", None)
@@ -343,9 +340,9 @@ def run_scraper(force=False):
     except ImportError as e:
         # This will catch any ImportError that might occur when importing Playwright
         error_msg = f"Import error: {str(e)}"
-        logger.error(error_msg)
-        logger.error("Playwright module not found. Please install it with 'pip install playwright'")
-        logger.error("Then run 'playwright install' to install the browsers")
+        local_logger.error(error_msg)
+        local_logger.error("Playwright module not found. Please install it with 'pip install playwright'")
+        local_logger.error("Then run 'playwright install' to install the browsers")
         
         # Update the status in the database
         update_scraper_status("Acquisition Gateway Forecast", "error", error_msg)
@@ -359,8 +356,8 @@ def run_scraper(force=False):
         raise
     except Exception as e:
         error_msg = f"Error running scraper: {str(e)}"
-        logger.error(error_msg)
-        logger.error(traceback.format_exc())
+        local_logger.error(error_msg)
+        local_logger.error(traceback.format_exc())
         
         # Update the status in the database
         update_scraper_status("Acquisition Gateway Forecast", "error", error_msg)
@@ -370,11 +367,11 @@ def run_scraper(force=False):
         # Ensure proper cleanup of resources
         if scraper:
             try:
-                logger.info("Cleaning up scraper resources")
+                local_logger.info("Cleaning up scraper resources")
                 scraper.cleanup()
             except Exception as cleanup_error:
-                logger.error(f"Error during scraper cleanup: {str(cleanup_error)}")
-                logger.error(traceback.format_exc())
+                local_logger.error(f"Error during scraper cleanup: {str(cleanup_error)}")
+                local_logger.error(traceback.format_exc())
 
 if __name__ == "__main__":
     run_scraper() 

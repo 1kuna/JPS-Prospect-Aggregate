@@ -7,12 +7,12 @@ from pathlib import Path
 # Add the parent directory to the path so we can import from src
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.database.db_session_manager import get_session, close_session
+from src.database.db import get_session, close_session
 from src.database.models import Proposal, DataSource
-from src.utils.logging import get_component_logger
+from src.utils.logger import logger
 
 # Set up logging using the centralized utility
-logger = get_component_logger('process_ssa_excel')
+logger = logger.bind(name="process_ssa_excel")
 
 def parse_date(date_str):
     """Parse a date string into a datetime object"""

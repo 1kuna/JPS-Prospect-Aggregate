@@ -1,29 +1,29 @@
 """SSA Contract Forecast scraper."""
 
-# Import from common imports module
-from src.utils.imports import (
-    os, sys, time, datetime, traceback,
-    pd, PlaywrightTimeoutError,
-    logging
-)
+# Standard library imports
+import os
+import sys
+import time
+import datetime
+import traceback
 
-# Import from base scraper
+# Third-party imports
+import pandas as pd
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+
+# Local application imports
 from src.data_collectors.base_scraper import BaseScraper
-
-# Import from database
-from src.database.db_session_manager import session_scope
-
-# Import from exceptions
-from src.exceptions import ScraperError, ParsingError
+from src.database.db import session_scope
+from src.exceptions import ScraperError
 
 # Import from config
 from src.config import SSA_CONTRACT_FORECAST_URL
 
 import requests
-from src.utils.logging import get_scraper_logger
+from src.utils.logger import logger
 
 # Set up logging using the centralized utility
-logger = get_scraper_logger('ssa_contract_forecast')
+logger = logger.bind(name="scraper.ssa_contract_forecast")
 
 def check_url_accessibility(url):
     """
@@ -143,7 +143,7 @@ class SSAContractForecastScraper(BaseScraper):
             except Exception as e:
                 self.logger.error(f"Error during download: {str(e)}")
                 self.logger.error(traceback.format_exc())
-                raise
+                raise ScraperError(f"Failed to download forecast document: {str(e)}")
         except PlaywrightTimeoutError as e:
             self.logger.error(f"Timeout downloading forecast document: {str(e)}")
             raise ScraperError(f"Timeout downloading forecast document: {str(e)}")
@@ -283,7 +283,7 @@ class SSAContractForecastScraper(BaseScraper):
         except Exception as e:
             self.logger.error(f"Error processing Excel file: {str(e)}")
             self.logger.error(traceback.format_exc())
-            raise ParsingError(f"Failed to process Excel file: {str(e)}")
+            raise ScraperError(f"Failed to process Excel file: {str(e)}", error_type="parsing_error")
     
     def get_proposal_query(self, session, proposal_data):
         """
@@ -329,7 +329,7 @@ def run_scraper(force=False):
     Run the SSA Contract Forecast scraper.
     
     Args:
-        force (bool): Whether to force the scraper to run even if it ran recently
+        force (bool): Whether to force scraping even if recently run
         
     Returns:
         bool: True if scraping was successful, False otherwise
@@ -337,40 +337,83 @@ def run_scraper(force=False):
     Raises:
         ScraperError: If an error occurs during scraping
     """
-    logger.info("Running SSA Contract Forecast scraper")
+    # Use the module-level logger
+    local_logger = logger
+    scraper = None
     
     try:
-        # Create an instance of the scraper to use its methods
+        # Check if we should run the scraper
+        if not force and check_last_download():
+            local_logger.info("Skipping scrape due to recent download")
+            return True
+        
+        # Create an instance of the scraper
         scraper = SSAContractForecastScraper(debug_mode=False)
         
-        # Check if the URL is accessible using the scraper's method
-        if not scraper.check_url_accessibility():
+        # Check if the URL is accessible
+        if not check_url_accessibility():
             error_msg = f"URL {SSA_CONTRACT_FORECAST_URL} is not accessible"
-            logger.error(error_msg)
-            raise ScraperError(error_msg)
+            local_logger.error(error_msg)
             
+            # Update the status in the database
+            update_scraper_status("SSA Contract Forecast", "error", error_msg)
+            
+            raise ScraperError(error_msg)
+        
         # Run the scraper
+        local_logger.info("Running SSA Contract Forecast scraper")
         success = scraper.scrape()
         
         # If scraper.scrape() returns False, it means an error occurred
         if not success:
             error_msg = "Scraper failed without specific error"
-            logger.error(error_msg)
+            local_logger.error(error_msg)
+            
+            # Update the status in the database
+            update_scraper_status("SSA Contract Forecast", "error", error_msg)
+            
             raise ScraperError(error_msg)
+        
+        # Update the download tracker with the current time
+        download_tracker.set_last_download_time("SSA Contract Forecast")
+        local_logger.info("Updated download tracker with current time")
+        
+        # Update the ScraperStatus table to indicate success
+        update_scraper_status("SSA Contract Forecast", "working", None)
             
         return True
     except ImportError as e:
         # This will catch any ImportError that might occur when importing Playwright
         error_msg = f"Import error: {str(e)}"
-        logger.error(error_msg)
-        logger.error("Playwright module not found. Please install it with 'pip install playwright'")
-        logger.error("Then run 'playwright install' to install the browsers")
+        local_logger.error(error_msg)
+        local_logger.error("Playwright module not found. Please install it with 'pip install playwright'")
+        local_logger.error("Then run 'playwright install' to install the browsers")
+        
+        # Update the status in the database
+        update_scraper_status("SSA Contract Forecast", "error", error_msg)
+        
         raise ScraperError(error_msg)
-    except ScraperError:
+    except ScraperError as e:
+        # Update the status in the database
+        update_scraper_status("SSA Contract Forecast", "error", str(e))
+        
         # Re-raise ScraperError exceptions to propagate them
         raise
     except Exception as e:
         error_msg = f"Error running scraper: {str(e)}"
-        logger.error(error_msg)
-        logger.error(traceback.format_exc())
-        raise ScraperError(error_msg) 
+        local_logger.error(error_msg)
+        local_logger.error(traceback.format_exc())
+        
+        # Update the status in the database
+        update_scraper_status("SSA Contract Forecast", "error", error_msg)
+        
+        raise ScraperError(error_msg)
+    finally:
+        # Ensure proper cleanup of resources
+        if scraper:
+            try:
+                local_logger.info("Cleaning up scraper resources")
+                scraper.cleanup()
+            except Exception as cleanup_error:
+                local_logger.error(f"Error during scraper cleanup: {str(cleanup_error)}")
+                local_logger.error(traceback.format_exc()) 

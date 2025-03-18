@@ -2,13 +2,13 @@
 
 from src.background_tasks.base_task import HealthCheckTask
 from src.background_tasks.decorators import celery_task
-from src.utils.logging import get_component_logger
+from src.utils.logger import logger
 from src.data_collectors.health_check import (
     check_all_scrapers, check_acquisition_gateway, check_ssa_contract_forecast
 )
 
 # Set up logging
-logger = get_component_logger('tasks.health_check')
+logger = logger.bind(name="tasks.health_check")
 
 @celery_task(task_type="health_check")
 class AllScrapersHealthCheckTask(HealthCheckTask):

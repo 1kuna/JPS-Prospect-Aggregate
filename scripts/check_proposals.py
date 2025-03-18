@@ -1,4 +1,4 @@
-from src.database.db_session_manager import session_scope
+from src.database.db import session_scope
 from src.database.models import Proposal
 
 def main():

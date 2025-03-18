@@ -20,8 +20,8 @@ import psutil
 # Add the parent directory to the Python path to import project modules
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.utils.logging import get_component_logger
-from src.utils.file_utils import ensure_directories
+from src.utils.logger import logger
+from src.utils.file_utils import ensure_directory
 
 # Platform detection
 IS_WINDOWS = sys.platform == 'win32'
@@ -35,7 +35,7 @@ processes = {}
 restart_counts = {}
 
 # Set up logger using the centralized utility
-logger = get_component_logger('scripts.process_manager')
+logger = logger.bind(name="scripts.process_manager")
 
 def start_process(cmd: Any, name: str, cwd: Optional[str] = None, 
                  capture_output: bool = False, logs_dir: str = 'logs', env: Optional[Dict[str, str]] = None) -> subprocess.Popen:
@@ -56,7 +56,7 @@ def start_process(cmd: Any, name: str, cwd: Optional[str] = None,
     global processes
     
     # Create log file for this process
-    ensure_directories(logs_dir)
+    ensure_directory(logs_dir)
     log_file = os.path.join(logs_dir, f"{name.lower().replace(' ', '_')}.log")
     log_handle = open(log_file, 'a')
     

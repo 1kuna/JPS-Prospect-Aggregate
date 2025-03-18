@@ -6,10 +6,10 @@ making it easy to discover and manage scrapers.
 """
 
 import logging
-from src.utils.logging import get_component_logger
+from src.utils.logger import logger
 
 # Set up logging using the centralized utility
-logger = get_component_logger('scrapers.registry')
+logger = logger.bind(name="scrapers.registry")
 
 class ScraperRegistry:
     """Registry for scrapers."""

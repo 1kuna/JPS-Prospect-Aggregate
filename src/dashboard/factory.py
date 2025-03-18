@@ -4,10 +4,11 @@ import os
 import logging
 from flask import Flask, send_from_directory, render_template_string, request
 from flask_cors import CORS
-from src.utils.logging import get_component_logger
+from src.utils.logger import logger
+from src.api.errors import register_error_handlers
 
-# Set up logging using the centralized utility
-logger = get_component_logger('dashboard.factory')
+# Set up logging with the centralized utility
+logger = logger.bind(name="dashboard.factory")
 
 def create_app(config=None):
     """Application factory for creating Flask app instances."""
@@ -97,5 +98,7 @@ def register_blueprints(app):
 
 def register_error_handlers(app):
     """Register error handlers for the application."""
-    # This function is now only for app-level error handlers, not blueprint-specific ones
+    # Use the centralized error handlers from api.errors
+    from src.api.errors import register_error_handlers
+    register_error_handlers(app)
     app.logger.info('Error handlers registered') 

@@ -3,12 +3,15 @@ Database utility functions.
 """
 
 import sys
-from src.utils.imports import os, datetime, shutil, glob
-from src.utils.logging import get_component_logger
-from src.utils.file_utils import ensure_directories, cleanup_files
+import os
+import datetime
+import shutil
+import glob
+from src.utils.logger import logger
+from src.utils.file_utils import ensure_directory, clean_old_files
 
 # Set up logging using the centralized utility
-logger = get_component_logger('utils.db')
+logger = logger.bind(name="utils.db")
 
 def cleanup_old_backups(backup_dir, max_backups=5):
     """
@@ -18,14 +21,11 @@ def cleanup_old_backups(backup_dir, max_backups=5):
         backup_dir (str): Directory containing the backups
         max_backups (int): Maximum number of backups to keep
     """
-    # Use the centralized cleanup_files function
+    # Use the centralized clean_old_files function
     pattern = "proposals_backup_*.db"
-    deleted_count = cleanup_files(backup_dir, pattern, max_backups)
-    
-    if deleted_count > 0:
-        logger.info(f"Cleaned up {deleted_count} old database backups, keeping {max_backups} most recent ones")
-    
-    return deleted_count
+    deleted = clean_old_files(backup_dir, pattern, max_backups)
+    logger.info(f"Cleaned up {deleted} old database backup(s), keeping {max_backups} most recent")
+    return deleted
 
 def rebuild_database(max_backups=5):
     """
@@ -40,7 +40,7 @@ def rebuild_database(max_backups=5):
     db_path = os.path.join(db_dir, 'proposals.db')
     
     # Ensure the directory exists
-    ensure_directories(db_dir)
+    ensure_directory(os.path.dirname(db_path))
     
     # Check if the database exists
     if not os.path.exists(db_path):
@@ -59,7 +59,7 @@ def rebuild_database(max_backups=5):
     cleanup_old_backups(db_dir, max_backups=max_backups)
     
     # Import here to avoid circular imports
-    from src.database.db_session_manager import engine, Session
+    from src.database.db import engine, Session
     
     # Import the rest of the rebuild logic from the original script
     # This is a simplified version - you may need to add more functionality
@@ -77,7 +77,7 @@ def update_scraper_status(source_name, status, error_message=None):
         status (str): Status to set ('working', 'error', etc.)
         error_message (str, optional): Error message to set
     """
-    from src.database.db_session_manager import session_scope
+    from src.database.db import session_scope
     from src.database.models import DataSource, ScraperStatus
     import datetime
     

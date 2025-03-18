@@ -12,12 +12,12 @@ import sqlalchemy as sa
 # Add the parent directory to the path so we can import from src
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.database.db_session_manager import engine, get_session, close_session
+from src.database.db import engine, get_session, close_session
 from src.database.models import Base, ScraperStatus
-from src.utils.logging import get_component_logger
+from src.utils.logger import logger
 
 # Set up logging using the centralized utility
-logger = get_component_logger('add_subtask_id')
+logger = logger.bind(name="add_subtask_id")
 
 def add_subtask_id_column():
     """Add subtask_id column to ScraperStatus table if it doesn't exist"""

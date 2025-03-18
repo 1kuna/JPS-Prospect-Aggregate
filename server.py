@@ -13,16 +13,13 @@ import argparse
 from dotenv import load_dotenv
 from src.dashboard.factory import create_app
 from src.celery_app import celery_app
-from src.utils.logging import configure_root_logger, get_component_logger
+from src.utils.logger import logger
 
 # Load environment variables
 load_dotenv()
 
-# Configure root logger
-configure_root_logger(os.getenv("LOG_LEVEL", "INFO"))
-
 # Get component-specific logger
-logger = get_component_logger('server')
+logger = logger.bind(name="server")
 
 # Create the Flask application
 try:

@@ -12,12 +12,12 @@ import argparse
 # Add the parent directory to the path so we can import from src
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.database.db_session_manager import session_scope
+from src.database.db import session_scope
 from src.database.models import DataSource, Proposal
-from src.utils.logging import get_component_logger
+from src.utils.logger import logger
 
 # Set up logging using the centralized utility
-logger = get_component_logger('test_pull')
+logger = logger.bind(name="test_pull")
 
 def test_pull_source(source_id=None, source_name=None):
     """Test pulling data from a specific source"""
