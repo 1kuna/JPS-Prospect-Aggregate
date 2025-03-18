@@ -8,9 +8,10 @@ and registered tasks.
 
 import logging
 from src.config import active_config
+from src.utils.logging import get_component_logger
 
-# Set up logging
-logger = logging.getLogger(__name__)
+# Set up logging using the centralized utility
+logger = get_component_logger('tasks.schedule')
 
 def generate_beat_schedule(task_registry):
     """

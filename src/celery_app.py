@@ -7,17 +7,17 @@ and connects to Redis for message brokering.
 """
 
 import os
-import logging
 from celery import Celery
 from celery.signals import task_failure, task_retry, task_success, worker_ready
 from dotenv import load_dotenv
 from src.config import active_config
+from src.utils.logging import get_component_logger
 
 # Load environment variables
 load_dotenv()
 
-# Configure logging
-logger = logging.getLogger(__name__)
+# Configure logging using the centralized utility
+logger = get_component_logger('celery')
 
 # Get Redis URL from environment or use default from config
 redis_url = active_config.REDIS_URL

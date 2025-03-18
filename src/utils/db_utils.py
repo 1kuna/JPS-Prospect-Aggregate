@@ -2,15 +2,13 @@
 Database utility functions.
 """
 
-import os
 import sys
-import shutil
-import datetime
-import logging
-import glob
+from src.utils.imports import os, datetime, shutil, glob
+from src.utils.logging import get_component_logger
+from src.utils.file_utils import ensure_directories, cleanup_files
 
-# Set up logging
-logger = logging.getLogger(__name__)
+# Set up logging using the centralized utility
+logger = get_component_logger('utils.db')
 
 def cleanup_old_backups(backup_dir, max_backups=5):
     """
@@ -20,22 +18,14 @@ def cleanup_old_backups(backup_dir, max_backups=5):
         backup_dir (str): Directory containing the backups
         max_backups (int): Maximum number of backups to keep
     """
-    # Find all database backup files
-    backup_pattern = os.path.join(backup_dir, 'proposals_backup_*.db')
-    backup_files = glob.glob(backup_pattern)
+    # Use the centralized cleanup_files function
+    pattern = "proposals_backup_*.db"
+    deleted_count = cleanup_files(backup_dir, pattern, max_backups)
     
-    # If we have more backups than the maximum allowed
-    if len(backup_files) > max_backups:
-        # Sort files by modification time (newest first)
-        backup_files.sort(key=lambda x: os.path.getmtime(x), reverse=True)
-        
-        # Delete older backups
-        for old_backup in backup_files[max_backups:]:
-            try:
-                os.remove(old_backup)
-                logger.info(f"Deleted old backup: {old_backup}")
-            except Exception as e:
-                logger.warning(f"Failed to delete old backup {old_backup}: {e}")
+    if deleted_count > 0:
+        logger.info(f"Cleaned up {deleted_count} old database backups, keeping {max_backups} most recent ones")
+    
+    return deleted_count
 
 def rebuild_database(max_backups=5):
     """
@@ -50,7 +40,7 @@ def rebuild_database(max_backups=5):
     db_path = os.path.join(db_dir, 'proposals.db')
     
     # Ensure the directory exists
-    os.makedirs(db_dir, exist_ok=True)
+    ensure_directories(db_dir)
     
     # Check if the database exists
     if not os.path.exists(db_path):
@@ -76,4 +66,54 @@ def rebuild_database(max_backups=5):
     # based on what's in scripts/rebuild_db.py
     
     logger.info("Database rebuild completed successfully")
-    return True 
+    return True
+
+def update_scraper_status(source_name, status, error_message=None):
+    """
+    Update the scraper status in the database.
+    
+    Args:
+        source_name (str): Name of the data source
+        status (str): Status to set ('working', 'error', etc.)
+        error_message (str, optional): Error message to set
+    """
+    from src.database.db_session_manager import session_scope
+    from src.database.models import DataSource, ScraperStatus
+    import datetime
+    
+    logger.info(f"Updating scraper status for {source_name} to {status}")
+    
+    try:
+        with session_scope() as session:
+            # Get the data source
+            data_source = session.query(DataSource).filter_by(name=source_name).first()
+            if data_source:
+                # Check if there's an existing status record
+                status_record = session.query(ScraperStatus).filter_by(source_id=data_source.id).first()
+                if status_record:
+                    # Update existing record
+                    status_record.status = status
+                    status_record.last_checked = datetime.datetime.utcnow()
+                    status_record.error_message = error_message
+                    logger.info(f"Updated existing status record for {source_name} to {status}")
+                else:
+                    # Create new record
+                    new_status = ScraperStatus(
+                        source_id=data_source.id,
+                        status=status,
+                        last_checked=datetime.datetime.utcnow(),
+                        error_message=error_message
+                    )
+                    session.add(new_status)
+                    logger.info(f"Created new status record for {source_name} with status {status}")
+                
+                # Also update the last_scraped field on the data source
+                data_source.last_scraped = datetime.datetime.utcnow()
+                session.commit()
+                logger.info(f"Updated last_scraped timestamp for {source_name}")
+            else:
+                logger.warning(f"Data source not found for {source_name}")
+    except Exception as e:
+        logger.error(f"Error updating scraper status: {str(e)}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}") 

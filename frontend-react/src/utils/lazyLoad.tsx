@@ -28,7 +28,6 @@ export function lazyLoad<T extends ComponentType<any>>(
     );
   };
 }
-
 // Usage example:
 // const DataTable = lazyLoad(() => import('../components/DataTable'), { 
 //   preload: true,

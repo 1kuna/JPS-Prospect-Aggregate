@@ -20,9 +20,10 @@ from src.background_tasks.task_factory import (
 )
 from src.data_collectors.registry import scraper_registry
 from src.background_tasks.registry import task_registry
+from src.utils.logging import get_component_logger
 
-# Set up logging
-logger = logging.getLogger(__name__)
+# Set up logging using the centralized utility
+logger = get_component_logger('tasks.scraper')
 
 # Register scrapers in the scraper registry
 scraper_registry.register_scraper("Acquisition Gateway", run_acquisition_gateway_scraper)

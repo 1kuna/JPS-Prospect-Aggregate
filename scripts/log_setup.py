@@ -9,11 +9,14 @@ import os
 import sys
 import logging
 import datetime
-from logging.handlers import RotatingFileHandler
 from typing import Dict, Optional
 
-# Set up logging
-logger = logging.getLogger(__name__)
+# Import our centralized logging utilities
+from src.utils.logging import configure_root_logger, get_component_logger
+from src.utils.file_utils import ensure_directories
+
+# Set up logging for this module
+logger = get_component_logger('log_setup')
 
 
 def setup_logging(logs_dir: str = 'logs', 
@@ -24,52 +27,28 @@ def setup_logging(logs_dir: str = 'logs',
     """
     Set up logging for the application.
     
+    This function now leverages the centralized logging configuration utility.
+    
     Args:
-        logs_dir: Directory to store log files
-        log_file: Name of the log file
+        logs_dir: Directory to store log files (now mainly for compatibility)
+        log_file: Name of the log file (now mainly for compatibility)
         log_level: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
-        max_bytes: Maximum size of log file before rotation
-        backup_count: Number of backup log files to keep
+        max_bytes: Maximum size of log file before rotation (now handled by logging)
+        backup_count: Number of backup log files to keep (now handled by logging)
         
     Returns:
-        The configured logger
+        The configured root logger
     """
-    # Create logs directory if it doesn't exist
-    os.makedirs(logs_dir, exist_ok=True)
+    # Ensure the logs directory exists
+    ensure_directories(logs_dir)
     
-    # Create full path to log file
-    log_file_path = os.path.join(logs_dir, log_file)
-    
-    # Get the root logger
-    root_logger = logging.getLogger()
-    root_logger.setLevel(logging.getLevelName(log_level))
-    
-    # Clear existing handlers to avoid duplicates
-    if root_logger.handlers:
-        root_logger.handlers.clear()
-    
-    # Create handlers with rotation
-    file_handler = RotatingFileHandler(
-        log_file_path, 
-        maxBytes=max_bytes, 
-        backupCount=backup_count
-    )
-    console_handler = logging.StreamHandler(sys.stdout)
-    
-    # Create formatters and add them to handlers
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    file_handler.setFormatter(formatter)
-    console_handler.setFormatter(formatter)
-    
-    # Add handlers to the logger
-    root_logger.addHandler(file_handler)
-    root_logger.addHandler(console_handler)
+    # Configure the root logger using our centralized utility
+    root_logger = configure_root_logger(log_level)
     
     # Log startup information
     logger.info("==========================================")
     logger.info("JPS Prospect Aggregate Application")
     logger.info("==========================================")
-    logger.info(f"Logging to: {log_file_path}")
     logger.info(f"Started at: {datetime.datetime.now()}")
     logger.info(f"Platform: {'Windows' if sys.platform == 'win32' else 'Unix-like'}")
     logger.info("==========================================")
@@ -90,7 +69,7 @@ def cleanup_logs(logs_dir: str, keep_count: int = 3) -> Dict[str, int]:
     """
     try:
         # Import the log manager if available
-        from src.utils.log_manager import cleanup_all_logs
+        from src.utils.logging import cleanup_all_logs
         
         # Clean up logs using the log manager
         cleanup_results = cleanup_all_logs(logs_dir, keep_count=keep_count)

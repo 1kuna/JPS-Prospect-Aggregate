@@ -194,7 +194,7 @@ This context manager ensures that sessions are properly closed and transactions 
 
 ### API Endpoints
 
-The API endpoints are defined in `src/dashboard/blueprints/api/routes.py`. The main endpoints include:
+The API endpoints are defined in `src/api/routes.py`. The main endpoints include:
 
 #### Proposals Endpoint
 

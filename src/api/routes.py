@@ -17,9 +17,10 @@ import psutil
 import time
 import traceback
 from celery.result import AsyncResult
+from src.utils.logging import get_component_logger
 
-# Set up logging
-logger = logging.getLogger(__name__)
+# Set up logging using the centralized utility
+logger = get_component_logger('api.routes')
 
 def paginate_query(query, page, per_page):
     """Helper function to paginate query results."""
@@ -335,6 +336,9 @@ def get_data_sources():
                 # Count proposals for this source
                 proposal_count = session.query(func.count(Proposal.id)).filter(Proposal.source_id == source.id).scalar()
                 
+                # Get the latest status check if available
+                status_record = session.query(ScraperStatus).filter_by(source_id=source.id).first()
+                
                 result.append({
                     "id": source.id,
                     "name": source.name,
@@ -342,8 +346,8 @@ def get_data_sources():
                     "description": source.description,
                     "last_scraped": source.last_scraped.isoformat() if source.last_scraped else None,
                     "proposalCount": proposal_count,
-                    "last_checked": source.last_checked.isoformat() if hasattr(source, 'last_checked') and source.last_checked else None,
-                    "status": source.status if hasattr(source, 'status') else "unknown"
+                    "last_checked": status_record.last_checked.isoformat() if status_record and status_record.last_checked else None,
+                    "status": status_record.status if status_record else "unknown"
                 })
             
             return jsonify({"status": "success", "data": result})
@@ -777,7 +781,10 @@ def check_scraper_status(source_id):
                     "source_id": source_id,
                     "source_name": source.name,
                     "status": status.status,
-                    "message": status.error_message
+                    "message": status.error_message,
+                    "last_check": status.last_checked.isoformat() if status.last_checked else None,
+                    "last_success": None,  # We'll add this field later if needed
+                    "error_count": 0  # We'll track this in the future
                 }
             }
             

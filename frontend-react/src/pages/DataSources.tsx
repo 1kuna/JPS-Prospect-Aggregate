@@ -27,6 +27,7 @@ interface DataSource {
   description?: string;
   lastScraped?: string;
   lastChecked?: string;
+  last_checked?: string; // API response format
   status?: string;
   proposalCount?: number;
 }
@@ -143,6 +144,7 @@ const ActionCell = memo(({
 
 ActionCell.displayName = 'ActionCell';
 
+// Define data sources page component
 export default function DataSources() {
   // Use store selectors
   const dataSources = useStore(selectDataSources);
@@ -154,7 +156,7 @@ export default function DataSources() {
   const pullDataSource = useStore(selectPullDataSource);
   const getScraperStatus = useStore(selectGetScraperStatus);
   const { toast } = useToast();
-
+  
   // Local state
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingDataSource, setEditingDataSource] = useState<DataSource | null>(null);
@@ -354,24 +356,24 @@ export default function DataSources() {
     fetchDataSources().catch(() => {});
   }, [fetchDataSources]);
 
-  const handleCreateDataSource = useCallback(async (data: Omit<DataSource, 'id'>) => {
+  const handleCreateDataSource = async (data: any) => {
     try {
       await createDataSource(data);
       setIsDialogOpen(false);
     } catch (error) {
-      console.error('Failed to create data source:', error);
+      // Handle error
     }
-  }, [createDataSource]);
+  };
 
-  const handleUpdateDataSource = useCallback(async (data: DataSource) => {
+  const handleUpdateDataSource = async (data: any) => {
     try {
       await updateDataSource(String(data.id), data);
       setIsDialogOpen(false);
       setEditingDataSource(null);
     } catch (error) {
-      console.error('Failed to update data source:', error);
+      // Handle error
     }
-  }, [updateDataSource]);
+  };
 
   const handleEditDataSource = useCallback((dataSource: DataSource) => {
     setEditingDataSource(dataSource);
@@ -387,7 +389,9 @@ export default function DataSources() {
   if ((isInitialLoad || loading) && !dataSources.length) {
     return (
       <PageLayout title="Data Sources" isLoading={true}>
-        <div>Loading data sources...</div>
+        <div className="flex justify-center items-center h-[500px]">
+          <Spinner />
+        </div>
       </PageLayout>
     );
   }
@@ -396,7 +400,6 @@ export default function DataSources() {
   if (errors && !isInitialLoad && !dataSources.length) {
     return (
       <div className="space-y-6">
-        <h1 className="text-3xl font-bold tracking-tight">Data Sources</h1>
         <Alert variant="destructive">
           <AlertTitle>Error loading data sources</AlertTitle>
           <AlertDescription>{errors.message}</AlertDescription>
@@ -422,7 +425,12 @@ export default function DataSources() {
     },
     {
       header: 'Last Checked',
-      accessorKey: (row: DataSource) => row.lastChecked ? formatDate(row.lastChecked) : 'Never',
+      accessorKey: (row: DataSource) => {
+        // Check for the field using both naming conventions
+        const checkDate = row.lastChecked || row.last_checked;
+        // Use the fixed formatDate function which properly handles UTC dates
+        return checkDate ? formatDate(checkDate) : 'Never';
+      },
     },
     {
       header: 'Proposals',
@@ -469,10 +477,7 @@ export default function DataSources() {
                   } : undefined}
                   onSubmit={(data) => {
                     if (editingDataSource) {
-                      handleUpdateDataSource({
-                        ...data,
-                        id: editingDataSource.id
-                      });
+                      handleUpdateDataSource(data);
                     } else {
                       handleCreateDataSource(data);
                     }
@@ -489,7 +494,7 @@ export default function DataSources() {
           data={dataSources}
           columns={columns}
           emptyMessage="No data sources configured"
-          isLoading={loading || isInitialLoad}
+          isLoading={loading}
         />
       </div>
     </PageLayout>

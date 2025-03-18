@@ -9,11 +9,10 @@ from src.data_collectors.acquisition_gateway import run_scraper as run_acquisiti
 from src.data_collectors.ssa_contract_forecast import run_scraper as run_ssa_contract_forecast_scraper
 from src.utils.db_utils import rebuild_database, cleanup_old_backups
 from src.exceptions import ScraperError
-import traceback
-import os
-import glob
-import datetime
-import sqlite3
+from src.utils.imports import (
+    os, datetime, traceback, glob, sqlite3
+)
+from src.utils.file_utils import find_valid_files, ensure_directories
 
 @data_sources.route('/run-scraper/<int:source_id>', methods=['POST'])
 def run_scraper(source_id):
@@ -323,7 +322,8 @@ def get_scraper_status(source_id):
         return jsonify({
             "status": scraper_status.status,
             "message": scraper_status.message,
-            "last_updated": scraper_status.last_updated.isoformat() if scraper_status.last_updated else None
+            "last_updated": scraper_status.last_updated.isoformat() if scraper_status.last_updated else None,
+            "last_checked": scraper_status.last_checked.isoformat() if scraper_status.last_checked else None
         })
     except Exception as e:
         current_app.logger.error(f"Error getting scraper status: {e}")
@@ -389,18 +389,17 @@ def rebuild_db():
 
 @data_sources.route('/database/backups', methods=['GET'])
 def list_backups():
-    """API endpoint to list database backups."""
+    """API endpoint to list all database backups."""
     try:
         # Get the database directory
         project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
         db_dir = os.path.join(project_root, 'data')
         
-        # Find all database backup files
-        backup_pattern = os.path.join(db_dir, 'proposals_backup_*.db')
-        backup_files = glob.glob(backup_pattern)
+        # Find all database backup files using find_valid_files
+        backup_files = find_valid_files(db_dir, 'proposals_backup_*.db')
         
         # Sort files by modification time (newest first)
-        backup_files.sort(key=lambda x: os.path.getmtime(x), reverse=True)
+        backup_files = sorted(backup_files, key=lambda x: os.path.getmtime(x), reverse=True)
         
         # Prepare the list of backups with details
         backups = []

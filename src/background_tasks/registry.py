@@ -7,9 +7,10 @@ generate the beat schedule based on the registered tasks.
 """
 
 import logging
+from src.utils.logging import get_component_logger
 
-# Set up logging
-logger = logging.getLogger(__name__)
+# Set up logging using the centralized utility
+logger = get_component_logger('tasks.registry')
 
 class TaskRegistry:
     """Registry for Celery tasks."""

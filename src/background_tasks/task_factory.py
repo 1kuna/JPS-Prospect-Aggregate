@@ -15,9 +15,10 @@ from src.celery_app import celery_app
 from src.database.db_session_manager import session_scope
 from src.database.models import DataSource, Proposal, ScraperStatus
 from src.exceptions import ScraperError, NetworkError, TimeoutError, DatabaseError
+from src.utils.logging import get_component_logger
 
-# Set up logging
-logger = logging.getLogger(__name__)
+# Set up logging using the centralized utility
+logger = get_component_logger('tasks.factory')
 
 # Helper functions to reduce redundancy
 

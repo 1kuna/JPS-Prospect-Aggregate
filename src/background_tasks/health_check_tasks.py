@@ -5,9 +5,10 @@ from celery import shared_task
 from src.data_collectors.health_check import check_all_scrapers, check_acquisition_gateway, check_ssa_contract_forecast
 from src.background_tasks.task_factory import create_health_check_task
 from src.background_tasks.registry import task_registry
+from src.utils.logging import get_component_logger
 
-# Set up logging
-logger = logging.getLogger(__name__)
+# Set up logging using the centralized utility
+logger = get_component_logger('tasks.health_check')
 
 # Create health check tasks using the factory function
 check_all_scrapers_task = create_health_check_task(

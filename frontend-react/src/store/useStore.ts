@@ -136,13 +136,42 @@ export const useStore = create<AppState>((set) => ({
       }
       
       console.log('Store: Data sources fetched successfully:', data.data);
+      // Log each data source to inspect fields
+      data.data.forEach((source: any, index: number) => {
+        console.log(`Source ${index} (${source.name}):`, {
+          id: source.id,
+          lastChecked: source.lastChecked,
+          last_checked: source.last_checked,
+          status: source.status
+        });
+        
+        // Print date parsing information
+        if (source.last_checked) {
+          console.log(`Date parsing for source ${index}:`, {
+            original: source.last_checked,
+            parsed: new Date(source.last_checked),
+            localString: new Date(source.last_checked).toString(),
+            isoString: new Date(source.last_checked).toISOString(),
+            userTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone
+          });
+        }
+      });
+      
+      // Transform API field names to frontend field names
+      const transformedData = data.data.map((source: any) => ({
+        ...source,
+        lastChecked: source.last_checked || source.lastChecked,
+        lastScraped: source.last_scraped || source.lastScraped,
+        proposalCount: source.proposalCount || 0
+      }));
+      
       set({ 
-        dataSources: data.data || [], 
+        dataSources: transformedData || [], 
         lastUpdated: new Date(),
         loading: { ...useStore.getState().loading, dataSources: false },
         errors: { ...useStore.getState().errors, dataSources: null }
       });
-      return data.data;
+      return transformedData;
     } catch (error: any) {
       console.error('Store: Error fetching data sources:', error);
       

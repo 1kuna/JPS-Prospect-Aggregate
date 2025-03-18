@@ -13,12 +13,14 @@ import logging
 from typing import Tuple, Optional
 from dotenv import load_dotenv
 import importlib.util
+from src.utils.logging import get_component_logger
+from src.utils.file_utils import ensure_directories
 
 # Platform detection
 IS_WINDOWS = sys.platform == 'win32'
 
-# Set up logging
-logger = logging.getLogger(__name__)
+# Set up logging using the centralized utility
+logger = get_component_logger('dependency_checker')
 
 
 def test_redis_connection() -> bool:

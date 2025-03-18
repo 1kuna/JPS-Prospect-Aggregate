@@ -9,24 +9,20 @@ and provides a clean entry point for running the application.
 
 import os
 import sys
-import logging
 import argparse
 from dotenv import load_dotenv
 from src.dashboard.factory import create_app
 from src.celery_app import celery_app
+from src.utils.logging import configure_root_logger, get_component_logger
 
 # Load environment variables
 load_dotenv()
 
-# Configure logging
-logging.basicConfig(
-    level=logging.getLevelName(os.getenv("LOG_LEVEL", "INFO")),
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(sys.stdout)
-    ]
-)
-logger = logging.getLogger(__name__)
+# Configure root logger
+configure_root_logger(os.getenv("LOG_LEVEL", "INFO"))
+
+# Get component-specific logger
+logger = get_component_logger('server')
 
 # Create the Flask application
 try:

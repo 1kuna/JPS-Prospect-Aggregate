@@ -19,9 +19,10 @@ from sqlalchemy.exc import SQLAlchemyError, DisconnectionError
 import os
 from dotenv import load_dotenv
 from src.exceptions import DatabaseError
+from src.utils.logging import get_component_logger
 
-# Set up logging
-logger = logging.getLogger(__name__)
+# Set up logging using the centralized utility
+logger = get_component_logger('database.connection_pool')
 
 # Load environment variables
 load_dotenv()

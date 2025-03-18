@@ -341,3 +341,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Logging System
+
+The application uses a unified logging system for all components. For details on how to use the logging system effectively, see the [utils/README.md](src/utils/README.md) file.

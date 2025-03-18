@@ -22,7 +22,7 @@ Features:
 - Environment configuration management
 
 Usage:
-    python scripts/run_app.py
+    python scripts/app_launcher.py
 
 Requirements:
     - Python 3.10+
@@ -346,7 +346,7 @@ def main():
     # Log the number of processes being monitored
     logger.info(f"Monitoring {len(processes)} processes...")
     if processes:
-        for i, (name, (process, _)) in enumerate(processes.items()):
+        for i, (process, name, _) in enumerate(processes):
             logger.info(f"  {i+1}. {name} (PID {process.pid})")
     else:
         logger.warning("No processes are being monitored! This is likely an error.")

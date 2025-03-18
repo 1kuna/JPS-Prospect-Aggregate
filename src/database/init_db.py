@@ -1,13 +1,14 @@
 import os
 import sys
-import logging
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import create_engine
 from src.database.models import Base, DataSource
 from dotenv import load_dotenv
+from src.utils.logging import get_component_logger
+from src.utils.file_utils import ensure_directories
 
-# Set up logging
-logger = logging.getLogger(__name__)
+# Set up logging using the centralized utility
+logger = get_component_logger('database.init')
 
 # Add the project root directory to the Python path
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -28,7 +29,7 @@ def init_database():
         # Ensure the data directory exists
         db_path = database_url.replace("sqlite:///", "")
         data_dir = os.path.dirname(db_path)
-        os.makedirs(data_dir, exist_ok=True)
+        ensure_directories(data_dir)
         logger.info(f"Ensured data directory exists: {data_dir}")
         
         # Create engine and tables

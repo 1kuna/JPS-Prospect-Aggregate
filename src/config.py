@@ -7,10 +7,11 @@ BASE_DIR = pathlib.Path(__file__).parent.parent.absolute()
 LOGS_DIR = os.path.join(BASE_DIR, 'logs')
 DATA_DIR = os.path.join(BASE_DIR, 'data')
 DOWNLOADS_DIR = os.path.join(DATA_DIR, 'downloads')
+TEMP_DIR = os.path.join(BASE_DIR, 'temp')
 
-# Ensure directories exist
-os.makedirs(LOGS_DIR, exist_ok=True)
-os.makedirs(DOWNLOADS_DIR, exist_ok=True)
+# Ensure directories exist (directly, without using file_utils to avoid circular imports)
+for directory in [LOGS_DIR, DATA_DIR, DOWNLOADS_DIR, TEMP_DIR]:
+    os.makedirs(directory, exist_ok=True)
 
 # Define all configuration variables at the module level
 # Logging configuration
@@ -94,7 +95,6 @@ class ProductionConfig(Config):
     DEBUG: bool = False
     LOG_LEVEL: str = "INFO"
     # In production, you might want to use a more robust database
-    # DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql://user:password@localhost/dbname")
 
 
 class TestingConfig(Config):

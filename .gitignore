@@ -86,4 +86,10 @@ celerybeat-schedule
 celerybeat-schedule.db
 celerybeat-schedule.dat
 celerybeat-schedule.dir
-celerybeat.pid 
+celerybeat.pid
+
+# Frontend build artifacts
+frontend-react/dist/
+frontend-react/*.tsbuildinfo
+frontend-react/tsconfig.*.tsbuildinfo
+frontend-react/node_modules/ 

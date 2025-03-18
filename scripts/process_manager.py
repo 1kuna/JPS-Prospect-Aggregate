@@ -14,6 +14,14 @@ import logging
 import datetime
 from typing import List, Tuple, Dict, Any, Optional, IO
 import traceback
+import atexit
+import psutil
+
+# Add the parent directory to the Python path to import project modules
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from src.utils.logging import get_component_logger
+from src.utils.file_utils import ensure_directories
 
 # Platform detection
 IS_WINDOWS = sys.platform == 'win32'
@@ -23,20 +31,19 @@ MAX_RESTART_ATTEMPTS = 3
 RESTART_DELAY = 2
 
 # Process tracking
-processes = []
+processes = {}
 restart_counts = {}
 
-# Set up logging
-logger = logging.getLogger(__name__)
-
+# Set up logger using the centralized utility
+logger = get_component_logger('scripts.process_manager')
 
 def start_process(cmd: Any, name: str, cwd: Optional[str] = None, 
                  capture_output: bool = False, logs_dir: str = 'logs', env: Optional[Dict[str, str]] = None) -> subprocess.Popen:
     """
-    Start a subprocess and return the process object.
+    Start a process with the specified command.
     
     Args:
-        cmd: The command to run, either as a string or list of arguments
+        cmd: Command to run (list or string)
         name: A name for the process (for logging)
         cwd: The working directory for the process
         capture_output: Whether to capture and log the process output
@@ -49,7 +56,7 @@ def start_process(cmd: Any, name: str, cwd: Optional[str] = None,
     global processes
     
     # Create log file for this process
-    os.makedirs(logs_dir, exist_ok=True)
+    ensure_directories(logs_dir)
     log_file = os.path.join(logs_dir, f"{name.lower().replace(' ', '_')}.log")
     log_handle = open(log_file, 'a')
     
@@ -104,7 +111,7 @@ def start_process(cmd: Any, name: str, cwd: Optional[str] = None,
                 )
         
         # Store the process, its name, and log handle for later cleanup
-        processes.append((process, name, log_handle))
+        processes[name] = (process, log_handle)
         
         # Initialize restart count for this process
         restart_counts[name] = 0
@@ -134,53 +141,41 @@ def cleanup() -> None:
     logger.info("Starting cleanup process...")
     
     # Make a copy of the processes list to avoid modification during iteration
-    processes_to_cleanup = list(processes)
+    processes_to_cleanup = list(processes.values())
     
     # Terminate all processes
     logger.info(f"Terminating {len(processes_to_cleanup)} managed processes...")
-    for i, (process, name, log_handle) in enumerate(processes_to_cleanup):
+    for i, (process, log_handle) in enumerate(processes_to_cleanup):
         try:
-            logger.info(f"[{i+1}/{len(processes_to_cleanup)}] Terminating {name} (PID {process.pid})...")
+            logger.info(f"[{i+1}/{len(processes_to_cleanup)}] Terminating process (PID {process.pid})...")
             
-            if process.poll() is None:  # Process is still running
-                if IS_WINDOWS:
-                    # On Windows, we need to use taskkill to terminate the process tree
-                    logger.info(f"Using taskkill to terminate {name} on Windows")
-                    subprocess.run(['taskkill', '/F', '/T', '/PID', str(process.pid)], 
-                                  check=False, capture_output=True)
-                else:
-                    # On Unix-like systems, we can use process groups or direct termination
-                    try:
-                        logger.info(f"Sending SIGTERM to {name}")
-                        process.terminate()
-                    except Exception as inner_e:
-                        logger.warning(f"Error terminating process directly: {inner_e}")
-                    
-                # Give the process a moment to terminate gracefully
-                logger.info(f"Waiting for {name} to terminate gracefully...")
+            # Close log handle to release file resources
+            if log_handle is not None:
                 try:
-                    process.wait(timeout=2)
-                    logger.info(f"{name} terminated gracefully")
-                except subprocess.TimeoutExpired:
-                    # If the process doesn't terminate gracefully, force kill it
-                    logger.warning(f"{name} did not terminate gracefully, force killing...")
-                    try:
-                        logger.info(f"Sending SIGKILL to {name}")
-                        process.kill()
-                    except Exception as inner_e:
-                        logger.warning(f"Error killing process directly: {inner_e}")
-            else:
-                logger.info(f"{name} was already terminated (exit code {process.returncode})")
+                    log_handle.flush()
+                    log_handle.close()
+                except Exception as e:
+                    logger.warning(f"Error closing log handle: {str(e)}")
             
-            # Log the termination
-            if log_handle and not log_handle.closed:
-                log_handle.write(f"\n\n{'=' * 80}\n")
-                log_handle.write(f"PROCESS TERMINATED BY CLEANUP: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-                log_handle.write(f"{'=' * 80}\n\n")
-                log_handle.close()
-                logger.info(f"Closed log file for {name}")
+            # Terminate the process
+            if process.poll() is None:  # Only if process is still running
+                # Send SIGTERM (graceful shutdown)
+                process.terminate()
+                
+                # Give the process time to terminate gracefully
+                for _ in range(10):  # Wait up to 1 second
+                    if process.poll() is not None:
+                        break
+                    time.sleep(0.1)
+                
+                # If still running, force kill with SIGKILL
+                if process.poll() is None:
+                    logger.warning(f"Process PID {process.pid} did not respond to SIGTERM, sending SIGKILL...")
+                    process.kill()
+
         except Exception as e:
-            logger.error(f"Error terminating {name}: {str(e)}")
+            logger.error(f"Error terminating process: {str(e)}")
+            logger.error(traceback.format_exc())
     
     # Additional cleanup to ensure Celery processes are terminated
     logger.info("Looking for lingering Celery processes...")
@@ -243,25 +238,23 @@ def cleanup() -> None:
         logger.error(f"Error in additional Celery cleanup: {e}")
     
     # Clear the processes list
-    processes = []
+    processes.clear()
     
     logger.info("Cleanup complete")
 
 
-def restart_process(process_config: Dict[str, Any], i: int, 
-                   process: subprocess.Popen, name: str, 
-                   log_handle: Optional[IO]) -> None:
+def restart_process(process_config: Dict[str, Any], name: str, process: subprocess.Popen, 
+                 log_handle: Optional[IO]) -> None:
     """
     Restart a process that has terminated unexpectedly.
     
     Args:
-        process_config: Configuration for the process
-        i: Index of the process in the processes list
-        process: The process object
-        name: Name of the process
+        process_config: Process configuration
+        name: Process name
+        process: Process object
         log_handle: Log file handle
     """
-    # Get the restart count for this process
+    # Check if we've reached the maximum number of restart attempts
     restart_count = restart_counts.get(name, 0)
     
     # Check if we've reached the maximum number of restart attempts
@@ -297,11 +290,11 @@ def restart_process(process_config: Dict[str, Any], i: int,
         new_process = start_process(cmd, name, cwd, capture_output)
         
         # Update the processes list
-        processes[i] = (new_process, name, log_handle)
+        processes[name] = (new_process, log_handle)
     except Exception as e:
         logger.error(f"Failed to restart {name}: {e}")
         # Remove the process from the list
-        processes.pop(i)
+        processes.pop(name)
 
 
 def monitor_processes(process_configs: Dict[str, Dict[str, Any]]) -> None:
@@ -315,14 +308,19 @@ def monitor_processes(process_configs: Dict[str, Dict[str, Any]]) -> None:
     try:
         while True:
             # Check each process
-            for i, (process, name, log_handle) in enumerate(list(processes)):
+            for name, (process, log_handle) in list(processes.items()):
                 # Check if the process has terminated
                 if process.poll() is not None:
                     # Process has terminated
                     logger.info(f"Process {name} (PID {process.pid}) has terminated with exit code {process.returncode}")
-                    restart_process(process_configs.get(name, {}), i, process, name, log_handle)
+                    
+                    # Get the process configuration
+                    process_config = process_configs.get(name, {})
+                    
+                    # Restart the process
+                    restart_process(process_config, name, process, log_handle)
             
-            # Sleep for a bit to avoid high CPU usage
+            # Sleep to avoid high CPU usage
             time.sleep(1)
     except KeyboardInterrupt:
         logger.info("Keyboard interrupt received in monitor_processes. Initiating cleanup...")

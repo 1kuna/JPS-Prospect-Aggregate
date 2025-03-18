@@ -17,10 +17,10 @@ from src.database.db_session_manager import session_scope
 from src.database.models import DataSource
 from src.exceptions import ScraperError, ParsingError
 from src.config import LOGS_DIR, DOWNLOADS_DIR, LOG_FORMAT, LOG_FILE_MAX_BYTES, LOG_FILE_BACKUP_COUNT
+from src.utils.file_utils import cleanup_files, find_valid_files
+from src.utils.logging import get_scraper_logger
 
-# Create required directories
-os.makedirs(LOGS_DIR, exist_ok=True)
-os.makedirs(DOWNLOADS_DIR, exist_ok=True)
+# Directory creation is now centralized in config.py, no need to create them here
 
 
 class BaseScraper:
@@ -55,11 +55,10 @@ class BaseScraper:
         self.base_url = base_url
         self.debug_mode = debug_mode
         
-        # Set up logging
+        # Initialize logger
         self.logger = self.setup_logging()
-        self.logger.info(f"Initializing {source_name} scraper with debug_mode={debug_mode}")
         
-        # Initialize browser components
+        # Initialize playwright attributes (will be set in setup_browser)
         self.playwright = None
         self.browser = None
         self.context = None
@@ -76,43 +75,8 @@ class BaseScraper:
         Returns:
             logging.Logger: Configured logger
         """
-        # Create a logger for this scraper
-        logger = logging.getLogger(f"scraper.{self.source_name}")
-        logger.setLevel(logging.DEBUG if self.debug_mode else logging.INFO)
-        
-        # Clear existing handlers to avoid duplicates
-        if logger.handlers:
-            logger.handlers.clear()
-        
-        # Create log file path
-        log_file = os.path.join(LOGS_DIR, f"{self.source_name.lower().replace(' ', '_')}_scraper.log")
-        
-        # Create file handler with rotation
-        file_handler = RotatingFileHandler(
-            log_file,
-            maxBytes=LOG_FILE_MAX_BYTES,
-            backupCount=LOG_FILE_BACKUP_COUNT
-        )
-        
-        # Create console handler
-        console_handler = logging.StreamHandler(sys.stdout)
-        
-        # Set log level for handlers
-        file_handler.setLevel(logging.DEBUG if self.debug_mode else logging.INFO)
-        console_handler.setLevel(logging.INFO)
-        
-        # Create formatter
-        formatter = logging.Formatter(LOG_FORMAT)
-        
-        # Add formatter to handlers
-        file_handler.setFormatter(formatter)
-        console_handler.setFormatter(formatter)
-        
-        # Add handlers to logger
-        logger.addHandler(file_handler)
-        logger.addHandler(console_handler)
-        
-        return logger
+        # Use the centralized logging utility instead of custom implementation
+        return get_scraper_logger(self.source_name, debug_mode=self.debug_mode)
     
     def setup_browser(self):
         """
@@ -231,25 +195,8 @@ class BaseScraper:
             int: Number of files removed
         """
         try:
-            # If no pattern is provided, use a pattern that matches all files
-            if file_pattern is None:
-                file_pattern = "*"
-            
-            # Create the full pattern
-            full_pattern = os.path.join(DOWNLOADS_DIR, file_pattern)
-            
-            # Get a list of files matching the pattern
-            files = glob.glob(full_pattern)
-            
-            # Remove each file
-            count = 0
-            for file_path in files:
-                try:
-                    os.remove(file_path)
-                    count += 1
-                except Exception as e:
-                    self.logger.warning(f"Failed to remove file {file_path}: {str(e)}")
-            
+            pattern = file_pattern or "*"
+            count = cleanup_files(DOWNLOADS_DIR, pattern)
             self.logger.info(f"Removed {count} files from downloads directory")
             return count
         except Exception as e:

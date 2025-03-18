@@ -1,40 +1,21 @@
 import os
 import sys
 import time
-import logging
 import datetime
-from logging.handlers import RotatingFileHandler
 
 # Add the parent directory to the path so we can import from src
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from src.database.db_session_manager import session_scope
 from src.database.models import DataSource, ScraperStatus
-from src.config import LOGS_DIR, LOG_FORMAT, LOG_FILE_MAX_BYTES, LOG_FILE_BACKUP_COUNT
-from src.utils.log_manager import cleanup_all_logs
+from src.config import LOGS_DIR
+from src.utils.logging import cleanup_all_logs
+from src.utils.logging import get_component_logger
 
-# Set up logging
-log_file = os.path.join(LOGS_DIR, 'health_check.log')
-# Create a logger
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
+# Set up logging with the centralized utility
+logger = get_component_logger('health_check')
 
-# Clear existing handlers to avoid duplicates
-if logger.handlers:
-    logger.handlers.clear()
-
-# Create handlers
-file_handler = RotatingFileHandler(log_file, maxBytes=LOG_FILE_MAX_BYTES, backupCount=LOG_FILE_BACKUP_COUNT)
-console_handler = logging.StreamHandler()
-# Create formatters and add them to handlers
-formatter = logging.Formatter(LOG_FORMAT)
-file_handler.setFormatter(formatter)
-console_handler.setFormatter(formatter)
-# Add handlers to the logger
-logger.addHandler(file_handler)
-logger.addHandler(console_handler)
-
-logger.info(f"Logging to {log_file}")
+logger.info("Health check module initialized")
 
 def check_scraper_health(scraper_instance, source_name):
     """

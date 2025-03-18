@@ -1,7 +1,6 @@
 import os
 import sys
 import datetime
-import logging
 import pandas as pd
 from pathlib import Path
 
@@ -10,16 +9,10 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.database.db_session_manager import get_session, close_session
 from src.database.models import Proposal, DataSource
+from src.utils.logging import get_component_logger
 
-# Set up logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler()
-    ]
-)
-logger = logging.getLogger(__name__)
+# Set up logging using the centralized utility
+logger = get_component_logger('process_ssa_excel')
 
 def parse_date(date_str):
     """Parse a date string into a datetime object"""

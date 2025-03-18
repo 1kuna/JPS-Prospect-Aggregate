@@ -5,35 +5,27 @@ Script to add the subtask_id column to the ScraperStatus table.
 
 import os
 import sys
-import logging
-from sqlalchemy import Column, String, text
+import datetime
+from alembic import op
+import sqlalchemy as sa
 
-# Add the project root to the Python path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+# Add the parent directory to the path so we can import from src
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# Import project modules
-from src.database.db_session_manager import session_scope
-from src.database.connection_pool import get_engine
+from src.database.db_session_manager import engine, get_session, close_session
+from src.database.models import Base, ScraperStatus
+from src.utils.logging import get_component_logger
 
-# Set up logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(sys.stdout)
-    ]
-)
-logger = logging.getLogger(__name__)
+# Set up logging using the centralized utility
+logger = get_component_logger('add_subtask_id')
 
 def add_subtask_id_column():
-    """Add the subtask_id column to the ScraperStatus table."""
+    """Add subtask_id column to ScraperStatus table if it doesn't exist"""
     logger.info("Adding subtask_id column to ScraperStatus table...")
-    
-    engine = get_engine()
     
     # Check if the column already exists
     with engine.connect() as conn:
-        result = conn.execute(text("PRAGMA table_info(scraper_status)"))
+        result = conn.execute(sa.text("PRAGMA table_info(scraper_status)"))
         columns = [row[1] for row in result.fetchall()]
         
         if 'subtask_id' in columns:
@@ -42,7 +34,7 @@ def add_subtask_id_column():
     
     # Add the column
     with engine.connect() as conn:
-        conn.execute(text("ALTER TABLE scraper_status ADD COLUMN subtask_id VARCHAR(255)"))
+        conn.execute(sa.text("ALTER TABLE scraper_status ADD COLUMN subtask_id VARCHAR(255)"))
         conn.commit()
     
     logger.info("Column 'subtask_id' added to ScraperStatus table successfully")

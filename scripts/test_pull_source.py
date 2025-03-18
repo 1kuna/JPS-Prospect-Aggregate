@@ -6,27 +6,33 @@ This script tests the scraper tasks for all data sources.
 
 import os
 import sys
-import logging
-from dotenv import load_dotenv
+import time
+import argparse
+
+# Add the parent directory to the path so we can import from src
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from src.database.db_session_manager import session_scope
+from src.database.models import DataSource, Proposal
+from src.utils.logging import get_component_logger
+
+# Set up logging using the centralized utility
+logger = get_component_logger('test_pull')
+
+def test_pull_source(source_id=None, source_name=None):
+    """Test pulling data from a specific source"""
 
 # Load environment variables
+from dotenv import load_dotenv
 load_dotenv()
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(sys.stdout)
-    ]
-)
-logger = logging.getLogger(__name__)
+from src.utils.logging import configure_logging
+configure_logging()
 
 # Import the task registry and scraper tasks
 from src.background_tasks.registry import task_registry
 from src.background_tasks.scraper_tasks import force_collect_task
-from src.database.db_session_manager import session_scope
-from src.database.models import DataSource
 
 def test_scraper_tasks():
     """Test the scraper tasks for all data sources."""

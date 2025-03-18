@@ -8,6 +8,8 @@ import traceback
 import glob
 import pathlib
 import re
+import shutil
+import sqlite3
 
 # Date and time
 import datetime
@@ -37,7 +39,9 @@ system = {
     'traceback': traceback,
     'glob': glob,
     'pathlib': pathlib,
-    're': re
+    're': re,
+    'shutil': shutil,
+    'sqlite3': sqlite3
 }
 
 datetime_utils = {
@@ -69,7 +73,7 @@ logging_utils = {
 
 # Export all modules directly for traditional imports
 __all__ = [
-    'os', 'sys', 'time', 'traceback', 'glob', 'pathlib', 're',
+    'os', 'sys', 'time', 'traceback', 'glob', 'pathlib', 're', 'shutil', 'sqlite3',
     'datetime', 'timedelta',
     'csv', 'json', 'pd', 'StringIO',
     'requests', 'RequestException', 'Timeout', 'RequestsConnectionError',

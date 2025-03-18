@@ -9,9 +9,10 @@ import functools
 from sqlalchemy import text
 from src.exceptions import DatabaseError, DataIntegrityError, TimeoutError as AppTimeoutError, RetryableError
 from src.database.connection_pool import get_engine, get_connection_pool
+from src.utils.logging import get_component_logger
 
-# Set up logging
-logger = logging.getLogger(__name__)
+# Set up logging using the centralized utility
+logger = get_component_logger('database.session_manager')
 
 # Load environment variables
 load_dotenv()

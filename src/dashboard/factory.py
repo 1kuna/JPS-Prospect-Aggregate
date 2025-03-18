@@ -4,6 +4,10 @@ import os
 import logging
 from flask import Flask, send_from_directory, render_template_string, request
 from flask_cors import CORS
+from src.utils.logging import get_component_logger
+
+# Set up logging using the centralized utility
+logger = get_component_logger('dashboard.factory')
 
 def create_app(config=None):
     """Application factory for creating Flask app instances."""

@@ -20,6 +20,10 @@ from src.exceptions import ScraperError, ParsingError
 from src.config import SSA_CONTRACT_FORECAST_URL
 
 import requests
+from src.utils.logging import get_scraper_logger
+
+# Set up logging using the centralized utility
+logger = get_scraper_logger('ssa_contract_forecast')
 
 def check_url_accessibility(url):
     """
@@ -31,7 +35,6 @@ def check_url_accessibility(url):
     Returns:
         bool: True if the URL is accessible, False otherwise
     """
-    logger = logging.getLogger("scraper.ssa_contract_forecast")
     logger.info(f"Checking accessibility of {url}")
     
     try:
@@ -334,7 +337,7 @@ def run_scraper(force=False):
     Raises:
         ScraperError: If an error occurs during scraping
     """
-    logger = logging.getLogger("scraper.ssa_contract_forecast")
+    logger.info("Running SSA Contract Forecast scraper")
     
     try:
         # Create an instance of the scraper to use its methods
@@ -347,7 +350,6 @@ def run_scraper(force=False):
             raise ScraperError(error_msg)
             
         # Run the scraper
-        logger.info("Running SSA Contract Forecast scraper")
         success = scraper.scrape()
         
         # If scraper.scrape() returns False, it means an error occurred

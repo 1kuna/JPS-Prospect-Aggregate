@@ -1,11 +1,12 @@
 import os
 import json
 import datetime
-import logging
 from pathlib import Path
+from src.utils.file_utils import ensure_directories, find_valid_files
+from src.utils.logging import get_component_logger
 
-# Set up logging
-logger = logging.getLogger(__name__)
+# Set up logging using the centralized utility
+logger = get_component_logger('database.download_tracker')
 
 class DownloadTracker:
     """
@@ -19,9 +20,8 @@ class DownloadTracker:
         self.data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'data')
         
         # Ensure the data directory exists
-        if not os.path.exists(self.data_dir):
-            os.makedirs(self.data_dir)
-            logger.info(f"Created data directory: {self.data_dir}")
+        ensure_directories(self.data_dir)
+        logger.info(f"Ensured data directory exists: {self.data_dir}")
         
         # Path to the timestamps file
         self.timestamps_file = os.path.join(self.data_dir, "download_timestamps.json")
@@ -137,26 +137,17 @@ class DownloadTracker:
         # Get the downloads directory
         downloads_dir = os.path.join(self.data_dir, 'downloads')
         
-        # Ensure the downloads directory exists
-        if not os.path.exists(downloads_dir):
-            os.makedirs(downloads_dir)
-            logger.info(f"Created downloads directory: {downloads_dir}")
-            return False
+        # Ensure the downloads directory exists (now handled by file_utils)
+        ensure_directories(downloads_dir)
         
-        # Find files matching the pattern
-        matching_files = list(Path(downloads_dir).glob(file_pattern))
+        # Find valid files using our utility function
+        valid_files = find_valid_files(downloads_dir, file_pattern, min_size)
         
-        if not matching_files:
-            logger.info(f"No files matching pattern '{file_pattern}' found for {source_name}")
-            return False
+        if valid_files:
+            logger.info(f"Found valid file for {source_name}: {valid_files[0]}")
+            return True
         
-        # Check if any of the files are valid (not empty)
-        for file_path in matching_files:
-            if os.path.getsize(file_path) > min_size:
-                logger.info(f"Found valid file for {source_name}: {file_path}")
-                return True
-        
-        logger.info(f"No valid files found for {source_name}")
+        logger.info(f"No valid files found for {source_name} with pattern '{file_pattern}'")
         return False
 
 # Create a singleton instance

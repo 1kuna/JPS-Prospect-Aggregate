@@ -6,26 +6,30 @@ This script will:
 3. Copy all data from the old database to the new one
 """
 
-import os
 import sys
 import sqlite3
-import shutil
-import datetime
-import logging
-import time
-import glob
-import re
 import argparse
+from pathlib import Path
 
-# Add the parent directory to the path so we can import from src
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Add the root directory to the Python path
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, project_root)
 
-# Set up logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+from src.utils.imports import (
+    os, datetime, time, glob, traceback, 
+    shutil, re, logging
 )
-logger = logging.getLogger(__name__)
+from src.utils.logging import get_component_logger
+from src.utils.file_utils import ensure_directories, find_valid_files, cleanup_files
+
+# Set up logging using the centralized utility
+logger = get_component_logger('rebuild_db')
+
+# Define paths
+ROOT_DIR = Path(__file__).parent.parent.absolute()
+DATA_DIR = ROOT_DIR / 'data'
+BACKUP_DIR = DATA_DIR / 'backups'
+DB_PATH = DATA_DIR / 'proposals.db'
 
 def cleanup_old_backups(backup_dir, max_backups=5):
     """
@@ -35,22 +39,11 @@ def cleanup_old_backups(backup_dir, max_backups=5):
         backup_dir (str): Directory containing the backups
         max_backups (int): Maximum number of backups to keep
     """
-    # Find all database backup files
-    backup_pattern = os.path.join(backup_dir, 'proposals_backup_*.db')
-    backup_files = glob.glob(backup_pattern)
+    # Use the centralized cleanup_files function from file_utils
+    pattern = "proposals_backup_*.db"
+    deleted_count = cleanup_files(backup_dir, pattern, max_backups)
     
-    # If we have more backups than the maximum allowed
-    if len(backup_files) > max_backups:
-        # Sort files by modification time (newest first)
-        backup_files.sort(key=lambda x: os.path.getmtime(x), reverse=True)
-        
-        # Delete older backups
-        for old_backup in backup_files[max_backups:]:
-            try:
-                os.remove(old_backup)
-                logger.info(f"Deleted old backup: {old_backup}")
-            except Exception as e:
-                logger.warning(f"Could not delete old backup {old_backup}: {e}")
+    logger.info(f"Cleaned up {deleted_count} old database backups, keeping {max_backups} most recent ones")
 
 def list_backups(backup_dir):
     """
@@ -62,12 +55,11 @@ def list_backups(backup_dir):
     Returns:
         list: List of backup files with their creation time and size
     """
-    # Find all database backup files
-    backup_pattern = os.path.join(backup_dir, 'proposals_backup_*.db')
-    backup_files = glob.glob(backup_pattern)
+    # Find all database backup files using find_valid_files
+    backup_files = find_valid_files(backup_dir, 'proposals_backup_*.db')
     
     # Sort files by modification time (newest first)
-    backup_files.sort(key=lambda x: os.path.getmtime(x), reverse=True)
+    backup_files = sorted(backup_files, key=lambda x: os.path.getmtime(x), reverse=True)
     
     # Prepare the list of backups with details
     backups = []
@@ -90,13 +82,13 @@ def rebuild_database(max_backups=5):
     Args:
         max_backups (int): Maximum number of backups to keep
     """
-    # Get the database path - use project root instead of script directory
+    # Get the database path - use project root
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     db_dir = os.path.join(project_root, 'data')
     db_path = os.path.join(db_dir, 'proposals.db')
     
     # Ensure the directory exists
-    os.makedirs(db_dir, exist_ok=True)
+    ensure_directories(db_dir)
     
     # Check if the database exists
     if not os.path.exists(db_path):

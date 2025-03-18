@@ -6,21 +6,19 @@ This script tests the health check tasks for all scrapers.
 
 import os
 import sys
-import logging
-from dotenv import load_dotenv
+import time
+import datetime
 
-# Load environment variables
-load_dotenv()
+# Add the parent directory to the path so we can import from src
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(sys.stdout)
-    ]
-)
-logger = logging.getLogger(__name__)
+from src.database.db_session_manager import session_scope
+from src.database.models import DataSource, ScraperStatus
+from src.data_collectors.health_check import check_acquisition_gateway, check_ssa_contract_forecast
+from src.utils.logging import get_component_logger
+
+# Set up logging using the centralized utility
+logger = get_component_logger('test_health_check')
 
 # Import the health check tasks
 from src.background_tasks.health_check_tasks import (
@@ -30,7 +28,7 @@ from src.background_tasks.health_check_tasks import (
 )
 
 def test_health_checks():
-    """Test the health check tasks."""
+    """Test health checks for all scrapers"""
     logger.info("Starting health check tests...")
     
     # Test the all scrapers health check
