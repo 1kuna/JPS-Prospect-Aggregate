@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useStatisticsSelectors, useUISelectors } from '@/hooks/useStoreSelectors';
+import { useAnalyticsSelectors, useUISelectors } from '@/hooks/useStoreSelectors';
 import {
   Dialog,
   DialogContent,
@@ -19,7 +19,7 @@ interface StatisticsProps {
 }
 
 export function Statistics({ isOpen, onClose }: StatisticsProps) {
-  const { statistics, loading, errors, fetchStatistics } = useStatisticsSelectors();
+  const { statistics, loading, errors, fetchStatistics } = useAnalyticsSelectors();
   const { addToast } = useUISelectors();
   const proposalsTrend = useProposalsTrend();
   

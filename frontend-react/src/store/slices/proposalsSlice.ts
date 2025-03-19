@@ -1,16 +1,32 @@
 import { StateCreator } from 'zustand';
-import { fetchProposals } from '../api';
+import { api } from '../api';
+import { createAsyncSlice } from '../middleware/createAsyncSlice';
+
+export interface Proposal {
+  id: number | string;
+  title: string;
+  agency: string;
+  release_date?: string;
+  status: string;
+  data_source_id: number;
+  [key: string]: any;
+}
+
+export interface PaginationData {
+  page: number;
+  perPage: number;
+  totalCount: number;
+  totalPages: number;
+}
 
 export interface ProposalsState {
-  proposals: any[];
-  proposalsPagination: {
-    page: number;
-    perPage: number;
-    totalCount: number;
-    totalPages: number;
-  } | null;
-  loading: { proposals: boolean };
-  errors: { proposals: any | null };
+  // Data
+  proposals: Proposal[];
+  proposalsLoading: boolean;
+  proposalsError: { message: string } | null;
+  
+  // Pagination state
+  proposalsPagination: PaginationData | null;
   
   // Actions
   fetchProposals: (params?: { 
@@ -18,43 +34,38 @@ export interface ProposalsState {
     perPage?: number; 
     sortBy?: string; 
     sortOrder?: string 
-  }) => Promise<void>;
+  }) => Promise<Proposal[]>;
 }
 
-export const proposalsSlice: StateCreator<ProposalsState> = (set, get) => ({
-  proposals: [],
-  proposalsPagination: null,
-  loading: { proposals: false },
-  errors: { proposals: null },
+export const proposalsSlice: StateCreator<ProposalsState> = (set, get) => {
+  const proposalsAsync = createAsyncSlice<Proposal[], ProposalsState>(
+    'proposals',
+    {
+      fetchProposals: async (params = {}) => {
+        const response = await api.fetchProposals(params);
+        
+        // Store pagination data
+        const normalizedPagination = response.pagination ? {
+          page: response.pagination.page,
+          perPage: response.pagination.per_page,
+          totalPages: response.pagination.total_pages,
+          totalCount: response.pagination.total_items
+        } : null;
+        
+        // Update pagination state
+        set({ proposalsPagination: normalizedPagination });
+        
+        return response.data || [];
+      }
+    },
+    [] // Initial empty array
+  )(set, get);
   
-  fetchProposals: async (params = {}) => {
-    set((state) => ({ loading: { ...state.loading, proposals: true } }));
-    try {
-      const data = await fetchProposals(params);
-      
-      // Normalize pagination data to ensure consistent property names
-      const normalizedPagination = data.pagination ? {
-        page: data.pagination.page,
-        perPage: data.pagination.per_page,
-        totalPages: data.pagination.total_pages,
-        totalCount: data.pagination.total_items
-      } : null;
-      
-      set({ 
-        proposals: data.data || [], 
-        proposalsPagination: normalizedPagination,
-        loading: { ...get().loading, proposals: false },
-        errors: { ...get().errors, proposals: null }
-      });
-      
-      return data.data;
-    } catch (error: any) {
-      console.error('Error fetching proposals:', error);
-      set({ 
-        loading: { ...get().loading, proposals: false },
-        errors: { ...get().errors, proposals: { message: error.message } }
-      });
-      throw error;
-    }
-  },
-}); 
+  return {
+    // Include the async slice
+    ...proposalsAsync,
+    
+    // Additional state (initialized with defaults)
+    proposalsPagination: null,
+  };
+}; 

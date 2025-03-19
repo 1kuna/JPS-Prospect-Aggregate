@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { FormWrapper } from './forms/FormWrapper';
+import { FormWrapper } from './FormWrapper';
 import {
   FormField,
   FormControl,

@@ -1,13 +1,12 @@
 import { ProposalsState } from './slices/proposalsSlice';
 import { DataSourcesState } from './slices/dataSourcesSlice';
-import { UIState } from './slices/uiSlice';
-import { StatisticsState } from './slices/statisticsSlice';
+import { AnalyticsState } from './slices/analyticsSlice';
 import { SystemState } from './slices/systemSlice';
+import { UIState } from './slices/uiSlice';
 
-export interface StoreState extends 
-  ProposalsState,
-  DataSourcesState,
-  UIState,
-  StatisticsState,
-  SystemState 
-{} 
+// Combined state type
+export type StoreState = DataSourcesState &
+  ProposalsState &
+  AnalyticsState &
+  SystemState &
+  UIState; 

@@ -67,31 +67,38 @@ export const useUISelectors = () => {
 };
 
 // Statistics selectors
-export const useStatisticsSelectors = () => {
+export const useAnalyticsSelectors = () => {
   const statistics = useStore((state: StoreState) => state.statistics);
   const dashboardData = useStore((state: StoreState) => state.dashboardData);
-  const loadingStats = useStore((state: StoreState) => state.loading.statistics);
-  const loadingDashboard = useStore((state: StoreState) => state.loading.dashboard);
-  const errorsStats = useStore((state: StoreState) => state.errors.statistics);
-  const errorsDashboard = useStore((state: StoreState) => state.errors.dashboard);
+  const loadingStats = useStore((state: StoreState) => state.statisticsLoading);
+  const loadingDashboard = useStore((state: StoreState) => state.dashboardDataLoading);
+  const errorsStats = useStore((state: StoreState) => state.statisticsError);
+  const errorsDashboard = useStore((state: StoreState) => state.dashboardDataError);
   const fetchStatistics = useStore((state: StoreState) => state.fetchStatistics);
   const fetchDashboardData = useStore((state: StoreState) => state.fetchDashboardData);
+  const fetchAnalyticsData = useStore((state: StoreState) => state.fetchAnalyticsData);
   
   return {
     statistics,
     dashboardData,
     loading: {
       statistics: loadingStats,
-      dashboard: loadingDashboard
+      dashboard: loadingDashboard,
+      any: loadingStats || loadingDashboard
     },
     errors: {
       statistics: errorsStats,
-      dashboard: errorsDashboard
+      dashboard: errorsDashboard,
+      any: errorsStats || errorsDashboard
     },
     fetchStatistics,
-    fetchDashboardData
+    fetchDashboardData,
+    fetchAnalyticsData
   };
 };
+
+// For backwards compatibility
+export const useStatisticsSelectors = useAnalyticsSelectors;
 
 // System selectors
 export const useSystemSelectors = () => {

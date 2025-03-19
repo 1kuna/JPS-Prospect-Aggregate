@@ -1,46 +1,123 @@
-import { useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useStore } from '@/store/useStore';
 
-export function useStoreData<T>({
-  dataSelector,
-  loadingSelector,
-  errorSelector,
-  fetchAction,
-  fetchParams = {},
-  dependencies = []
+/**
+ * A flexible hook for fetching and managing data from the store
+ */
+export function useStoreData<T, P extends any[]>({
+  selector,
+  action,
+  params = [] as unknown as P,
+  dependencies = [],
+  options = {}
 }: {
-  dataSelector: (state: any) => T;
-  loadingSelector: (state: any) => boolean;
-  errorSelector: (state: any) => any;
-  fetchAction: (state: any) => (...args: any[]) => Promise<any>;
-  fetchParams?: Record<string, any>;
+  /**
+   * Selector function to get data from the store
+   */
+  selector: (state: any) => T;
+  
+  /**
+   * Action function to fetch data
+   */
+  action: (...args: P) => Promise<any>;
+  
+  /**
+   * Parameters to pass to the action function
+   */
+  params?: P;
+  
+  /**
+   * Dependencies array that will trigger a refetch when changed
+   */
   dependencies?: any[];
-}) {
-  // Select state from store
-  const data = useStore(dataSelector);
-  const loading = useStore(loadingSelector);
-  const errors = useStore(errorSelector);
-  const fetchData = useStore(fetchAction);
   
-  // Create memoized refresh handler
-  const refresh = useCallback(() => {
-    return fetchData(fetchParams).catch((error: Error) => {
-      console.error('Error refreshing data:', error);
-    });
-  }, [fetchData, fetchParams]);
+  /**
+   * Additional options for controlling the behavior
+   */
+  options?: {
+    /**
+     * Whether to skip the initial fetch when the hook mounts
+     */
+    skipInitialFetch?: boolean;
+    
+    /**
+     * Callback to run when fetch succeeds
+     */
+    onSuccess?: (data: any) => void;
+    
+    /**
+     * Callback to run when fetch fails
+     */
+    onError?: (error: Error) => void;
+    
+    /**
+     * Selector for loading state
+     */
+    loadingSelector?: (state: any) => boolean;
+    
+    /**
+     * Selector for error state
+     */
+    errorSelector?: (state: any) => Error | null;
+  }
+}): {
+  /**
+   * Data from the store
+   */
+  data: T;
   
-  // Fetch data on component mount if not already loaded
+  /**
+   * Whether data is currently loading
+   */
+  loading: boolean;
+  
+  /**
+   * Any error that occurred
+   */
+  error: Error | null;
+  
+  /**
+   * Function to manually trigger a refetch
+   */
+  refetch: (...args: P) => Promise<any>;
+} {
+  // Get data from store through selector
+  const data = useStore(selector);
+  
+  // Get loading and error states if selectors are provided
+  const loading = options.loadingSelector 
+    ? useStore(options.loadingSelector)
+    : false;
+    
+  const error = options.errorSelector
+    ? useStore(options.errorSelector)
+    : null;
+  
+  // Get the action from store
+  const storeAction = useStore(state => action);
+  
+  // Refetch function
+  const refetch = useCallback(
+    async (...args: P) => {
+      try {
+        const result = await storeAction(...(args.length ? args : params));
+        options.onSuccess?.(result);
+        return result;
+      } catch (err) {
+        const error = err instanceof Error ? err : new Error(String(err));
+        options.onError?.(error);
+        throw error;
+      }
+    },
+    [storeAction, params, options]
+  );
+  
+  // Fetch data on mount or when dependencies change
   useEffect(() => {
-    if (!data || (Array.isArray(data) && !data.length)) {
-      refresh();
+    if (!options.skipInitialFetch) {
+      refetch(...params);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [...dependencies, fetchData]);
+  }, [refetch, ...dependencies]);
   
-  return {
-    data,
-    loading,
-    errors,
-    refresh
-  };
+  return { data, loading, error, refetch };
 } 

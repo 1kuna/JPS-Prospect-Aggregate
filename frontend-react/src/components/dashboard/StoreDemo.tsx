@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { 
-  useStatisticsSelectors, 
+  useAnalyticsSelectors, 
   useDataSourcesSelectors, 
   useUISelectors 
 } from '@/hooks/useStoreSelectors';
@@ -23,7 +23,7 @@ export default function StoreDemo() {
     fetchStatistics, 
     statistics, 
     loading: statisticsLoading 
-  } = useStatisticsSelectors();
+  } = useAnalyticsSelectors();
   
   const { addToast } = useUISelectors();
   

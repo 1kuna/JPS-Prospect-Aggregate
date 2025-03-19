@@ -1,18 +1,94 @@
 import { useStore } from './useStore';
 import { StoreState } from './types';
+import { createSelector } from 'reselect';
+
+// Base selectors - Single source of truth for state access
+export const selectDataSources = (state: StoreState) => state.dataSources;
+export const selectDataSourcesLoading = (state: StoreState) => state.dataSourcesLoading;
+export const selectDataSourcesError = (state: StoreState) => state.dataSourcesError;
+
+export const selectProposals = (state: StoreState) => state.proposals;
+export const selectProposalsLoading = (state: StoreState) => state.proposalsLoading;
+export const selectProposalsError = (state: StoreState) => state.proposalsError;
+
+export const selectStatistics = (state: StoreState) => state.statistics;
+export const selectStatisticsLoading = (state: StoreState) => state.statisticsLoading;
+export const selectStatisticsError = (state: StoreState) => state.statisticsError;
+
+export const selectUiState = (state: StoreState) => state.ui;
+export const selectTheme = (state: StoreState) => state.ui.theme;
+export const selectSidebarOpen = (state: StoreState) => state.ui.sidebarOpen;
+
+export const selectSystemState = (state: StoreState) => state.system;
+export const selectSystemStatus = (state: StoreState) => state.system.status;
+export const selectIsConnected = (state: StoreState) => state.system.isConnected;
+
+// Derived selectors - Computed values based on base selectors
+export const selectActiveDataSources = createSelector(
+  [selectDataSources],
+  (dataSources) => dataSources.filter(source => source.status === 'active')
+);
+
+export const selectDataSourceById = (id: number) => 
+  createSelector(
+    [selectDataSources],
+    (dataSources) => dataSources.find(source => source.id === id)
+  );
+
+export const selectProposalsByDataSource = (dataSourceId: number) => 
+  createSelector(
+    [selectProposals],
+    (proposals) => proposals.filter(proposal => proposal.dataSourceId === dataSourceId)
+  );
+
+export const selectTotalProposals = createSelector(
+  [selectProposals],
+  (proposals) => proposals.length
+);
+
+export const selectTotalDataSources = createSelector(
+  [selectDataSources],
+  (dataSources) => dataSources.length
+);
+
+export const selectIsLoading = createSelector(
+  [selectDataSourcesLoading, selectProposalsLoading, selectStatisticsLoading],
+  (dataSourcesLoading, proposalsLoading, statisticsLoading) => 
+    dataSourcesLoading || proposalsLoading || statisticsLoading
+);
+
+export const selectHasErrors = createSelector(
+  [selectDataSourcesError, selectProposalsError, selectStatisticsError],
+  (dataSourcesError, proposalsError, statisticsError) => 
+    !!(dataSourcesError || proposalsError || statisticsError)
+);
+
+// Higher-order selector creator for common patterns
+export const createFilterSelector = <T extends Record<string, any>>(
+  baseSelector: (state: StoreState) => T[],
+  filterFn: (item: T) => boolean
+) => createSelector([baseSelector], (items) => items.filter(filterFn));
+
+export const createSortSelector = <T extends Record<string, any>>(
+  baseSelector: (state: StoreState) => T[],
+  sortKey: keyof T,
+  sortDirection: 'asc' | 'desc' = 'asc'
+) => createSelector([baseSelector], (items) => {
+  return [...items].sort((a, b) => {
+    if (sortDirection === 'asc') {
+      return a[sortKey] > b[sortKey] ? 1 : -1;
+    } else {
+      return a[sortKey] < b[sortKey] ? 1 : -1;
+    }
+  });
+});
 
 // Basic selectors (can be used both within other selectors and in components)
-export const selectActiveDataSources = (state: StoreState) => 
-  state.dataSources.filter(source => source.status === 'active');
-
 export const selectInactiveDataSources = (state: StoreState) => 
   state.dataSources.filter(source => source.status !== 'active');
 
 export const selectTotalProposalsCount = (state: StoreState) => 
   state.dataSources.reduce((acc, source) => acc + (source.proposalCount || 0), 0);
-
-export const selectDataSourceById = (id: number | string) => (state: StoreState) =>
-  state.dataSources.find(source => source.id === id);
 
 export const selectRecentlyUpdatedSources = (state: StoreState) => {
   // Get sources updated in the last 24 hours
@@ -62,19 +138,6 @@ export const selectRecentProposals = (limit = 5) => (state: StoreState) => {
       new Date(b.release_date).getTime() - new Date(a.release_date).getTime()
     )
     .slice(0, limit);
-};
-
-export const selectProposalsByDataSource = (state: StoreState) => {
-  const dataSourcesMap = state.dataSources.reduce((acc, source) => {
-    acc[source.id] = source.name;
-    return acc;
-  }, {} as Record<string | number, string>);
-  
-  return state.proposals.reduce((acc, proposal) => {
-    const sourceName = dataSourcesMap[proposal.data_source_id] || 'Unknown';
-    acc[sourceName] = (acc[sourceName] || 0) + 1;
-    return acc;
-  }, {} as Record<string, number>);
 };
 
 export const selectLatestActivityByDataSource = (state: StoreState) => 

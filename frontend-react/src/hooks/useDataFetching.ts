@@ -1,140 +1,297 @@
-import { useState, useEffect, useCallback } from 'react';
-import axios, { AxiosRequestConfig, AxiosError } from 'axios';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import axios, { AxiosRequestConfig, AxiosResponse, AxiosError } from 'axios';
+import { useStore } from '@/store/useStore';
 
-interface FetchOptions<T> {
-  url: string;
-  method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
-  params?: Record<string, any>;
-  body?: any;
+// Types for configuration options
+export interface DataFetchingOptions<T, P> {
+  /**
+   * The URL to fetch data from
+   */
+  url?: string;
+  
+  /**
+   * Method to use for the request
+   */
+  method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
+  
+  /**
+   * Initial data to use before the fetch completes
+   */
   initialData?: T;
+  
+  /**
+   * Function to fetch data from store
+   */
+  fetchFromStore?: (state: any) => (...args: any[]) => Promise<T>;
+  
+  /**
+   * Parameters to pass to the store fetch function
+   */
+  storeParams?: P;
+  
+  /**
+   * Selector function to get data from store
+   */
+  selector?: (state: any) => T;
+  
+  /**
+   * Loading selector function to get loading state from store
+   */
+  loadingSelector?: (state: any) => boolean;
+  
+  /**
+   * Error selector function to get error state from store
+   */
+  errorSelector?: (state: any) => Error | null;
+  
+  /**
+   * Body data for POST/PUT/PATCH requests
+   */
+  data?: any;
+  
+  /**
+   * Query parameters for the request
+   */
+  params?: Record<string, any>;
+  
+  /**
+   * Additional request config options
+   */
+  config?: Omit<AxiosRequestConfig, 'url' | 'method' | 'data' | 'params'>;
+  
+  /**
+   * Whether to fetch on mount
+   */
+  fetchOnMount?: boolean;
+  
+  /**
+   * Skip the fetch entirely
+   */
+  skip?: boolean;
+  
+  /**
+   * Transform function to apply to the response
+   */
+  transformResponse?: (response: AxiosResponse) => T;
+  
+  /**
+   * Callback to run when fetch succeeds
+   */
   onSuccess?: (data: T) => void;
-  onError?: (error: Error | AxiosError) => void;
-  autoFetch?: boolean;
-  transformResponse?: (data: any) => T;
+  
+  /**
+   * Callback to run when fetch fails
+   */
+  onError?: (error: Error) => void;
+  
+  /**
+   * Dependencies array that will trigger a refetch when changed
+   */
+  dependencies?: any[];
+  
+  /**
+   * Request cache time in milliseconds
+   */
+  cacheTime?: number;
 }
 
-interface PaginationParams {
-  page: number;
-  perPage: number;
-}
-
-interface PaginationInfo extends PaginationParams {
-  totalPages: number;
-  totalItems: number;
-}
-
-interface UseDataFetchingResult<T> {
+// Results returned by the hook
+export interface DataFetchingResult<T> {
+  /**
+   * The data returned from the fetch
+   */
   data: T | null;
-  isLoading: boolean;
+  
+  /**
+   * Whether the fetch is currently loading
+   */
+  loading: boolean;
+  
+  /**
+   * Any error that occurred during the fetch
+   */
   error: Error | null;
-  fetchData: (options?: { params?: Record<string, any>; body?: any }) => Promise<T | null>;
-  pagination?: PaginationInfo;
-  setPagination: (params: PaginationParams) => void;
-  lastUpdated: Date | null;
+  
+  /**
+   * Function to manually trigger a refetch
+   */
+  refetch: (params?: any) => Promise<T>;
+  
+  /**
+   * Function to manually update the data
+   */
+  setData: React.Dispatch<React.SetStateAction<T | null>>;
 }
 
-export function useDataFetching<T>({
+// Cache object to store previous requests
+const cache: Record<string, { data: any; timestamp: number }> = {};
+
+/**
+ * A flexible hook for data fetching that can work with both direct API calls and store-based data fetching
+ */
+export function useDataFetching<T = any, P = any>({
   url,
   method = 'GET',
-  params = {},
-  body,
-  initialData = null as unknown as T,
+  initialData = null,
+  fetchFromStore,
+  storeParams,
+  selector,
+  loadingSelector,
+  errorSelector,
+  data: bodyData,
+  params,
+  config = {},
+  fetchOnMount = true,
+  skip = false,
+  transformResponse = (res: AxiosResponse) => res.data?.data || res.data,
   onSuccess,
   onError,
-  autoFetch = true,
-  transformResponse,
-}: FetchOptions<T>): UseDataFetchingResult<T> {
-  const [data, setData] = useState<T | null>(initialData);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [error, setError] = useState<Error | null>(null);
-  const [pagination, setPagination] = useState<PaginationInfo | undefined>(undefined);
-  const [paginationParams, setPaginationParams] = useState<PaginationParams | undefined>(
-    params.page && params.perPage ? { page: params.page, perPage: params.perPage } : undefined
-  );
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-
-  const fetchData = useCallback(
-    async (options?: { params?: Record<string, any>; body?: any }) => {
-      setIsLoading(true);
-      setError(null);
-
+  dependencies = [],
+  cacheTime = 0
+}: DataFetchingOptions<T, P>): DataFetchingResult<T> {
+  // Set up local state for direct API calls
+  const [localData, setLocalData] = useState<T | null>(initialData);
+  const [localLoading, setLocalLoading] = useState<boolean>(false);
+  const [localError, setLocalError] = useState<Error | null>(null);
+  
+  // Track if component is mounted
+  const isMounted = useRef<boolean>(true);
+  
+  // Get store state if using store
+  const storeData = selector ? useStore(selector) : null;
+  const storeLoading = loadingSelector ? useStore(loadingSelector) : false;
+  const storeError = errorSelector ? useStore(errorSelector) : null;
+  const storeFetch = fetchFromStore ? useStore(fetchFromStore) : null;
+  
+  // Decide which state to use (store or local)
+  const data = selector ? storeData : localData;
+  const loading = loadingSelector ? storeLoading : localLoading;
+  const error = errorSelector ? storeError : localError;
+  
+  // Generate cache key for GET requests
+  const getCacheKey = useCallback(() => {
+    if (method !== 'GET' || !url) return null;
+    const queryString = params ? new URLSearchParams(params).toString() : '';
+    return `${url}?${queryString}`;
+  }, [method, url, params]);
+  
+  // The main fetch function
+  const fetchData = useCallback(async (overrideParams?: any): Promise<T> => {
+    // If using store fetch
+    if (storeFetch) {
       try {
-        const requestConfig: AxiosRequestConfig = {
+        const result = await storeFetch(overrideParams || storeParams);
+        onSuccess?.(result);
+        return result;
+      } catch (err) {
+        const error = err instanceof Error ? err : new Error(String(err));
+        onError?.(error);
+        throw error;
+      }
+    } 
+    // If using direct API
+    else if (url) {
+      // Check cache first
+      const cacheKey = getCacheKey();
+      if (cacheKey && cacheTime > 0) {
+        const cachedData = cache[cacheKey];
+        if (cachedData && Date.now() - cachedData.timestamp < cacheTime) {
+          if (isMounted.current) {
+            setLocalData(cachedData.data);
+            onSuccess?.(cachedData.data);
+          }
+          return cachedData.data;
+        }
+      }
+      
+      // If not cached or cache expired, fetch from API
+      if (isMounted.current) {
+        setLocalLoading(true);
+        setLocalError(null);
+      }
+      
+      try {
+        const mergedParams = { ...params, ...overrideParams };
+        const response = await axios({
           url,
           method,
-          params: {
-            ...params,
-            ...paginationParams,
-            ...options?.params,
-          },
-        };
-
-        if (method !== 'GET') {
-          requestConfig.data = options?.body || body;
-        }
-
-        const response = await axios(requestConfig);
+          data: bodyData,
+          params: mergedParams,
+          ...config
+        });
         
-        let processedData: T;
+        const transformedData = transformResponse(response) as T;
         
-        if (transformResponse) {
-          processedData = transformResponse(response.data);
-        } else {
-          // Default transformation assuming a standard API response format
-          processedData = response.data.data || response.data;
-        }
-
-        // Check if the response contains pagination information
-        if (response.data.pagination) {
-          setPagination({
-            page: response.data.pagination.page || 1,
-            perPage: response.data.pagination.per_page || 10,
-            totalPages: response.data.pagination.total_pages || 1,
-            totalItems: response.data.pagination.total_items || 0,
-          });
-        }
-
-        setData(processedData);
-        setLastUpdated(new Date());
-        
-        if (onSuccess) {
-          onSuccess(processedData);
+        // Only update state if component is still mounted
+        if (isMounted.current) {
+          setLocalData(transformedData);
+          setLocalLoading(false);
         }
         
-        return processedData;
+        // Cache GET requests
+        if (cacheKey && cacheTime > 0) {
+          cache[cacheKey] = {
+            data: transformedData,
+            timestamp: Date.now()
+          };
+        }
+        
+        onSuccess?.(transformedData);
+        return transformedData;
       } catch (err) {
-        const error = err as Error | AxiosError;
-        setError(error);
+        const error = err instanceof Error ? err : new Error(String(err));
         
-        if (onError) {
-          onError(error);
+        // Only update state if component is still mounted
+        if (isMounted.current) {
+          setLocalError(error);
+          setLocalLoading(false);
         }
         
-        return null;
-      } finally {
-        setIsLoading(false);
+        onError?.(error);
+        throw error;
       }
-    },
-    [url, method, params, body, paginationParams, onSuccess, onError, transformResponse]
-  );
-
-  const handlePaginationChange = useCallback((newPaginationParams: PaginationParams) => {
-    setPaginationParams(newPaginationParams);
-  }, []);
-
-  useEffect(() => {
-    if (autoFetch) {
-      fetchData();
+    } else {
+      const error = new Error('No fetch method or URL provided');
+      setLocalError(error);
+      onError?.(error);
+      throw error;
     }
-  }, [fetchData, autoFetch, paginationParams]);
-
+  }, [
+    url, 
+    method, 
+    bodyData, 
+    params, 
+    config, 
+    storeFetch, 
+    storeParams, 
+    onSuccess, 
+    onError, 
+    getCacheKey, 
+    cacheTime, 
+    transformResponse
+  ]);
+  
+  // Fetch data on mount or when dependencies change
+  useEffect(() => {
+    if (skip || !fetchOnMount) return;
+    
+    fetchData().catch((err) => {
+      console.error('Error fetching data:', err);
+    });
+    
+    return () => {
+      isMounted.current = false;
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetchOnMount, skip, ...dependencies]);
+  
   return {
     data,
-    isLoading,
+    loading,
     error,
-    fetchData,
-    pagination,
-    setPagination: handlePaginationChange,
-    lastUpdated,
+    refetch: fetchData,
+    setData: setLocalData
   };
-} 
+}
+
+export default useDataFetching; 

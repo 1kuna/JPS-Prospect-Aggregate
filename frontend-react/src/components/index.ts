@@ -12,6 +12,5 @@ export * from './forms';
 
 // Re-export other components
 export { ErrorBoundary } from './ErrorBoundary';
-export { DataSourceForm } from './DataSourceForm';
 export { Statistics } from './Statistics';
 export { DatabaseOperations } from './DatabaseOperations'; 

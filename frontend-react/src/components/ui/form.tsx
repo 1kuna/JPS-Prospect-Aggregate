@@ -8,7 +8,14 @@ import {
   FieldValues,
   FormProvider,
   useFormContext,
+  UseFormReturn,
+  SubmitHandler,
+  DefaultValues,
+  SubmitErrorHandler,
 } from "react-hook-form"
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
+import { Button } from './button'
 
 import { cn } from "../../lib/utils"
 import { Label } from "./label"
@@ -164,6 +171,169 @@ const FormMessage = React.forwardRef<
 })
 FormMessage.displayName = "FormMessage"
 
+interface FormProps<TFormValues extends FieldValues = FieldValues> {
+  /**
+   * Default values for form fields
+   */
+  defaultValues?: DefaultValues<TFormValues>
+  
+  /**
+   * Form children - typically FormField components
+   */
+  children: React.ReactNode
+  
+  /**
+   * Handler called on successful form submission
+   */
+  onSubmit: SubmitHandler<TFormValues>
+  
+  /**
+   * Optional error handler for form submission
+   */
+  onError?: SubmitErrorHandler<TFormValues>
+  
+  /**
+   * Optional Zod schema for validation
+   */
+  schema?: z.ZodType<TFormValues>
+  
+  /**
+   * Additional form attributes
+   */
+  formProps?: React.HTMLAttributes<HTMLFormElement>
+  
+  /**
+   * Optional form ID
+   */
+  id?: string
+  
+  /**
+   * Optional submit button text
+   */
+  submitText?: string
+  
+  /**
+   * Optional cancel handler
+   */
+  onCancel?: () => void
+  
+  /**
+   * Optional cancel button text
+   */
+  cancelText?: string
+  
+  /**
+   * Whether the form is currently submitting
+   */
+  isSubmitting?: boolean
+  
+  /**
+   * Form hook options
+   */
+  formOptions?: {
+    mode?: "onBlur" | "onChange" | "onSubmit" | "onTouched" | "all"
+    reValidateMode?: "onBlur" | "onChange" | "onSubmit"
+    shouldUnregister?: boolean
+  }
+  
+  /**
+   * Whether the form should render form actions
+   */
+  showActions?: boolean
+}
+
+/**
+ * Form wrapper with React Hook Form integration and Zod validation
+ */
+export function Form<TFormValues extends FieldValues>({
+  defaultValues,
+  children,
+  onSubmit,
+  onError,
+  schema,
+  formProps,
+  id,
+  submitText = 'Submit',
+  onCancel,
+  cancelText = 'Cancel',
+  isSubmitting = false,
+  formOptions = { mode: 'onBlur' },
+  showActions = true
+}: FormProps<TFormValues>) {
+  // Initialize the form with optional schema validation
+  const methods = useFormContext<TFormValues>() || 
+    useForm<TFormValues>({
+      defaultValues,
+      resolver: schema ? zodResolver(schema) : undefined,
+      ...formOptions
+    });
+  
+  // Handle form submission
+  const handleSubmit = methods.handleSubmit(onSubmit, onError);
+  
+  return (
+    <FormProvider {...methods}>
+      <form 
+        id={id} 
+        onSubmit={handleSubmit} 
+        className="space-y-4" 
+        {...formProps}
+      >
+        {children}
+        
+        {showActions && (
+          <FormActions 
+            submitText={submitText}
+            cancelText={cancelText}
+            onCancel={onCancel}
+            isSubmitting={isSubmitting}
+          />
+        )}
+      </form>
+    </FormProvider>
+  );
+}
+
+interface FormActionsProps {
+  submitText?: string
+  cancelText?: string
+  onCancel?: () => void
+  isSubmitting?: boolean
+  align?: 'left' | 'center' | 'right'
+}
+
+export function FormActions({
+  submitText = 'Submit',
+  cancelText = 'Cancel',
+  onCancel,
+  isSubmitting = false,
+  align = 'right'
+}: FormActionsProps) {
+  const alignClass = {
+    left: 'justify-start',
+    center: 'justify-center',
+    right: 'justify-end',
+  }[align];
+  
+  return (
+    <div className={`flex gap-2 pt-2 ${alignClass}`}>
+      {onCancel && (
+        <Button
+          type="button"
+          variant="outline"
+          onClick={onCancel}
+          disabled={isSubmitting}
+        >
+          {cancelText}
+        </Button>
+      )}
+      <Button type="submit" disabled={isSubmitting}>
+        {isSubmitting ? 'Submitting...' : submitText}
+      </Button>
+    </div>
+  );
+}
+
 export {
   useFormField,
   Form,
@@ -173,4 +343,5 @@ export {
   FormDescription,
   FormMessage,
   FormField,
+  FormProvider
 } 

@@ -11,7 +11,7 @@ import {
   Spinner,
 } from '@/components/ui';
 import { DataPageLayout } from '@/components/layout';
-import { DataSourceForm } from '@/components/DataSourceForm';
+import { DataSourceForm } from '@/components';
 import { DataTable as DataTableComponent } from '@/components/data-display/DataTable';
 import type { Column } from '@/components/data-display/DataTable';
 

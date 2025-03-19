@@ -1,148 +1,181 @@
-# JPS Prospect Aggregate State Management
+# State Management
 
-This folder contains the state management system for JPS Prospect Aggregate, implemented using Zustand.
+This directory contains our Zustand-based state management solution.
 
-## Architecture
-
-The state management is organized using a feature-based slices pattern, combined with middleware for enhanced functionality.
+## Structure
 
 ```
 store/
-├── slices/                 # Feature-based state slices
-│   ├── dataSourcesSlice.ts # Data sources state and actions
-│   ├── proposalsSlice.ts   # Proposals state and actions
-│   ├── statisticsSlice.ts  # Statistics state and actions
-│   ├── systemSlice.ts      # System operations state and actions
-│   └── uiSlice.ts          # UI state and actions
-├── middleware/             # Custom middleware
-│   ├── logger.ts           # Logging middleware for debugging
-│   ├── persist.ts          # Persistence utilities
-│   └── websocketMiddleware.ts # WebSocket real-time updates
-├── api.ts                  # API utilities for async operations
-├── initializeWebSocket.ts  # WebSocket initialization
-├── selectors.ts            # Reusable selectors and derived state
-├── types.ts                # TypeScript types for the store
-├── usePersistedStore.ts    # Persisted store for user preferences
-└── useStore.ts             # Main store definition
+├── api.ts              # API client and normalized request/response handling
+├── middleware/         # Custom Zustand middleware
+├── selectors.ts        # Central repository of selectors
+├── slices/             # Domain-focused store slices
+│   ├── dataSourcesSlice.ts
+│   ├── proposalsSlice.ts
+│   ├── analyticsSlice.ts
+│   ├── systemSlice.ts
+│   └── uiSlice.ts
+├── types.ts            # Type definitions for store state
+├── usePersistedStore.ts # Persistent state store
+└── useStore.ts         # Main store definition
 ```
 
-## Usage
+## Core Principles
 
-### Basic Usage
+1. **Domain-Based Organization**: Store slices are organized by domain entity rather than technical concern.
+2. **Centralized Selectors**: All selectors are defined in `selectors.ts` for a single source of truth.
+3. **Normalized API Layer**: All API interactions go through the standardized client in `api.ts`.
+4. **Separation of Concerns**: UI state is separate from domain data.
+
+## Creating a New Slice
+
+To create a new slice:
+
+1. Add a new file in the `slices/` directory, e.g. `someFeatureSlice.ts`
+2. Define your slice with proper typing:
 
 ```typescript
-import { useStore } from '@/store/useStore';
+import { StateCreator } from 'zustand';
+import { StoreState } from '../types';
 
-function MyComponent() {
-  // Access state directly (not recommended for most cases)
-  const dataSources = useStore(state => state.dataSources);
-  const fetchDataSources = useStore(state => state.fetchDataSources);
+export interface SomeFeatureSlice {
+  // State
+  someFeatureData: any[];
+  someFeatureLoading: boolean;
+  someFeatureError: Error | null;
   
-  // Use state and actions
-  return (
-    <div>
-      <button onClick={fetchDataSources}>Refresh</button>
-      {dataSources.map(source => <div key={source.id}>{source.name}</div>)}
-    </div>
-  );
+  // Actions
+  fetchSomeFeature: () => Promise<void>;
+  updateSomeFeature: (id: string, data: any) => Promise<void>;
+}
+
+export const someFeatureSlice: StateCreator<StoreState> = (set, get) => ({
+  // Initial state
+  someFeatureData: [],
+  someFeatureLoading: false,
+  someFeatureError: null,
+  
+  // Actions
+  fetchSomeFeature: async () => {
+    set({ someFeatureLoading: true });
+    try {
+      const response = await api.fetchSomeFeature();
+      set({ 
+        someFeatureData: response.data,
+        someFeatureLoading: false,
+        someFeatureError: null
+      });
+    } catch (error) {
+      set({ 
+        someFeatureLoading: false,
+        someFeatureError: error instanceof Error ? error : new Error(String(error))
+      });
+    }
+  },
+  
+  updateSomeFeature: async (id, data) => {
+    set({ someFeatureLoading: true });
+    try {
+      const response = await api.updateSomeFeature(id, data);
+      
+      // Update the store with the updated item
+      set(state => ({ 
+        someFeatureData: state.someFeatureData.map(item => 
+          item.id === id ? response.data : item
+        ),
+        someFeatureLoading: false,
+        someFeatureError: null
+      }));
+    } catch (error) {
+      set({ 
+        someFeatureLoading: false,
+        someFeatureError: error instanceof Error ? error : new Error(String(error))
+      });
+    }
+  }
+});
+```
+
+3. Update the `types.ts` file to include your new slice interface:
+
+```typescript
+export interface StoreState extends 
+  DataSourcesSlice,
+  ProposalsSlice,
+  AnalyticsSlice,
+  SystemSlice,
+  UISlice,
+  SomeFeatureSlice {
+  // Add any additional global state here
 }
 ```
 
-### Recommended: Use Selector Hooks
-
-For better code organization and performance, use the selector hooks:
+4. Add your slice to the main store in `useStore.ts`:
 
 ```typescript
-import { useDataSourcesSelectors } from '@/hooks/useStoreSelectors';
+import { someFeatureSlice } from './slices/someFeatureSlice';
 
-function MyComponent() {
-  const { dataSources, loading, errors, fetchDataSources } = useDataSourcesSelectors();
-  
-  return (
-    <div>
-      <button onClick={fetchDataSources} disabled={loading}>
-        {loading ? 'Loading...' : 'Refresh'}
-      </button>
-      {errors && <div className="error">{errors.message}</div>}
-      {dataSources.map(source => <div key={source.id}>{source.name}</div>)}
-    </div>
+// ...
+
+const createStore = () => {
+  return create<StoreState>()(
+    // ...middleware
+    (...args) => ({
+      ...dataSourcesSlice(...args),
+      ...proposalsSlice(...args),
+      ...uiSlice(...args),
+      ...analyticsSlice(...args),
+      ...systemSlice(...args),
+      ...someFeatureSlice(...args), // Add your new slice here
+    })
   );
-}
+};
 ```
 
-### Computed Values
-
-For derived state, use the computed selectors:
+5. Add selectors for your new state in `selectors.ts`:
 
 ```typescript
-import { useDataSourcesHealth, useTotalProposalsCount } from '@/store/selectors';
+// Base selectors
+export const selectSomeFeatureData = (state: StoreState) => state.someFeatureData;
+export const selectSomeFeatureLoading = (state: StoreState) => state.someFeatureLoading;
+export const selectSomeFeatureError = (state: StoreState) => state.someFeatureError;
 
-function DashboardStats() {
-  const health = useDataSourcesHealth();
-  const totalProposals = useTotalProposalsCount();
-  
-  return (
-    <div>
-      <div>Data Sources: {health.healthy} healthy, {health.issues} with issues</div>
-      <div>Total Proposals: {totalProposals}</div>
-    </div>
-  );
-}
+// Derived selectors
+export const selectActiveSomeFeatureItems = createSelector(
+  [selectSomeFeatureData],
+  (items) => items.filter(item => item.status === 'active')
+);
 ```
 
-### Persisted User Preferences
+## Using the Store
 
-For settings that should persist across sessions:
+To access your store data in components, use the hooks provided in the `hooks` directory:
 
-```typescript
-import { usePersistedStore } from '@/store/usePersistedStore';
+```tsx
+import { useData } from '@/hooks';
+import { selectSomeFeatureData, selectSomeFeatureLoading, selectSomeFeatureError } from '@/store/selectors';
 
-function SettingsPanel() {
-  const theme = usePersistedStore(state => state.userPreferences.theme);
-  const setTheme = usePersistedStore(state => state.setTheme);
+function SomeFeatureComponent() {
+  const { data, loading, error, refetch } = useData({
+    store: {
+      selector: selectSomeFeatureData,
+      loadingSelector: selectSomeFeatureLoading,
+      errorSelector: selectSomeFeatureError,
+      action: (state) => state.fetchSomeFeature,
+    }
+  });
   
-  return (
-    <div>
-      <select value={theme} onChange={e => setTheme(e.target.value as any)}>
-        <option value="light">Light</option>
-        <option value="dark">Dark</option>
-        <option value="system">System</option>
-      </select>
-    </div>
-  );
+  // Use the data in your component
 }
 ```
-
-## Middleware
-
-The store uses several middleware layers for enhanced functionality:
-
-1. **DevTools**: Enables Redux DevTools integration (dev environment only)
-2. **Logger**: Provides detailed logging of state updates (dev environment only)
-3. **Performance Monitoring**: Logs performance metrics for state updates (dev environment only)
-4. **Persistence**: Stores user preferences in localStorage
-
-## WebSocket Implementation
-
-Real-time updates are managed through WebSockets:
-
-1. The socket is initialized in the app entry point with `initializeWebSocket()`
-2. The WebSocket middleware handles socket events and updates the store accordingly
-3. Components automatically receive updates through Zustand's subscriptions
-
-## Adding New State
-
-To add new state to the store:
-
-1. Create a new slice or extend an existing slice based on the feature
-2. Add the slice interface to the `StoreState` type in `types.ts`
-3. Add new selectors to `selectors.ts` for derived state
-4. Add new selector hooks to `hooks/useStoreSelectors.ts` for component usage
 
 ## Best Practices
 
-1. Use selector hooks instead of direct store access for better performance and organization
-2. Implement error handling in all async actions
-3. Keep similar state grouped in the same slice
-4. Use computed selectors for derived state to avoid recalculations
-5. Use TypeScript interfaces for all state and actions 
+1. **Keep Slices Focused**: Each slice should handle a specific domain of the application.
+2. **Use Selectors**: Always use selectors to access state, not direct store access.
+3. **Normalize Data**: Store data in a normalized form to avoid duplication.
+4. **Use TypeScript**: Ensure full type safety for your store.
+5. **Handle Errors**: Always handle errors properly in your async actions.
+6. **Document State Shape**: Add JSDoc comments to explain complex state properties.
+7. **Use Middleware Judiciously**: Only add middleware that provides tangible benefits.
+8. **Use Immutable Updates**: Always use immutable patterns for state updates. 

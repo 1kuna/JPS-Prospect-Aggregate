@@ -1,9 +1,7 @@
 import { Suspense, lazy, memo, useState, useEffect } from 'react';
 import { BrowserRouter as Router, Link, useLocation } from 'react-router-dom';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { LoadingProvider } from './context/LoadingContext';
-import { ToastProvider } from './components/ui/ToastContainer';
-import { PullingProvider } from './contexts/PullingContext';
+import { AppProviders } from './contexts/AppContexts';
 import { 
   Skeleton, 
   Card, 
@@ -185,16 +183,13 @@ const RouteContainer = () => {
 
 function App() {
   return (
-    <LoadingProvider>
-      <ToastProvider>
-        <PullingProvider>
-          <Router>
-            <RouteContainer />
-            <Toaster />
-          </Router>
-        </PullingProvider>
-      </ToastProvider>
-    </LoadingProvider>
+    <ErrorBoundary>
+      <AppProviders>
+        <Router>
+          <RouteContainer />
+        </Router>
+      </AppProviders>
+    </ErrorBoundary>
   );
 }
 

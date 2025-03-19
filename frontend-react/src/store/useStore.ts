@@ -3,7 +3,7 @@ import { devtools } from 'zustand/middleware';
 import { proposalsSlice } from './slices/proposalsSlice';
 import { dataSourcesSlice } from './slices/dataSourcesSlice';
 import { uiSlice } from './slices/uiSlice';
-import { statisticsSlice } from './slices/statisticsSlice';
+import { analyticsSlice } from './slices/analyticsSlice';
 import { systemSlice } from './slices/systemSlice';
 import { StoreState } from './types';
 import { logger, perfMonitor } from './middleware/logger';
@@ -91,7 +91,7 @@ const createStore = () => {
                 ...proposalsSlice(...args),
                 ...dataSourcesSlice(...args),
                 ...uiSlice(...args),
-                ...statisticsSlice(...args),
+                ...analyticsSlice(...args),
                 ...systemSlice(...args),
               })
             )
@@ -103,7 +103,7 @@ const createStore = () => {
           ...proposalsSlice(...args),
           ...dataSourcesSlice(...args),
           ...uiSlice(...args),
-          ...statisticsSlice(...args),
+          ...analyticsSlice(...args),
           ...systemSlice(...args),
         })
   );

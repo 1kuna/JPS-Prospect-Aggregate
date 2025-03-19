@@ -1,12 +1,6 @@
 import { StateCreator } from 'zustand';
-import { 
-  fetchDataSources, 
-  updateDataSource, 
-  createDataSource, 
-  deleteDataSource,
-  pullDataSource,
-  getScraperStatus
-} from '../api';
+import { api } from '../api';
+import { createAsyncSlice } from '../middleware/createAsyncSlice';
 
 export interface DataSource {
   id: number;
@@ -20,10 +14,18 @@ export interface DataSource {
   [key: string]: any;
 }
 
+interface ErrorType {
+  message: string;
+  [key: string]: any;
+}
+
 export interface DataSourcesState {
+  // Data state
   dataSources: DataSource[];
-  loading: { dataSources: boolean };
-  errors: { dataSources: ErrorType | null };
+  dataSourcesLoading: boolean;
+  dataSourcesError: ErrorType | null;
+  
+  // Pull progress state
   pullingProgress: Record<number, boolean>;
   
   // Actions
@@ -36,164 +38,106 @@ export interface DataSourcesState {
   setPullingProgress: (sourceId: number, isLoading: boolean) => void;
 }
 
-interface ErrorType {
-  message: string;
-  [key: string]: any;
-}
+// Transform data sources from API format to client format
+const transformDataSources = (data: any[]): DataSource[] => {
+  return data.map((source: any) => ({
+    ...source,
+    lastChecked: source.last_checked || source.lastChecked,
+    lastScraped: source.last_scraped || source.lastScraped,
+    proposalCount: source.proposal_count || source.proposalCount || 0
+  }));
+};
 
-export const dataSourcesSlice: StateCreator<DataSourcesState> = (set, get) => ({
-  dataSources: [],
-  loading: { dataSources: false },
-  errors: { dataSources: null },
-  pullingProgress: {},
-  
-  fetchDataSources: async () => {
-    set((state) => ({ loading: { ...state.loading, dataSources: true } }));
-    try {
-      console.log('Store: Fetching data sources from API...');
-      const data = await fetchDataSources();
+export const dataSourcesSlice: StateCreator<DataSourcesState> = (set, get) => {
+  // Create the async slice for data sources
+  const dataSourcesAsync = createAsyncSlice<DataSource[], DataSourcesState>(
+    'dataSources',
+    {
+      fetchDataSources: async () => {
+        console.log('Store: Fetching data sources from API...');
+        const response = await api.fetchDataSources();
+        
+        if (!response || !response.data) {
+          throw new Error('Invalid response format from API');
+        }
+        
+        return transformDataSources(response.data);
+      },
       
-      if (!data || !data.data) {
-        throw new Error('Invalid response format from API');
+      createDataSource: async (data: any) => {
+        const response = await api.createDataSource(data);
+        await get().fetchDataSources();
+        return response;
+      },
+      
+      updateDataSource: async (id: string | number, data: any) => {
+        const response = await api.updateDataSource(id, data);
+        await get().fetchDataSources();
+        return response;
+      },
+      
+      deleteDataSource: async (id: string | number) => {
+        const response = await api.deleteDataSource(id);
+        await get().fetchDataSources();
+        return response;
       }
-      
-      // Transform API field names to frontend field names
-      const transformedData = data.data.map((source: any) => ({
-        ...source,
-        lastChecked: source.last_checked || source.lastChecked,
-        lastScraped: source.last_scraped || source.lastScraped,
-        proposalCount: source.proposalCount || 0
-      }));
-      
-      set({ 
-        dataSources: transformedData, 
-        loading: { ...get().loading, dataSources: false },
-        errors: { ...get().errors, dataSources: null }
-      });
-      return transformedData;
-    } catch (error: any) {
-      console.error('Store: Error fetching data sources:', error);
-      
-      // Format the error message
-      const errorMessage = error.response?.data?.message || error.message || 'Unknown error';
-      const formattedError = { message: errorMessage };
-      
-      set({ 
-        loading: { ...get().loading, dataSources: false },
-        errors: { ...get().errors, dataSources: formattedError }
-      });
-      
-      throw error;
-    }
-  },
+    },
+    [] // Initial empty array
+  )(set, get);
   
-  createDataSource: async (data) => {
-    set((state) => ({ loading: { ...state.loading, dataSources: true } }));
-    try {
-      const response = await createDataSource(data);
-      await get().fetchDataSources();
-      set({
-        loading: { ...get().loading, dataSources: false },
-        errors: { ...get().errors, dataSources: null }
-      });
-      return response;
-    } catch (error: any) {
-      console.error('Error creating data source:', error);
-      const errorMessage = error.response?.data?.message || error.message || 'Unknown error';
-      set((state) => ({
-        loading: { ...state.loading, dataSources: false },
-        errors: { ...state.errors, dataSources: { message: errorMessage } }
-      }));
-      throw error;
-    }
-  },
-  
-  updateDataSource: async (id, data) => {
-    set((state) => ({ loading: { ...state.loading, dataSources: true } }));
-    try {
-      const response = await updateDataSource(id, data);
-      await get().fetchDataSources();
-      set({
-        loading: { ...get().loading, dataSources: false },
-        errors: { ...get().errors, dataSources: null }
-      });
-      return response;
-    } catch (error: any) {
-      console.error('Error updating data source:', error);
-      const errorMessage = error.response?.data?.message || error.message || 'Unknown error';
-      set((state) => ({
-        loading: { ...state.loading, dataSources: false },
-        errors: { ...state.errors, dataSources: { message: errorMessage } }
-      }));
-      throw error;
-    }
-  },
-  
-  deleteDataSource: async (id) => {
-    set((state) => ({ loading: { ...state.loading, dataSources: true } }));
-    try {
-      const response = await deleteDataSource(id);
-      await get().fetchDataSources();
-      set({
-        loading: { ...get().loading, dataSources: false },
-        errors: { ...get().errors, dataSources: null }
-      });
-      return response;
-    } catch (error: any) {
-      console.error('Error deleting data source:', error);
-      const errorMessage = error.response?.data?.message || error.message || 'Unknown error';
-      set((state) => ({
-        loading: { ...state.loading, dataSources: false },
-        errors: { ...state.errors, dataSources: { message: errorMessage } }
-      }));
-      throw error;
-    }
-  },
-  
-  pullDataSource: async (id) => {
-    set((state) => ({
-      pullingProgress: {
-        ...state.pullingProgress,
-        [id]: true
-      }
-    }));
+  return {
+    // Include the async slice
+    ...dataSourcesAsync,
     
-    try {
-      const response = await pullDataSource(id);
-      return response;
-    } catch (error: any) {
-      console.error('Error pulling data source:', error);
-      throw error;
-    } finally {
+    // Additional state
+    pullingProgress: {},
+    
+    // Additional actions
+    pullDataSource: async (id) => {
       set((state) => ({
         pullingProgress: {
           ...state.pullingProgress,
-          [id]: false
+          [id]: true
         }
       }));
-    }
-  },
-  
-  getScraperStatus: async (id) => {
-    try {
-      return await getScraperStatus(id);
-    } catch (error: any) {
-      console.error('Error getting scraper status:', error);
-      throw error;
-    }
-  },
-  
-  setPullingProgress: (sourceId: number, isLoading: boolean) => {
-    set((state) => {
-      if (state.pullingProgress[sourceId] === isLoading) {
-        return state;
+      
+      try {
+        const response = await api.pullDataSource(id);
+        return response;
+      } catch (error: any) {
+        console.error('Error pulling data source:', error);
+        throw error;
+      } finally {
+        set((state) => ({
+          pullingProgress: {
+            ...state.pullingProgress,
+            [id]: false
+          }
+        }));
       }
-      return {
-        pullingProgress: {
-          ...state.pullingProgress,
-          [sourceId]: isLoading
+    },
+    
+    getScraperStatus: async (id) => {
+      try {
+        return await api.getScraperStatus(id);
+      } catch (error: any) {
+        console.error('Error getting scraper status:', error);
+        throw error;
+      }
+    },
+    
+    setPullingProgress: (sourceId: number, isLoading: boolean) => {
+      set((state) => {
+        if (state.pullingProgress[sourceId] === isLoading) {
+          return state;
         }
-      };
-    });
-  },
-}); 
+        return {
+          pullingProgress: {
+            ...state.pullingProgress,
+            [sourceId]: isLoading
+          }
+        };
+      });
+    },
+  };
+}; 
