@@ -38,6 +38,9 @@ import logging
 import signal
 from dotenv import load_dotenv
 import traceback
+from src.utils.logger import logger, cleanup_logs
+from src.utils.file_utils import ensure_directory
+import datetime
 
 # Add the parent directory to the path so we can import from src
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -48,14 +51,24 @@ from scripts.dependency_checker import (
     test_redis_connection, check_memurai, check_server_py, 
     check_node_npm, frontend_needs_rebuild, ensure_env_file
 )
-from scripts.log_setup import setup_logging, cleanup_logs
 
 # Platform detection
 IS_WINDOWS = sys.platform == 'win32'
 
 # Set up logging
 logs_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'logs')
-logger = setup_logging(logs_dir=logs_dir)
+ensure_directory(logs_dir)
+
+# Get component-specific logger
+logger = logger.bind(name="run_app")
+
+# Startup logging
+logger.info("==========================================")
+logger.info("JPS Prospect Aggregate Application")
+logger.info("==========================================")
+logger.info(f"Started at: {datetime.datetime.now()}")
+logger.info(f"Platform: {'Windows' if IS_WINDOWS else 'Unix-like'}")
+logger.info("==========================================")
 
 # Load environment variables
 load_dotenv()
