@@ -1,31 +1,16 @@
-import { useEffect, useRef, useCallback } from 'react';
-import { useStore } from '@/store/useStore';
+import { useCallback } from 'react';
+import { useAnalytics } from '@/hooks';
 import { formatDate, formatNumber } from '@/lib/utils';
 import { PageLayout, StatsCard } from '@/components';
 import { Alert, AlertTitle, AlertDescription, Button } from '@/components/ui';
 
-// Create stable selectors
-const selectDashboardData = (state: any) => state.dashboardData;
-const selectDashboardLoading = (state: any) => state.loading.dashboard;
-const selectDashboardErrors = (state: any) => state.errors.dashboard;
-const selectFetchDashboardData = (state: any) => state.fetchDashboardData;
-
 export default function SimpleDashboard() {
-  // Use individual selectors to prevent unnecessary re-renders
-  const dashboardData = useStore(selectDashboardData);
-  const loading = useStore(selectDashboardLoading);
-  const errors = useStore(selectDashboardErrors);
-  const fetchDashboardData = useStore(selectFetchDashboardData);
-  
-  const isMounted = useRef(false);
-
-  useEffect(() => {
-    // Only fetch data if this is the first time the component is mounted
-    if (!isMounted.current) {
-      fetchDashboardData();
-      isMounted.current = true;
-    }
-  }, [fetchDashboardData]);
+  const { 
+    data: dashboardData,
+    isLoading: loading,
+    error: errors,
+    refetch: fetchDashboardData
+  } = useAnalytics();
 
   const handleRefresh = useCallback(() => {
     fetchDashboardData();

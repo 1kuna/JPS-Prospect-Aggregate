@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { z } from 'zod';
-import { useStore } from '../store/useStore';
+import { useDataSources } from '../hooks';
 import { DataLoader } from '../components/ui/DataLoader';
 import { DataTable, Column } from '../components/ui/DataTable';
 import { Button } from '../components/ui/button';
@@ -27,29 +27,13 @@ export function DataSourcesPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingDataSource, setEditingDataSource] = useState<DataSource | null>(null);
   
-  // State from store
-  const {
-    dataSources,
-    dataSourcesLoading,
-    dataSourcesError,
-    fetchDataSources,
-    createDataSource,
-    updateDataSource,
-    deleteDataSource,
-  } = useStore(state => ({
-    dataSources: state.dataSources,
-    dataSourcesLoading: state.dataSourcesLoading,
-    dataSourcesError: state.dataSourcesError,
-    fetchDataSources: state.fetchDataSources,
-    createDataSource: state.createDataSource,
-    updateDataSource: state.updateDataSource,
-    deleteDataSource: state.deleteDataSource,
-  }));
-  
-  // Load data sources on initial render
-  React.useEffect(() => {
-    fetchDataSources();
-  }, [fetchDataSources]);
+  // Use React Query hooks
+  const { 
+    data: dataSources = [], 
+    isLoading: dataSourcesLoading, 
+    error: dataSourcesError,
+    mutate: { create: createDataSource, update: updateDataSource, remove: deleteDataSource }
+  } = useDataSources();
   
   // Handle opening the dialog for adding/editing
   const handleAddNew = useCallback(() => {
@@ -71,7 +55,6 @@ export function DataSourcesPage() {
         toast({
           title: 'Data Source Updated',
           description: `${values.name} updated successfully`,
-          type: 'success',
         });
       } else {
         // Create new data source
@@ -79,19 +62,17 @@ export function DataSourcesPage() {
         toast({
           title: 'Data Source Created',
           description: `${values.name} created successfully`,
-          type: 'success',
         });
       }
       setIsDialogOpen(false);
-      fetchDataSources();
     } catch (error) {
       toast({
         title: 'Error',
         description: error instanceof Error ? error.message : 'An unknown error occurred',
-        type: 'error',
+        variant: 'destructive',
       });
     }
-  }, [editingDataSource, updateDataSource, createDataSource, fetchDataSources]);
+  }, [editingDataSource, updateDataSource, createDataSource]);
   
   // Handle delete
   const handleDelete = useCallback(async (id: number) => {
@@ -101,18 +82,16 @@ export function DataSourcesPage() {
         toast({
           title: 'Data Source Deleted',
           description: 'Data source deleted successfully',
-          type: 'success',
         });
-        fetchDataSources();
       } catch (error) {
         toast({
           title: 'Error',
           description: error instanceof Error ? error.message : 'An unknown error occurred',
-          type: 'error',
+          variant: 'destructive',
         });
       }
     }
-  }, [deleteDataSource, fetchDataSources]);
+  }, [deleteDataSource]);
   
   // Configure table columns
   const columns = useMemo<Column<DataSource>[]>(() => [
@@ -213,7 +192,7 @@ export function DataSourcesPage() {
         data={dataSources}
         isLoading={dataSourcesLoading}
         error={dataSourcesError}
-        onRetry={fetchDataSources}
+        onRetry={() => {}}
         emptyComponent={emptyState}
       >
         {(data) => (

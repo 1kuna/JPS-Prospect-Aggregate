@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useAnalyticsSelectors, useUISelectors } from '@/hooks/useStoreSelectors';
+import { useAnalytics } from '@/hooks';
 import {
   Dialog,
   DialogContent,
@@ -11,7 +11,7 @@ import {
   Card,
   CardContent,
 } from '@/components/ui';
-import { useProposalsTrend } from '@/store/selectors';
+import { useToast } from '@/hooks/use-toast';
 
 interface StatisticsProps {
   isOpen: boolean;
@@ -19,22 +19,21 @@ interface StatisticsProps {
 }
 
 export function Statistics({ isOpen, onClose }: StatisticsProps) {
-  const { statistics, loading, errors, fetchStatistics } = useAnalyticsSelectors();
-  const { addToast } = useUISelectors();
-  const proposalsTrend = useProposalsTrend();
+  const { data: statistics, isLoading, error, refetch: fetchStatistics } = useAnalytics();
+  const { toast } = useToast();
   
   useEffect(() => {
     if (isOpen) {
       fetchStatistics().catch(error => {
         console.error('Failed to fetch statistics:', error);
-        addToast({
+        toast({
           title: 'Error',
           description: 'Failed to load statistics. Please try again.',
           variant: 'destructive'
         });
       });
     }
-  }, [isOpen, fetchStatistics, addToast]);
+  }, [isOpen, fetchStatistics, toast]);
   
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -43,13 +42,13 @@ export function Statistics({ isOpen, onClose }: StatisticsProps) {
           <DialogTitle>Statistics</DialogTitle>
         </DialogHeader>
         
-        {loading.statistics ? (
+        {isLoading ? (
           <div className="flex justify-center py-8">
             <Spinner size="lg" />
           </div>
-        ) : errors.statistics ? (
+        ) : error ? (
           <div className="bg-red-100 p-4 rounded-md text-red-800">
-            {errors.statistics.message || 'An error occurred while loading statistics'}
+            {error.message || 'An error occurred while loading statistics'}
           </div>
         ) : !statistics ? (
           <div className="text-center py-8 text-gray-500">
@@ -81,13 +80,13 @@ export function Statistics({ isOpen, onClose }: StatisticsProps) {
               </CardContent>
             </Card>
             
-            {proposalsTrend && proposalsTrend.length > 0 && (
+            {statistics.proposals_trend && statistics.proposals_trend.length > 0 && (
               <Card>
                 <CardContent className="pt-6">
                   <h3 className="text-lg font-semibold mb-2">Proposal Trends</h3>
                   <div className="h-40 flex items-end space-x-2">
-                    {proposalsTrend.map((item, index) => {
-                      const maxValue = Math.max(...proposalsTrend.map(i => i.count));
+                    {statistics.proposals_trend.map((item, index) => {
+                      const maxValue = Math.max(...statistics.proposals_trend.map(i => i.count));
                       const height = `${Math.max(10, (item.count / maxValue) * 100)}%`;
                       
                       return (

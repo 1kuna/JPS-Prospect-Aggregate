@@ -1,116 +1,103 @@
-import { useState, useCallback, useEffect } from 'react';
-import { useProposalsSelectors } from '@/hooks';
-import { formatDate } from '@/lib/utils';
-import {
-  Button,
-  DataTable,
-} from '@/components';
+import { useState } from 'react';
 import { DataPageLayout } from '@/components/layout';
-import type { Column } from '@/components/data-display/DataTable';
-
-interface Proposal {
-  id: number | string;
-  title: string;
-  agency: string;
-  source_name: string;
-  release_date: string | null;
-  status: string;
-}
+import { DataTable } from '@/components/ui/DataTable';
+import { Button } from '@/components/ui/button';
+import { useProposals } from '@/hooks/api/useProposals';
+import { ProposalFilters } from '@/components/filters';
+import { Proposal } from '@/types';
+import { toast } from '@/hooks/use-toast';
 
 export default function Proposals() {
-  const [sortBy] = useState('release_date');
-  const [sortOrder] = useState('desc');
-
-  // Use the typed selector hook for proposals
-  const {
-    proposals,
-    pagination,
-    loading,
-    errors,
-    fetchProposals
-  } = useProposalsSelectors();
+  const [filters, setFilters] = useState<ProposalFilters>({});
   
-  // Fetch proposals when component mounts or sort params change
-  useEffect(() => {
-    fetchProposals({ sortBy, sortOrder });
-  }, [fetchProposals, sortBy, sortOrder]);
+  const {
+    data,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isLoading,
+    error
+  } = useProposals.useInfiniteList(filters);
 
-  // Memoize event handlers to prevent unnecessary re-renders
-  const handlePageChange = useCallback((page: number) => {
-    console.log('Changing page to:', page);
-    fetchProposals({ 
-      page,
-      sortBy, 
-      sortOrder,
-      perPage: pagination?.perPage || 10
-    });
-  }, [fetchProposals, sortBy, sortOrder, pagination?.perPage]);
+  const { data: statistics } = useProposals.useStatistics();
 
-  const handlePerPageChange = useCallback((perPage: number) => {
-    console.log('Changing per page to:', perPage);
-    fetchProposals({
-      page: 1,
-      perPage,
-      sortBy,
-      sortOrder
-    });
-  }, [fetchProposals, sortBy, sortOrder]);
+  const handleLoadMore = () => {
+    if (hasNextPage && !isFetchingNextPage) {
+      fetchNextPage();
+    }
+  };
 
-  // Define columns for the data table
-  const columns: Column<Proposal>[] = [
+  // Flatten pages of data for the table
+  const proposals = data?.pages.flatMap(page => page.data) ?? [];
+
+  const columns = [
     {
-      accessorKey: 'title',
       header: 'Title',
+      accessorKey: 'title',
     },
     {
-      accessorKey: 'agency',
-      header: 'Agency',
-    },
-    {
-      accessorKey: 'source_name',
-      header: 'Source',
-    },
-    {
-      accessorKey: 'release_date',
-      header: 'Release Date',
-      cell: ({ row }) => formatDate(row.original.release_date),
-    },
-    {
-      accessorKey: 'status',
       header: 'Status',
+      accessorKey: 'status',
+    },
+    {
+      header: 'Data Source',
+      accessorKey: 'dataSource.name',
+    },
+    {
+      header: 'Created',
+      accessorKey: 'createdAt',
+      cell: ({ row }) => new Date(row.original.createdAt).toLocaleDateString(),
+    },
+    {
+      header: 'Actions',
+      cell: ({ row }) => (
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => window.open(row.original.url, '_blank')}
+          >
+            View
+          </Button>
+        </div>
+      ),
     },
   ];
 
   return (
-    <DataPageLayout title="Proposals" subtitle="View all proposals from your data sources">
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xl font-semibold">All Proposals</h2>
-          <Button onClick={() => fetchProposals({ sortBy, sortOrder })}>
-            Refresh
-          </Button>
-        </div>
-
-        <DataTable
-          data={proposals || []}
-          columns={columns}
-          isLoading={loading}
-          pagination={{
-            page: pagination?.page || 1,
-            pageCount: pagination?.totalPages || 1,
-            perPage: pagination?.perPage || 10,
-            total: pagination?.totalCount || 0,
-            onPageChange: handlePageChange,
-            onPerPageChange: handlePerPageChange,
-          }}
+    <DataPageLayout
+      title="Proposals"
+      subtitle={`Total: ${statistics?.data.total ?? 0} proposals`}
+      data={proposals}
+      loading={isLoading}
+      error={error}
+      renderHeader={() => (
+        <ProposalFilters
+          filters={filters}
+          onChange={setFilters}
+          statistics={statistics?.data}
         />
-
-        {errors && (
-          <div className="p-4 text-red-500 bg-red-50 rounded-md">
-            Error: {errors.message || 'Unknown error occurred'}
-          </div>
-        )}
-      </div>
-    </DataPageLayout>
+      )}
+      renderContent={(data) => (
+        <>
+          <DataTable
+            data={data}
+            columns={columns}
+            loading={isLoading}
+          />
+          
+          {hasNextPage && (
+            <div className="flex justify-center mt-4">
+              <Button
+                onClick={handleLoadMore}
+                disabled={isFetchingNextPage}
+              >
+                {isFetchingNextPage ? 'Loading...' : 'Load More'}
+              </Button>
+            </div>
+          )}
+        </>
+      )}
+    />
   );
 } 
