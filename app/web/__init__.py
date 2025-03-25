@@ -3,8 +3,8 @@
 import os
 from flask import Flask, send_from_directory, render_template_string, request
 from flask_cors import CORS
-from src.utils.logger import logger
-from src.api.errors import register_error_handlers
+from app.utils.logger import logger
+from app.api.errors import register_error_handlers
 
 # Set up logging with the centralized utility
 logger = logger.bind(name="dashboard.factory")
@@ -67,22 +67,17 @@ def create_app(config=None):
             logger.error(f"Error serving vite.svg: {str(e)}")
             return "", 404
     
-    # Note: We're removing the conflicting routes here since they're already defined in the main blueprint
-    
     return app
 
 def register_blueprints(app):
     """Register Flask blueprints."""
     # Import blueprints
-    from src.dashboard.blueprints.main import main
-    from src.api import api  # This is the main API blueprint we're using
-    from src.dashboard.blueprints.data_sources import data_sources
-    
-    # We've disabled the dashboard API blueprint (src/dashboard/blueprints/api)
-    # and are only using the main API blueprint (src/api) to avoid conflicts
+    from app.web.routes import main
+    from app.api import api  # This is the main API blueprint we're using
+    from app.web.routes import data_sources
     
     # Initialize API error handlers before registering the blueprint
-    from src.api.errors import init_error_handlers
+    from app.api.errors import init_error_handlers
     init_error_handlers(api)
     
     # Register blueprints
@@ -95,6 +90,6 @@ def register_blueprints(app):
 def register_error_handlers(app):
     """Register error handlers for the application."""
     # Use the centralized error handlers from api.errors
-    from src.api.errors import register_error_handlers
+    from app.api.errors import register_error_handlers
     register_error_handlers(app)
     logger.info('Error handlers registered') 

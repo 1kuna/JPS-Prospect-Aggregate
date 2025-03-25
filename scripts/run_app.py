@@ -37,8 +37,8 @@ import atexit
 import signal
 from dotenv import load_dotenv
 import traceback
-from src.utils.logger import logger, cleanup_logs
-from src.utils.file_utils import ensure_directory
+from app.utils.logger import logger, cleanup_logs
+from app.utils.file_utils import ensure_directory
 import datetime
 
 # Add the parent directory to the path so we can import from src
@@ -151,21 +151,21 @@ def main():
     logger.info("Defining process configurations...")
     process_configs = {
         "Flask App": {
-            "cmd": [sys.executable, os.path.join(project_root, "server.py")],
+            "cmd": [sys.executable, os.path.join(project_root, "run.py")],
             "capture_output": True
         },
         "Celery Worker": {
-            "cmd": [sys.executable, "-m", "celery", "-A", "src.celery_app.celery_app", "worker", "--loglevel=info"],
+            "cmd": [sys.executable, "-m", "celery", "-A", "app.celery_app.celery_app", "worker", "--loglevel=info"],
             "capture_output": True,
             "env": {**os.environ, "PYTHONPATH": project_root}
         },
         "Celery Beat": {
-            "cmd": [sys.executable, "-m", "celery", "-A", "src.celery_app.celery_app", "beat", "--loglevel=info"],
+            "cmd": [sys.executable, "-m", "celery", "-A", "app.celery_app.celery_app", "beat", "--loglevel=info"],
             "capture_output": True,
             "env": {**os.environ, "PYTHONPATH": project_root}
         },
         "Flower": {
-            "cmd": [sys.executable, "-m", "celery", "-A", "src.celery_app.celery_app", "flower", "--port=5555"],
+            "cmd": [sys.executable, "-m", "celery", "-A", "app.celery_app.celery_app", "flower", "--port=5555"],
             "capture_output": True,
             "env": {**os.environ, "PYTHONPATH": project_root}
         }

@@ -1,15 +1,18 @@
-"""Routes for the main blueprint."""
+"""Routes for the web dashboard."""
 
 import os
-from flask import current_app, send_from_directory, abort
-from . import main
+from flask import Blueprint, current_app, send_from_directory, abort
+
+# Create blueprints
+main = Blueprint('main', __name__)
+data_sources = Blueprint('data_sources', __name__, url_prefix='/data-sources')
 
 @main.route('/', defaults={'path': ''})
 @main.route('/<path:path>')
 def index(path):
     """Serve the React SPA."""
     # Get the React build directory - fix the path to be relative to the project root
-    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../../'))
+    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../'))
     react_build_dir = os.path.join(project_root, 'frontend-react', 'dist')
     
     current_app.logger.info(f"Serving React SPA from {react_build_dir} for path: {path}")
@@ -61,4 +64,10 @@ def index(path):
     
     # If index.html is not found, return a 500 error
     current_app.logger.error(f"React index.html not found at {index_path}")
-    return {"error": "React application index not found. Please check the build directory."}, 500 
+    return {"error": "React application index not found. Please check the build directory."}, 500
+
+# Data sources routes
+@data_sources.route('/')
+def list_sources():
+    """List all available data sources."""
+    return {"message": "Data sources endpoint"} 
