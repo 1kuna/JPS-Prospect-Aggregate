@@ -1,5 +1,6 @@
-import React, { ReactNode } from 'react';
-import { Skeleton } from './skeleton';
+import React from 'react';
+import { useQuery, QueryKey } from '@tanstack/react-query';
+import { ApiResponse, ApiError } from '@/types/api';
 import { Alert } from './alert';
 import { Button } from './button';
 
@@ -8,45 +9,39 @@ import { Button } from './button';
  */
 interface DataLoaderProps<T> {
   /**
-   * The data to display when loading is complete and no errors occurred
+   * Query key for React Query
    */
-  data: T | null | undefined;
+  queryKey: QueryKey;
   
   /**
-   * Whether the data is currently loading
+   * Query function that returns a Promise of ApiResponse<T>
    */
-  isLoading: boolean;
-  
-  /**
-   * Any error that occurred during data loading
-   */
-  error: Error | null | undefined;
-  
-  /**
-   * Content to show while data is loading
-   */
-  loadingComponent?: ReactNode;
-  
-  /**
-   * Content to show when an error occurs
-   * Can be a React node or a function that takes the error and returns a React node
-   */
-  errorComponent?: ReactNode | ((error: Error) => ReactNode);
-  
-  /**
-   * Content to show when there is no data
-   */
-  emptyComponent?: ReactNode;
+  queryFn: () => Promise<ApiResponse<T>>;
   
   /**
    * Function to render the data when loading is complete and no errors occurred
    */
-  children: (data: T) => ReactNode;
+  children: (data: T) => React.ReactNode;
   
   /**
-   * Function to call when retry button is clicked (if an error occurred)
+   * Content to show while data is loading
    */
-  onRetry?: () => void;
+  loadingComponent?: React.ReactNode;
+  
+  /**
+   * Content to show when an error occurs
+   */
+  errorComponent?: React.ReactNode | ((error: ApiError) => React.ReactNode);
+  
+  /**
+   * Content to show when there is no data
+   */
+  emptyComponent?: React.ReactNode;
+  
+  /**
+   * Function to determine if data is considered empty
+   */
+  isDataEmpty?: (data: T) => boolean;
   
   /**
    * Optional additional class name for the wrapper
@@ -54,18 +49,15 @@ interface DataLoaderProps<T> {
   className?: string;
   
   /**
-   * Custom skeleton configuration for loading state
+   * Query options for React Query
    */
-  skeleton?: {
-    count?: number;
-    height?: string;
-    width?: string;
+  options?: {
+    staleTime?: number;
+    cacheTime?: number;
+    retry?: number | boolean;
+    retryDelay?: number;
+    enabled?: boolean;
   };
-  
-  /**
-   * Function to determine if data is considered empty
-   */
-  isDataEmpty?: (data: T) => boolean;
 }
 
 /**
@@ -76,45 +68,35 @@ interface DataLoaderProps<T> {
  * - Success state
  */
 export function DataLoader<T>({
-  data,
-  isLoading,
-  error,
-  loadingComponent,
-  errorComponent,
-  emptyComponent,
+  queryKey,
+  queryFn,
   children,
-  onRetry,
+  loadingComponent = <div className="flex justify-center py-4">Loading...</div>,
+  errorComponent,
+  emptyComponent = <div className="text-center py-4 text-gray-500">No data available</div>,
+  isDataEmpty,
   className = '',
-  skeleton = { count: 4, height: 'h-10', width: 'w-full' },
-  isDataEmpty
+  options = {}
 }: DataLoaderProps<T>) {
-  // Check if data is empty
-  const isEmpty = () => {
-    if (isDataEmpty) {
-      return isDataEmpty(data as T);
-    }
-    
-    return !data || (Array.isArray(data) && data.length === 0);
-  };
-  
+  const { 
+    data, 
+    isLoading, 
+    isError, 
+    error, 
+    refetch 
+  } = useQuery<ApiResponse<T>, ApiError>({
+    queryKey,
+    queryFn,
+    ...options
+  });
+
   // Show loading state
   if (isLoading) {
-    return loadingComponent ? (
-      <div className={className}>{loadingComponent}</div>
-    ) : (
-      <div className={`space-y-2 ${className}`}>
-        {Array.from({ length: skeleton.count || 4 }).map((_, i) => (
-          <Skeleton 
-            key={i} 
-            className={`${skeleton.height || 'h-10'} ${i === 0 ? 'w-2/3' : i === skeleton.count! - 1 ? 'w-4/5' : skeleton.width || 'w-full'}`} 
-          />
-        ))}
-      </div>
-    );
+    return <div className={className}>{loadingComponent}</div>;
   }
-  
+
   // Show error state
-  if (error) {
+  if (isError) {
     if (errorComponent) {
       return (
         <div className={className}>
@@ -124,7 +106,7 @@ export function DataLoader<T>({
         </div>
       );
     }
-    
+
     return (
       <div className={`my-4 ${className}`}>
         <Alert 
@@ -132,66 +114,57 @@ export function DataLoader<T>({
           title="Error loading data"
           description={error.message}
         >
-          {onRetry && (
-            <Button 
-              onClick={onRetry} 
-              variant="destructive"
-              className="mt-2"
-              size="sm"
-            >
-              Retry
-            </Button>
-          )}
+          <Button 
+            onClick={() => refetch()} 
+            variant="destructive"
+            className="mt-2"
+            size="sm"
+          >
+            Retry
+          </Button>
         </Alert>
       </div>
     );
   }
-  
+
+  // Check if data is empty
+  const isEmpty = isDataEmpty 
+    ? isDataEmpty(data?.data as T)
+    : !data?.data || (Array.isArray(data.data) && data.data.length === 0);
+
   // Show empty state
-  if (isEmpty()) {
-    return emptyComponent ? (
-      <div className={className}>{emptyComponent}</div>
-    ) : (
-      <div className={`text-center my-8 p-4 bg-gray-50 rounded-lg ${className}`}>
-        <p className="text-gray-500">No data available</p>
-      </div>
-    );
+  if (isEmpty) {
+    return <div className={className}>{emptyComponent}</div>;
   }
-  
+
   // Show data
-  return <div className={className}>{children(data as T)}</div>;
+  return <div className={className}>{children(data.data)}</div>;
 }
 
 /**
- * Higher-order component that combines DataLoader with a data fetching hook
+ * Higher-order component that combines DataLoader with React Query
  */
-export function withDataFetching<P extends object, T>(
-  Component: React.ComponentType<P & { data: T; loading: boolean; error: Error | null }>,
-  options: {
-    selector: (state: any) => T;
-    fetchAction: (...args: any[]) => Promise<any>;
-    loadingSelector: (state: any) => boolean;
-    errorSelector: (state: any) => Error | null;
-    fetchParams?: any[];
+export function withQuery<P extends object, T>(
+  Component: React.ComponentType<P & { data: T }>,
+  { 
+    queryKey, 
+    queryFn, 
+    options = {} 
+  }: { 
+    queryKey: QueryKey; 
+    queryFn: () => Promise<ApiResponse<T>>; 
+    options?: DataLoaderProps<T>['options'] 
   }
 ) {
-  return function WithDataFetching(props: Omit<P, 'data' | 'loading' | 'error'>) {
-    // Use the store data hook
-    const { data, loading, error, refetch } = useStoreData({
-      selector: options.selector,
-      action: options.fetchAction,
-      params: options.fetchParams || [],
-      dependencies: []
-    });
-    
+  return function WithQuery(props: Omit<P, 'data'>) {
     return (
-      <Component
-        {...(props as P)}
-        data={data}
-        loading={loading}
-        error={error}
-        refetch={refetch}
-      />
+      <DataLoader<T>
+        queryKey={queryKey}
+        queryFn={queryFn}
+        options={options}
+      >
+        {(data) => <Component {...(props as P)} data={data} />}
+      </DataLoader>
     );
   };
 } 
