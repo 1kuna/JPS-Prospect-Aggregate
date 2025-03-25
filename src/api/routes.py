@@ -4,10 +4,11 @@ from flask import jsonify, request, current_app
 from sqlalchemy import func, desc, asc
 from sqlalchemy.exc import SQLAlchemyError
 from src.api import api
-from src.database.db import session_scope, check_connection
 from src.database.models import Proposal, DataSource, ScraperStatus
 from src.exceptions import ValidationError, NotFoundError
 from src.celery_app import celery_app
+from src.utils.logger import logger
+from src.utils.db_context import db_session, with_db_session
 import math
 import datetime
 import os
@@ -16,7 +17,7 @@ import psutil
 import time
 import traceback
 from celery.result import AsyncResult
-from src.utils.logger import logger
+import datetime
 
 # Set up logging using the centralized utility
 logger = logger.bind(name="api.routes")
@@ -63,77 +64,120 @@ def paginate_query(query, page, per_page):
     return paginated_query, pagination
 
 
-@api.route('/proposals')
+@api.route('/proposals', methods=['GET'])
 def get_proposals():
-    """Get all proposals with filtering and pagination."""
+    """Get all proposals with pagination and filtering."""
     try:
         # Get query parameters
-        page = request.args.get('page', 1)
-        per_page = request.args.get('per_page', 20)
+        page = int(request.args.get('page', 1))
+        per_page = min(int(request.args.get('per_page', 10)), 100)
         sort_by = request.args.get('sort_by', 'id')
-        sort_order = request.args.get('sort_order', 'asc')
-        filter_agency = request.args.get('agency')
-        filter_title = request.args.get('title')
-        filter_min_value = request.args.get('min_value')
-        filter_source_id = request.args.get('source_id')
+        sort_order = request.args.get('sort_order', 'desc')
+        search_term = request.args.get('search', '')
         
-        with session_scope() as session:
-            # Query
-            query = session.query(Proposal).join(DataSource)
+        with db_session() as session:
+            # Build base query
+            query = session.query(Proposal)
             
-            # Apply filters
-            if filter_agency:
-                query = query.filter(Proposal.agency.ilike(f'%{filter_agency}%'))
-            if filter_title:
-                query = query.filter(Proposal.title.ilike(f'%{filter_title}%'))
-            if filter_min_value:
-                query = query.filter(Proposal.estimated_value >= float(filter_min_value))
-            if filter_source_id:
-                query = query.filter(Proposal.source_id == int(filter_source_id))
+            # Apply search filter if provided
+            if search_term:
+                search_filter = (
+                    (Proposal.title.ilike(f'%{search_term}%')) |
+                    (Proposal.description.ilike(f'%{search_term}%')) |
+                    (Proposal.agency.ilike(f'%{search_term}%'))
+                )
+                query = query.filter(search_filter)
             
             # Apply sorting
-            if sort_by in ['id', 'title', 'agency', 'estimated_value', 'release_date', 'response_date']:
-                sort_column = getattr(Proposal, sort_by)
-                query = query.order_by(asc(sort_column) if sort_order.lower() == 'asc' else desc(sort_column))
+            sort_column = getattr(Proposal, sort_by, Proposal.id)
+            if sort_order == 'desc':
+                query = query.order_by(desc(sort_column))
             else:
-                query = query.order_by(Proposal.id)
+                query = query.order_by(asc(sort_column))
+            
+            # Get total count for pagination
+            total_count = query.count()
             
             # Apply pagination
-            proposals_query, pagination = paginate_query(query, page, per_page)
+            proposals = query.offset((page - 1) * per_page).limit(per_page).all()
             
-            # Convert to JSON-serializable format
-            proposals = []
-            for proposal in proposals_query:
-                proposals.append({
-                    "id": proposal.id,
-                    "title": proposal.title,
-                    "agency": proposal.agency,
-                    "description": proposal.description,
-                    "solicitation_number": proposal.solicitation_number,
-                    "release_date": proposal.release_date.isoformat() if proposal.release_date else None,
-                    "response_date": proposal.response_date.isoformat() if proposal.response_date else None,
-                    "estimated_value": proposal.estimated_value,
-                    "source_id": proposal.source_id,
-                    "source_name": proposal.source.name
-                })
+            # Convert to dictionary
+            proposals_dict = [proposal.to_dict() for proposal in proposals]
             
             return jsonify({
-                "status": "success",
-                "data": proposals,
-                "pagination": pagination
+                'proposals': proposals_dict,
+                'total': total_count,
+                'page': page,
+                'per_page': per_page,
+                'total_pages': math.ceil(total_count / per_page)
             })
             
-    except ValidationError as e:
-        return jsonify({"status": "error", "message": str(e)}), 400
+    except ValueError as e:
+        raise ValidationError(f"Invalid parameter: {str(e)}")
+    except SQLAlchemyError as e:
+        logger.error(f"Database error: {str(e)}")
+        raise
+
+
+@api.route('/proposals/<int:proposal_id>', methods=['GET'])
+def get_proposal(proposal_id):
+    """Get a specific proposal by ID."""
+    with db_session() as session:
+        proposal = session.query(Proposal).get(proposal_id)
+        if not proposal:
+            raise NotFoundError(f"Proposal with ID {proposal_id} not found")
+        return jsonify(proposal.to_dict())
+
+
+@api.route('/data_sources', methods=['GET'])
+def get_data_sources():
+    """Get all data sources with their status."""
+    with db_session() as session:
+        data_sources = session.query(DataSource).all()
+        
+        # Get the latest status for each data source
+        statuses = session.query(ScraperStatus).all()
+        status_dict = {status.source_name: status for status in statuses}
+        
+        result = []
+        for source in data_sources:
+            source_dict = source.to_dict()
+            status = status_dict.get(source.name)
+            if status:
+                source_dict['status'] = status.status
+                source_dict['last_error'] = status.error_message
+                source_dict['last_check'] = status.timestamp.isoformat() if status.timestamp else None
+            result.append(source_dict)
+        
+        return jsonify(result)
+
+
+@api.route('/health', methods=['GET'])
+def health_check():
+    """API health check endpoint."""
+    try:
+        with db_session() as session:
+            # Simple database query to check connection
+            session.query(DataSource).first()
+            
+        return jsonify({
+            'status': 'healthy',
+            'timestamp': datetime.datetime.now().isoformat(),
+            'database': 'connected'
+        })
     except Exception as e:
-        current_app.logger.error(f"Error in get_proposals: {str(e)}")
-        return jsonify({"status": "error", "message": "An unexpected error occurred"}), 500
+        logger.error(f"Health check failed: {str(e)}")
+        return jsonify({
+            'status': 'unhealthy',
+            'timestamp': datetime.datetime.now().isoformat(),
+            'error': str(e)
+        }), 500
 
 
 @api.route('/dashboard')
 def get_dashboard():
     """Get dashboard summary information."""
-    with session_scope() as session:
+    with db_session() as session:
         try:
             # Get total number of proposals
             total_proposals = session.query(func.count(Proposal.id)).scalar()
@@ -174,159 +218,10 @@ def get_dashboard():
             return jsonify({"status": "error", "message": "An unexpected error occurred"}), 500
 
 
-@api.route('/health', methods=['GET'])
-def health_check():
-    """
-    Perform a health check of the application.
-    
-    This endpoint checks:
-    1. Database connection
-    2. Celery worker status
-    3. System resources (CPU, memory)
-    4. Data source health checks
-    """
-    health_data = {
-        "status": "OK",
-        "version": os.environ.get("APP_VERSION", "1.0.0"),
-        "timestamp": datetime.datetime.now().isoformat(),
-        "components": {}
-    }
-    
-    overall_status = True
-    
-    # Check database connection
-    try:
-        db_connected, stats = check_connection()
-        health_data["components"]["database"] = {
-            "status": "OK" if db_connected else "ERROR",
-            "connection_time_ms": stats.get("connection_time_ms"),
-            "query_time_ms": stats.get("query_time_ms"),
-            "message": "Connected" if db_connected else "Connection failed"
-        }
-        overall_status = overall_status and db_connected
-    except Exception as e:
-        health_data["components"]["database"] = {
-            "status": "ERROR",
-            "message": str(e)
-        }
-        overall_status = False
-    
-    # Check Celery status
-    try:
-        i = celery_app.control.inspect()
-        ping = i.ping()
-        stats = i.stats()
-        active_tasks = i.active()
-        
-        # Check if any workers responded
-        workers_responding = ping is not None and len(ping) > 0
-        
-        health_data["components"]["celery"] = {
-            "status": "OK" if workers_responding else "WARNING",
-            "workers": len(ping) if ping else 0,
-            "active_tasks": sum(len(tasks) for worker, tasks in active_tasks.items()) if active_tasks else 0,
-            "message": "Workers responding" if workers_responding else "No workers responding"
-        }
-        
-        # If no workers are responding, consider it a warning but not a critical failure
-        if not workers_responding:
-            health_data["components"]["celery"]["status"] = "WARNING"
-    except Exception as e:
-        health_data["components"]["celery"] = {
-            "status": "ERROR",
-            "message": str(e)
-        }
-        # Don't fail the overall health check due to Celery issues
-        health_data["components"]["celery"]["status"] = "WARNING"
-    
-    # Check system resources
-    try:
-        cpu_percent = psutil.cpu_percent(interval=0.1)
-        memory = psutil.virtual_memory()
-        disk = psutil.disk_usage('/')
-        
-        health_data["components"]["system"] = {
-            "status": "OK",
-            "cpu": {
-                "percent": cpu_percent,
-                "cores": psutil.cpu_count()
-            },
-            "memory": {
-                "total_mb": memory.total / (1024 * 1024),
-                "available_mb": memory.available / (1024 * 1024),
-                "percent": memory.percent
-            },
-            "disk": {
-                "total_gb": disk.total / (1024 * 1024 * 1024),
-                "free_gb": disk.free / (1024 * 1024 * 1024),
-                "percent": disk.percent
-            },
-            "platform": platform.platform()
-        }
-        
-        # Set warning if resources are low
-        if cpu_percent > 90 or memory.percent > 90 or disk.percent > 90:
-            health_data["components"]["system"]["status"] = "WARNING"
-    except Exception as e:
-        health_data["components"]["system"] = {
-            "status": "ERROR",
-            "message": str(e)
-        }
-    
-    # Check data sources health
-    try:
-        with session_scope() as session:
-            # Get data source status
-            scraper_statuses = session.query(ScraperStatus).all()
-            
-            statuses = []
-            for status in scraper_statuses:
-                source = session.query(DataSource).filter_by(id=status.source_id).first()
-                source_name = source.name if source else f"Unknown Source ({status.source_id})"
-                
-                statuses.append({
-                    "source_id": status.source_id,
-                    "source_name": source_name,
-                    "status": status.status,
-                    "last_check": status.last_check.isoformat() if status.last_check else None,
-                    "last_success": status.last_success.isoformat() if status.last_success else None,
-                    "error_count": status.error_count,
-                    "message": status.message
-                })
-            
-            health_data["components"]["data_sources"] = {
-                "status": "OK",
-                "sources": statuses
-            }
-            
-            # Check if any data source has errors
-            for status in statuses:
-                if status["status"] != "OK" and status["status"] != "WARNING":
-                    health_data["components"]["data_sources"]["status"] = "WARNING"
-                    break
-    except Exception as e:
-        health_data["components"]["data_sources"] = {
-            "status": "ERROR",
-            "message": str(e)
-        }
-    
-    # Set overall status
-    if not overall_status:
-        health_data["status"] = "ERROR"
-    elif any(component["status"] == "ERROR" for component in health_data["components"].values()):
-        health_data["status"] = "ERROR"
-    elif any(component["status"] == "WARNING" for component in health_data["components"].values()):
-        health_data["status"] = "WARNING"
-    
-    # Return health data with appropriate status code
-    status_code = 200 if health_data["status"] != "ERROR" else 500
-    return jsonify(health_data), status_code
-
-
 @api.route('/data-sources', methods=['GET'])
 def get_data_sources():
     """Get all data sources."""
-    with session_scope() as session:
+    with db_session() as session:
         try:
             sources = session.query(DataSource).all()
             result = []
@@ -358,63 +253,63 @@ def get_data_sources():
 @api.route('/data-sources/<int:source_id>', methods=['PUT'])
 def update_data_source(source_id):
     """Update a data source."""
-    try:
-        # Validate input
-        data = request.json
-        if not data:
-            raise ValidationError("No data provided")
-        
-        required_fields = ['name', 'url', 'frequency']
-        for field in required_fields:
-            if field not in data:
-                raise ValidationError(f"Missing required field: {field}")
-        
-        # Validate frequency
-        valid_frequencies = ['daily', 'weekly', 'monthly', 'manual']
-        if data['frequency'] not in valid_frequencies:
-            raise ValidationError(f"Invalid frequency. Must be one of: {', '.join(valid_frequencies)}")
-        
-        # Update data source
-        with session_scope() as session:
-            data_source = session.query(DataSource).filter(DataSource.id == source_id).first()
-            if not data_source:
+    with db_session() as session:
+        try:
+            # Validate input
+            data = request.json
+            if not data:
+                raise ValidationError("No data provided")
+            
+            required_fields = ['name', 'url', 'frequency']
+            for field in required_fields:
+                if field not in data:
+                    raise ValidationError(f"Missing required field: {field}")
+            
+            # Validate frequency
+            valid_frequencies = ['daily', 'weekly', 'monthly', 'manual']
+            if data['frequency'] not in valid_frequencies:
+                raise ValidationError(f"Invalid frequency. Must be one of: {', '.join(valid_frequencies)}")
+            
+            # Update data source
+            source = session.query(DataSource).filter(DataSource.id == source_id).first()
+            if not source:
                 raise NotFoundError(f"Data source with ID {source_id} not found")
             
             # Update fields
-            data_source.name = data['name']
-            data_source.url = data['url']
-            data_source.frequency = data['frequency']
+            source.name = data['name']
+            source.url = data['url']
+            source.frequency = data['frequency']
             if 'description' in data:
-                data_source.description = data['description']
+                source.description = data['description']
             if 'active' in data:
-                data_source.active = data['active']
+                source.active = data['active']
             
             # Additional fields
             if 'settings' in data:
-                data_source.settings = data['settings']
+                source.settings = data['settings']
             if 'credentials' in data:
-                data_source.credentials = data['credentials']
+                source.credentials = data['credentials']
             
             # Update timestamps
-            data_source.updated_at = datetime.datetime.utcnow()
+            source.updated_at = datetime.datetime.utcnow()
             
             # Commit changes
-            session.add(data_source)
+            session.add(source)
         
-        return jsonify({"status": "success", "message": f"Data source {source_id} updated successfully"}), 200
-    except ValidationError as e:
-        return jsonify({"status": "error", "message": str(e)}), 400
-    except NotFoundError as e:
-        return jsonify({"status": "error", "message": str(e)}), 404
-    except Exception as e:
-        logger.error(f"Error updating data source: {str(e)}")
-        return jsonify({"status": "error", "message": "An error occurred while updating the data source"}), 500
+            return jsonify({"status": "success", "message": f"Data source {source_id} updated successfully"}), 200
+        except ValidationError as e:
+            return jsonify({"status": "error", "message": str(e)}), 400
+        except NotFoundError as e:
+            return jsonify({"status": "error", "message": str(e)}), 404
+        except Exception as e:
+            logger.error(f"Error updating data source: {str(e)}")
+            return jsonify({"status": "error", "message": "An error occurred while updating the data source"}), 500
 
 
 @api.route('/data-sources', methods=['POST'])
 def create_data_source():
     """Create a new data source."""
-    with session_scope() as session:
+    with db_session() as session:
         try:
             # Get request data
             data = request.json
@@ -457,7 +352,7 @@ def create_data_source():
 @api.route('/data-sources/<int:source_id>', methods=['DELETE'])
 def delete_data_source(source_id):
     """Delete a data source."""
-    with session_scope() as session:
+    with db_session() as session:
         try:
             # Find the data source
             source = session.query(DataSource).filter_by(id=source_id).first()
@@ -492,7 +387,7 @@ def pull_data_source(source_id):
     This endpoint starts a Celery task to pull data from the specified source.
     It returns the task ID which can be used to check the status of the task.
     """
-    with session_scope() as session:
+    with db_session() as session:
         try:
             # Find the data source
             source = session.query(DataSource).filter_by(id=source_id).first()
@@ -628,7 +523,7 @@ def get_statistics():
     - Proposals by value range
     - etc.
     """
-    with session_scope() as session:
+    with db_session() as session:
         try:
             result = {
                 "total_proposals": 0,
@@ -768,7 +663,7 @@ def check_scraper_status(source_id):
     - Error count
     - Error message (if any)
     """
-    with session_scope() as session:
+    with db_session() as session:
         try:
             # Find the data source
             source = session.query(DataSource).filter_by(id=source_id).first()
@@ -830,7 +725,7 @@ def trigger_health_check(source_id):
     This endpoint starts a Celery task to check the health of a data source.
     It returns the task ID which can be used to check the status of the task.
     """
-    with session_scope() as session:
+    with db_session() as session:
         try:
             # Find the data source
             source = session.query(DataSource).filter_by(id=source_id).first()

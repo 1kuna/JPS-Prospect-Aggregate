@@ -11,6 +11,7 @@ from src.database.db import get_db
 from src.database.models import DataSource, ScraperStatus
 import datetime
 import traceback
+from src.utils.db_context import db_session
 
 @shared_task(bind=True, max_retries=3, name="src.tasks.scrapers.run_acquisition_gateway")
 def run_acquisition_gateway(self, force=False):
