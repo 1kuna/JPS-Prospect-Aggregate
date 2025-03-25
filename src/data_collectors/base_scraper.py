@@ -15,8 +15,6 @@ import traceback
 import glob
 import pathlib
 import re
-import logging
-from logging.handlers import RotatingFileHandler
 
 # Third-party imports
 import requests

@@ -6,7 +6,6 @@ import sys
 import time
 import datetime
 import traceback
-import logging
 import shutil
 
 # Third-party imports
@@ -192,7 +191,7 @@ def check_last_download():
     Returns:
         bool: True if a download was performed in the last 24 hours, False otherwise
     """
-    # Use the scraper logger from logging
+    # Use the scraper logger
     logger = logger.bind(name="scraper.acquisition_gateway")
     
     try:

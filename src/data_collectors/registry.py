@@ -5,7 +5,6 @@ This module provides a central registry for all scrapers in the application,
 making it easy to discover and manage scrapers.
 """
 
-import logging
 from src.utils.logger import logger
 
 # Set up logging using the centralized utility

@@ -34,7 +34,6 @@ import os
 import sys
 import time
 import atexit
-import logging
 import signal
 from dotenv import load_dotenv
 import traceback

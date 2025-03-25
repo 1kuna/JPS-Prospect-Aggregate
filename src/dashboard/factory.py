@@ -1,7 +1,6 @@
 """Flask application factory for the dashboard."""
 
 import os
-import logging
 from flask import Flask, send_from_directory, render_template_string, request
 from flask_cors import CORS
 from src.utils.logger import logger
@@ -28,9 +27,6 @@ def create_app(config=None):
     if config:
         app.config.update(config)
     
-    # Set up basic logging
-    app.logger.setLevel(logging.INFO)
-    
     # Register blueprints
     register_blueprints(app)
     
@@ -41,25 +37,25 @@ def create_app(config=None):
     project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     react_build_dir = os.path.join(project_root, 'frontend-react/dist')
     
-    app.logger.info(f"React build directory: {react_build_dir}")
+    logger.info(f"React build directory: {react_build_dir}")
     
     # Check if the build directory exists
     if not os.path.exists(react_build_dir):
-        app.logger.error(f"React build directory not found at {react_build_dir}")
+        logger.error(f"React build directory not found at {react_build_dir}")
     else:
-        app.logger.info(f"React build directory found at {react_build_dir}")
+        logger.info(f"React build directory found at {react_build_dir}")
         # List files in the build directory
-        app.logger.info(f"Files in build directory: {os.listdir(react_build_dir)}")
+        logger.info(f"Files in build directory: {os.listdir(react_build_dir)}")
     
     # Add routes for serving static files from React build
     @app.route('/assets/<path:filename>')
     def serve_assets(filename):
         """Serve asset files from the React build directory."""
         try:
-            app.logger.info(f"Serving asset: {filename}")
+            logger.info(f"Serving asset: {filename}")
             return send_from_directory(os.path.join(react_build_dir, 'assets'), filename)
         except Exception as e:
-            app.logger.error(f"Error serving asset {filename}: {str(e)}")
+            logger.error(f"Error serving asset {filename}: {str(e)}")
             return "", 404
     
     @app.route('/vite.svg')
@@ -68,7 +64,7 @@ def create_app(config=None):
         try:
             return send_from_directory(react_build_dir, 'vite.svg')
         except Exception as e:
-            app.logger.error(f"Error serving vite.svg: {str(e)}")
+            logger.error(f"Error serving vite.svg: {str(e)}")
             return "", 404
     
     # Note: We're removing the conflicting routes here since they're already defined in the main blueprint
@@ -94,11 +90,11 @@ def register_blueprints(app):
     app.register_blueprint(api)  # Register the main API blueprint
     app.register_blueprint(data_sources)
     
-    app.logger.info('Blueprints registered')
+    logger.info('Blueprints registered')
 
 def register_error_handlers(app):
     """Register error handlers for the application."""
     # Use the centralized error handlers from api.errors
     from src.api.errors import register_error_handlers
     register_error_handlers(app)
-    app.logger.info('Error handlers registered') 
+    logger.info('Error handlers registered') 

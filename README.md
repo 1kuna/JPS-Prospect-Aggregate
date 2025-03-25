@@ -12,6 +12,10 @@ A dashboard application that scrapes data from various government proposal forec
 - Scheduled data refresh to keep information current
 - Asynchronous task processing with Celery for improved performance
 - Health monitoring of scrapers with automated alerts
+- Robust logging with Loguru
+- Type checking with MyPy
+- Code formatting with Black
+- Data validation with Pydantic
 
 ## Current Data Sources
 
@@ -23,47 +27,48 @@ A dashboard application that scrapes data from various government proposal forec
 ```
 .
 ├── server.py                  # Main backend application entry point
-├── start_all.py               # Script to start all services
-├── src/                       # Backend source code directory
-│   ├── dashboard/             # Flask web application
-│   │   ├── factory.py         # Flask app factory
-│   │   ├── blueprints/        # Route definitions
-│   │   ├── static/            # Static assets (CSS, JS)
-│   │   └── templates/         # HTML templates
-│   ├── scrapers/              # Web scraper implementations
-│   │   ├── base_scraper.py    # Base scraper class
-│   │   └── ...                # Specific scraper implementations
-│   ├── database/              # Database models and operations
-│   ├── tasks/                 # Celery background tasks
-│   ├── utils/                 # Utility functions
-│   ├── config.py              # Configuration settings
-│   ├── celery_app.py          # Celery configuration
-│   └── exceptions.py          # Custom exceptions
-├── frontend-react/            # React frontend application
-│   ├── src/                   # React source code
-│   │   ├── assets/            # Images, fonts, etc.
-│   │   ├── components/        # Reusable components
-│   │   │   └── ui/            # shadcn/ui components
-│   │   ├── context/           # React context providers
-│   │   ├── hooks/             # Custom React hooks
-│   │   ├── lib/               # Utility functions
-│   │   ├── pages/             # Page components
-│   │   ├── store/             # Zustand store
-│   │   ├── utils/             # Utility functions
-│   │   ├── App.tsx            # Main application component
-│   │   ├── main.tsx           # Application entry point
-│   │   └── index.css          # Global styles
-│   ├── public/                # Public assets
-│   ├── package.json           # Frontend dependencies
-│   └── vite.config.ts         # Vite configuration
-├── data/                      # Data storage directory
-│   └── downloads/             # Downloaded files from scrapers
-├── logs/                      # Application logs
-├── scripts/                   # Utility scripts
-├── docs/                      # Documentation
-├── requirements.txt           # Python dependencies
-├── .env.example               # Example environment configuration
-└── .env                       # Environment configuration (not in version control)
+├── run_app.py                # Application runner with additional utilities
+├── src/                      # Backend source code directory
+│   ├── dashboard/            # Flask web application
+│   │   ├── factory.py        # Flask app factory
+│   │   ├── blueprints/       # Route definitions
+│   │   ├── static/          # Static assets (CSS, JS)
+│   │   └── templates/       # HTML templates
+│   ├── scrapers/            # Web scraper implementations
+│   │   ├── base_scraper.py  # Base scraper class
+│   │   └── ...             # Specific scraper implementations
+│   ├── database/           # Database models and operations
+│   ├── tasks/              # Celery background tasks
+│   ├── utils/              # Utility functions
+│   ├── config.py           # Configuration settings
+│   ├── celery_app.py       # Celery configuration
+│   └── exceptions.py       # Custom exceptions
+├── frontend-react/         # React frontend application
+│   ├── src/               # React source code
+│   │   ├── assets/       # Images, fonts, etc.
+│   │   ├── components/   # Reusable components
+│   │   │   └── ui/      # shadcn/ui components
+│   │   ├── context/     # React context providers
+│   │   ├── hooks/       # Custom React hooks
+│   │   ├── lib/         # Utility functions
+│   │   ├── pages/       # Page components
+│   │   ├── store/       # Zustand store
+│   │   ├── utils/       # Utility functions
+│   │   ├── App.tsx      # Main application component
+│   │   ├── main.tsx     # Application entry point
+│   │   └── index.css    # Global styles
+│   ├── public/          # Public assets
+│   ├── package.json     # Frontend dependencies
+│   └── vite.config.ts   # Vite configuration
+├── data/                # Data storage directory
+│   └── downloads/       # Downloaded files from scrapers
+├── logs/               # Application logs
+├── scripts/            # Utility scripts
+├── docs/               # Documentation
+├── tests/              # Test suite
+├── requirements.txt    # Python dependencies
+├── .env.example        # Example environment configuration
+└── .env               # Environment configuration (not in version control)
 ```
 
 ## Setup Instructions
@@ -72,7 +77,7 @@ A dashboard application that scrapes data from various government proposal forec
 
 #### Prerequisites
 
-- Python 3.9+
+- Python 3.10+
 - Node.js 18+ and npm/yarn
 - Redis (for Celery task queue)
 - Git
@@ -143,7 +148,7 @@ A dashboard application that scrapes data from various government proposal forec
 The easiest way to run all services is to use the provided script:
 
 ```bash
-python start_all.py
+python run_app.py
 ```
 
 This script will start the Flask backend, Celery worker, Celery beat scheduler, and React development server.
@@ -210,7 +215,7 @@ This script will start the Flask backend, Celery worker, Celery beat scheduler, 
 
 3. You can use the `rebuild_frontend.py` script to automatically build and copy the frontend to the correct location:
    ```bash
-   python rebuild_frontend.py
+   python scripts/rebuild_frontend.py
    ```
 
 ## Configuration
@@ -228,10 +233,23 @@ The application is configured using environment variables, which can be set in t
 - `CELERY_BROKER_URL`: Celery broker URL (default: `redis://localhost:6379/0`)
 - `CELERY_RESULT_BACKEND`: Celery result backend URL (default: `redis://localhost:6379/0`)
 - `SQL_ECHO`: Enable SQL query logging (default: `False`)
+- `LOG_LEVEL`: Set logging level (default: `INFO`)
 
 See `.env.example` for a complete list of configuration options.
 
-## Adding a New Scraper
+## Development
+
+### Code Quality Tools
+
+The project uses several tools to maintain code quality:
+
+- **Black**: Code formatting
+- **MyPy**: Static type checking
+- **Pytest**: Testing framework
+- **Pydantic**: Data validation
+- **Loguru**: Enhanced logging
+
+### Adding a New Scraper
 
 1. Create a new scraper class in `src/scrapers/` that inherits from `BaseScraper`
 2. Implement the required methods: `scrape()`, `parse()`, and `save()`
@@ -239,109 +257,35 @@ See `.env.example` for a complete list of configuration options.
 4. Add a new Celery task in `src/tasks/scraper_tasks.py`
 5. Add the task to the beat schedule in `src/celery_app.py`
 
-## Testing
+### Testing
 
-The project includes several test scripts to verify functionality:
-
-```bash
-# Test scraper status
-python test_scraper_status.py
-
-# Test health check functionality
-python test_health_check.py
-
-# Check proposals in the database
-python check_proposals.py
-```
-
-## Scraper Health Checks
-
-The application includes an automated health check system that verifies each scraper's functionality. This helps you monitor the status of your data sources and quickly identify any issues.
-
-### Features
-
-- **Automated Checks**: Health checks run automatically every 10 minutes
-- **Status Display**: Each data source displays its current status (Working/Not Working/Unknown) on the Data Sources page
-- **Manual Checks**: You can manually trigger health checks for individual scrapers or all scrapers at once
-- **Diagnostic Information**: Health checks provide error messages and response times to help diagnose issues
-- **Asynchronous Processing**: Health checks run asynchronously using Celery tasks
-
-### How It Works
-
-The health check system performs lightweight tests that verify each scraper can:
-1. Connect to its target website
-2. Navigate to the correct page
-3. Find the expected data elements
-
-This provides early warning if a website changes its structure or becomes unavailable, allowing you to address issues before they impact your data collection.
-
-## Architecture
-
-### Backend Architecture
-
-The backend uses the following components:
-
-- **Flask**: Web application framework for the API
-- **SQLAlchemy**: ORM for database access
-- **Celery**: Task queue for asynchronous and scheduled tasks
-- **Redis**: Message broker and result backend for Celery
-- **Playwright**: Browser automation for web scraping
-
-### Frontend Architecture
-
-The frontend is built with:
-
-- **React**: JavaScript library for building user interfaces
-- **TypeScript**: Typed superset of JavaScript
-- **Vite**: Next-generation frontend tooling
-- **shadcn/ui**: Beautifully designed components built with Radix UI and Tailwind CSS
-- **TanStack Table**: Headless UI for building powerful tables
-- **Zustand**: State management solution
-- **React Router**: Declarative routing for React
-- **React Hook Form**: Performant, flexible and extensible forms
-- **Zod**: TypeScript-first schema validation
-- **Tailwind CSS**: Utility-first CSS framework
-
-## Troubleshooting
-
-### Redis Connection Issues
-
-If you encounter Redis connection issues, make sure Redis is running:
+Run the test suite:
 
 ```bash
-redis-cli ping
+# Run all tests
+pytest
+
+# Run tests with coverage
+pytest --cov=src
+
+# Run specific test file
+pytest tests/test_scrapers.py
 ```
 
-Should return `PONG`. If not, restart Redis:
+## Monitoring
 
-- On macOS: `brew services restart redis`
-- On Ubuntu: `sudo systemctl restart redis-server`
-- On Windows: Restart the Redis service
-
-### Celery Worker Not Starting
-
-If the Celery worker fails to start, check:
-
-1. Redis is running
-2. Environment variables are set correctly
-3. Python path includes the project root
-
-### Database Connection Issues
-
-If you encounter database connection issues:
-
-1. Check the `DATABASE_URL` in your `.env` file
-2. Ensure the database file exists and is accessible
-3. Try reconnecting using the API endpoint: `/api/reconnect-db`
+- **Celery Flower**: Monitor Celery tasks at http://localhost:5555
+- **Application Logs**: Check the `logs/` directory for detailed application logs
+- **Health Checks**: Monitor scraper health through the dashboard interface
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Run tests and ensure code quality tools pass
+5. Submit a pull request
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## Logging System
-
-The application uses a unified logging system for all components. For details on how to use the logging system effectively, see the [utils/README.md](src/utils/README.md) file.
+This project is proprietary and confidential. All rights reserved.

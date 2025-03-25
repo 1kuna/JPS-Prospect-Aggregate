@@ -10,7 +10,6 @@ import sys
 import subprocess
 import time
 import signal
-import logging
 import datetime
 from typing import List, Tuple, Dict, Any, Optional, IO
 import traceback
