@@ -1,72 +1,34 @@
-import { createApiHooks } from '../../lib/create-api-hooks';
-import { useQuery, useInfiniteQuery } from '@tanstack/react-query';
-import { apiClient } from '../../lib/api-client';
-import type { Proposal } from '@/types';
+import { createEntityHooks } from '../use-query';
+import { Proposal, ProposalFilters, ProposalStatistics } from '@/types/proposals';
 
-interface ProposalFilters {
-  status?: string;
-  dataSourceId?: number;
-  startDate?: string;
-  endDate?: string;
-  search?: string;
-}
+// Create base CRUD hooks
+export const useProposals = createEntityHooks<Proposal, ProposalFilters>(
+  'proposals',
+  '/api/proposals',
+);
 
-const proposalsHooks = createApiHooks<Proposal>({
-  basePath: '/api/proposals',
-  queryKey: ['proposals'],
-});
-
-export const useProposals = () => {
-  const { useList, useGet, useCreate, useUpdate, useDelete } = proposalsHooks;
-  
-  return {
-    list: useList(),
-    get: useGet,
-    create: useCreate(),
-    update: useUpdate(),
-    delete: useDelete(),
-  };
-};
-
-// Hook for infinite loading with filters
-export const useInfiniteProposals = (filters: ProposalFilters = {}) => {
-  return useInfiniteQuery({
-    queryKey: ['proposals', 'infinite', filters],
-    queryFn: async ({ pageParam = 1 }) => {
-      const response = await apiClient.get('/api/proposals', {
-        params: { ...filters, page: pageParam },
-      });
-      return response.data;
-    },
-    getNextPageParam: (lastPage) => {
-      if (!lastPage.pagination) return undefined;
-      return lastPage.pagination.page < lastPage.pagination.total_pages
-        ? lastPage.pagination.page + 1
-        : undefined;
-    },
-  });
-};
-
-// Hook for proposal statistics
+// Add custom proposal-specific hooks
 export const useProposalStatistics = () => {
-  return useQuery({
-    queryKey: ['proposals', 'statistics'],
-    queryFn: async () => {
-      const response = await apiClient.get('/api/proposals/statistics');
-      return response.data;
-    },
-  });
+  const { useQuery } = useProposals;
+  return useQuery<ProposalStatistics>(
+    ['statistics'],
+    '/api/proposals/statistics'
+  );
 };
 
-// Hook for recent proposals
 export const useRecentProposals = (limit: number = 5) => {
-  return useQuery({
-    queryKey: ['proposals', 'recent', { limit }],
-    queryFn: async () => {
-      const response = await apiClient.get('/api/proposals/recent', {
-        params: { limit },
-      });
-      return response.data;
-    },
-  });
-}; 
+  const { useQuery } = useProposals;
+  return useQuery<Proposal[]>(
+    ['recent', { limit }],
+    '/api/proposals/recent',
+    { params: { limit } }
+  );
+};
+
+// The following hooks are automatically created by createEntityHooks:
+// - useProposals().useList() - Get list of proposals with pagination
+// - useProposals().useGet(id) - Get single proposal
+// - useProposals().useCreate() - Create new proposal
+// - useProposals().useUpdate(id) - Update proposal
+// - useProposals().useDelete(id) - Delete proposal
+// - useProposals().useInfiniteList() - Get infinite-loading list 

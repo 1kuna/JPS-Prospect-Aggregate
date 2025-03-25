@@ -1,6 +1,6 @@
 """Routes for the data sources blueprint."""
 
-from flask import render_template, current_app, jsonify, request, redirect, url_for, send_from_directory
+from flask import render_template, current_app, redirect, url_for, send_from_directory
 import threading
 import os
 import datetime

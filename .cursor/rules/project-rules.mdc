@@ -1,7 +1,7 @@
 ---
-description: General project-wide code standards and refactoring guidance.
-globs: **/*.{js,ts,jsx,tsx,py,java,go,rb,rs}
-alwaysApply: true
+description: 
+globs: 
+alwaysApply: false
 ---
 
 - **Simplify and Reduce Redundancy**

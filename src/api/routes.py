@@ -1,6 +1,6 @@
 """Routes for the API module."""
 
-from flask import jsonify, request, current_app
+from flask import request, current_app
 from sqlalchemy import func, desc, asc
 from sqlalchemy.exc import SQLAlchemyError
 from src.api import api
