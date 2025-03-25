@@ -2,12 +2,9 @@
 
 # Standard library imports
 import os
-import datetime
 import traceback
 
 # Third-party imports
-import pandas as pd
-import requests
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 # Local application imports
@@ -18,36 +15,17 @@ from src.exceptions import ScraperError
 from src.utils.logger import logger
 from src.utils.db_utils import update_scraper_status
 from src.config import SSA_CONTRACT_FORECAST_URL
+from src.utils.scraper_utils import (
+    check_url_accessibility,
+    download_file,
+    save_permanent_copy,
+    read_dataframe,
+    transform_dataframe,
+    handle_scraper_error
+)
 
 # Set up logging using the centralized utility
 logger = logger.bind(name="scraper.ssa_contract_forecast")
-
-def check_url_accessibility(url):
-    """
-    Check if a URL is accessible.
-    
-    Args:
-        url (str): URL to check
-        
-    Returns:
-        bool: True if the URL is accessible, False otherwise
-    """
-    logger.info(f"Checking accessibility of {url}")
-    
-    try:
-        # Set a reasonable timeout
-        response = requests.head(url, timeout=10)
-        
-        # Check if the response is successful
-        if response.status_code < 400:
-            logger.info(f"URL {url} is accessible (status code: {response.status_code})")
-            return True
-        
-        logger.error(f"URL {url} returned status code {response.status_code}")
-        return False
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Error checking URL {url}: {str(e)}")
-        return False
 
 class SSAContractForecastScraper(BaseScraper):
     """Scraper for the SSA Contract Forecast site."""
@@ -89,9 +67,7 @@ class SSAContractForecastScraper(BaseScraper):
         return None
     
     def _save_debug_info(self):
-        """
-        Save debug information when Excel link is not found.
-        """
+        """Save debug information when Excel link is not found."""
         # Save a screenshot for debugging
         screenshot_path = os.path.join(os.path.abspath(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), 'data', 'downloads', 'page_screenshot.png')
         self.page.screenshot(path=screenshot_path)
@@ -102,80 +78,6 @@ class SSAContractForecastScraper(BaseScraper):
         with open(html_path, 'w', encoding='utf-8') as f:
             f.write(self.page.content())
         self.logger.info(f"Saved page content to {html_path}")
-    
-    def _download_file(self, excel_link):
-        """
-        Download the Excel file from the given link.
-        
-        Args:
-            excel_link (str): URL of the Excel file
-            
-        Returns:
-            str: Path to the downloaded file
-            
-        Raises:
-            ScraperError: If download fails
-        """
-        self.logger.info(f"Downloading file from {excel_link}")
-        
-        try:
-            # Start the download
-            with self.page.expect_download(timeout=60000) as download_info:
-                # Click the link
-                self.page.click(f'a[href="{excel_link}"]')
-            
-            # Wait for the download to complete
-            download = download_info.value
-            self.logger.info(f"Download started: {download.suggested_filename}")
-            
-            # Wait for the download to complete and save the file
-            download_path = os.path.join(os.path.abspath(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), 'data', 'downloads', download.suggested_filename)
-            download.save_as(download_path)
-            self.logger.info(f"File downloaded to: {download_path}")
-            
-            return download_path
-        except Exception as e:
-            self.logger.error(f"Error during download: {str(e)}")
-            self.logger.error(traceback.format_exc())
-            raise ScraperError(f"Failed to download forecast document: {str(e)}")
-    
-    def download_forecast_document(self):
-        """
-        Download the forecast document from the SSA website.
-        
-        Returns:
-            str: Path to the downloaded file, or None if download failed
-        """
-        self.logger.info("Downloading forecast document")
-        
-        try:
-            # Navigate to the forecast page
-            self.logger.info(f"Navigating to {self.base_url}")
-            try:
-                self.navigate_to_url()
-            except Exception as e:
-                self.logger.error(f"Error navigating to forecast page: {str(e)}")
-                self.logger.error(traceback.format_exc())
-                raise
-            
-            # Find the Excel link
-            excel_link = self._find_excel_link()
-            
-            if not excel_link:
-                self.logger.error("Could not find Excel link on the page")
-                self._save_debug_info()
-                return None
-            
-            # Download the file
-            return self._download_file(excel_link)
-            
-        except PlaywrightTimeoutError as e:
-            self.logger.error(f"Timeout downloading forecast document: {str(e)}")
-            raise ScraperError(f"Timeout downloading forecast document: {str(e)}")
-        except Exception as e:
-            self.logger.error(f"Error downloading forecast document: {str(e)}")
-            self.logger.error(traceback.format_exc())
-            raise ScraperError(f"Failed to download forecast document: {str(e)}")
     
     def _get_field_mapping(self):
         """
@@ -211,62 +113,43 @@ class SSAContractForecastScraper(BaseScraper):
             'Incumbent': 'incumbent'
         }
     
-    def _create_column_mapping(self, df_columns):
+    def download_forecast_document(self):
         """
-        Create a mapping from Excel columns to database fields.
+        Download the forecast document from the SSA website.
         
-        Args:
-            df_columns: DataFrame columns
-            
         Returns:
-            dict: Mapping of Excel columns to database fields
+            str: Path to the downloaded file, or None if download failed
         """
-        field_mapping = self._get_field_mapping()
-        column_mapping = {}
+        self.logger.info("Downloading forecast document")
         
-        for excel_col in df_columns:
-            for map_col, db_field in field_mapping.items():
-                if excel_col.lower() == map_col.lower():
-                    column_mapping[excel_col] = db_field
-                    break
-        
-        self.logger.info(f"Column mapping: {column_mapping}")
-        return column_mapping
-    
-    def _transform_row_data(self, row, column_mapping):
-        """
-        Transform a row of Excel data into proposal data.
-        
-        Args:
-            row: DataFrame row
-            column_mapping: Mapping of Excel columns to database fields
+        try:
+            # Navigate to the forecast page
+            self.logger.info(f"Navigating to {self.base_url}")
+            try:
+                self.navigate_to_url()
+            except Exception as e:
+                self.logger.error(f"Error navigating to forecast page: {str(e)}")
+                self.logger.error(traceback.format_exc())
+                raise
             
-        Returns:
-            dict: Transformed proposal data
-        """
-        proposal_data = {
-            'is_latest': True
-        }
-        
-        # Map the fields
-        for excel_col, db_field in column_mapping.items():
-            value = row[excel_col]
+            # Find the Excel link
+            excel_link = self._find_excel_link()
             
-            # Handle NaN values
-            if pd.isna(value):
-                value = None
+            if not excel_link:
+                self.logger.error("Could not find Excel link on the page")
+                self._save_debug_info()
+                return None
             
-            # Parse dates
-            if db_field in ['release_date', 'response_date', 'award_date'] and value is not None:
-                value = self.parse_date(str(value))
+            # Download the file
+            temp_path = download_file(self.page, f'a[href="{excel_link}"]')
+            return save_permanent_copy(temp_path, self.source_name, 'xlsx')
             
-            # Parse monetary values
-            elif db_field == 'estimated_value' and value is not None:
-                value = self.parse_value(str(value))
-            
-            proposal_data[db_field] = value
-        
-        return proposal_data
+        except PlaywrightTimeoutError as e:
+            handle_scraper_error(e, self.source_name, "Timeout downloading forecast document")
+            raise ScraperError(f"Timeout downloading forecast document: {str(e)}")
+        except Exception as e:
+            handle_scraper_error(e, self.source_name, "Error downloading forecast document")
+            raise ScraperError(f"Failed to download forecast document: {str(e)}")
     
     def process_excel(self, excel_file, session, data_source):
         """
@@ -291,29 +174,32 @@ class SSAContractForecastScraper(BaseScraper):
         
         try:
             # Read the Excel file
-            df = pd.read_excel(excel_file)
+            df = read_dataframe(excel_file, 'xlsx')
             
-            # Check if dataframe is empty
-            if df.empty:
-                self.logger.error("Excel file is empty")
-                return 0
+            # Get field mapping
+            field_mapping = self._get_field_mapping()
             
-            # Log the columns
-            self.logger.info(f"Excel columns: {df.columns.tolist()}")
-            
-            # Create column mapping
-            column_mapping = self._create_column_mapping(df.columns)
+            # Transform the data
+            transformed_data = transform_dataframe(
+                df=df,
+                column_mapping=field_mapping,
+                date_columns=['release_date', 'response_date', 'award_date'],
+                value_columns=['estimated_value'],
+                parse_funcs={
+                    'date': self.parse_date,
+                    'value': self.parse_value
+                }
+            )
             
             # Process each row
             count = 0
-            for _, row in df.iterrows():
+            for item in transformed_data:
                 try:
-                    # Transform row data
-                    proposal_data = self._transform_row_data(row, column_mapping)
-                    proposal_data['source_id'] = data_source.id
+                    # Add source_id
+                    item['source_id'] = data_source.id
                     
                     # Get or create proposal
-                    proposal_query = self.get_proposal_query(session, proposal_data)
+                    proposal_query = self.get_proposal_query(session, item)
                     if proposal_query:
                         count += 1
                 except Exception as e:
@@ -323,9 +209,8 @@ class SSAContractForecastScraper(BaseScraper):
             return count
             
         except Exception as e:
-            error_msg = f"Failed to process Excel file: {str(e)}"
-            self.logger.error(error_msg)
-            raise ScraperError(error_msg)
+            handle_scraper_error(e, self.source_name, "Failed to process Excel file")
+            raise ScraperError(f"Failed to process Excel file: {str(e)}")
     
     def get_proposal_query(self, session, proposal_data):
         """
@@ -395,8 +280,7 @@ def run_scraper(force=False):
         # Check if the URL is accessible
         if not check_url_accessibility(SSA_CONTRACT_FORECAST_URL):
             error_msg = f"URL {SSA_CONTRACT_FORECAST_URL} is not accessible"
-            local_logger.error(error_msg)
-            update_scraper_status("SSA Contract Forecast", "error", error_msg)
+            handle_scraper_error(ScraperError(error_msg), "SSA Contract Forecast")
             raise ScraperError(error_msg)
         
         # Run the scraper
@@ -406,8 +290,7 @@ def run_scraper(force=False):
         # If scraper.scrape() returns False, it means an error occurred
         if not success:
             error_msg = "Scraper failed without specific error"
-            local_logger.error(error_msg)
-            update_scraper_status("SSA Contract Forecast", "error", error_msg)
+            handle_scraper_error(ScraperError(error_msg), "SSA Contract Forecast")
             raise ScraperError(error_msg)
         
         # Update the download tracker with the current time
@@ -423,15 +306,13 @@ def run_scraper(force=False):
         local_logger.error(error_msg)
         local_logger.error("Playwright module not found. Please install it with 'pip install playwright'")
         local_logger.error("Then run 'playwright install' to install the browsers")
-        update_scraper_status("SSA Contract Forecast", "error", error_msg)
+        handle_scraper_error(e, "SSA Contract Forecast", "Import error")
         raise
     except ScraperError as e:
-        update_scraper_status("SSA Contract Forecast", "error", str(e))
+        handle_scraper_error(e, "SSA Contract Forecast")
         raise
     except Exception as e:
-        error_msg = f"Error running scraper: {str(e)}"
-        local_logger.error(error_msg)
-        update_scraper_status("SSA Contract Forecast", "error", error_msg)
+        handle_scraper_error(e, "SSA Contract Forecast", "Error running scraper")
         raise ScraperError(error_msg)
     finally:
         if scraper:

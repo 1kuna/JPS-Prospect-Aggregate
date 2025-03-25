@@ -1,168 +1,94 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiClient } from '../../lib/api-client';
-import { toast } from '../use-toast';
+import { useApiQuery, useApiMutation } from './useApi';
+
+interface DatabaseStatus {
+  status: string;
+  lastBackup: string;
+  size: number;
+}
+
+interface DatabaseBackup {
+  id: string;
+  timestamp: string;
+  size: number;
+  status: string;
+}
 
 // Query for database status
 export const useDatabaseStatus = () => {
-  return useQuery({
+  return useApiQuery<DatabaseStatus>({
     queryKey: ['database', 'status'],
-    queryFn: async () => {
-      const response = await apiClient.get('/api/database/status');
-      return response.data;
-    },
+    endpoint: '/api/database/status',
   });
 };
 
 // Query for available backups
 export const useDatabaseBackups = () => {
-  return useQuery({
+  return useApiQuery<DatabaseBackup[]>({
     queryKey: ['database', 'backups'],
-    queryFn: async () => {
-      const response = await apiClient.get('/api/database/backups');
-      return response.data;
-    },
+    endpoint: '/api/database/backups',
   });
 };
 
 // Mutation for rebuilding database
 export const useRebuildDatabase = () => {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async () => {
-      const response = await apiClient.post('/api/database/rebuild');
-      return response.data;
-    },
-    onSuccess: () => {
-      toast({
-        title: 'Success',
-        description: 'Database rebuilt successfully',
-      });
-      queryClient.invalidateQueries({ queryKey: ['database'] });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: 'Error',
-        description: 'Failed to rebuild database: ' + error.message,
-        variant: 'destructive',
-      });
-    },
+  return useApiMutation<void>({
+    endpoint: '/api/database/rebuild',
+    method: 'POST',
+    successMessage: 'Database rebuilt successfully',
+    errorMessage: 'Failed to rebuild database',
+    invalidateQueries: [['database']],
   });
 };
 
 // Mutation for initializing database
 export const useInitializeDatabase = () => {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async () => {
-      const response = await apiClient.post('/api/database/initialize');
-      return response.data;
-    },
-    onSuccess: () => {
-      toast({
-        title: 'Success',
-        description: 'Database initialized successfully',
-      });
-      queryClient.invalidateQueries({ queryKey: ['database'] });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: 'Error',
-        description: 'Failed to initialize database: ' + error.message,
-        variant: 'destructive',
-      });
-    },
+  return useApiMutation<void>({
+    endpoint: '/api/database/initialize',
+    method: 'POST',
+    successMessage: 'Database initialized successfully',
+    errorMessage: 'Failed to initialize database',
+    invalidateQueries: [['database']],
   });
 };
 
 // Mutation for resetting database
 export const useResetDatabase = () => {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async () => {
-      const response = await apiClient.post('/api/database/reset');
-      return response.data;
-    },
-    onSuccess: () => {
-      toast({
-        title: 'Success',
-        description: 'Database reset successfully',
-      });
-      queryClient.invalidateQueries({ queryKey: ['database'] });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: 'Error',
-        description: 'Failed to reset database: ' + error.message,
-        variant: 'destructive',
-      });
-    },
+  return useApiMutation<void>({
+    endpoint: '/api/database/reset',
+    method: 'POST',
+    successMessage: 'Database reset successfully',
+    errorMessage: 'Failed to reset database',
+    invalidateQueries: [['database']],
   });
 };
 
 // Mutation for creating backup
 export const useCreateBackup = () => {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async () => {
-      const response = await apiClient.post('/api/database/backups');
-      return response.data;
-    },
-    onSuccess: () => {
-      toast({
-        title: 'Success',
-        description: 'Backup created successfully',
-      });
-      queryClient.invalidateQueries({ queryKey: ['database'] });
-      queryClient.invalidateQueries({ queryKey: ['database', 'backups'] });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: 'Error',
-        description: 'Failed to create backup: ' + error.message,
-        variant: 'destructive',
-      });
-    },
+  return useApiMutation<void>({
+    endpoint: '/api/database/backups',
+    method: 'POST',
+    successMessage: 'Backup created successfully',
+    errorMessage: 'Failed to create backup',
+    invalidateQueries: [['database'], ['database', 'backups']],
   });
 };
 
 // Mutation for restoring backup
 export const useRestoreBackup = () => {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (backupId: string) => {
-      const response = await apiClient.post('/api/database/backups/restore', { backupId });
-      return response.data;
-    },
-    onSuccess: () => {
-      toast({
-        title: 'Success',
-        description: 'Backup restored successfully',
-      });
-      queryClient.invalidateQueries({ queryKey: ['database'] });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: 'Error',
-        description: 'Failed to restore backup: ' + error.message,
-        variant: 'destructive',
-      });
-    },
+  return useApiMutation<void, { backupId: string }>({
+    endpoint: '/api/database/backups/restore',
+    method: 'POST',
+    successMessage: 'Backup restored successfully',
+    errorMessage: 'Failed to restore backup',
+    invalidateQueries: [['database']],
   });
 };
 
 // Mutation for direct SQL query execution
 export const useExecuteQuery = () => {
-  return useMutation({
-    mutationFn: async (query: string) => {
-      const response = await apiClient.post('/api/database/query', { query });
-      return response.data;
-    },
-    onError: (error: Error) => {
-      toast({
-        title: 'Error',
-        description: 'Query execution failed: ' + error.message,
-        variant: 'destructive',
-      });
-    },
+  return useApiMutation<unknown, { query: string }>({
+    endpoint: '/api/database/query',
+    method: 'POST',
+    errorMessage: 'Query execution failed',
   });
 }; 

@@ -1,38 +1,41 @@
-import { useQuery } from '@tanstack/react-query';
-import { apiClient } from '../../lib/api-client';
+import { useApiQuery } from './useApi';
 import type { DashboardData, Statistics } from '@/types';
+
+interface TimeSeriesData {
+  timestamp: string;
+  value: number;
+}
 
 // Hook for dashboard data
 export const useDashboard = () => {
-  return useQuery({
+  return useApiQuery<DashboardData>({
     queryKey: ['analytics', 'dashboard'],
-    queryFn: async () => {
-      const response = await apiClient.get('/api/analytics/dashboard');
-      return response.data;
+    endpoint: '/api/analytics/dashboard',
+    options: {
+      staleTime: 60 * 1000, // 1 minute
     },
   });
 };
 
 // Hook for overall statistics
 export const useStatistics = () => {
-  return useQuery({
+  return useApiQuery<Statistics>({
     queryKey: ['analytics', 'statistics'],
-    queryFn: async () => {
-      const response = await apiClient.get('/api/analytics/statistics');
-      return response.data;
+    endpoint: '/api/analytics/statistics',
+    options: {
+      staleTime: 5 * 60 * 1000, // 5 minutes
     },
   });
 };
 
 // Hook for time-series data
 export const useTimeSeries = (metric: string, timeRange: string = '7d') => {
-  return useQuery({
+  return useApiQuery<TimeSeriesData[]>({
     queryKey: ['analytics', 'timeSeries', { metric, timeRange }],
-    queryFn: async () => {
-      const response = await apiClient.get('/api/analytics/time-series', {
-        params: { metric, timeRange },
-      });
-      return response.data;
+    endpoint: '/api/analytics/time-series',
+    params: { metric, timeRange },
+    options: {
+      staleTime: 5 * 60 * 1000, // 5 minutes
     },
   });
 };
