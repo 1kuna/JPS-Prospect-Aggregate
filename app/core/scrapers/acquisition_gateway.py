@@ -15,17 +15,22 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 import pandas as pd
 
 # Local application imports
-from src.data_collectors.base_scraper import BaseScraper
-from src.database.db import session_scope
-from src.database.models import Proposal, ScraperStatus, DataSource
-from src.database.download_tracker import download_tracker
-from src.config import LOGS_DIR, DOWNLOADS_DIR, ACQUISITION_GATEWAY_URL, PAGE_NAVIGATION_TIMEOUT
-from src.exceptions import ScraperError
-from src.utils.file_utils import ensure_directory
-from src.utils.db_utils import update_scraper_status
-from src.utils.logger import logger
-from src.utils.db_context import db_session
-from src.utils.scraper_utils import (
+from app.core.base_scraper import BaseScraper
+from app.database.connection import session_scope
+from app.models import Proposal, ScraperStatus, DataSource
+from app.database.download_tracker import download_tracker
+from app.config import LOGS_DIR, DOWNLOADS_DIR, ACQUISITION_GATEWAY_URL, PAGE_NAVIGATION_TIMEOUT
+from app.exceptions import ScraperError
+from app.utils.file_utils import ensure_directory
+from app.utils.db_utils import update_scraper_status
+from app.utils.logger import logger
+from app.utils.db_context import db_session
+from app.utils.scraper_utils import (
+    wait_for_download,
+    wait_for_element,
+    wait_for_selector,
+    wait_for_network_idle,
+    wait_for_load_state,
     check_url_accessibility,
     download_file,
     save_permanent_copy,

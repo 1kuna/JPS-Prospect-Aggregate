@@ -3,14 +3,14 @@ Health check tasks for monitoring system and data sources.
 """
 
 from celery import shared_task
-from src.utils.logger import logger
-from src.data_collectors.health_check import (
+from app.utils.logger import logger
+from app.core.scrapers.health_check import (
     check_all_scrapers as check_all_scrapers_impl,
     check_acquisition_gateway as check_acquisition_gateway_impl,
     check_ssa_contract_forecast as check_ssa_contract_forecast_impl
 )
 
-@shared_task(name="src.tasks.health.check_all_scrapers")
+@shared_task(name="app.tasks.health.check_all_scrapers")
 def check_all_scrapers():
     """
     Check the health of all scrapers.
@@ -37,7 +37,7 @@ def check_all_scrapers():
             "message": f"Error in health check: {str(e)}"
         }
 
-@shared_task(name="src.tasks.health.check_acquisition_gateway")
+@shared_task(name="app.tasks.health.check_acquisition_gateway")
 def check_acquisition_gateway():
     """
     Check the health of the Acquisition Gateway scraper.
@@ -64,7 +64,7 @@ def check_acquisition_gateway():
             "message": f"Error in health check: {str(e)}"
         }
 
-@shared_task(name="src.tasks.health.check_ssa_contract_forecast")
+@shared_task(name="app.tasks.health.check_ssa_contract_forecast")
 def check_ssa_contract_forecast():
     """
     Check the health of the SSA Contract Forecast scraper.

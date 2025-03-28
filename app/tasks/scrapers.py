@@ -3,15 +3,15 @@ Scraper tasks for background processing.
 """
 
 from celery import shared_task
-from src.utils.logger import logger
-from src.data_collectors.acquisition_gateway import run_scraper as run_acquisition_gateway_scraper
-from src.data_collectors.ssa_contract_forecast import run_scraper as run_ssa_contract_forecast_scraper
-from src.exceptions import ScraperError
-from src.database.db import get_db
-from src.database.models import DataSource, ScraperStatus
+from app.utils.logger import logger
+from app.core.scrapers.acquisition_gateway import run_scraper as run_acquisition_gateway_scraper
+from app.core.scrapers.ssa_contract_forecast import run_scraper as run_ssa_contract_forecast_scraper
+from app.exceptions import ScraperError
+from app.database.connection import get_db
+from app.models import DataSource, ScraperStatus
 import datetime
 import traceback
-from src.utils.db_context import db_session
+from app.utils.db_context import db_session
 from functools import wraps
 
 def scraper_task_handler(source_name):
@@ -87,7 +87,7 @@ def scraper_task_handler(source_name):
         return wrapper
     return decorator
 
-@shared_task(bind=True, max_retries=3, name="src.tasks.scrapers.run_acquisition_gateway")
+@shared_task(bind=True, max_retries=3, name="app.tasks.scrapers.run_acquisition_gateway")
 @scraper_task_handler("Acquisition Gateway")
 def run_acquisition_gateway(self, force=False):
     """
@@ -101,7 +101,7 @@ def run_acquisition_gateway(self, force=False):
     """
     return run_acquisition_gateway_scraper(force=force)
 
-@shared_task(bind=True, max_retries=3, name="src.tasks.scrapers.run_ssa_contract_forecast")
+@shared_task(bind=True, max_retries=3, name="app.tasks.scrapers.run_ssa_contract_forecast")
 @scraper_task_handler("SSA Contract Forecast")
 def run_ssa_contract_forecast(self, force=False):
     """
@@ -115,7 +115,7 @@ def run_ssa_contract_forecast(self, force=False):
     """
     return run_ssa_contract_forecast_scraper(force=force)
 
-@shared_task(bind=True, name="src.tasks.scrapers.run_all_scrapers")
+@shared_task(bind=True, name="app.tasks.scrapers.run_all_scrapers")
 def run_all_scrapers(self, force=False):
     """
     Run all scrapers.
@@ -209,7 +209,7 @@ def _count_proposals_for_source(source_name):
                 return 0
             
             # Count proposals
-            from src.database.models import Proposal
+            from app.models import Proposal
             count = db.query(Proposal).filter(
                 Proposal.source_id == data_source.id
             ).count()

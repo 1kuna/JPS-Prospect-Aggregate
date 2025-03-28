@@ -6,7 +6,7 @@ import os
 from celery import Celery
 from celery.signals import task_failure, task_success, worker_ready
 from dotenv import load_dotenv
-from src.utils.logger import logger
+from app.utils.logger import logger
 
 # Load environment variables
 load_dotenv()
@@ -16,9 +16,8 @@ REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
 # Define task modules to include
 TASK_MODULES = [
-    'src.tasks.scrapers',
-    'src.tasks.health',
-    'src.celery_app'
+    'app.tasks.scrapers',
+    'app.tasks.health',
 ]
 
 # Create Celery application
@@ -62,17 +61,17 @@ app.conf.update(
 # Configure Celery beat schedule
 app.conf.beat_schedule = {
     'acquisition-gateway-daily': {
-        'task': 'src.tasks.scrapers.run_acquisition_gateway',
+        'task': 'app.tasks.scrapers.run_acquisition_gateway',
         'schedule': 3600 * 24,  # Run daily
         'args': (True,),  # Force argument
     },
     'ssa-contract-forecast-daily': {
-        'task': 'src.tasks.scrapers.run_ssa_contract_forecast',
+        'task': 'app.tasks.scrapers.run_ssa_contract_forecast',
         'schedule': 3600 * 24,  # Run daily
         'args': (True,),  # Force argument
     },
     'check-all-scrapers': {
-        'task': 'src.tasks.health.check_all_scrapers',
+        'task': 'app.tasks.health.check_all_scrapers',
         'schedule': 3600,  # Run hourly
     }
 }

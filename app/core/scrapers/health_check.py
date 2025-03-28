@@ -3,13 +3,10 @@ import sys
 import time
 import datetime
 
-# Add the parent directory to the path so we can import from src
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-
-from src.database.db import session_scope
-from src.database.models import DataSource, ScraperStatus
-from src.config import LOGS_DIR
-from src.utils.logger import logger, cleanup_logs
+from app.database.connection import session_scope
+from app.models import DataSource, ScraperStatus
+from app.config import LOGS_DIR
+from app.utils.logger import logger, cleanup_logs
 
 # Set up logging with the centralized utility
 logger = logger.bind(name="health_check")
@@ -105,14 +102,14 @@ def check_scraper_health(scraper_instance, source_name):
 
 def check_acquisition_gateway():
     """Check the health of the Acquisition Gateway scraper"""
-    from src.data_collectors.acquisition_gateway import AcquisitionGatewayScraper
+    from app.core.scrapers.acquisition_gateway import AcquisitionGatewayScraper
     logger.info("Starting health check for Acquisition Gateway Forecast")
     scraper = AcquisitionGatewayScraper()
     return check_scraper_health(scraper, "Acquisition Gateway Forecast")
 
 def check_ssa_contract_forecast():
     """Check the health of the SSA Contract Forecast scraper"""
-    from src.data_collectors.ssa_contract_forecast import SSAContractForecastScraper
+    from app.core.scrapers.ssa_contract_forecast import SSAContractForecastScraper
     logger.info("Starting health check for SSA Contract Forecast")
     scraper = SSAContractForecastScraper()
     return check_scraper_health(scraper, "SSA Contract Forecast")

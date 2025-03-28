@@ -23,12 +23,12 @@ from playwright.sync_api import sync_playwright
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 # Local application imports
-from src.database.db import get_db, session_scope
-from src.database.models import DataSource
-from src.exceptions import ScraperError
-from src.config import LOGS_DIR, DOWNLOADS_DIR, LOG_FORMAT, LOG_FILE_MAX_BYTES, LOG_FILE_BACKUP_COUNT
-from src.utils.file_utils import clean_old_files, find_files
-from src.utils.logger import logger
+from app.database.connection import get_db, session_scope
+from app.models import DataSource
+from app.exceptions import ScraperError
+from app.config import LOGS_DIR, DOWNLOADS_DIR, LOG_FORMAT, LOG_FILE_MAX_BYTES, LOG_FILE_BACKUP_COUNT
+from app.utils.file_utils import clean_old_files, find_files
+from app.utils.logger import logger
 
 # Directory creation is now centralized in config.py, no need to create them here
 

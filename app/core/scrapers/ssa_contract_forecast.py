@@ -8,16 +8,21 @@ import traceback
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 # Local application imports
-from src.data_collectors.base_scraper import BaseScraper
-from src.database.models import Proposal
-from src.database.download_tracker import DownloadTracker
-from src.exceptions import ScraperError
-from src.utils.logger import logger
-from src.utils.db_utils import update_scraper_status
-from src.config import SSA_CONTRACT_FORECAST_URL
-from src.utils.scraper_utils import (
+from app.core.base_scraper import BaseScraper
+from app.models import Proposal
+from app.database.download_tracker import DownloadTracker
+from app.exceptions import ScraperError
+from app.utils.logger import logger
+from app.utils.db_utils import update_scraper_status
+from app.config import SSA_CONTRACT_FORECAST_URL
+from app.utils.scraper_utils import (
     check_url_accessibility,
     download_file,
+    wait_for_download,
+    wait_for_element,
+    wait_for_selector,
+    wait_for_network_idle,
+    wait_for_load_state,
     save_permanent_copy,
     read_dataframe,
     transform_dataframe,

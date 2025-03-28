@@ -5,7 +5,7 @@ from sqlalchemy.orm import relationship, Session
 import os
 from dotenv import load_dotenv
 import datetime
-from src.database.db import Base
+from app.database.connection import Base
 
 load_dotenv()
 
