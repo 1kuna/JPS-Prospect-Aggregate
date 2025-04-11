@@ -109,26 +109,7 @@ def safe_file_copy(source: Union[str, Path], destination: Union[str, Path]) -> O
         logger.error(f"Failed to copy {source} to {destination}: {e}")
         return None
 
-# Backward compatibility functions
-def ensure_directories(*directories: str) -> None:
-    """
-    Ensure that the specified directories exist, creating them if necessary.
-    Backward compatibility function.
-    
-    Args:
-        *directories: Variable number of directory paths to ensure exist
-    """
-    for directory in directories:
-        ensure_directory(directory)
-
-def cleanup_files(directory: str, pattern: str = "*", keep_count: int = 0) -> int:
-    """
-    Backward compatibility function for clean_old_files.
-    """
-    return clean_old_files(directory, pattern, keep_count)
-
-def find_valid_files(directory: str, pattern: str, min_size: int = 0) -> List[Path]:
-    """
-    Backward compatibility function for find_files.
-    """
-    return find_files(directory, pattern, min_size) 
+# Backward compatibility functions removed as they were simple wrappers with no usage
+# - ensure_directories
+# - cleanup_files
+# - find_valid_files 

@@ -97,16 +97,6 @@ def close_session(session):
             logger.error(f"Error closing session: {str(e)}")
     Session.remove()
 
-# Function to dispose engine connections
-def dispose_engine():
-    """Dispose all connections in the connection pool."""
-    try:
-        engine.dispose()
-        logger.info("Database engine connection pool disposed")
-    except Exception as e:
-        logger.error(f"Error disposing engine: {str(e)}")
-        raise
-
 # Define reusable session scope decorator
 @contextmanager
 def session_scope():
