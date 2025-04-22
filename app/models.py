@@ -194,7 +194,6 @@ class ScraperStatus(Base):
     last_checked = Column(DateTime, nullable=True)
     error_message = Column(Text, nullable=True)
     response_time = Column(Float, nullable=True)  # in seconds
-    subtask_id = Column(String(255), nullable=True)  # Store the Celery task ID for tracking
     
     source = relationship("DataSource", back_populates="status_checks")
     

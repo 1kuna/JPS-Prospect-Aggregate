@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Unit test for the scraper tasks using the new Celery task system.
+Unit test for the scraper tasks.
 This script tests the scraper tasks for all data sources.
 """
 

@@ -3,30 +3,44 @@ Pytest configuration and shared fixtures.
 """
 
 import pytest
-from app import create_app, create_celery_app
-from app.config import Config
+from flask import Flask
+from app import create_app
+from app.database import db as _db
+from app.config import TestConfig
 
 class TestConfig(Config):
     """Test configuration."""
     TESTING = True
     SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
-    CELERY_BROKER_URL = 'memory://'
-    CELERY_RESULT_BACKEND = 'cache'
-    CELERY_CACHE_BACKEND = 'memory'
 
-@pytest.fixture
-def app():
-    """Create and configure a new app instance for each test."""
-    app = create_app(TestConfig)
-    with app.app_context():
-        yield app
+@pytest.fixture(scope='session')
+def app(request):
+    """Session-wide test Flask application."""
+    flask_app = create_app(config_class=TestConfig)
+
+    # Establish an application context before running the tests.
+    ctx = flask_app.app_context()
+    ctx.push()
+
+    def teardown():
+        ctx.pop()
+
+    request.addfinalizer(teardown)
+    return flask_app
+
+@pytest.fixture(scope='session')
+def db(app, request):
+    """Session-wide test database."""
+    def teardown():
+        _db.drop_all()
+
+    _db.app = app
+    _db.create_all()
+
+    request.addfinalizer(teardown)
+    return _db
 
 @pytest.fixture
 def client(app):
     """Create a test client for the app."""
     return app.test_client()
-
-@pytest.fixture
-def celery_app(app):
-    """Create a Celery app instance for testing."""
-    return create_celery_app(app)

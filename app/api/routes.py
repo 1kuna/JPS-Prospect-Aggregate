@@ -3,21 +3,19 @@
 from flask import request, current_app
 from sqlalchemy import func, desc, asc
 from sqlalchemy.exc import SQLAlchemyError
-from src.api import api
-from src.database.models import Proposal, DataSource, ScraperStatus
-from src.exceptions import ValidationError, NotFoundError
-from src.celery_app import celery_app
-from src.utils.logger import logger
-from src.utils.db_context import db_session, with_db_session
+from app.api import api
+from app.database.models import Proposal, DataSource, ScraperStatus
+from app.exceptions import ValidationError, NotFoundError
+from app.utils.logger import logger
+from app.utils.db_context import db_session, with_db_session
 import math
 import datetime
 import os
 import platform
-import psutil
 import time
 import traceback
-from celery.result import AsyncResult
 import datetime
+from app.core.scrapers import AcquisitionGatewayScraper, SSAContractForecastScraper
 
 # Set up logging using the centralized utility
 logger = logger.bind(name="api.routes")
@@ -382,272 +380,82 @@ def delete_data_source(source_id):
 @api.route('/data-sources/<int:source_id>/pull', methods=['POST'])
 def pull_data_source(source_id):
     """
-    Manually trigger a data source pull.
-    
-    This endpoint starts a Celery task to pull data from the specified source.
-    It returns the task ID which can be used to check the status of the task.
+    Trigger a data pull for a specific data source SYNCHRONOUSLY.
+    NOTE: This runs the scraper within the request thread.
     """
     with db_session() as session:
+        data_source = session.query(DataSource).get(source_id)
+        if not data_source:
+            raise NotFoundError(f"Data source with ID {source_id} not found")
+
+        # Check if scraping is already in progress (Optional - requires tracking state)
+        # status = session.query(ScraperStatus).filter_by(source_name=data_source.name).first()
+        # if status and status.status == 'running':
+        #     return jsonify({"message": f"Scraping already in progress for {data_source.name}"}), 409 # Conflict
+
+        # Update status to running
         try:
-            # Find the data source
-            source = session.query(DataSource).filter_by(id=source_id).first()
-            if not source:
-                raise NotFoundError(f"Data source with ID {source_id} not found")
-            
-            # Get task parameters
-            params = request.json or {}
-            debug = params.get('debug', False)
-            force = params.get('force', False)
-            
-            # Calculate the cooldown period
-            cooldown_hours = params.get('cooldown_hours', 6)
-            cooldown_time = datetime.datetime.now() - datetime.timedelta(hours=cooldown_hours)
-            
-            # Check if the source was recently scraped
-            if source.last_scraped and source.last_scraped > cooldown_time and not force:
-                return jsonify({
-                    "status": "warning",
-                    "message": f"Data source was recently scraped at {source.last_scraped.isoformat()}. Use force=true to override the cooldown period."
-                }), 200
-            
-            # Start the scraper task using the new simplified task system
-            from src.tasks.scrapers import run_all_scrapers, run_acquisition_gateway, run_ssa_contract_forecast
-            
-            # Choose the appropriate task based on the source name
-            if "Acquisition Gateway" in source.name:
-                task_result = run_acquisition_gateway.delay(force=True)
-            elif "SSA Contract Forecast" in source.name:
-                task_result = run_ssa_contract_forecast.delay(force=True)
-            else:
-                # Use a general task
-                task_result = run_all_scrapers.delay(force=True)
-            
-            task = task_result
-            
-            # Update the source's last_scraped timestamp
-            source.last_scraped = datetime.datetime.now()
-            
-            # Create or update the ScraperStatus record
-            status_record = session.query(ScraperStatus).filter_by(source_id=source_id).first()
-            if status_record:
-                # Update existing record
-                status_record.status = "running"
-                status_record.last_checked = datetime.datetime.now()
-                status_record.error_message = None
-                status_record.subtask_id = task.id
-            else:
-                # Create new record
-                new_status = ScraperStatus(
-                    source_id=source_id,
-                    status="running",
-                    last_checked=datetime.datetime.now(),
-                    error_message=None,
-                    subtask_id=task.id
-                )
-                session.add(new_status)
-            
+            status = session.query(ScraperStatus).filter_by(source_name=data_source.name).first()
+            if not status:
+                status = ScraperStatus(source_name=data_source.name, source_id=source_id)
+                session.add(status)
+            status.status = "running"
+            status.error_message = None
+            status.timestamp = datetime.datetime.now() # Use UTCNow? Review model definition
             session.commit()
-            
-            return jsonify({
-                "status": "success",
-                "message": f"Data pull task started for source {source.name}",
-                "data": {
-                    "task_id": task.id,
-                    "source_id": source_id,
-                    "source_name": source.name
-                }
-            })
-        except NotFoundError as e:
-            return jsonify({"status": "error", "message": str(e)}), e.status_code
-        except Exception as e:
-            current_app.logger.error(f"Error in pull_data_source: {str(e)}")
-            current_app.logger.error(traceback.format_exc())
-            return jsonify({"status": "error", "message": str(e)}), 500
+        except SQLAlchemyError as db_error:
+            logger.error(f"Failed to update status to running before pull: {db_error}")
+            session.rollback()
+            # Decide if we should proceed or return error
+            return jsonify({"error": "Database error before starting scrape", "message": str(db_error)}), 500
 
-
-@api.route('/tasks/<task_id>', methods=['GET'])
-def get_task_status(task_id):
-    """
-    Get the status of a Celery task.
-    
-    Args:
-        task_id: The ID of the task to check
-        
-    Returns:
-        Task status information
-    """
-    try:
-        task = AsyncResult(task_id, app=celery_app)
-        
-        if task.state == 'PENDING':
-            response = {
-                'state': task.state,
-                'status': 'Task is pending...'
-            }
-        elif task.state == 'FAILURE':
-            response = {
-                'state': task.state,
-                'status': 'Task failed',
-                'error': str(task.info)
-            }
-        else:
-            response = {
-                'state': task.state,
-                'status': task.info.get('status', '') if isinstance(task.info, dict) else str(task.info)
-            }
-            
-            # If the task is successful and has a result, include it
-            if task.state == 'SUCCESS' and isinstance(task.info, dict):
-                response.update(task.info)
-        
-        return jsonify(response)
-    except Exception as e:
-        current_app.logger.error(f"Error checking task status: {str(e)}")
-        return jsonify({
-            'state': 'ERROR',
-            'status': 'Error checking task status',
-            'error': str(e)
-        }), 500
-
-
-@api.route('/statistics', methods=['GET'])
-def get_statistics():
-    """
-    Get statistics and aggregated data from the database.
-    
-    This endpoint returns various statistics and aggregated data about the
-    proposals in the database, such as:
-    - Total number of proposals
-    - Proposals by agency
-    - Proposals by date
-    - Proposals by value range
-    - etc.
-    """
-    with db_session() as session:
+        scraper_instance = None
+        scraper_result = None
         try:
-            result = {
-                "total_proposals": 0,
-                "by_agency": [],
-                "by_value_range": [],
-                "by_month": [],
-                "by_source": [],
-                "latest_proposals": []
-            }
-            
-            # Total number of proposals
-            result["total_proposals"] = session.query(func.count(Proposal.id)).scalar()
-            
-            # Proposals by agency (top 10)
-            agency_counts = session.query(
-                Proposal.agency,
-                func.count(Proposal.id).label('count')
-            ).group_by(Proposal.agency).order_by(desc('count')).limit(10).all()
-            
-            result["by_agency"] = [
-                {"agency": agency, "count": count}
-                for agency, count in agency_counts
-            ]
-            
-            # Proposals by value range
-            value_ranges = [
-                (0, 100000, "0-100K"),
-                (100000, 500000, "100K-500K"),
-                (500000, 1000000, "500K-1M"),
-                (1000000, 5000000, "1M-5M"),
-                (5000000, 10000000, "5M-10M"),
-                (10000000, float('inf'), "10M+")
-            ]
-            
-            for min_val, max_val, label in value_ranges:
-                if max_val == float('inf'):
-                    count = session.query(func.count(Proposal.id)).filter(
-                        Proposal.estimated_value >= min_val
-                    ).scalar()
-                else:
-                    count = session.query(func.count(Proposal.id)).filter(
-                        Proposal.estimated_value >= min_val,
-                        Proposal.estimated_value < max_val
-                    ).scalar()
-                
-                result["by_value_range"].append({
-                    "range": label,
-                    "count": count
-                })
-            
-            # Proposals by month (last 12 months)
-            current_date = datetime.datetime.now().date()
-            start_date = current_date.replace(day=1) - datetime.timedelta(days=365)
-            
-            # Generate a list of all months in the range
-            months = []
-            current_month = start_date.replace(day=1)
-            while current_month <= current_date:
-                months.append(current_month)
-                # Move to next month
-                if current_month.month == 12:
-                    current_month = current_month.replace(year=current_month.year + 1, month=1)
-                else:
-                    current_month = current_month.replace(month=current_month.month + 1)
-            
-            # Query proposals by month
-            for month_start in months:
-                # Calculate end of month
-                if month_start.month == 12:
-                    month_end = month_start.replace(year=month_start.year + 1, month=1) - datetime.timedelta(days=1)
-                else:
-                    month_end = month_start.replace(month=month_start.month + 1) - datetime.timedelta(days=1)
-                
-                # Count proposals with proposal dates in this month
-                count = session.query(func.count(Proposal.id)).filter(
-                    Proposal.proposal_date >= month_start,
-                    Proposal.proposal_date <= month_end
-                ).scalar()
-                
-                result["by_month"].append({
-                    "month": month_start.strftime("%Y-%m"),
-                    "count": count
-                })
-            
-            # Proposals by source
-            source_counts = session.query(
-                DataSource.id,
-                DataSource.name,
-                func.count(Proposal.id).label('count')
-            ).join(Proposal, Proposal.source_id == DataSource.id).group_by(
-                DataSource.id,
-                DataSource.name
-            ).all()
-            
-            result["by_source"] = [
-                {"id": source_id, "name": name, "count": count}
-                for source_id, name, count in source_counts
-            ]
-            
-            # Latest proposals
-            latest_proposals = session.query(Proposal).order_by(
-                desc(Proposal.created_at)
-            ).limit(10).all()
-            
-            result["latest_proposals"] = [
-                {
-                    "id": p.id,
-                    "title": p.title,
-                    "agency": p.agency,
-                    "estimated_value": p.estimated_value,
-                    "proposal_date": p.proposal_date.isoformat() if p.proposal_date else None,
-                    "created_at": p.created_at.isoformat()
-                }
-                for p in latest_proposals
-            ]
-            
+            logger.info(f"Starting synchronous data pull for source: {data_source.name} (ID: {source_id})")
+
+            # --- Select and run the appropriate scraper --- 
+            if "Acquisition Gateway" in data_source.name: # Or use a more robust mapping
+                scraper_instance = AcquisitionGatewayScraper(session) # Assuming session is needed
+            elif "SSA Contract Forecast" in data_source.name:
+                scraper_instance = SSAContractForecastScraper(session) # Assuming session is needed
+            else:
+                logger.warning(f"No specific scraper found for source: {data_source.name}. Cannot run pull.")
+                raise ValueError(f"No scraper configured for data source '{data_source.name}'")
+
+            # Assuming scraper classes have a 'run' method
+            scraper_result = scraper_instance.run() 
+            # scraper_result could contain summary like {'success': True, 'proposals_added': 5} or raise Exception
+
+            # --- Update status on success --- 
+            logger.info(f"Data pull successful for source: {data_source.name}. Result: {scraper_result}")
+            status.status = "success"
+            status.error_message = None
+            status.timestamp = datetime.datetime.now()
+            data_source.last_scraped = datetime.datetime.now()
+            session.add(data_source) # Add updated data_source to session
+            session.commit()
+
             return jsonify({
-                "status": "success",
-                "data": result
-            })
+                "message": f"Data pull successful for {data_source.name}.",
+                "result": scraper_result # Optional: return summary from scraper
+                }), 200
+
         except Exception as e:
-            current_app.logger.error(f"Error in get_statistics: {str(e)}")
-            current_app.logger.error(traceback.format_exc())
-            return jsonify({"status": "error", "message": str(e)}), 500
+            logger.error(f"Error during data pull for source {source_id} ({data_source.name}): {str(e)}")
+            logger.error(traceback.format_exc())
+            # --- Update status on error --- 
+            try:
+                # Status object should already be in session from the 'running' update
+                status.status = "error"
+                status.error_message = str(e)[:1024] # Limit error message length if necessary
+                status.timestamp = datetime.datetime.now()
+                session.commit()
+            except SQLAlchemyError as db_error:
+                logger.error(f"Failed to update status after pull error: {db_error}")
+                session.rollback()
+
+            return jsonify({"error": "Failed during data pull", "message": str(e)}), 500
 
 
 @api.route('/data-sources/<int:source_id>/status', methods=['GET'])
@@ -714,48 +522,4 @@ def check_scraper_status(source_id):
             return jsonify({"status": "error", "message": str(e)}), 404
         except Exception as e:
             current_app.logger.error(f"Error in check_scraper_status: {str(e)}")
-            return jsonify({"status": "error", "message": str(e)}), 500
-
-
-@api.route('/data-sources/<int:source_id>/health-check', methods=['POST'])
-def trigger_health_check(source_id):
-    """
-    Trigger a health check for a specific data source.
-    
-    This endpoint starts a Celery task to check the health of a data source.
-    It returns the task ID which can be used to check the status of the task.
-    """
-    with db_session() as session:
-        try:
-            # Find the data source
-            source = session.query(DataSource).filter_by(id=source_id).first()
-            if not source:
-                raise NotFoundError(f"Data source with ID {source_id} not found")
-            
-            # Determine which health check task to use based on the source name
-            from src.tasks.health import check_acquisition_gateway, check_ssa_contract_forecast, check_all_scrapers
-            
-            if "Acquisition Gateway" in source.name:
-                task_result = check_acquisition_gateway.delay()
-            elif "SSA Contract Forecast" in source.name:
-                task_result = check_ssa_contract_forecast.delay()
-            else:
-                # Default to all scrapers task if source name doesn't match
-                task_result = check_all_scrapers.delay()
-            
-            task = task_result
-            
-            return jsonify({
-                "status": "success",
-                "message": f"Health check task started for source {source.name}",
-                "data": {
-                    "task_id": task.id,
-                    "source_id": source_id,
-                    "source_name": source.name
-                }
-            })
-        except NotFoundError as e:
-            return jsonify({"status": "error", "message": str(e)}), e.status_code
-        except Exception as e:
-            current_app.logger.error(f"Error in trigger_health_check: {str(e)}")
             return jsonify({"status": "error", "message": str(e)}), 500 
