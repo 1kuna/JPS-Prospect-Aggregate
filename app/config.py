@@ -74,7 +74,7 @@ class Config:
     LOG_FILE_BACKUP_COUNT: int = LOG_FILE_BACKUP_COUNT
 
     # Database configuration
-    DATABASE_URL: str = DATABASE_URL
+    SQLALCHEMY_DATABASE_URI: str = DATABASE_URL
 
     # Scheduler configuration
     SCRAPE_INTERVAL_HOURS: int = SCRAPE_INTERVAL_HOURS
@@ -102,7 +102,7 @@ class TestingConfig(Config):
     TESTING: bool = True
     DEBUG: bool = True
     # Use in-memory SQLite for testing
-    DATABASE_URL: str = "sqlite:///:memory:"
+    SQLALCHEMY_DATABASE_URI: str = "sqlite:///:memory:"
 
 
 # Configuration dictionary

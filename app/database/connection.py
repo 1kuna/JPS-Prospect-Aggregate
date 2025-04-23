@@ -9,8 +9,8 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from dotenv import load_dotenv
-from src.utils.logger import logger
-from src.exceptions import DatabaseError, ValidationError
+from app.utils.logger import logger
+from app.exceptions import DatabaseError, ValidationError
 import time
 
 # Load environment variables

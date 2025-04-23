@@ -9,10 +9,10 @@ import pandas as pd
 import requests
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
-from src.exceptions import ScraperError
-from src.utils.logger import logger
-from src.utils.file_utils import ensure_directory
-from src.config import DOWNLOADS_DIR
+from app.exceptions import ScraperError
+from app.utils.logger import logger
+from app.utils.file_utils import ensure_directory
+from app.config import DOWNLOADS_DIR
 
 def check_url_accessibility(url: str, timeout: int = 10) -> bool:
     """
@@ -189,5 +189,5 @@ def handle_scraper_error(error: Exception, source_name: str, context: str = "") 
     logger.error(traceback.format_exc())
     
     # Update scraper status in database
-    from src.utils.db_utils import update_scraper_status
+    from app.utils.db_utils import update_scraper_status
     update_scraper_status(source_name, "error", error_msg) 

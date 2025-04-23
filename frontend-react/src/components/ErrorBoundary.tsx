@@ -1,6 +1,8 @@
 import React from 'react';
-import { Alert, AlertTitle, AlertDescription } from './ui/alert';
-import { Button } from './ui/button';
+import styles from './ErrorBoundary.module.css'; // Import CSS module
+// Removed imports from deleted ./ui directory
+// import { Alert, AlertTitle, AlertDescription } from './ui/alert';
+// import { Button } from './ui/button';
 
 interface ErrorBoundaryProps {
   fallback?: React.ReactNode;
@@ -31,6 +33,9 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
     
     if (this.props.onError) {
       this.props.onError(error, errorInfo);
+    } else {
+      // Default logging if no onError handler is provided
+      console.error('ErrorBoundary caught an error:', error, errorInfo);
     }
     
     // Log to error reporting service
@@ -40,13 +45,19 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
   
   // Reset error state when props change if resetOnPropsChange is true
   componentDidUpdate(prevProps: ErrorBoundaryProps) {
+    // Reset the error state if resetOnPropsChange is true and children have changed
     if (
-      this.props.resetOnPropsChange && 
-      this.state.hasError && 
+      this.props.resetOnPropsChange &&
+      this.state.hasError &&
+      // Simple check, might need deeper comparison for complex children
       prevProps.children !== this.props.children
     ) {
-      this.setState({ hasError: false, error: undefined, errorInfo: undefined });
+      this.resetErrorState();
     }
+  }
+
+  resetErrorState = () => {
+    this.setState({ hasError: false, error: undefined, errorInfo: undefined });
   }
 
   render(): React.ReactNode {
@@ -55,30 +66,35 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
         return this.props.fallback;
       }
       
+      // Render default fallback UI
       return (
-        <div className="error-boundary-container p-4 bg-white rounded-md shadow-md">
-          <Alert variant="destructive" className="my-4">
-            <AlertTitle>Something went wrong</AlertTitle>
-            <AlertDescription>
-              <p className="mb-2">{this.state.error?.message || 'An unexpected error occurred'}</p>
-              {this.state.error?.stack && (
-                <details className="mt-2">
-                  <summary className="cursor-pointer text-sm">View technical details</summary>
-                  <pre className="mt-2 text-xs overflow-auto p-2 bg-gray-100 rounded">
-                    {this.state.error.stack}
-                  </pre>
-                </details>
-              )}
-            </AlertDescription>
-            <div className="mt-4">
-              <Button 
-                variant="outline" 
-                onClick={() => this.setState({ hasError: false, error: undefined, errorInfo: undefined })}
+        <div className={styles.errorContainer}> {/* Use CSS module class */}
+          <h2 className={styles.errorTitle}/* style={{ color: 'red', marginBottom: '0.5rem' }} */>Something went wrong</h2>
+          <p className={styles.errorMessage}/* className="mb-2" */>{this.state.error?.message || 'An unexpected error occurred'}</p>
+          {this.state.error?.stack && (
+             // Use CSS module class for details container
+            <details className={styles.detailsContainer}/* className="mt-2" */>
+               {/* Use CSS module class for summary */}
+              <summary className={styles.detailsSummary}/* className="cursor-pointer text-sm" */>View technical details</summary>
+              {/* Use CSS module class for pre */}
+              <pre
+                className={styles.detailsPre} // Use CSS module class
+                // style={{ background: '#f3f4f6', padding: '0.5rem', marginTop: '0.5rem', fontSize: '0.75rem', overflow: 'auto' }} // Remove inline style
               >
-                Try again
-              </Button>
-            </div>
-          </Alert>
+                {this.state.error.stack}
+              </pre>
+            </details>
+          )}
+           {/* Use CSS module class for button container */}
+          <div className={styles.buttonContainer}/* className="mt-4" */>
+            <button // Replaced Button with standard <button>
+              className={styles.tryAgainButton} // Use CSS module class
+              // style={{ padding: '0.25rem 0.75rem', border: '1px solid #ccc', borderRadius: '0.25rem' }} // Remove inline styles
+              onClick={this.resetErrorState}
+            >
+              Try again
+            </button>
+          </div>
         </div>
       );
     }

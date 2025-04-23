@@ -1,6 +1,7 @@
 import React from 'react';
 import { PageLayout } from './PageLayout';
-import { Alert, AlertTitle, AlertDescription, Button, Spinner } from '@/components/ui';
+import styles from './DataPageLayout.module.css'; // Import CSS module
+// import { Alert, AlertTitle, AlertDescription, Button, Spinner } from '@/components/ui'; // Removed imports
 
 interface DataPageLayoutProps<T> {
   title: string;
@@ -8,7 +9,7 @@ interface DataPageLayoutProps<T> {
   data: T | T[] | null;
   loading: boolean;
   error: Error | null;
-  onRefresh: () => void;
+  onRefresh?: () => void; // Made optional as it wasn't always used
   emptyMessage?: string;
   renderHeader?: () => React.ReactNode;
   renderContent: (data: T | T[]) => React.ReactNode;
@@ -29,8 +30,10 @@ export function DataPageLayout<T>({
   if (loading && (!data || (Array.isArray(data) && data.length === 0))) {
     return (
       <PageLayout title={title} subtitle={subtitle} isLoading={true}>
-        <div className="flex justify-center items-center h-[500px]">
-          <Spinner className="h-8 w-8" />
+        {/* Apply loading styles */}
+        <div className={styles.loadingContainer}>
+          {/* <Spinner className="h-8 w-8" /> */}
+          <div>Loading data...</div> {/* Replaced Spinner */}
         </div>
       </PageLayout>
     );
@@ -40,12 +43,22 @@ export function DataPageLayout<T>({
   if (error && (!data || (Array.isArray(data) && data.length === 0))) {
     return (
       <PageLayout title={title} subtitle={subtitle}>
-        <div className="space-y-6">
-          <Alert variant="destructive">
-            <AlertTitle>Error loading data</AlertTitle>
-            <AlertDescription>{error.message}</AlertDescription>
-          </Alert>
-          <Button onClick={onRefresh}>Retry</Button>
+        {/* Apply error box styles */}
+        <div
+          className={styles.errorBox} // Apply CSS module class
+          // style={{ border: '1px solid red', backgroundColor: '#fff5f5', padding: '1rem', margin: '1rem 0' }} // Remove inline style
+        >
+          <h3 className={styles.errorTitle}/* style={{ color: 'red', fontWeight: 'bold' }} */>Error loading data</h3> {/* Apply CSS module class & remove inline style */}
+          <p>{error.message}</p> {/* Replaced AlertDescription */}
+          {onRefresh && (
+            <button // Replaced Button
+              className={styles.actionButton} // Apply button styles
+              // style={{ marginTop: '1rem', padding: '0.25rem 0.75rem', border: '1px solid #ccc', borderRadius: '0.25rem' }} // Remove inline style
+              onClick={onRefresh}
+            >
+              Retry
+            </button>
+          )}
         </div>
       </PageLayout>
     );
@@ -55,11 +68,23 @@ export function DataPageLayout<T>({
   if (!data || (Array.isArray(data) && data.length === 0)) {
     return (
       <PageLayout title={title} subtitle={subtitle}>
-        <Alert>
-          <AlertTitle>No data available</AlertTitle>
-          <AlertDescription>{emptyMessage}</AlertDescription>
-        </Alert>
-        <Button onClick={onRefresh} className="mt-4">Refresh</Button>
+         {/* Apply empty box styles */}
+        <div
+          className={styles.emptyBox} // Apply CSS module class
+          // style={{ border: '1px solid #facc15', backgroundColor: '#fefce8', padding: '1rem', margin: '1rem 0' }} // Remove inline style
+        >
+          <h3 className={styles.emptyTitle} /* style={{ fontWeight: 'bold' }} */>No data available</h3> {/* Apply CSS module class & remove inline style */}
+          <p>{emptyMessage}</p> {/* Replaced AlertDescription */}
+        </div>
+        {onRefresh && (
+          <button // Replaced Button
+            className={styles.actionButton} // Apply button styles
+            // style={{ marginTop: '1rem', padding: '0.25rem 0.75rem', border: '1px solid #ccc', borderRadius: '0.25rem' }} // Remove inline style
+            onClick={onRefresh}
+          >
+            Refresh
+          </button>
+        )}
       </PageLayout>
     );
   }
@@ -67,9 +92,11 @@ export function DataPageLayout<T>({
   // Main content
   return (
     <PageLayout title={title} subtitle={subtitle}>
-      <div className="space-y-4">
+      {/* Apply content spacing */}
+      <div className={styles.contentWrapper}> {/* Use CSS module class */}
         {renderHeader && (
-          <div className="flex justify-between items-center">
+          // Apply header layout styles
+          <div className={styles.headerWrapper}> {/* Use CSS module class */}
             {renderHeader()}
           </div>
         )}

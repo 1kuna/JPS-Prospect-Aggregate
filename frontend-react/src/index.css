@@ -1,329 +1,76 @@
-@import "tailwindcss";
-
-/* CSS Variables / Design Tokens */
-:root {
-  /* Color scheme */
-  --primary-color: #1a365d;
-  --primary-dark: #0f2342;
-  --primary-light: #2c4c7c;
-  --secondary-color: #4299e1;
-  --secondary-light: #63b3ed;
-  --accent-color: #f6ad55;
-  --text-color: #1a202c;
-  --text-light: #4a5568;
-  --muted-text: #718096;
-  --background-color: #f7fafc;
-  --card-bg: #ffffff;
-  --border-color: #e2e8f0;
-  --error-color: #e53e3e;
-  --success-color: #38a169;
-  --warning-color: #ed8936;
-  --info-color: #3182ce;
-  
-  /* Tailwind CSS variables */
-  --border: 214.3 31.8% 91.4%;
-  --input: 214.3 31.8% 91.4%;
-  --ring: 222.2 84% 4.9%;
-  --primary-foreground: 210 40% 98%;
-  --secondary-foreground: 222.2 47.4% 11.2%;
-  --destructive: 0 84.2% 60.2%;
-  --destructive-foreground: 210 40% 98%;
-  --muted: 210 40% 96.1%;
-  --accent-foreground: 222.2 47.4% 11.2%;
-  --popover: 0 0% 100%;
-  --popover-foreground: 222.2 47.4% 11.2%;
-  --card-foreground: 222.2 47.4% 11.2%;
-  
-  /* Spacing */
-  --spacing-xs: 0.25rem;
-  --spacing-sm: 0.5rem;
-  --spacing-md: 1rem;
-  --spacing-lg: 1.5rem;
-  --spacing-xl: 2rem;
-  --spacing-xxl: 3rem;
-  
-  /* Typography */
-  --font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-  --font-size-xs: 0.75rem;
-  --font-size-sm: 0.875rem;
-  --font-size-md: 1rem;
-  --font-size-lg: 1.125rem;
-  --font-size-xl: 1.25rem;
-  --font-size-2xl: 1.5rem;
-  --font-size-3xl: 1.875rem;
-  --font-size-4xl: 2.25rem;
-  
-  /* Borders and Shadows */
-  --border-radius-sm: 0.25rem;
-  --border-radius-md: 0.375rem;
-  --border-radius-lg: 0.5rem;
-  --box-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  --box-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-  --box-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+/* Remaining Custom Classes */
+.status {
+  display: inline-block;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 600;
 }
 
-/* Essential global styles */
-@layer base {
-  body {
-    background-color: var(--background-color);
-    color: var(--text-color);
-    font-family: var(--font-family);
-    font-size: var(--font-size-md);
-    line-height: 1.5;
-    margin: 0;
-    padding: 0;
-  }
-  
-  a {
-    color: var(--secondary-color);
-    text-decoration: none;
-    transition: color 0.2s ease-in-out;
-  }
-  
-  a:hover {
-    color: var(--secondary-light);
-    text-decoration: underline;
-  }
-  
-  button {
-    cursor: pointer;
-  }
-  
-  #root {
-    width: 100%;
-    display: flex;
-    flex-direction: column;
-    min-height: 100vh;
-  }
+.status-new {
+  background-color: var(--info-color);
+  color: white;
 }
 
-/* Component styles */
-@layer components {
-  .container {
-    width: 100%;
-    max-width: 1280px;
-    margin: 0 auto;
-    padding: 0 1rem;
-  }
-  
-  .app-container {
-    display: flex;
-    flex-direction: column;
-    min-height: 100vh;
-  }
-  
-  .main-content {
-    flex: 1;
-    padding-top: 1.5rem;
-    padding-bottom: 1.5rem;
-    width: 100%;
-  }
-  
-  /* Navbar Component */
-  .navbar {
-    background-color: var(--primary-color);
-    color: white;
-    padding: var(--spacing-md) 0;
-    box-shadow: var(--box-shadow-md);
-  }
-  
-  .navbar .container {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-  
-  .navbar-brand {
-    font-size: var(--font-size-xl);
-    font-weight: 700;
-    color: white;
-  }
-  
-  .navbar-links {
-    display: flex;
-    gap: 1rem;
-  }
-  
-  .navbar-links a {
-    color: white;
-    padding: var(--spacing-sm) var(--spacing-md);
-    border-radius: var(--border-radius-md);
-    transition: background-color 0.2s ease;
-  }
-  
-  .navbar-links a:hover {
-    background-color: rgba(255, 255, 255, 0.1);
-    text-decoration: none;
-  }
-  
-  /* Button styles */
-  .btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0.5rem 1rem;
-    border-radius: 0.375rem;
-    font-weight: 500;
-    transition: all 0.2s ease;
-    cursor: pointer;
-    border: none;
-  }
-  
-  .btn-primary {
-    background-color: var(--primary-color);
-    color: white;
-  }
-  
-  .btn-primary:hover {
-    background-color: var(--primary-dark);
-  }
-  
-  .btn-secondary {
-    background-color: var(--secondary-color);
-    color: white;
-  }
-  
-  .btn-secondary:hover {
-    background-color: var(--secondary-light);
-  }
-  
-  .btn-ghost {
-    background-color: transparent;
-    color: var(--text-color);
-  }
-  
-  .btn-ghost:hover {
-    background-color: #f3f4f6;
-  }
-  
-  /* Card Component */
-  .card {
-    background-color: var(--card-bg);
-    border-radius: var(--border-radius-md);
-    box-shadow: var(--box-shadow-sm);
-    padding: var(--spacing-lg);
-    margin-bottom: var(--spacing-lg);
-    border: 1px solid var(--border-color);
-  }
-  
-  .card-header {
-    border-bottom: 1px solid var(--border-color);
-    padding-bottom: var(--spacing-md);
-    margin-bottom: var(--spacing-md);
-  }
-  
-  .card-title {
-    font-size: var(--font-size-xl);
-    font-weight: 700;
-    margin-bottom: var(--spacing-sm);
-  }
-  
-  /* Table styles */
-  .table-container {
-    overflow-x: auto;
-    margin-bottom: 1.5rem;
-  }
-  
-  table {
-    width: 100%;
-    border-collapse: collapse;
-  }
-  
-  thead th {
-    background-color: var(--primary-color);
-    color: white;
-    font-weight: 600;
-    text-align: left;
-    padding: var(--spacing-md);
-  }
-  
-  tbody tr {
-    border-bottom: 1px solid var(--border-color);
-  }
-  
-  tbody tr:hover {
-    background-color: #f9fafb;
-  }
-  
-  tbody td {
-    padding: var(--spacing-md);
-    vertical-align: middle;
-  }
-  
-  /* Status indicators */
-  .status {
-    display: inline-block;
-    padding: 0.25rem 0.5rem;
-    border-radius: 0.25rem;
-    font-size: 0.75rem;
-    font-weight: 600;
-  }
-  
-  .status-new {
-    background-color: var(--info-color);
-    color: white;
-  }
-  
-  .status-exercise {
-    background-color: var(--warning-color);
-    color: white;
-  }
-  
-  .status-active {
-    background-color: var(--success-color);
-    color: white;
-  }
-  
-  /* Pagination styles */
-  .pagination {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    gap: 0.5rem;
-    margin-top: 1.5rem;
-  }
-  
-  .pagination-item {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0 0.5rem;
-    border-radius: 0.25rem;
-    font-weight: 500;
-    cursor: pointer;
-    min-width: 2rem;
-    height: 2rem;
-  }
-  
-  .pagination-item:hover {
-    background-color: var(--border-color);
-  }
-  
-  .pagination-item.active {
-    background-color: var(--primary-color);
-    color: white;
-  }
-  
-  /* Footer Component */
-  .footer {
-    background-color: var(--card-bg);
-    padding: var(--spacing-lg) 0;
-    border-top: 1px solid var(--border-color);
-    margin-top: auto;
-  }
-  
-  /* Text utilities that extend Tailwind */
-  .text-muted {
-    color: var(--muted-text);
-  }
-  
-  .text-center {
-    text-align: center;
-  }
-  
-  .text-sm {
-    font-size: var(--font-size-sm);
-  }
+.status-exercise {
+  background-color: var(--warning-color);
+  color: white;
+}
+
+.status-active {
+  background-color: var(--success-color);
+  color: white;
+}
+
+/* Pagination styles */
+.pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 1.5rem;
+}
+
+.pagination-item {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0.5rem;
+  border-radius: 0.25rem;
+  font-weight: 500;
+  cursor: pointer;
+  min-width: 2rem;
+  height: 2rem;
+}
+
+.pagination-item:hover {
+  background-color: var(--border-color);
+}
+
+.pagination-item.active {
+  background-color: var(--primary-color);
+  color: white;
+}
+
+/* Footer Component */
+.footer {
+  background-color: var(--card-bg);
+  padding: var(--spacing-lg) 0;
+  border-top: 1px solid var(--border-color);
+  margin-top: auto;
+}
+
+/* Text utilities that extend Tailwind */
+.text-muted {
+  color: var(--muted-text);
+}
+
+.text-center {
+  text-align: center;
+}
+
+.text-sm {
+  font-size: var(--font-size-sm);
 }
 
 /* Responsive adjustments */
@@ -399,3 +146,15 @@
 .pull-spinner {
   transition: opacity 0.3s ease-in-out;
 }
+
+/* Basic Card Styling */
+.card-container {
+  background-color: white;
+  padding: 1.5rem; /* Equivalent to p-6 in Tailwind */
+  border-radius: 0.375rem; /* Equivalent to rounded-md */
+  border: 1px solid #e5e7eb; /* Equivalent to border-gray-200 */
+  box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1); /* Equivalent to shadow-sm */
+  margin-bottom: 1.5rem; /* Equivalent to mb-6 - though grid gap might handle spacing */
+}
+
+/* Add other base styles below */

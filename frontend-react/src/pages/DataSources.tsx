@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { DataPageLayout } from '@/components/layout';
-import { DataTable } from '@/components/ui/DataTable';
-import { Button } from '@/components/ui/button';
+import { DataTable } from '@/components/data-display/DataTable';
 import { DataSourceForm } from '@/components/forms';
 import { useDataSources, usePullDataSource } from '@/hooks/api/useDataSources';
 import { DataSource } from '@/types';
 import { toast } from '@/hooks/use-toast';
+import styles from './DataSources.module.css';
 
 export default function DataSources() {
   const [editingDataSource, setEditingDataSource] = useState<DataSource | null>(null);
@@ -75,28 +75,25 @@ export default function DataSources() {
     {
       header: 'Actions',
       cell: ({ row }) => (
-        <div className="flex gap-2">
-          <Button
-            size="sm"
-            variant="outline"
+        <div className={styles.actionsCell}>
+          <button
+            className={styles.actionButton}
             onClick={() => setEditingDataSource(row.original)}
           >
             Edit
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
+          </button>
+          <button
+            className={styles.actionButton}
             onClick={() => handlePull(row.original.id)}
           >
             Pull
-          </Button>
-          <Button
-            size="sm"
-            variant="destructive"
+          </button>
+          <button
+            className={`${styles.actionButton} ${styles.deleteButton}`}
             onClick={() => handleDelete(row.original.id)}
           >
             Delete
-          </Button>
+          </button>
         </div>
       ),
     },
@@ -110,9 +107,12 @@ export default function DataSources() {
       loading={isLoading}
       error={error}
       renderHeader={() => (
-        <Button onClick={() => setIsFormOpen(true)}>
+        <button
+          onClick={() => setIsFormOpen(true)}
+          className={styles.addButton}
+        >
           Add Data Source
-        </Button>
+        </button>
       )}
       renderContent={(data) => (
         <>

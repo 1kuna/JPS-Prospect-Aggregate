@@ -1,0 +1,14 @@
+/* frontend-react/src/components/forms/DataSourceForm.module.css */
+
+/* Reusing variables - consider a global file */
+:root {
+  --border-color: #e5e7eb; /* gray-200 */
+  --spacing-unit: 0.25rem; /* 4px */
+}
+
+.placeholderInput {
+  border: 1px solid var(--border-color); /* border */
+  padding: calc(2 * var(--spacing-unit)); /* p-2 */
+  border-radius: 0.25rem; /* Add basic rounding */
+  /* Add width: 100% or other sizing if needed */
+} 

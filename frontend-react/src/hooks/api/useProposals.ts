@@ -1,4 +1,4 @@
-import { createEntityHooks } from '../use-query';
+import { createEntityHooks } from "./useApi";
 import { Proposal, ProposalFilters, ProposalStatistics } from '@/types/proposals';
 
 // Create base CRUD hooks

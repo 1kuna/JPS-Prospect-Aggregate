@@ -1,0 +1,58 @@
+/* frontend-react/src/pages/DataSources.module.css */
+
+/* Reusing variables - consider a global file */
+:root {
+  --border-color: #e5e7eb; /* gray-200 */
+  --button-hover-bg: #f3f4f6; /* gray-100 */
+  --delete-border-color: #ef4444; /* red-500 */
+  --delete-text-color: #b91c1c; /* red-700 */
+  --delete-hover-bg: #fee2e2; /* red-50 */
+  --add-bg-color: #3b82f6; /* blue-500 */
+  --add-hover-bg-color: #2563eb; /* blue-600 */
+  --add-text-color: #ffffff; /* white */
+  --spacing-unit: 0.25rem; /* 4px */
+}
+
+.actionsCell {
+  display: flex; /* flex */
+  gap: calc(2 * var(--spacing-unit)); /* gap-2, 8px */
+}
+
+.actionButton {
+  padding: calc(1 * var(--spacing-unit)) calc(2 * var(--spacing-unit)); /* px-2 py-1 */
+  font-size: 0.875rem; /* text-sm */
+  line-height: 1.25rem;
+  border: 1px solid var(--border-color); /* border */
+  border-radius: 0.25rem; /* rounded */
+  cursor: pointer;
+  background-color: transparent; /* Default, override for specific buttons */
+  transition: background-color 0.2s ease-in-out, border-color 0.2s ease-in-out, color 0.2s ease-in-out;
+}
+
+.actionButton:hover {
+  background-color: var(--button-hover-bg); /* hover:bg-gray-100 */
+}
+
+.deleteButton {
+  border-color: var(--delete-border-color); /* border-red-500 */
+  color: var(--delete-text-color); /* text-red-700 */
+}
+
+.deleteButton:hover {
+  background-color: var(--delete-hover-bg); /* hover:bg-red-50 */
+}
+
+.addButton {
+  padding: calc(2 * var(--spacing-unit)) calc(4 * var(--spacing-unit)); /* px-4 py-2 */
+  border: 1px solid var(--border-color); /* border - might want transparent or match bg */
+  border-radius: 0.25rem; /* rounded */
+  background-color: var(--add-bg-color); /* bg-blue-500 */
+  color: var(--add-text-color); /* text-white */
+  cursor: pointer;
+  font-weight: 500; /* Add medium weight for better look */
+  transition: background-color 0.2s ease-in-out;
+}
+
+.addButton:hover {
+  background-color: var(--add-hover-bg-color); /* hover:bg-blue-600 */
+} 

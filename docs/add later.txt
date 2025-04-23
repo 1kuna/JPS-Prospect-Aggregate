@@ -1,0 +1,9 @@
+celery/redis
+pydantic?
+loguru (if truly necessary)
+tailwind
+router!!
+RHF/Zod
+docker
+
+dashboard toasts

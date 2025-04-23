@@ -1,267 +1,139 @@
-import React, { useState, useMemo, useCallback } from 'react';
-import { z } from 'zod';
-import { useDataSources } from '../hooks';
-import { DataLoader } from '../components/ui/DataLoader';
-import { DataTable, Column } from '../components/ui/DataTable';
-import { Button } from '../components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
-import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from '../components/ui/form';
-import { toast } from '../hooks/use-toast';
-import { DataSource } from '../types/api';
+import React, { useState, useEffect } from 'react';
+import axios from 'axios'; // Import axios
+import { DataTable } from '@/components/data-display/DataTable';
+import { DataSourceForm, DataSourceFormData } from '@/components/forms/DataSourceForm'; // Import type directly
+import { columns } from './DataSourcesColumns';
+import { PageLayout } from '@/components/layout/PageLayout';
 
-// Zod schema for validating form input
-const dataSourceSchema = z.object({
-  name: z.string().min(1, 'Name is required'),
-  url: z.string().url('Valid URL is required'),
-  description: z.string().optional(),
-  status: z.enum(['active', 'inactive']).default('active'),
-});
+/*
+TODO:
+- Remove dependency on Zod schema (commented out below).
+- Update data fetching logic (replace commented out useFetch/useMutate).
+- Potentially manage form submission state (isSubmitting).
+- Integrate DataTable with actual fetched data.
+- Ensure DataSourceForm's onSubmit prop is handled correctly.
 
-type DataSourceFormValues = z.infer<typeof dataSourceSchema>;
+// Zod schema for validating form input (might be defined in DataSourceForm component instead)
+// export const dataSourceSchema = z.object({
+//   name: z.string().min(1, 'Name is required'),
+//   type: z.enum(['csv', 'database', 'api'], { required_error: 'Type is required' }),
+//   // Add other fields as needed
+// });
 
-/**
- * Data Sources page component
- */
-export function DataSourcesPage() {
-  // State for dialog
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [editingDataSource, setEditingDataSource] = useState<DataSource | null>(null);
-  
-  // Use React Query hooks
-  const { 
-    data: dataSources = [], 
-    isLoading: dataSourcesLoading, 
-    error: dataSourcesError,
-    mutate: { create: createDataSource, update: updateDataSource, remove: deleteDataSource }
-  } = useDataSources();
-  
-  // Handle opening the dialog for adding/editing
-  const handleAddNew = useCallback(() => {
-    setEditingDataSource(null);
-    setIsDialogOpen(true);
-  }, []);
-  
-  const handleEdit = useCallback((dataSource: DataSource) => {
-    setEditingDataSource(dataSource);
-    setIsDialogOpen(true);
-  }, []);
-  
-  // Handle form submission
-  const handleSubmit = useCallback(async (values: DataSourceFormValues) => {
+// export type DataSourceFormData = z.infer<typeof dataSourceSchema>;
+*/
+
+// Updated interface matching the backend GET /api/data-sources response structure
+interface DataSourceApiResponse {
+  id: number;
+  name: string;
+  url: string;
+  description?: string | null;
+  last_scraped?: string | null;
+  proposalCount?: number;
+  last_checked?: string | null;
+  status?: string; // "working", "not_working", "unknown"
+}
+
+// Define the data structure expected by the POST /api/data-sources endpoint
+// Based on DataSource model: name, url, description seem most likely
+// POST data uses the same structure as the form data now
+// type DataSourcePostData = DataSourceFormData; // Alias if needed, or just use DataSourceFormData directly
+
+const DataSourcesPage = () => {
+  // State holds the data matching the API response structure
+  const [dataSources, setDataSources] = useState<DataSourceApiResponse[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitSuccessMessage, setSubmitSuccessMessage] = useState<string | null>(null);
+  const [formKey, setFormKey] = useState<number>(0); // State for resetting the form
+
+  const fetchDataSources = async () => {
+    // Keep loading state specific to the table fetch
+    setIsLoading(true);
+    setError(null);
     try {
-      if (editingDataSource) {
-        // Update existing data source
-        await updateDataSource({ ...values, id: editingDataSource.id });
-        toast({
-          title: 'Data Source Updated',
-          description: `${values.name} updated successfully`,
-        });
-      } else {
-        // Create new data source
-        await createDataSource(values);
-        toast({
-          title: 'Data Source Created',
-          description: `${values.name} created successfully`,
-        });
-      }
-      setIsDialogOpen(false);
-    } catch (error) {
-      toast({
-        title: 'Error',
-        description: error instanceof Error ? error.message : 'An unknown error occurred',
-        variant: 'destructive',
-      });
+      // Use correct endpoint and expect { data: [...] } structure
+      const response = await axios.get<{ data: DataSourceApiResponse[] }>('/api/data-sources'); 
+      setDataSources(response.data.data); // Extract data from the nested structure
+    } catch (err) {
+      console.error('Error fetching data sources:', err);
+      setError('Failed to load data sources. Please try again later.');
+      setDataSources([]);
+    } finally {
+      setIsLoading(false);
     }
-  }, [editingDataSource, updateDataSource, createDataSource]);
-  
-  // Handle delete
-  const handleDelete = useCallback(async (id: number) => {
-    if (window.confirm('Are you sure you want to delete this data source?')) {
-      try {
-        await deleteDataSource(id);
-        toast({
-          title: 'Data Source Deleted',
-          description: 'Data source deleted successfully',
-        });
-      } catch (error) {
-        toast({
-          title: 'Error',
-          description: error instanceof Error ? error.message : 'An unknown error occurred',
-          variant: 'destructive',
-        });
-      }
+  };
+
+  useEffect(() => {
+    fetchDataSources();
+  }, []);
+
+  // Handle form submission - now directly uses the validated form data
+  const handleFormSubmit = async (formData: DataSourceFormData) => {
+    setIsSubmitting(true);
+    setSubmitError(null);
+    setSubmitSuccessMessage(null); // Clear previous success message
+
+    // Remove the adaptation logic
+    // const postData: DataSourcePostData = {
+    //   name: formDataFromForm.name,
+    //   url: formDataFromForm.connection_string || '', 
+    //   description: `Source type: ${formDataFromForm.type}`
+    // };
+
+    // Remove validation for adapted data
+    // if (!postData.url) { ... }
+
+    try {
+      // Send formData directly as it now matches the expected structure
+      await axios.post('/api/data-sources', formData); 
+      setSubmitSuccessMessage('Data source added successfully!'); // Set success message
+      setFormKey(prevKey => prevKey + 1); // Change key to reset form
+      fetchDataSources();
+      // TODO: Consider resetting the form after successful submission
+    } catch (err: any) {
+      console.error('Error submitting form:', err);
+      const message = err.response?.data?.message || 'Failed to add data source. Please check your input and try again.';
+      setSubmitError(message);
+    } finally {
+      setIsSubmitting(false);
     }
-  }, [deleteDataSource]);
-  
-  // Configure table columns
-  const columns = useMemo<Column<DataSource>[]>(() => [
-    {
-      key: 'name',
-      header: 'Name',
-      cell: (item) => item.name,
-      sortable: true,
-    },
-    {
-      key: 'url',
-      header: 'URL',
-      cell: (item) => (
-        <a 
-          href={item.url} 
-          target="_blank" 
-          rel="noopener noreferrer"
-          className="text-blue-600 hover:underline"
-          onClick={(e) => e.stopPropagation()}
-        >
-          {item.url}
-        </a>
-      ),
-    },
-    {
-      key: 'status',
-      header: 'Status',
-      cell: (item) => (
-        <span className={`px-2 py-1 rounded text-xs ${
-          item.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-        }`}>
-          {item.status}
-        </span>
-      ),
-      width: '100px',
-      align: 'center',
-    },
-    {
-      key: 'proposal_count',
-      header: 'Proposals',
-      cell: (item) => item.proposal_count,
-      width: '100px',
-      align: 'center',
-      sortable: true,
-    },
-    {
-      key: 'actions',
-      header: 'Actions',
-      cell: (item) => (
-        <div className="flex space-x-2 justify-center">
-          <Button 
-            variant="outline" 
-            size="sm"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleEdit(item);
-            }}
-          >
-            Edit
-          </Button>
-          <Button 
-            variant="destructive" 
-            size="sm"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleDelete(item.id);
-            }}
-          >
-            Delete
-          </Button>
-        </div>
-      ),
-      width: '180px',
-      align: 'center',
-    },
-  ], [handleEdit, handleDelete]);
-  
-  // Table header with add button
-  const tableHeader = (
-    <div className="flex justify-between items-center mb-4">
-      <h2 className="text-xl font-semibold">Data Sources</h2>
-      <Button onClick={handleAddNew}>Add Data Source</Button>
-    </div>
-  );
-  
-  // Empty state component
-  const emptyState = (
-    <div className="text-center p-8">
-      <h3 className="text-lg font-medium">No Data Sources Found</h3>
-      <p className="text-gray-500 mb-4">Get started by adding your first data source</p>
-      <Button onClick={handleAddNew}>Add Data Source</Button>
-    </div>
-  );
-  
+  };
+
   return (
-    <div className="container mx-auto py-8">
-      <DataLoader
-        data={dataSources}
-        isLoading={dataSourcesLoading}
-        error={dataSourcesError}
-        onRetry={() => {}}
-        emptyComponent={emptyState}
-      >
-        {(data) => (
-          <DataTable
-            data={data}
-            columns={columns}
-            rowKey={(item) => item.id}
-            onRowClick={handleEdit}
-            headerContent={tableHeader}
+    <PageLayout title="Data Sources">
+      <div className="space-y-6">
+        <section>
+          <h2>Add New Data Source</h2>
+          {/* Remove the note about data adaptation */}
+          <DataSourceForm 
+            key={formKey} // Add key prop for resetting form
+            onSubmit={handleFormSubmit} 
+            isSubmitting={isSubmitting}
           />
-        )}
-      </DataLoader>
-      
-      {/* Add/Edit Data Source Dialog */}
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {editingDataSource ? 'Edit Data Source' : 'Add Data Source'}
-            </DialogTitle>
-          </DialogHeader>
-          
-          <Form<DataSourceFormValues>
-            defaultValues={editingDataSource ? {
-              name: editingDataSource.name,
-              url: editingDataSource.url,
-              description: editingDataSource.description,
-              status: editingDataSource.status as 'active' | 'inactive',
-            } : {
-              status: 'active',
-            }}
-            onSubmit={handleSubmit}
-            schema={dataSourceSchema}
-            onCancel={() => setIsDialogOpen(false)}
-          >
-            <FormField<DataSourceFormValues>
-              name="name"
-              label="Name"
-              required
-              placeholder="Enter data source name"
-            />
-            
-            <FormField<DataSourceFormValues>
-              name="url"
-              label="URL"
-              type="text"
-              required
-              placeholder="https://example.com"
-            />
-            
-            <FormField<DataSourceFormValues>
-              name="description"
-              label="Description"
-              type="textarea"
-              placeholder="Enter a description"
-            />
-            
-            <FormField<DataSourceFormValues>
-              name="status"
-              label="Status"
-              type="select"
-              options={[
-                { label: 'Active', value: 'active' },
-                { label: 'Inactive', value: 'inactive' },
-              ]}
-            />
-          </Form>
-        </DialogContent>
-      </Dialog>
-    </div>
+          {/* Display Success or Error Messages */}
+          {submitSuccessMessage && <p className="text-green-600 mt-2">{submitSuccessMessage}</p>}
+          {submitError && <p className="text-red-500 mt-2">{submitError}</p>}
+        </section>
+
+        <section>
+          <h2>Existing Data Sources</h2>
+          {isLoading && <p>Loading data sources...</p>}
+          {error && <p className="text-red-500">{error}</p>}
+          {!isLoading && !error && (
+            /* Ensure columns in DataSourcesColumns.ts match DataSourceApiResponse */
+            <DataTable columns={columns} data={dataSources} /> 
+          )}
+        </section>
+
+        {/* Remove the refactoring note if no longer needed */}
+        {/* <p>This page needs refactoring to remove Zod, update data fetching, and integrate refactored form/table components.</p> */}
+      </div>
+    </PageLayout>
   );
-} 
+};
+
+export default DataSourcesPage;

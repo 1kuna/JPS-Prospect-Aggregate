@@ -1,0 +1,84 @@
+/* frontend-react/src/components/DatabaseOperations.module.css */
+
+/* Reusing variables - consider a global file */
+:root {
+  --border-color: #e5e7eb; /* gray-200 */
+  --muted-foreground-light: #6b7280; /* gray-500 */
+  --muted-foreground-dark: #9ca3af; /* gray-400 */
+  --spacing-unit: 0.25rem; /* 4px */
+}
+
+/* Mimics space-y-4 */
+.cardContent > * + * {
+  margin-top: calc(4 * var(--spacing-unit)); /* 16px */
+}
+
+.statusGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr)); /* grid-cols-2 */
+  gap: calc(4 * var(--spacing-unit)); /* gap-4 */
+  margin-bottom: calc(4 * var(--spacing-unit)); /* mb-4 */
+}
+
+.statusLabel {
+  font-size: 0.875rem; /* text-sm */
+  line-height: 1.25rem;
+  color: var(--muted-foreground-light);
+}
+
+.statusValue {
+  font-size: 1.125rem; /* text-lg */
+  line-height: 1.75rem;
+  font-weight: 600; /* font-semibold */
+}
+
+.buttonGroup {
+  display: flex; /* flex */
+  flex-wrap: wrap; /* flex-wrap */
+  gap: calc(2 * var(--spacing-unit)); /* gap-2 */
+}
+
+.confirmButtonGroup {
+  display: flex; /* flex */
+  gap: calc(2 * var(--spacing-unit)); /* gap-2 */
+  margin-top: calc(2 * var(--spacing-unit)); /* mt-2 */
+}
+
+.backupsSection {
+  margin-top: calc(4 * var(--spacing-unit)); /* mt-4 */
+}
+
+.sectionTitle {
+  font-size: 1.125rem; /* text-lg */
+  line-height: 1.75rem;
+  font-weight: 600; /* font-semibold */
+  margin-bottom: calc(2 * var(--spacing-unit)); /* mb-2 */
+}
+
+/* Mimics space-y-2 */
+.backupsList > * + * {
+  margin-top: calc(2 * var(--spacing-unit)); /* 8px */
+}
+
+.backupItem {
+  display: flex; /* flex */
+  align-items: center; /* items-center */
+  justify-content: space-between; /* justify-between */
+  padding: calc(2 * var(--spacing-unit)); /* p-2 */
+  border: 1px solid var(--border-color); /* border */
+  border-radius: 0.25rem; /* rounded */
+}
+
+.backupTimestamp {
+  font-weight: 500; /* font-medium */
+}
+
+/* Dark mode adjustments */
+@media (prefers-color-scheme: dark) {
+  .statusLabel {
+    color: var(--muted-foreground-dark);
+  }
+  .backupItem {
+     border-color: var(--border-color-dark); /* Example */
+  }
+} 

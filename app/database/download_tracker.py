@@ -2,11 +2,11 @@ import os
 import json
 import datetime
 from pathlib import Path
-from src.utils.file_utils import ensure_directory, find_files
-from src.utils.logger import logger
+from app.utils.file_utils import ensure_directory, find_files
+from app.utils.logger import logger
 
 # Set up logging using the centralized utility
-logger = logger.bind(name="database.download_tracker")
+# logger = logger.bind(name="database.download_tracker") # Logger is already configured
 
 class DownloadTracker:
     """

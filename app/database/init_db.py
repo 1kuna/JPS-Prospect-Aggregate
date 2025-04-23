@@ -1,7 +1,7 @@
 import os
 import sys
-from src.database.db import init_db, get_db
-from src.database.models import DataSource
+from app.database.connection import init_db, get_db
+from app.models import DataSource
 from dotenv import load_dotenv
 from src.utils.logger import logger
 from src.utils.file_utils import ensure_directory

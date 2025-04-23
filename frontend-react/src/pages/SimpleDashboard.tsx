@@ -3,6 +3,7 @@ import { useAnalytics } from '@/hooks';
 import { formatDate, formatNumber } from '@/lib/utils';
 import { PageLayout, StatsCard } from '@/components';
 import { Alert, AlertTitle, AlertDescription, Button } from '@/components/ui';
+import styles from './SimpleDashboard.module.css';
 
 export default function SimpleDashboard() {
   const { 
@@ -27,13 +28,13 @@ export default function SimpleDashboard() {
   // Error state
   if (errors && !dashboardData) {
     return (
-      <div className="space-y-6">
-        <h1 className="text-3xl font-bold tracking-tight">Simple Dashboard</h1>
+      <div>
+        <h1 className={styles.pageTitle}>Simple Dashboard</h1>
         <Alert variant="destructive">
           <AlertTitle>Error loading dashboard data</AlertTitle>
           <AlertDescription>{errors.message}</AlertDescription>
         </Alert>
-        <Button onClick={handleRefresh}>Retry</Button>
+        <Button onClick={handleRefresh}>Refresh</Button>
       </div>
     );
   }
@@ -60,9 +61,9 @@ export default function SimpleDashboard() {
       title="Simple Dashboard" 
       subtitle={lastUpdated ? `Last updated: ${formatDate(lastUpdated)}` : undefined}
     >
-      <div className="space-y-6">
+      <div className={styles.contentWrapper}>
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className={styles.statsGrid}>
           <StatsCard
             title="Total Proposals"
             value={formatNumber(stats.totalProposals)}
@@ -86,35 +87,35 @@ export default function SimpleDashboard() {
         </div>
 
         {/* Recent Activity */}
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
-          <h3 className="text-lg font-medium mb-4">Recent Activity</h3>
-          <div className="space-y-2">
+        <div className={styles.card}>
+          <h3 className={styles.cardTitle}>Recent Activity</h3>
+          <div className={styles.activityList}>
             {stats.recentActivity?.map((activity: any, index: number) => (
-              <div key={index} className="flex justify-between items-center py-2 border-b last:border-0">
+              <div key={index} className={styles.activityItem}>
                 <span>{activity.description}</span>
-                <span className="text-sm text-muted-foreground">{formatDate(activity.timestamp)}</span>
+                <span className={styles.activityTimestamp}>{formatDate(activity.timestamp)}</span>
               </div>
             )) || (
-              <p className="text-muted-foreground">No recent activity</p>
+              <p className={styles.mutedText}>No recent activity</p>
             )}
           </div>
         </div>
 
         {/* System Status */}
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
-          <h3 className="text-lg font-medium mb-4">System Status</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className={styles.card}>
+          <h3 className={styles.cardTitle}>System Status</h3>
+          <div className={styles.statusGrid}>
             <div>
-              <p className="text-sm text-gray-500 dark:text-gray-400">Database Size</p>
-              <p className="text-xl font-semibold">{stats.databaseSize}</p>
+              <p className={styles.statusLabel}>Database Size</p>
+              <p className={styles.statusValue}>{stats.databaseSize}</p>
             </div>
             <div>
-              <p className="text-sm text-gray-500 dark:text-gray-400">Last Backup</p>
-              <p className="text-xl font-semibold">{stats.lastBackup ? formatDate(stats.lastBackup) : 'Never'}</p>
+              <p className={styles.statusLabel}>Last Backup</p>
+              <p className={styles.statusValue}>{stats.lastBackup ? formatDate(stats.lastBackup) : 'Never'}</p>
             </div>
             <div>
-              <p className="text-sm text-gray-500 dark:text-gray-400">System Uptime</p>
-              <p className="text-xl font-semibold">{stats.uptime}</p>
+              <p className={styles.statusLabel}>System Uptime</p>
+              <p className={styles.statusValue}>{stats.uptime}</p>
             </div>
           </div>
         </div>

@@ -18,11 +18,6 @@ from app.config import SSA_CONTRACT_FORECAST_URL
 from app.utils.scraper_utils import (
     check_url_accessibility,
     download_file,
-    wait_for_download,
-    wait_for_element,
-    wait_for_selector,
-    wait_for_network_idle,
-    wait_for_load_state,
     save_permanent_copy,
     read_dataframe,
     transform_dataframe,

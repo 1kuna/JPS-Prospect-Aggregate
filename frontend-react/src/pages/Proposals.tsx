@@ -1,11 +1,10 @@
 import { useState } from 'react';
 import { DataPageLayout } from '@/components/layout';
-import { DataTable } from '@/components/ui/DataTable';
-import { Button } from '@/components/ui/button';
+import { DataTable } from '@/components/data-display/DataTable';
 import { useProposals } from '@/hooks/api/useProposals';
 import { ProposalFilters } from '@/components/filters';
 import { Proposal } from '@/types';
-import { toast } from '@/hooks/use-toast';
+import styles from './Proposals.module.css';
 
 export default function Proposals() {
   const [filters, setFilters] = useState<ProposalFilters>({});
@@ -51,14 +50,13 @@ export default function Proposals() {
     {
       header: 'Actions',
       cell: ({ row }) => (
-        <div className="flex gap-2">
-          <Button
-            size="sm"
-            variant="outline"
+        <div>
+          <button
+            className={styles.actionButton}
             onClick={() => window.open(row.original.url, '_blank')}
           >
             View
-          </Button>
+          </button>
         </div>
       ),
     },
@@ -87,13 +85,14 @@ export default function Proposals() {
           />
           
           {hasNextPage && (
-            <div className="flex justify-center mt-4">
-              <Button
+            <div className={styles.loadMoreContainer}>
+              <button
+                className={styles.loadMoreButton}
                 onClick={handleLoadMore}
                 disabled={isFetchingNextPage}
               >
                 {isFetchingNextPage ? 'Loading...' : 'Load More'}
-              </Button>
+              </button>
             </div>
           )}
         </>

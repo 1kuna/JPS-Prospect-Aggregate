@@ -1,5 +1,6 @@
 import React from 'react';
-import { Skeleton } from '@/components/ui';
+import styles from './PageLayout.module.css'; // Import CSS module
+// import { Skeleton } from '@/components/ui'; // Removed import
 
 interface PageLayoutProps {
   title?: string;
@@ -17,16 +18,16 @@ export function PageLayout({
   isLoading = false 
 }: PageLayoutProps) {
   return (
-    <div className="space-y-4">
-      <div className="space-y-2">
+    <div className={styles.pageLayoutContainer}>
+      <div className={styles.headerContainer}>
         {title && (
-          <h1 className="text-3xl font-bold tracking-tight">{title}</h1>
+          <h1 className={styles.pageTitle}>{title}</h1>
         )}
         {subtitle && (
-          <p className="text-sm text-muted-foreground">{subtitle}</p>
+          <p className={styles.pageSubtitle}>{subtitle}</p>
         )}
         {description && (
-          <p className="text-muted-foreground">{description}</p>
+          <p className={styles.pageDescription}>{description}</p>
         )}
       </div>
       {isLoading ? <PageSkeleton /> : children}
@@ -34,16 +35,11 @@ export function PageLayout({
   );
 }
 
+// Replaced skeleton placeholders with simple text
 export function PageSkeleton() {
   return (
-    <div className="space-y-6">
-      <div className="space-y-4">
-        <Skeleton className="h-8 w-[250px]" />
-        <Skeleton className="h-4 w-[350px]" />
-      </div>
-      <div className="space-y-4">
-        <Skeleton className="h-[300px] w-full" />
-      </div>
+    <div className={styles.skeletonContainer}>
+      <div>Loading content...</div>
     </div>
   );
 } 

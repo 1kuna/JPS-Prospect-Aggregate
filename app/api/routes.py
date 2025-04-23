@@ -1,13 +1,13 @@
 """Routes for the API module."""
 
-from flask import request, current_app
+from flask import request, current_app, jsonify
 from sqlalchemy import func, desc, asc
 from sqlalchemy.exc import SQLAlchemyError
 from app.api import api
-from app.database.models import Proposal, DataSource, ScraperStatus
-from app.exceptions import ValidationError, NotFoundError
+from app.models import Proposal, DataSource, ScraperStatus
+from app.exceptions import ValidationError, NotFoundError, DatabaseError, ScraperError
 from app.utils.logger import logger
-from app.utils.db_context import db_session, with_db_session
+from app.database.connection import get_db as db_session
 import math
 import datetime
 import os
@@ -127,29 +127,6 @@ def get_proposal(proposal_id):
         return jsonify(proposal.to_dict())
 
 
-@api.route('/data_sources', methods=['GET'])
-def get_data_sources():
-    """Get all data sources with their status."""
-    with db_session() as session:
-        data_sources = session.query(DataSource).all()
-        
-        # Get the latest status for each data source
-        statuses = session.query(ScraperStatus).all()
-        status_dict = {status.source_name: status for status in statuses}
-        
-        result = []
-        for source in data_sources:
-            source_dict = source.to_dict()
-            status = status_dict.get(source.name)
-            if status:
-                source_dict['status'] = status.status
-                source_dict['last_error'] = status.error_message
-                source_dict['last_check'] = status.timestamp.isoformat() if status.timestamp else None
-            result.append(source_dict)
-        
-        return jsonify(result)
-
-
 @api.route('/health', methods=['GET'])
 def health_check():
     """API health check endpoint."""
@@ -189,11 +166,11 @@ def get_dashboard():
                 func.count(Proposal.id).label('proposal_count')
             ).group_by(Proposal.agency).order_by(desc('proposal_count')).limit(5).all()
             
-            # Get upcoming proposals
+            # Get upcoming proposals (using release_date)
             today = datetime.datetime.now().date()
             upcoming_proposals = session.query(Proposal).filter(
-                Proposal.proposal_date >= today
-            ).order_by(Proposal.proposal_date).limit(5).all()
+                Proposal.release_date >= today # Changed from proposal_date
+            ).order_by(Proposal.release_date).limit(5).all() # Changed from proposal_date
             
             return jsonify({
                 "status": "success",
@@ -206,7 +183,7 @@ def get_dashboard():
                             "id": p.id,
                             "title": p.title,
                             "agency": p.agency,
-                            "proposal_date": p.proposal_date.isoformat() if p.proposal_date else None
+                            "proposal_date": p.release_date.isoformat() if p.release_date else None # Changed from proposal_date
                         } for p in upcoming_proposals
                     ]
                 }

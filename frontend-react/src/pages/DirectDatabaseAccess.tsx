@@ -1,16 +1,14 @@
 import { useState } from 'react';
 import { DataPageLayout } from '@/components/layout';
-import { Button } from '@/components/ui/button';
-import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
-import { Textarea } from '@/components/ui/textarea';
-import { useDatabase } from '@/hooks/api/useDatabase';
+import { useExecuteQuery } from '@/hooks/api/useDatabase';
 import { toast } from '@/hooks/use-toast';
+import styles from './DirectDatabaseAccess.module.css';
 
 export default function DirectDatabaseAccess() {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<any>(null);
   
-  const { mutate: executeQuery, isLoading } = useDatabase.useExecuteQuery();
+  const { mutate: executeQuery, isLoading } = useExecuteQuery();
 
   const handleExecute = () => {
     if (!query.trim()) return;
@@ -38,49 +36,50 @@ export default function DirectDatabaseAccess() {
       data={results}
       loading={isLoading}
       renderHeader={() => (
-        <Alert variant="warning">
-          <AlertTitle>Warning: Advanced Feature</AlertTitle>
-          <AlertDescription>
+        <div role="alert" className={styles.warningBox}>
+          <h4 className={styles.warningTitle}>Warning: Advanced Feature</h4>
+          <p>
             This page allows direct SQL queries to the database. Use with caution as improper queries may damage your data.
             SELECT queries are recommended. Avoid INSERT, UPDATE, or DELETE operations unless you know what you're doing.
-          </AlertDescription>
-        </Alert>
+          </p>
+        </div>
       )}
       renderContent={() => (
-        <div className="space-y-4">
+        <div className={styles.contentWrapper}>
           <div>
-            <label htmlFor="query" className="block text-sm font-medium mb-1">
+            <label htmlFor="query" className={styles.queryLabel}>
               SQL Query
             </label>
-            <Textarea
+            <textarea
               id="query"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="SELECT * FROM proposals LIMIT 10;"
-              className="h-32 font-mono"
+              className={styles.queryTextarea}
             />
           </div>
           
-          <div className="flex gap-2">
-            <Button
+          <div className={styles.buttonGroup}>
+            <button
               onClick={handleExecute}
               disabled={!query.trim() || isLoading}
+              className={styles.actionButton}
             >
               {isLoading ? 'Executing...' : 'Execute Query'}
-            </Button>
-            <Button
-              variant="outline"
+            </button>
+            <button
               onClick={handleClear}
               disabled={!query && !results}
+              className={styles.actionButton}
             >
               Clear
-            </Button>
+            </button>
           </div>
 
           {results && (
-            <div className="mt-4">
-              <h3 className="text-lg font-semibold mb-2">Results</h3>
-              <pre className="bg-gray-100 p-4 rounded overflow-auto max-h-96">
+            <div className={styles.resultsWrapper}>
+              <h3 className={styles.resultsTitle}>Results</h3>
+              <pre className={styles.resultsPre}>
                 {JSON.stringify(results, null, 2)}
               </pre>
             </div>

@@ -1,21 +1,12 @@
 import React from 'react';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableRow,
-} from '@/components/ui';
-import { Pagination, PaginationContent, PaginationItem, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Alert, AlertTitle } from '@/components/ui/alert';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import styles from './DataTable.module.css'; // Import CSS module
 
 export interface Column<T> {
   header: string;
   accessorKey: keyof T | ((row: T) => any);
-  cell?: (row: T) => React.ReactNode;
-  className?: string;
-  onClick?: () => void;
+  cell?: ({ row }: { row: T }) => React.ReactNode; // Pass row object to cell renderer
+  className?: string; // Allow passing custom classes
+  onClick?: () => void; // Allow header click handlers
 }
 
 interface PaginationInfo {
@@ -62,41 +53,44 @@ export function DataTable<T>({
     }
   };
 
-  const getValue = (row: T, column: Column<T>) => {
-    if (typeof column.accessorKey === 'function') {
-      return column.accessorKey(row);
+  const getValue = (row: T, accessorKey: keyof T | ((row: T) => any)) => {
+    if (typeof accessorKey === 'function') {
+      return accessorKey(row);
     }
-    return row[column.accessorKey];
+    // Basic nested accessor support (e.g., 'dataSource.name')
+    if (typeof accessorKey === 'string' && accessorKey.includes('.')) {
+      return accessorKey.split('.').reduce((obj: any, key) => obj?.[key], row);
+    }
+    return row[accessorKey as keyof T];
   };
 
-  // Calculate column widths
-  const columnWidths = columns.map(() => {
-    // Distribute width evenly or use custom widths if needed
-    return `${100 / columns.length}%`;
-  });
+  // Calculate column widths (basic even distribution)
+  const columnWidths = columns.map(() => `${100 / columns.length}%`);
 
   const tableContent = (
     <>
       {description && (
-        <div className="text-sm text-muted-foreground mb-2">
-          {description}
-        </div>
+        <div className={styles.description}>{description}</div>
       )}
-      <div className="rounded-md border">
-        <div className="relative">
-          <div className="sticky top-0 z-20 bg-blue-900 w-full shadow-md">
-            <table className="w-full border-collapse">
+      {/* Apply outer border/rounding */}
+      <div className={styles.tableOuterWrapper}>
+        <div className="relative"> {/* Keep relative for sticky positioning */}
+          {/* Sticky Header */}
+          <div className={styles.stickyHeaderWrapper}>
+            <table className={styles.tableBase}>
+              <colgroup>
+                 {columnWidths.map((width, index) => (
+                    <col key={index} style={{ width }} />
+                 ))}
+              </colgroup>
               <thead>
                 <tr>
                   {columns.map((column, index) => (
-                    <th 
-                      key={index} 
-                      className="text-white font-semibold text-left p-4"
+                    <th
+                      key={index}
+                      className={`${styles.tableHeaderCell} ${column.onClick ? styles.clickableHeader : ''}`}
                       onClick={column.onClick}
-                      style={{
-                        width: columnWidths[index],
-                        ...(column.onClick ? { cursor: 'pointer' } : {})
-                      }}
+                      // style removed, handled by colgroup
                     >
                       {column.header}
                     </th>
@@ -105,126 +99,129 @@ export function DataTable<T>({
               </thead>
             </table>
           </div>
-          <div style={{ maxHeight, overflowY: 'auto' }}>
-            <Table>
-              <TableBody>
+          {/* Scrollable Body */}
+          <div style={{ maxHeight: maxHeight, overflowY: 'auto' }}>
+            <table className={`${styles.tableBase} ${styles.tableBody}`}>
+              <colgroup>
+                 {columnWidths.map((width, index) => (
+                    <col key={index} style={{ width }} />
+                 ))}
+              </colgroup>
+              <tbody>
                 {isLoading ? (
-                  <TableRow>
-                    <TableCell colSpan={columns.length} className="h-24 text-center">
+                  <tr>
+                    <td colSpan={columns.length} className={styles.loadingCell}>
                       Loading data...
-                    </TableCell>
-                  </TableRow>
+                    </td>
+                  </tr>
                 ) : data.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={columns.length} className="h-24 text-center">
-                      <div className="flex flex-col items-center justify-center">
-                        <h3 className="font-medium">{emptyMessage}</h3>
+                  <tr>
+                    <td colSpan={columns.length} className={styles.emptyCell}>
+                      <div className={styles.emptyCellContent}>
+                        <h3 className={styles.emptyMessageText}>{emptyMessage}</h3>
                       </div>
-                    </TableCell>
-                  </TableRow>
+                    </td>
+                  </tr>
                 ) : (
                   data.map((row, rowIndex) => (
-                    <TableRow key={rowIndex}>
+                    <tr key={rowIndex} className={styles.tableRow}>
                       {columns.map((column, colIndex) => (
-                        <TableCell 
-                          key={colIndex} 
-                          className={column.className}
-                          style={{ width: columnWidths[colIndex] }}
+                        <td
+                          key={colIndex}
+                           // Combine module styles with any passed className
+                          className={`${styles.tableBodyCell} ${column.className || ''}`}
+                          // style removed, handled by colgroup
                         >
-                          {column.cell ? column.cell(row) : getValue(row, column)}
-                        </TableCell>
+                          {column.cell ? column.cell({ row }) : getValue(row, column.accessorKey)}
+                        </td>
                       ))}
-                    </TableRow>
+                    </tr>
                   ))
                 )}
-              </TableBody>
-            </Table>
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
 
-      {/* Pagination and Per Page Controls */}
+      {/* Pagination Controls */}
       {pagination && (
-        <div className="grid grid-cols-1 md:grid-cols-3 items-center gap-4 mt-4">
-          <div className="flex items-center gap-2 justify-start">
-            <span className="text-sm text-muted-foreground">Rows per page:</span>
-            <Select
+        <div className={styles.paginationWrapper}>
+          {/* Rows Per Page */}
+          <div className={styles.rowsPerPageWrapper}>
+            <label htmlFor="rows-per-page" className={styles.mutedText}>Rows per page:</label>
+            <select
+              id="rows-per-page"
               value={String(pagination.perPage)}
-              onValueChange={handlePerPageChange}
-              defaultValue={String(pagination.perPage)}
+              onChange={(e) => handlePerPageChange(e.target.value)}
+              className={styles.selectInput}
             >
-              <SelectTrigger className="w-[80px] h-8 bg-white dark:bg-slate-800 text-black dark:text-white border">
-                <SelectValue>{pagination.perPage}</SelectValue>
-              </SelectTrigger>
-              <SelectContent className="bg-white dark:bg-slate-800 text-black dark:text-white border shadow-md rounded-md">
-                <SelectItem value="10" className="text-black dark:text-white hover:bg-gray-100 dark:hover:bg-slate-700">10</SelectItem>
-                <SelectItem value="20" className="text-black dark:text-white hover:bg-gray-100 dark:hover:bg-slate-700">20</SelectItem>
-                <SelectItem value="50" className="text-black dark:text-white hover:bg-gray-100 dark:hover:bg-slate-700">50</SelectItem>
-              </SelectContent>
-            </Select>
+              {[10, 20, 50].map(size => <option key={size} value={size}>{size}</option>)}
+            </select>
           </div>
-          
-          <div className="flex justify-center">
-            <Pagination>
-              <PaginationContent>
-                <PaginationItem>
-                  <PaginationPrevious
-                    onClick={() => handlePageChange(Math.max(1, pagination.page - 1))}
-                    className={`${pagination.page <= 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'} bg-white dark:bg-slate-800 text-black dark:text-white`}
-                  />
-                </PaginationItem>
 
-                <PaginationItem>
-                  <span className="flex items-center justify-center px-3 h-9 bg-white dark:bg-slate-800 text-black dark:text-white border rounded-md mx-1">
+          {/* Page Navigation */}
+          <div className={styles.pageNavWrapper}>
+            <div className={styles.pageNavInner}>
+                <button
+                  onClick={() => handlePageChange(Math.max(1, pagination.page - 1))}
+                  disabled={pagination.page <= 1}
+                  className={styles.pageButton}
+                >
+                  Previous
+                </button>
+                <span className={styles.pageInfo}>
                     Page {pagination.page} of {pagination.totalPages}
-                  </span>
-                </PaginationItem>
-
-                <PaginationItem>
-                  <PaginationNext
-                    onClick={() => handlePageChange(Math.min(pagination.totalPages, pagination.page + 1))}
-                    className={`${pagination.page >= pagination.totalPages ? 'pointer-events-none opacity-50' : 'cursor-pointer'} bg-white dark:bg-slate-800 text-black dark:text-white`}
-                  />
-                </PaginationItem>
-              </PaginationContent>
-            </Pagination>
+                </span>
+                <button
+                  onClick={() => handlePageChange(Math.min(pagination.totalPages, pagination.page + 1))}
+                  disabled={pagination.page >= pagination.totalPages}
+                  className={styles.pageButton}
+                >
+                  Next
+                </button>
+            </div>
           </div>
-          
-          {pagination.totalItems ? (
-            <div className="text-sm text-muted-foreground text-right">
+
+          {/* Total Items Info */}
+          {pagination.totalItems != null ? ( // Check for null/undefined explicitly
+            <div className={`${styles.mutedText} ${styles.totalItems}`}>
               {(pagination.page - 1) * pagination.perPage + 1}-
               {Math.min(pagination.page * pagination.perPage, pagination.totalItems)} of {pagination.totalItems}
             </div>
           ) : (
-            <div></div> // Empty div to maintain the grid layout
+            <div></div> // Placeholder for grid alignment
           )}
         </div>
       )}
     </>
   );
 
-  const emptyState = (
-    <Alert>
-      <AlertTitle>{emptyMessage}</AlertTitle>
-    </Alert>
-  );
-
-  const content = data.length > 0 ? tableContent : emptyState;
-
-  // If no title is provided, just return the table content directly
-  if (!title) {
-    return content;
+  // Handle case where data is empty but not loading (simplified empty state)
+  // Original emptyState rendering was slightly complex with title logic
+  if (!isLoading && data.length === 0 && !title) {
+      return (
+          <div className={styles.simpleEmptyState}>
+              {emptyMessage}
+          </div>
+      );
   }
 
-  // Otherwise, wrap in a card with title
+  // If no title, return table content (or loading/empty state handled within)
+  if (!title) {
+    return tableContent;
+  }
+
+  // Wrap in Card if title exists
   return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle>{title}</CardTitle>
-      </CardHeader>
-      <CardContent>
-        {content}
-      </CardContent>
-    </Card>
+    <div className={styles.cardWrapper}>
+      <div className={styles.cardHeader}>
+        <h3 className={styles.cardTitle}>{title}</h3>
+      </div>
+      <div className={styles.cardContent}>
+        {/* Render table content (handles its own loading/empty states) */}
+        {tableContent}
+      </div>
+    </div>
   );
 } 

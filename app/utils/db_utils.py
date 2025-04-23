@@ -7,11 +7,11 @@ import os
 import datetime
 import shutil
 import glob
-from src.utils.logger import logger
-from src.utils.file_utils import ensure_directory, clean_old_files
+from app.utils.logger import logger
+from app.utils.file_utils import ensure_directory, clean_old_files
 
 # Set up logging using the centralized utility
-logger = logger.bind(name="utils.db")
+# logger = logger.bind(name="utils.db") # Logger is already configured
 
 def cleanup_old_backups(backup_dir, max_backups=5):
     """
@@ -77,14 +77,17 @@ def update_scraper_status(source_name, status, error_message=None):
         status (str): Status to set ('working', 'error', etc.)
         error_message (str, optional): Error message to set
     """
-    from src.database.db import session_scope
-    from src.database.models import DataSource, ScraperStatus
+    # Use the correct context manager from connection.py
+    from app.database.connection import get_db 
+    # Import models from the correct location
+    from app.models import DataSource, ScraperStatus
     import datetime
     
     logger.info(f"Updating scraper status for {source_name} to {status}")
     
     try:
-        with session_scope() as session:
+        # Use the get_db context manager
+        with get_db() as session: 
             # Get the data source
             data_source = session.query(DataSource).filter_by(name=source_name).first()
             if data_source:

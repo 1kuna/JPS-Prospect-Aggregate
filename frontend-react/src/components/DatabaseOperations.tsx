@@ -2,25 +2,37 @@ import { useState } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
 import { Button } from './ui/button';
 import { Alert, AlertTitle, AlertDescription } from './ui/alert';
-import { useDatabase } from '@/hooks/api/useDatabase';
+import {
+  useDatabaseStatus,
+  useDatabaseBackups,
+  useRebuildDatabase,
+  useInitializeDatabase,
+  useResetDatabase,
+  useCreateBackup,
+  useRestoreBackup
+} from '@/hooks/api/useDatabase';
 import { toast } from '@/hooks/use-toast';
+import styles from './DatabaseOperations.module.css'; // Import CSS module
 
 export function DatabaseOperations() {
   const [isConfirmingReset, setIsConfirmingReset] = useState(false);
   
-  const { data: status, isLoading: statusLoading } = useDatabase.useStatus();
-  const { data: backups, isLoading: backupsLoading } = useDatabase.useBackups();
+  const { data: status, isLoading: statusLoading } = useDatabaseStatus();
+  const { data: backups, isLoading: backupsLoading } = useDatabaseBackups();
   
-  const { mutate: rebuildDatabase, isLoading: isRebuilding } = useDatabase.useRebuild();
-  const { mutate: initializeDatabase, isLoading: isInitializing } = useDatabase.useInitialize();
-  const { mutate: resetDatabase, isLoading: isResetting } = useDatabase.useReset();
-  const { mutate: createBackup, isLoading: isBackingUp } = useDatabase.useCreateBackup();
-  const { mutate: restoreBackup, isLoading: isRestoring } = useDatabase.useRestoreBackup();
+  const { mutate: rebuildDatabase, isLoading: isRebuilding } = useRebuildDatabase();
+  const { mutate: initializeDatabase, isLoading: isInitializing } = useInitializeDatabase();
+  const { mutate: resetDatabase, isLoading: isResetting } = useResetDatabase();
+  const { mutate: createBackup, isLoading: isBackingUp } = useCreateBackup();
+  const { mutate: restoreBackup, isLoading: isRestoring } = useRestoreBackup();
 
   const handleRebuild = () => {
     rebuildDatabase(undefined, {
       onSuccess: () => {
         toast.success({ title: 'Success', description: 'Database rebuilt successfully' });
+      },
+      onError: () => {
+        toast.error({ title: 'Error', description: 'Failed to rebuild database' });
       }
     });
   };
@@ -29,6 +41,9 @@ export function DatabaseOperations() {
     initializeDatabase(undefined, {
       onSuccess: () => {
         toast.success({ title: 'Success', description: 'Database initialized successfully' });
+      },
+      onError: () => {
+        toast.error({ title: 'Error', description: 'Failed to initialize database' });
       }
     });
   };
@@ -43,6 +58,10 @@ export function DatabaseOperations() {
       onSuccess: () => {
         toast.success({ title: 'Success', description: 'Database reset successfully' });
         setIsConfirmingReset(false);
+      },
+      onError: () => {
+        toast.error({ title: 'Error', description: 'Failed to reset database' });
+        setIsConfirmingReset(false);
       }
     });
   };
@@ -51,6 +70,9 @@ export function DatabaseOperations() {
     createBackup(undefined, {
       onSuccess: () => {
         toast.success({ title: 'Success', description: 'Backup created successfully' });
+      },
+      onError: () => {
+        toast.error({ title: 'Error', description: 'Failed to create backup' });
       }
     });
   };
@@ -59,6 +81,9 @@ export function DatabaseOperations() {
     restoreBackup({ backupId }, {
       onSuccess: () => {
         toast.success({ title: 'Success', description: 'Backup restored successfully' });
+      },
+      onError: () => {
+        toast.error({ title: 'Error', description: 'Failed to restore backup' });
       }
     });
   };
@@ -71,31 +96,31 @@ export function DatabaseOperations() {
       <CardHeader>
         <CardTitle>Database Operations</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className={styles.cardContent}>
         {/* Database Status */}
         {status && (
-          <div className="grid grid-cols-2 gap-4 mb-4">
+          <div className={styles.statusGrid}>
             <div>
-              <p className="text-sm text-muted-foreground">Database Size</p>
-              <p className="text-lg font-semibold">{status.size}</p>
+              <p className={styles.statusLabel}>Database Size</p>
+              <p className={styles.statusValue}>{status.size}</p>
             </div>
             <div>
-              <p className="text-sm text-muted-foreground">Last Backup</p>
-              <p className="text-lg font-semibold">{status.lastBackup || 'Never'}</p>
+              <p className={styles.statusLabel}>Last Backup</p>
+              <p className={styles.statusValue}>{status.lastBackup || 'Never'}</p>
             </div>
             <div>
-              <p className="text-sm text-muted-foreground">Uptime</p>
-              <p className="text-lg font-semibold">{status.uptime}</p>
+              <p className={styles.statusLabel}>Uptime</p>
+              <p className={styles.statusValue}>{status.uptime}</p>
             </div>
             <div>
-              <p className="text-sm text-muted-foreground">Health</p>
-              <p className="text-lg font-semibold">{status.health}</p>
+              <p className={styles.statusLabel}>Health</p>
+              <p className={styles.statusValue}>{status.health}</p>
             </div>
           </div>
         )}
 
         {/* Operation Buttons */}
-        <div className="flex flex-wrap gap-2">
+        <div className={styles.buttonGroup}>
           <Button
             onClick={handleRebuild}
             disabled={isLoading}
@@ -123,7 +148,7 @@ export function DatabaseOperations() {
             <AlertTitle>Warning</AlertTitle>
             <AlertDescription>
               This will permanently delete all data. Are you sure?
-              <div className="flex gap-2 mt-2">
+              <div className={styles.confirmButtonGroup}>
                 <Button
                   variant="destructive"
                   onClick={handleReset}
@@ -153,17 +178,17 @@ export function DatabaseOperations() {
 
         {/* Backups List */}
         {backups && backups.length > 0 && (
-          <div className="mt-4">
-            <h3 className="text-lg font-semibold mb-2">Available Backups</h3>
-            <div className="space-y-2">
+          <div className={styles.backupsSection}>
+            <h3 className={styles.sectionTitle}>Available Backups</h3>
+            <div className={styles.backupsList}>
               {backups.map((backup) => (
                 <div
                   key={backup.id}
-                  className="flex items-center justify-between p-2 border rounded"
+                  className={styles.backupItem}
                 >
                   <div>
-                    <p className="font-medium">{new Date(backup.timestamp).toLocaleString()}</p>
-                    <p className="text-sm text-muted-foreground">{backup.size}</p>
+                    <p className={styles.backupTimestamp}>{new Date(backup.timestamp).toLocaleString()}</p>
+                    <p className={styles.statusLabel}>{backup.size}</p>
                   </div>
                   <Button
                     variant="outline"

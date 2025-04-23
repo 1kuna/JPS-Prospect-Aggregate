@@ -1,0 +1,88 @@
+/* frontend-react/src/pages/DirectDatabaseAccess.module.css */
+
+/* Reusing variables - consider a global file */
+:root {
+  --border-color: #e5e7eb; /* gray-200 */
+  --warning-border: #fcd34d; /* yellow-400 */
+  --warning-bg: #fefce8; /* yellow-50 */
+  --warning-text: #b45309; /* yellow-700 */
+  --pre-bg: #f3f4f6; /* gray-100 */
+  --spacing-unit: 0.25rem; /* 4px */
+}
+
+.warningBox {
+  padding: calc(4 * var(--spacing-unit)); /* p-4 */
+  border: 1px solid var(--warning-border); /* border border-yellow-400 */
+  background-color: var(--warning-bg); /* bg-yellow-50 */
+  color: var(--warning-text); /* text-yellow-700 */
+  border-radius: 0.25rem; /* rounded */
+}
+
+.warningTitle {
+  font-weight: 700; /* font-bold - Tailwind uses 700 */
+  margin-bottom: calc(1 * var(--spacing-unit)); /* Add some spacing */
+}
+
+.contentWrapper {
+  /* Replicates space-y-4 for direct children */
+  & > * + * {
+    margin-top: calc(4 * var(--spacing-unit)); /* 16px */
+  }
+}
+
+.queryLabel {
+  display: block; /* block */
+  font-size: 0.875rem; /* text-sm */
+  line-height: 1.25rem;
+  font-weight: 500; /* font-medium */
+  margin-bottom: calc(1 * var(--spacing-unit)); /* mb-1, 4px */
+}
+
+.queryTextarea {
+  height: 8rem; /* h-32 */
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; /* font-mono */
+  /* Add default textarea styles if not globally defined */
+  width: 100%;
+  padding: calc(2 * var(--spacing-unit));
+  border: 1px solid var(--border-color);
+  border-radius: 0.25rem;
+}
+
+.buttonGroup {
+  display: flex; /* flex */
+  gap: calc(2 * var(--spacing-unit)); /* gap-2, 8px */
+}
+
+/* Optional: Add common styles for buttons if needed */
+.actionButton {
+  padding: calc(1.5 * var(--spacing-unit)) calc(3 * var(--spacing-unit));
+  border: 1px solid var(--border-color);
+  border-radius: 0.25rem;
+  cursor: pointer;
+}
+.actionButton:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+
+.resultsWrapper {
+  margin-top: calc(4 * var(--spacing-unit)); /* mt-4, 16px */
+}
+
+.resultsTitle {
+  font-size: 1.125rem; /* text-lg */
+  line-height: 1.75rem;
+  font-weight: 600; /* font-semibold */
+  margin-bottom: calc(2 * var(--spacing-unit)); /* mb-2, 8px */
+}
+
+.resultsPre {
+  background-color: var(--pre-bg); /* bg-gray-100 */
+  padding: calc(4 * var(--spacing-unit)); /* p-4 */
+  border-radius: 0.25rem; /* rounded */
+  overflow: auto; /* overflow-auto */
+  max-height: 24rem; /* max-h-96 */
+  white-space: pre-wrap; /* Ensure wrapping */
+  word-break: break-all; /* Break long strings */
+} 

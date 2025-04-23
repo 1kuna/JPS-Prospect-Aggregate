@@ -12,6 +12,7 @@ import {
   CardContent,
 } from '@/components/ui';
 import { useToast } from '@/hooks/use-toast';
+import styles from './Statistics.module.css';
 
 interface StatisticsProps {
   isOpen: boolean;
@@ -24,8 +25,8 @@ export function Statistics({ isOpen, onClose }: StatisticsProps) {
   
   useEffect(() => {
     if (isOpen) {
-      fetchStatistics().catch(error => {
-        console.error('Failed to fetch statistics:', error);
+      fetchStatistics().catch(fetchError => {
+        console.error('Failed to fetch statistics:', fetchError);
         toast({
           title: 'Error',
           description: 'Failed to load statistics. Please try again.',
@@ -43,23 +44,23 @@ export function Statistics({ isOpen, onClose }: StatisticsProps) {
         </DialogHeader>
         
         {isLoading ? (
-          <div className="flex justify-center py-8">
+          <div className={styles.loadingWrapper}>
             <Spinner size="lg" />
           </div>
         ) : error ? (
-          <div className="bg-red-100 p-4 rounded-md text-red-800">
+          <div className={styles.errorBox}>
             {error.message || 'An error occurred while loading statistics'}
           </div>
         ) : !statistics ? (
-          <div className="text-center py-8 text-gray-500">
+          <div className={styles.noDataMessage}>
             No statistics available
           </div>
         ) : (
-          <div className="space-y-4">
+          <div className={styles.contentWrapper}>
             <Card>
               <CardContent className="pt-6">
-                <h3 className="text-lg font-semibold mb-2">Overview</h3>
-                <div className="grid grid-cols-2 gap-4">
+                <h3 className={styles.sectionTitle}>Overview</h3>
+                <div className={styles.overviewGrid}>
                   <StatItem 
                     label="Total Proposals" 
                     value={statistics.total_proposals || 0} 
@@ -83,20 +84,20 @@ export function Statistics({ isOpen, onClose }: StatisticsProps) {
             {statistics.proposals_trend && statistics.proposals_trend.length > 0 && (
               <Card>
                 <CardContent className="pt-6">
-                  <h3 className="text-lg font-semibold mb-2">Proposal Trends</h3>
-                  <div className="h-40 flex items-end space-x-2">
+                  <h3 className={styles.sectionTitle}>Proposal Trends</h3>
+                  <div className={styles.trendChartWrapper}>
                     {statistics.proposals_trend.map((item, index) => {
                       const maxValue = Math.max(...statistics.proposals_trend.map(i => i.count));
                       const height = `${Math.max(10, (item.count / maxValue) * 100)}%`;
                       
                       return (
-                        <div key={index} className="flex flex-col items-center flex-1">
+                        <div key={index} className={styles.trendBarWrapper}>
                           <div 
-                            className="bg-blue-500 w-full rounded-t-sm" 
+                            className={styles.trendBar}
                             style={{ height }}
                             title={`${item.count} proposals`}
                           />
-                          <div className="text-xs mt-1 text-center truncate w-full">
+                          <div className={styles.trendBarLabel}>
                             {item.month}
                           </div>
                         </div>
@@ -110,12 +111,12 @@ export function Statistics({ isOpen, onClose }: StatisticsProps) {
             {statistics.top_sources && statistics.top_sources.length > 0 && (
               <Card>
                 <CardContent className="pt-6">
-                  <h3 className="text-lg font-semibold mb-2">Top Sources</h3>
-                  <div className="space-y-2">
+                  <h3 className={styles.sectionTitle}>Top Sources</h3>
+                  <div className={styles.topSourcesList}>
                     {statistics.top_sources.map((source, index) => (
-                      <div key={index} className="flex justify-between items-center">
-                        <span className="truncate max-w-[70%]">{source.name}</span>
-                        <span className="font-medium">{source.count} proposals</span>
+                      <div key={index} className={styles.sourceItem}>
+                        <span className={styles.sourceName}>{source.name}</span>
+                        <span className={styles.sourceCount}>{source.count} proposals</span>
                       </div>
                     ))}
                   </div>
@@ -141,8 +142,8 @@ interface StatItemProps {
 function StatItem({ label, value }: StatItemProps) {
   return (
     <div>
-      <p className="text-sm text-gray-500">{label}</p>
-      <p className="text-2xl font-bold">{value}</p>
+      <p className={styles.statLabel}>{label}</p>
+      <p className={styles.statValue}>{value}</p>
     </div>
   );
 }
@@ -152,6 +153,9 @@ function formatDate(dateString?: string): string {
   
   try {
     const date = new Date(dateString);
+    if (isNaN(date.getTime())) {
+        return 'Invalid date';
+    }
     return date.toLocaleDateString(undefined, {
       year: 'numeric',
       month: 'short',
