@@ -17,17 +17,6 @@ export const useProposalStatistics = () => {
   );
 };
 
-// Hook for recent proposals
-export const useRecentProposals = (limit: number = 5) => {
-  const { useQuery } = useProposals;
-  // @ts-ignore // Suppress TS2347
-  return (useQuery as any)<Proposal[]>(
-    ['recent', { limit }],
-    '/api/proposals/recent',
-    { params: { limit } }
-  );
-};
-
 // The following hooks are automatically created by createEntityHooks:
 // - useProposals().useList() - Get list of proposals with pagination
 // - useProposals().useGet(id) - Get single proposal

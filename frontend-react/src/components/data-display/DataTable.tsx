@@ -58,7 +58,6 @@ export function DataTable<T>({
   const getValue = (row: T, accessorKey: Column<T>['accessorKey']) => {
     if (typeof accessorKey === 'function') {
       // This case shouldn't happen based on current interface, but safe guard
-      // return accessorKey(row); // If function accessor is allowed
       return 'N/A'; // Or handle appropriately
     }
     // Basic nested accessor support (e.g., 'dataSource.name')

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button } from './ui/button';
+import { Button } from '@/components/ui/button';
 import {
   useDatabaseStatus,
   useDatabaseBackups,
@@ -9,7 +9,6 @@ import {
   useCreateBackup,
   useRestoreBackup
 } from '@/hooks/api/useDatabase';
-import { toast } from '@/hooks/use-toast';
 import styles from './DatabaseOperations.module.css'; // Import CSS module
 
 export function DatabaseOperations() {
@@ -27,10 +26,10 @@ export function DatabaseOperations() {
   const handleRebuild = () => {
     rebuildDatabase(undefined, {
       onSuccess: () => {
-        toast.success({ title: 'Success', description: 'Database rebuilt successfully' });
+        // Intentionally empty
       },
       onError: () => {
-        toast.error({ title: 'Error', description: 'Failed to rebuild database' });
+        // Intentionally empty
       }
     });
   };
@@ -38,10 +37,10 @@ export function DatabaseOperations() {
   const handleInitialize = () => {
     initializeDatabase(undefined, {
       onSuccess: () => {
-        toast.success({ title: 'Success', description: 'Database initialized successfully' });
+        // Intentionally empty
       },
       onError: () => {
-        toast.error({ title: 'Error', description: 'Failed to initialize database' });
+        // Intentionally empty
       }
     });
   };
@@ -54,11 +53,11 @@ export function DatabaseOperations() {
 
     resetDatabase(undefined, {
       onSuccess: () => {
-        toast.success({ title: 'Success', description: 'Database reset successfully' });
+        // Intentionally empty
         setIsConfirmingReset(false);
       },
       onError: () => {
-        toast.error({ title: 'Error', description: 'Failed to reset database' });
+        // Intentionally empty
         setIsConfirmingReset(false);
       }
     });
@@ -67,10 +66,10 @@ export function DatabaseOperations() {
   const handleCreateBackup = () => {
     createBackup(undefined, {
       onSuccess: () => {
-        toast.success({ title: 'Success', description: 'Backup created successfully' });
+        // Intentionally empty
       },
       onError: () => {
-        toast.error({ title: 'Error', description: 'Failed to create backup' });
+        // Intentionally empty
       }
     });
   };
@@ -78,10 +77,10 @@ export function DatabaseOperations() {
   const handleRestoreBackup = (backupId: string) => {
     restoreBackup({ backupId }, {
       onSuccess: () => {
-        toast.success({ title: 'Success', description: 'Backup restored successfully' });
+        // Intentionally empty
       },
       onError: () => {
-        toast.error({ title: 'Error', description: 'Failed to restore backup' });
+        // Intentionally empty
       }
     });
   };

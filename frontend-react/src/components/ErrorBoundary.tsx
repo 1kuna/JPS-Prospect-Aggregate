@@ -1,8 +1,5 @@
 import React from 'react';
 import styles from './ErrorBoundary.module.css'; // Import CSS module
-// Removed imports from deleted ./ui directory
-// import { Alert, AlertTitle, AlertDescription } from './ui/alert';
-// import { Button } from './ui/button';
 
 interface ErrorBoundaryProps {
   fallback?: React.ReactNode;

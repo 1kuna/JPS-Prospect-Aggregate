@@ -1,5 +1,3 @@
-// import { ApiResponse } from './api'; // Unused
-
 export interface Proposal {
   id: number;
   title: string;
@@ -36,6 +34,3 @@ export interface ProposalFilters {
   endDate?: string;
   search?: string;
 }
-
-// Removed unused interface
-// export interface ProposalStatisticsResponse extends ApiResponse<ProposalStatistics> {}

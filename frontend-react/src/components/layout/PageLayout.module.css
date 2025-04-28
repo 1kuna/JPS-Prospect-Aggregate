@@ -49,11 +49,3 @@
 .skeletonContainer > * + * {
    margin-top: calc(6 * var(--spacing-unit)); /* 24px */
 }
-
-/* Add styles for actual skeleton elements here if you uncomment them */
-/* .skeletonRect { background-color: #e5e7eb; border-radius: 0.25rem; animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; } */
-/* @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } } */
-
-/* Add styles for actual skeleton elements here if you uncomment them */
-/* .skeletonRect { background-color: #e5e7eb; border-radius: 0.25rem; animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; } */
-/* @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } } */ 
