@@ -69,27 +69,25 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
       // Render default fallback UI
       return (
         <div className={styles.errorContainer}> {/* Use CSS module class */}
-          <h2 className={styles.errorTitle}/* style={{ color: 'red', marginBottom: '0.5rem' }} */>Something went wrong</h2>
-          <p className={styles.errorMessage}/* className="mb-2" */>{this.state.error?.message || 'An unexpected error occurred'}</p>
+          <h2 className={styles.errorTitle}>Something went wrong</h2>
+          <p className={styles.errorMessage}>{this.state.error?.message || 'An unexpected error occurred'}</p>
           {this.state.error?.stack && (
              // Use CSS module class for details container
-            <details className={styles.detailsContainer}/* className="mt-2" */>
+            <details className={styles.detailsContainer}>
                {/* Use CSS module class for summary */}
-              <summary className={styles.detailsSummary}/* className="cursor-pointer text-sm" */>View technical details</summary>
+              <summary className={styles.detailsSummary}>View technical details</summary>
               {/* Use CSS module class for pre */}
               <pre
                 className={styles.detailsPre} // Use CSS module class
-                // style={{ background: '#f3f4f6', padding: '0.5rem', marginTop: '0.5rem', fontSize: '0.75rem', overflow: 'auto' }} // Remove inline style
               >
                 {this.state.error.stack}
               </pre>
             </details>
           )}
            {/* Use CSS module class for button container */}
-          <div className={styles.buttonContainer}/* className="mt-4" */>
+          <div className={styles.buttonContainer}>
             <button // Replaced Button with standard <button>
               className={styles.tryAgainButton} // Use CSS module class
-              // style={{ padding: '0.25rem 0.75rem', border: '1px solid #ccc', borderRadius: '0.25rem' }} // Remove inline styles
               onClick={this.resetErrorState}
             >
               Try again

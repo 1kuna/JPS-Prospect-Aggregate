@@ -11,6 +11,6 @@ export * from './data-display';
 export * from './forms';
 
 // Re-export other components
-export { ErrorBoundary } from './ErrorBoundary';
-export { Statistics } from './Statistics';
-export { DatabaseOperations } from './DatabaseOperations'; 
+// export { ErrorBoundary } from './ErrorBoundary'; // Marked as unused by ts-prune
+// export { Statistics } from './Statistics'; // Deleted unused component
+// export { DatabaseOperations } from './DatabaseOperations'; // Marked as unused by ts-prune 

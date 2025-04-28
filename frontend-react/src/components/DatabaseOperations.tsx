@@ -1,7 +1,5 @@
 import { useState } from 'react';
-import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
 import { Button } from './ui/button';
-import { Alert, AlertTitle, AlertDescription } from './ui/alert';
 import {
   useDatabaseStatus,
   useDatabaseBackups,
@@ -92,11 +90,11 @@ export function DatabaseOperations() {
                     isInitializing || isResetting || isBackingUp || isRestoring;
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Database Operations</CardTitle>
-      </CardHeader>
-      <CardContent className={styles.cardContent}>
+    <div className={styles.cardContainer}>
+      <div className={styles.cardHeader}>
+        <h2 className={styles.cardTitle}>Database Operations</h2>
+      </div>
+      <div className={styles.cardContent}>
         {/* Database Status */}
         {status && (
           <div className={styles.statusGrid}>
@@ -144,9 +142,9 @@ export function DatabaseOperations() {
 
         {/* Reset Confirmation */}
         {isConfirmingReset ? (
-          <Alert variant="destructive">
-            <AlertTitle>Warning</AlertTitle>
-            <AlertDescription>
+          <div className={`${styles.alert} ${styles.alertDestructive}`}>
+            <h4 className={styles.alertTitle}>Warning</h4>
+            <p className={styles.alertDescription}>
               This will permanently delete all data. Are you sure?
               <div className={styles.confirmButtonGroup}>
                 <Button
@@ -164,8 +162,8 @@ export function DatabaseOperations() {
                   Cancel
                 </Button>
               </div>
-            </AlertDescription>
-          </Alert>
+            </p>
+          </div>
         ) : (
           <Button
             variant="destructive"
@@ -181,7 +179,7 @@ export function DatabaseOperations() {
           <div className={styles.backupsSection}>
             <h3 className={styles.sectionTitle}>Available Backups</h3>
             <div className={styles.backupsList}>
-              {backups.map((backup) => (
+              {backups.map((backup: any) => (
                 <div
                   key={backup.id}
                   className={styles.backupItem}
@@ -194,7 +192,7 @@ export function DatabaseOperations() {
                     variant="outline"
                     size="sm"
                     onClick={() => handleRestoreBackup(backup.id)}
-                    disabled={isLoading}
+                    disabled={isRestoring}
                   >
                     {isRestoring ? 'Restoring...' : 'Restore'}
                   </Button>
@@ -203,7 +201,7 @@ export function DatabaseOperations() {
             </div>
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 } 

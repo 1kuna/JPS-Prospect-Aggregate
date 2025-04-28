@@ -1,12 +1,14 @@
 import React from 'react';
 import styles from './DataTable.module.css'; // Import CSS module
 
-export interface Column<T> {
+// Define a generic Column type for TanStack Table
+interface Column<TData> {
+  accessorKey: keyof TData | string; // Revert accessorKey type
   header: string;
-  accessorKey: keyof T | ((row: T) => any);
-  cell?: ({ row }: { row: T }) => React.ReactNode; // Pass row object to cell renderer
-  className?: string; // Allow passing custom classes
-  onClick?: () => void; // Allow header click handlers
+  cell?: (info: { row: TData }) => React.ReactNode; // Correct cell prop type
+  className?: string; // Add back className
+  onClick?: () => void; // Add back onClick for header
+  // Add other TanStack Table column options as needed
 }
 
 interface PaginationInfo {
@@ -53,15 +55,22 @@ export function DataTable<T>({
     }
   };
 
-  const getValue = (row: T, accessorKey: keyof T | ((row: T) => any)) => {
+  const getValue = (row: T, accessorKey: Column<T>['accessorKey']) => {
     if (typeof accessorKey === 'function') {
-      return accessorKey(row);
+      // This case shouldn't happen based on current interface, but safe guard
+      // return accessorKey(row); // If function accessor is allowed
+      return 'N/A'; // Or handle appropriately
     }
     // Basic nested accessor support (e.g., 'dataSource.name')
     if (typeof accessorKey === 'string' && accessorKey.includes('.')) {
       return accessorKey.split('.').reduce((obj: any, key) => obj?.[key], row);
     }
-    return row[accessorKey as keyof T];
+    // Handle string that is not nested and is keyof T
+    if (typeof accessorKey === 'string') {
+        return row[accessorKey as keyof T];
+    }
+    // This path might be unreachable if accessorKey is always string or keyof T
+    return 'Invalid Key'; 
   };
 
   // Calculate column widths (basic even distribution)

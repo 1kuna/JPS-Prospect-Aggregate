@@ -1,6 +1,5 @@
 import React from 'react';
 import styles from './PageLayout.module.css'; // Import CSS module
-// import { Skeleton } from '@/components/ui'; // Removed import
 
 interface PageLayoutProps {
   title?: string;

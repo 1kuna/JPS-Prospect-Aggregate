@@ -1,14 +1,18 @@
-import { useState, useEffect, useCallback } from "react";
-import type { ToastActionElement, ToastProps } from "@/components/ui/toast";
+import { useEffect, useState, useCallback } from 'react';
 
-const TOAST_LIMIT = 5;
+// Define placeholder types if they are used internally
+type ToastProps = any; 
+type ToastActionElement = React.ReactElement | any; // Define placeholder type
+
+const TOAST_LIMIT = 1;
 const TOAST_REMOVE_DELAY = 5000;
 
+// Original type definition using ToastActionElement
 type ToasterToast = ToastProps & {
   id: string;
   title?: React.ReactNode;
   description?: React.ReactNode;
-  action?: ToastActionElement;
+  action?: ToastActionElement; // Use the defined type
 };
 
 let count = 0;
@@ -34,7 +38,7 @@ function updateGlobalToasts(updater: (toasts: ToasterToast[]) => ToasterToast[])
   listeners.forEach(listener => listener(globalToasts));
 }
 
-export function useToast() {
+const useToast = () => {
   const [state, setState] = useState<State>({ toasts: globalToasts });
 
   // Register this component as a listener for global toast updates
@@ -59,7 +63,7 @@ export function useToast() {
         ...props,
         id,
         open: true,
-        onOpenChange: (open) => {
+        onOpenChange: (open: any) => {
           if (!open) {
             console.log(`[useToast] Dismissing toast with ID: ${id}`);
             updateGlobalToasts(toasts => 
@@ -147,7 +151,7 @@ export function useToast() {
       }, 300);
     },
   };
-}
+};
 
 export const toast = {
   // Define a default toast function

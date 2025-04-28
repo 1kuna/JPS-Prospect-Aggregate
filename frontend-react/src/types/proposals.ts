@@ -1,4 +1,4 @@
-import { ApiResponse } from './api';
+// import { ApiResponse } from './api'; // Unused
 
 export interface Proposal {
   id: number;
@@ -8,9 +8,17 @@ export interface Proposal {
   createdAt: string;
   updatedAt: string;
   // Add other proposal-specific fields
+  search?: string;
 }
 
-export type ProposalStatus = 'draft' | 'pending' | 'approved' | 'rejected';
+// Enum for Proposal Status (assuming these are possible statuses)
+enum ProposalStatus {
+  DRAFT = 'Draft',
+  SUBMITTED = 'Submitted',
+  REVIEW = 'In Review',
+  APPROVED = 'Approved',
+  REJECTED = 'Rejected',
+}
 
 export interface ProposalStatistics {
   total: number;
@@ -29,6 +37,5 @@ export interface ProposalFilters {
   search?: string;
 }
 
-export interface ProposalListResponse extends ApiResponse<Proposal[]> {}
-export interface ProposalResponse extends ApiResponse<Proposal> {}
-export interface ProposalStatisticsResponse extends ApiResponse<ProposalStatistics> {} 
+// Removed unused interface
+// export interface ProposalStatisticsResponse extends ApiResponse<ProposalStatistics> {}

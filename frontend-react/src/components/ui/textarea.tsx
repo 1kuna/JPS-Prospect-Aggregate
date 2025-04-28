@@ -1,7 +1,7 @@
-import React from 'react';
+import * as React from "react";
 import styles from './Textarea.module.css'; // Import CSS module
 
-export interface TextareaProps
+interface TextareaProps
   extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {}
 
 const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
@@ -17,5 +17,3 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
   }
 );
 Textarea.displayName = "Textarea";
-
-export { Textarea }; 

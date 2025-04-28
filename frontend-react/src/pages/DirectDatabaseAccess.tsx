@@ -1,25 +1,29 @@
 import { useState } from 'react';
 import { DataPageLayout } from '@/components/layout';
 import { useExecuteQuery } from '@/hooks/api/useDatabase';
-import { toast } from '@/hooks/use-toast';
 import styles from './DirectDatabaseAccess.module.css';
+import { DatabaseOperations } from '@/components/DatabaseOperations';
 
 export default function DirectDatabaseAccess() {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
   
   const { mutate: executeQuery, isLoading } = useExecuteQuery();
 
   const handleExecute = () => {
-    if (!query.trim()) return;
-
+    if (!query.trim()) {
+      setResults('Please enter a query.');
+      return;
+    }
     executeQuery({ query: query.trim() }, {
-      onSuccess: (data) => {
-        setResults(data);
-        toast.success({ title: 'Success', description: 'Query executed successfully' });
+      onSuccess: (data: any) => {
+        setResults(JSON.stringify(data, null, 2));
+        setError(null);
       },
-      onError: (error) => {
-        toast.error({ title: 'Error', description: error.message });
+      onError: (error: any) => {
+        setResults(null);
+        setError(error.message || 'Query execution failed');
       }
     });
   };
@@ -27,6 +31,7 @@ export default function DirectDatabaseAccess() {
   const handleClear = () => {
     setQuery('');
     setResults(null);
+    setError(null);
   };
 
   return (
@@ -35,6 +40,7 @@ export default function DirectDatabaseAccess() {
       subtitle="Execute SQL queries directly on the database"
       data={results}
       loading={isLoading}
+      error={error as Error | null}
       renderHeader={() => (
         <div role="alert" className={styles.warningBox}>
           <h4 className={styles.warningTitle}>Warning: Advanced Feature</h4>
@@ -80,10 +86,14 @@ export default function DirectDatabaseAccess() {
             <div className={styles.resultsWrapper}>
               <h3 className={styles.resultsTitle}>Results</h3>
               <pre className={styles.resultsPre}>
-                {JSON.stringify(results, null, 2)}
+                {results}
               </pre>
             </div>
           )}
+
+          <div className={styles.operationsWrapper}>
+            <DatabaseOperations />
+          </div>
         </div>
       )}
     />

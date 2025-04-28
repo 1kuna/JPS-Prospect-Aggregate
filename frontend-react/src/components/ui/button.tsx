@@ -4,25 +4,23 @@ import styles from './Button.module.css'; // Import CSS module
 export interface ButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   // Add any custom variants or props if needed later
-  // variant?: 'default' | 'destructive' | 'outline' | 'secondary' | 'ghost' | 'link';
-  // size?: 'default' | 'sm' | 'lg' | 'icon';
+  variant?: 'default' | 'destructive' | 'outline' | 'secondary' | 'ghost' | 'link';
+  size?: 'default' | 'sm' | 'lg' | 'icon';
+  asChild?: boolean;
 }
 
-const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, children, type = "button", ...props }, ref) => {
+export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
+  ({ className, variant = 'default', size = 'default', asChild = false, children, ...props }, ref) => {
+    const Comp = asChild ? 'span' : 'button';
     return (
-      <button
-        type={type}
-        // Combine passed className with CSS module class
+      <Comp
         className={`${styles.buttonBase} ${className || ''}`}
         ref={ref}
         {...props}
       >
         {children}
-      </button>
+      </Comp>
     );
   }
 );
-Button.displayName = "Button";
-
-export { Button }; 
+Button.displayName = "Button"; 
