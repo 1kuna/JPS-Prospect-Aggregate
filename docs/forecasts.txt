@@ -12,7 +12,7 @@ department of housing and urban development - https://www.hud.gov/program_office
 ✅ department of state - https://www.state.gov/procurement-forecast
 ✅ department of the interior - acq gateway
 ✅ department of the treasury - https://osdbu.forecast.treasury.gov/
-department of transportation - https://www.transportation.gov/osdbu/procurement-assistance/summary-forecast
+✅ department of transportation - https://www.transportation.gov/osdbu/procurement-assistance/summary-forecast
 ✅ department of veterans affairs - acq gateway
 ✅ general services administration - acq gateway
 NASA - https://www.hq.nasa.gov/office/procurement/forecast/
