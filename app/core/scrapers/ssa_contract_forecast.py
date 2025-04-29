@@ -1,8 +1,18 @@
-"""SSA Contract Forecast scraper."""
+"""Social Security Administration Opportunity Forecast scraper."""
 
 # Standard library imports
 import os
 import traceback
+import sys
+import shutil
+
+# --- Start temporary path adjustment for direct execution ---
+# Calculate the path to the project root directory (JPS-Prospect-Aggregate)
+_project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+# Add the project root to the Python path if it's not already there
+if _project_root not in sys.path:
+    sys.path.insert(0, _project_root)
+# --- End temporary path adjustment ---
 
 # Third-party imports
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
@@ -19,8 +29,6 @@ from app.utils.scraper_utils import (
     check_url_accessibility,
     download_file,
     save_permanent_copy,
-    read_dataframe,
-    transform_dataframe,
     handle_scraper_error
 )
 
@@ -54,6 +62,9 @@ class SSAContractForecastScraper(BaseScraper):
         ]
         
         self.logger.info("Searching for Excel link...")
+        # Prioritize the specific link text observed
+        selectors.insert(0, 'a:has-text("FY25 SSA Contract Forecast")') 
+
         for selector in selectors:
             self.logger.info(f"Trying selector: {selector}")
             links = self.page.query_selector_all(selector)
@@ -79,44 +90,11 @@ class SSAContractForecastScraper(BaseScraper):
             f.write(self.page.content())
         self.logger.info(f"Saved page content to {html_path}")
     
-    def _get_field_mapping(self):
-        """
-        Get the mapping of Excel columns to database fields.
-        
-        Returns:
-            dict: Mapping of Excel column names to database field names
-        """
-        return {
-            'Title': 'title',
-            'Project Title': 'title',
-            'Description': 'description',
-            'Agency': 'agency',
-            'Office': 'office',
-            'NAICS': 'naics_code',
-            'NAICS Code': 'naics_code',
-            'Estimated Value': 'estimated_value',
-            'Estimated Contract Value': 'estimated_value',
-            'Release Date': 'release_date',
-            'Solicitation Date': 'release_date',
-            'Response Date': 'response_date',
-            'Due Date': 'response_date',
-            'Contact': 'contact_info',
-            'Point of Contact': 'contact_info',
-            'URL': 'url',
-            'Status': 'status',
-            'Contract Type': 'contract_type',
-            'Set-Aside': 'set_aside',
-            'Competition Type': 'competition_type',
-            'Solicitation Number': 'solicitation_number',
-            'Award Date': 'award_date',
-            'Place of Performance': 'place_of_performance',
-            'Incumbent': 'incumbent'
-        }
-    
     def download_forecast_document(self):
         """
         Download the forecast document from the SSA website.
-        
+        Saves the file directly to the scraper's download directory.
+
         Returns:
             str: Path to the downloaded file, or None if download failed
         """
@@ -126,23 +104,53 @@ class SSAContractForecastScraper(BaseScraper):
             # Navigate to the forecast page
             self.logger.info(f"Navigating to {self.base_url}")
             try:
-                self.navigate_to_url()
+                # Assuming navigate_to_url sets up self.page correctly
+                self.navigate_to_url() 
             except Exception as e:
                 self.logger.error(f"Error navigating to forecast page: {str(e)}")
                 self.logger.error(traceback.format_exc())
-                raise
+                raise # Re-raise the navigation error
             
             # Find the Excel link
-            excel_link = self._find_excel_link()
+            excel_link_href = self._find_excel_link()
             
-            if not excel_link:
+            if not excel_link_href:
                 self.logger.error("Could not find Excel link on the page")
-                self._save_debug_info()
-                return None
+                self._save_debug_info() # Save debug info if link not found
+                raise ScraperError("Could not find Excel download link on the page")
             
-            # Download the file
-            temp_path = download_file(self.page, f'a[href="{excel_link}"]')
-            return save_permanent_copy(temp_path, self.source_name, 'xlsx')
+            # Click the link and wait for the download
+            self.logger.info(f"Clicking link '{excel_link_href}' and waiting for download...")
+            # Use the specific link found
+            link_selector = f'a[href="{excel_link_href}"]' 
+            with self.page.expect_download(timeout=60000) as download_info:
+                 self.page.click(link_selector)
+            
+            download = download_info.value
+            # The file is saved by the _handle_download callback in BaseScraper
+            # Construct the expected final path
+            final_path = os.path.join(self.download_path, download.suggested_filename)
+            self.logger.info(f"Download complete. File expected at: {final_path}")
+
+            # Verify the file exists (saved by _handle_download)
+            if not os.path.exists(final_path) or os.path.getsize(final_path) == 0:
+                self.logger.error(f"Verification failed: File not found or empty at {final_path}")
+                # Attempt to save manually as fallback (using original playwright path)
+                try:
+                    fallback_path = download.path()
+                    shutil.move(fallback_path, final_path)
+                    self.logger.warning(f"Manually moved file from {fallback_path} to {final_path}")
+                    if not os.path.exists(final_path) or os.path.getsize(final_path) == 0:
+                         raise ScraperError(f"Download failed even after fallback move: File missing or empty at {final_path}")
+                except Exception as move_err:
+                     raise ScraperError(f"Download failed: File missing/empty at {final_path} and fallback move failed: {move_err}")
+
+            # Return the path within the scraper's download directory
+            return final_path
+            
+            # Removed old download_file and save_permanent_copy logic
+            # temp_path = download_file(self.page, f'a[href="{excel_link}"]')
+            # return save_permanent_copy(temp_path, self.source_name, 'xlsx')
             
         except PlaywrightTimeoutError as e:
             handle_scraper_error(e, self.source_name, "Timeout downloading forecast document")
@@ -151,103 +159,18 @@ class SSAContractForecastScraper(BaseScraper):
             handle_scraper_error(e, self.source_name, "Error downloading forecast document")
             raise ScraperError(f"Failed to download forecast document: {str(e)}")
     
-    def process_excel(self, excel_file, session, data_source):
-        """
-        Process the downloaded Excel file and save data to the database.
-        
-        Args:
-            excel_file (list or str): Path to the Excel file or list containing the path
-            session: SQLAlchemy session
-            data_source: DataSource object
-            
-        Returns:
-            int: Number of proposals processed
-            
-        Raises:
-            ScraperError: If processing fails
-        """
-        # If excel_file is a list (from extract_func), get the first element
-        if isinstance(excel_file, list):
-            excel_file = excel_file[0]
-            
-        self.logger.info(f"Processing Excel file: {excel_file}")
-        
-        try:
-            # Read the Excel file
-            df = read_dataframe(excel_file, 'xlsx')
-            
-            # Get field mapping
-            field_mapping = self._get_field_mapping()
-            
-            # Transform the data
-            transformed_data = transform_dataframe(
-                df=df,
-                column_mapping=field_mapping,
-                date_columns=['release_date', 'response_date', 'award_date'],
-                value_columns=['estimated_value'],
-                parse_funcs={
-                    'date': self.parse_date,
-                    'value': self.parse_value
-                }
-            )
-            
-            # Process each row
-            count = 0
-            for item in transformed_data:
-                try:
-                    # Add source_id
-                    item['source_id'] = data_source.id
-                    
-                    # Get or create proposal
-                    proposal_query = self.get_proposal_query(session, item)
-                    if proposal_query:
-                        count += 1
-                except Exception as e:
-                    self.logger.error(f"Error processing row: {str(e)}")
-                    continue
-            
-            return count
-            
-        except Exception as e:
-            handle_scraper_error(e, self.source_name, "Failed to process Excel file")
-            raise ScraperError(f"Failed to process Excel file: {str(e)}")
-    
-    def get_proposal_query(self, session, proposal_data):
-        """
-        Get a query to find an existing proposal.
-        
-        Args:
-            session: SQLAlchemy session
-            proposal_data (dict): Proposal data containing at least source_id and title
-            
-        Returns:
-            Proposal or None: Existing proposal if found, None otherwise
-        """
-        query = session.query(Proposal).filter(
-            Proposal.source_id == proposal_data['source_id'],
-            Proposal.title == proposal_data['title']
-        )
-        
-        # Add additional filters if available
-        if 'agency' in proposal_data and proposal_data['agency']:
-            query = query.filter(Proposal.agency == proposal_data['agency'])
-        
-        if 'solicitation_number' in proposal_data and proposal_data['solicitation_number']:
-            query = query.filter(Proposal.solicitation_number == proposal_data['solicitation_number'])
-        
-        return query.first()
-    
     def scrape(self):
         """
-        Run the scraper to extract and process data.
+        Run the scraper to download the forecast document.
         
         Returns:
             bool: True if scraping was successful, False otherwise
         """
-        # Use the structured scrape method from the base class
+        # Use the structured scrape method from the base class - only extract
         return self.scrape_with_structure(
-            extract_func=self.download_forecast_document,
-            process_func=self.process_excel
+            # No setup_func needed if navigation happens in extract
+            extract_func=self.download_forecast_document
+            # No process_func needed
         )
 
 def run_scraper(force=False):
@@ -270,18 +193,12 @@ def run_scraper(force=False):
     
     try:
         # Check if we should run the scraper
-        if not force and download_tracker.check_last_download("SSA Contract Forecast"):
+        if not force and download_tracker.should_download("SSA Contract Forecast"):
             local_logger.info("Skipping scrape due to recent download")
             return True
         
         # Create an instance of the scraper
         scraper = SSAContractForecastScraper(debug_mode=False)
-        
-        # Check if the URL is accessible
-        if not check_url_accessibility(SSA_CONTRACT_FORECAST_URL):
-            error_msg = f"URL {SSA_CONTRACT_FORECAST_URL} is not accessible"
-            handle_scraper_error(ScraperError(error_msg), "SSA Contract Forecast")
-            raise ScraperError(error_msg)
         
         # Run the scraper
         local_logger.info("Running SSA Contract Forecast scraper")
@@ -298,7 +215,8 @@ def run_scraper(force=False):
         local_logger.info("Updated download tracker with current time")
         
         # Update the ScraperStatus table to indicate success
-        update_scraper_status("SSA Contract Forecast", "working", None)
+        # --> Temporarily skip this during direct script execution <---
+        # update_scraper_status("SSA Contract Forecast", "working", None)
             
         return True
     except ImportError as e:
@@ -312,12 +230,22 @@ def run_scraper(force=False):
         handle_scraper_error(e, "SSA Contract Forecast")
         raise
     except Exception as e:
+        # Ensure error_msg is defined or handled appropriately
+        error_msg = f"Error running scraper: {str(e)}"
         handle_scraper_error(e, "SSA Contract Forecast", "Error running scraper")
         raise ScraperError(error_msg)
     finally:
         if scraper:
             try:
                 local_logger.info("Cleaning up scraper resources")
-                scraper.cleanup()
+                scraper.cleanup_browser() # Correct method name
             except Exception as cleanup_error:
-                local_logger.error(f"Error during scraper cleanup: {str(cleanup_error)}") 
+                local_logger.error(f"Error during scraper cleanup: {str(cleanup_error)}")
+
+if __name__ == "__main__":
+    # This block allows the script to be run directly for testing
+    try:
+        run_scraper(force=True)
+        print("Scraper finished successfully (DB operations skipped).")
+    except Exception as e:
+        print(f"Scraper failed: {e}")

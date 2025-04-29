@@ -8,11 +8,18 @@ import datetime
 import traceback
 import shutil
 
+# --- Start temporary path adjustment for direct execution ---
+# Calculate the path to the project root directory (JPS-Prospect-Aggregate)
+_project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+# Add the project root to the Python path if it's not already there
+if _project_root not in sys.path:
+    sys.path.insert(0, _project_root)
+# --- End temporary path adjustment ---
+
 # Third-party imports
 import requests
 from bs4 import BeautifulSoup
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
-import pandas as pd
 
 # Local application imports
 from app.core.base_scraper import BaseScraper
@@ -28,8 +35,6 @@ from app.utils.scraper_utils import (
     check_url_accessibility,
     download_file,
     save_permanent_copy,
-    read_dataframe,
-    transform_dataframe,
     handle_scraper_error
 )
 
@@ -79,36 +84,10 @@ class AcquisitionGatewayScraper(BaseScraper):
         """Navigate to the forecast page."""
         return self.navigate_to_url()
     
-    def _get_field_mapping(self):
-        """
-        Get the mapping of CSV columns to database fields.
-        
-        Returns:
-            dict: Mapping of CSV column names to database field names
-        """
-        return {
-            'Title': 'title',
-            'Agency': 'agency',
-            'Description': 'description',
-            'NAICS': 'naics_code',
-            'Estimated Value': 'estimated_value',
-            'Release Date': 'release_date',
-            'Response Date': 'response_date',
-            'Contact': 'contact_info',
-            'URL': 'url',
-            'Status': 'status',
-            'Contract Type': 'contract_type',
-            'Set-Aside': 'set_aside',
-            'Competition Type': 'competition_type',
-            'Solicitation Number': 'solicitation_number',
-            'Award Date': 'award_date',
-            'Place of Performance': 'place_of_performance',
-            'Incumbent': 'incumbent'
-        }
-    
     def download_csv_file(self):
         """
         Download the CSV file from the Acquisition Gateway site.
+        Saves the file directly to the scraper's download directory.
         
         Returns:
             str: Path to the downloaded file, or None if download failed
@@ -118,13 +97,35 @@ class AcquisitionGatewayScraper(BaseScraper):
             self.logger.info("Waiting for page to load...")
             self.page.wait_for_load_state('networkidle', timeout=60000)
             
-            # Find and click export button
+            # Find and click export button, waiting for the download to start
             export_button = self.page.get_by_role('button', name='Export CSV')
             export_button.wait_for(state='visible', timeout=30000)
             
-            # Download the file
-            temp_path = download_file(self.page, 'button:has-text("Export CSV")')
-            return save_permanent_copy(temp_path, self.source_name, 'csv')
+            self.logger.info("Clicking Export CSV and waiting for download...")
+            with self.page.expect_download(timeout=60000) as download_info:
+                export_button.click()
+            
+            download = download_info.value
+            # The file is saved by the _handle_download callback in BaseScraper
+            # Construct the expected final path
+            final_path = os.path.join(self.download_path, download.suggested_filename)
+            self.logger.info(f"Download complete. File expected at: {final_path}")
+
+            # Verify the file exists (saved by _handle_download)
+            if not os.path.exists(final_path) or os.path.getsize(final_path) == 0:
+                self.logger.error(f"Verification failed: File not found or empty at {final_path}")
+                # Attempt to save manually as fallback (using original playwright path)
+                try:
+                    fallback_path = download.path()
+                    shutil.move(fallback_path, final_path)
+                    self.logger.warning(f"Manually moved file from {fallback_path} to {final_path}")
+                    if not os.path.exists(final_path) or os.path.getsize(final_path) == 0:
+                         raise ScraperError(f"Download failed even after fallback move: File missing or empty at {final_path}")
+                except Exception as move_err:
+                    raise ScraperError(f"Download failed: File missing/empty at {final_path} and fallback move failed: {move_err}")
+            
+            # Return the path within the scraper's download directory
+            return final_path 
             
         except PlaywrightTimeoutError as e:
             handle_scraper_error(e, self.source_name, "Timeout error during download")
@@ -133,109 +134,18 @@ class AcquisitionGatewayScraper(BaseScraper):
             handle_scraper_error(e, self.source_name, "Error downloading CSV")
             raise ScraperError(f"Error downloading CSV: {str(e)}")
     
-    def process_csv_data(self, csv_data, session, data_source):
-        """
-        Process the extracted CSV data and save to database.
-        
-        Args:
-            csv_data: Path to the CSV file or list containing the path
-            session: SQLAlchemy session
-            data_source: DataSource object
-            
-        Returns:
-            int: Number of proposals processed
-        """
-        # If csv_data is a list (from extract_func), get the first element
-        if isinstance(csv_data, list):
-            csv_data = csv_data[0]
-            
-        self.logger.info(f"Processing CSV file: {csv_data}")
-        
-        try:
-            # Read the CSV file
-            df = read_dataframe(csv_data, 'csv')
-            
-            # Get field mapping
-            field_mapping = self._get_field_mapping()
-            
-            # Transform the data
-            transformed_data = transform_dataframe(
-                df=df,
-                column_mapping=field_mapping,
-                date_columns=['release_date', 'response_date', 'award_date'],
-                value_columns=['estimated_value'],
-                parse_funcs={
-                    'date': self.parse_date,
-                    'value': self.parse_value
-                }
-            )
-            
-            # Process each row
-            count = 0
-            for item in transformed_data:
-                try:
-                    # Add source_id and is_latest flag
-                    item['source_id'] = data_source.id
-                    item['is_latest'] = True
-                    
-                    # Update or create proposal
-                    existing = self.get_proposal_query(session, item)
-                    if existing:
-                        for key, value in item.items():
-                            setattr(existing, key, value)
-                        self.logger.info(f"Updated existing proposal: {item['title']}")
-                    else:
-                        proposal = Proposal(**item)
-                        session.add(proposal)
-                        self.logger.info(f"Added new proposal: {item['title']}")
-                    
-                    count += 1
-                except Exception as e:
-                    self.logger.error(f"Error processing row: {str(e)}")
-                    continue
-            
-            return count
-            
-        except Exception as e:
-            handle_scraper_error(e, self.source_name, "Failed to process CSV file")
-            raise ScraperError(f"Failed to process CSV file: {str(e)}")
-    
-    def get_proposal_query(self, session, proposal_data):
-        """
-        Get a query to find an existing proposal.
-        
-        Args:
-            session: SQLAlchemy session
-            proposal_data (dict): Proposal data containing at least source_id and title
-            
-        Returns:
-            Proposal or None: Existing proposal if found, None otherwise
-        """
-        query = session.query(Proposal).filter(
-            Proposal.source_id == proposal_data['source_id'],
-            Proposal.title == proposal_data['title']
-        )
-        
-        # Add additional filters if available
-        if 'agency' in proposal_data and proposal_data['agency']:
-            query = query.filter(Proposal.agency == proposal_data['agency'])
-        
-        if 'solicitation_number' in proposal_data and proposal_data['solicitation_number']:
-            query = query.filter(Proposal.solicitation_number == proposal_data['solicitation_number'])
-        
-        return query.first()
-    
     def scrape(self):
         """
-        Run the scraper to extract and process data.
+        Run the scraper to download the file.
         
         Returns:
             bool: True if scraping was successful, False otherwise
         """
+        # Simplified call: only setup and extract
         return self.scrape_with_structure(
             setup_func=self.navigate_to_forecast_page,
-            extract_func=self.download_csv_file,
-            process_func=self.process_csv_data
+            extract_func=self.download_csv_file
+            # No process_func needed
         )
 
 def check_last_download():
@@ -309,7 +219,8 @@ def run_scraper(force=False):
         local_logger.info("Updated download tracker with current time")
         
         # Update the ScraperStatus table to indicate success
-        update_scraper_status("Acquisition Gateway Forecast", "working", None)
+        # --> Temporarily skip this during direct script execution <---
+        # update_scraper_status("Acquisition Gateway Forecast", "working", None)
             
         return True
     except ImportError as e:
@@ -323,16 +234,22 @@ def run_scraper(force=False):
         handle_scraper_error(e, "Acquisition Gateway Forecast")
         raise
     except Exception as e:
+        error_msg = f"Error running scraper: {str(e)}" # Added more specific error message
         handle_scraper_error(e, "Acquisition Gateway Forecast", "Error running scraper")
         raise ScraperError(error_msg)
     finally:
         if scraper:
             try:
                 local_logger.info("Cleaning up scraper resources")
-                scraper.cleanup()
+                scraper.cleanup_browser()
             except Exception as cleanup_error:
                 local_logger.error(f"Error during scraper cleanup: {str(cleanup_error)}")
                 local_logger.error(traceback.format_exc())
 
 if __name__ == "__main__":
-    run_scraper() 
+    # This block allows the script to be run directly for testing
+    try:
+        run_scraper(force=True)
+        print("Scraper finished successfully (DB operations skipped).")
+    except Exception as e:
+        print(f"Scraper failed: {e}") 

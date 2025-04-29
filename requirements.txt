@@ -19,3 +19,6 @@ tenacity==8.2.3
 psutil==5.9.8
 loguru==0.7.0
 waitress==2.1.2
+psycopg2-binary
+Flask-SQLAlchemy
+python-dateutil

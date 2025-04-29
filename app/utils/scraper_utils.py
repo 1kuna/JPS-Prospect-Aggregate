@@ -14,21 +14,22 @@ from app.utils.logger import logger
 from app.utils.file_utils import ensure_directory
 from app.config import DOWNLOADS_DIR
 
-def check_url_accessibility(url: str, timeout: int = 10) -> bool:
+def check_url_accessibility(url: str, timeout: int = 10, verify_ssl: bool = True) -> bool:
     """
     Check if a URL is accessible.
     
     Args:
         url (str): URL to check
         timeout (int): Timeout in seconds
+        verify_ssl (bool): Whether to verify SSL certificate. Defaults to True.
         
     Returns:
         bool: True if the URL is accessible, False otherwise
     """
-    logger.info(f"Checking accessibility of {url}")
+    logger.info(f"Checking accessibility of {url} (SSL Verify: {verify_ssl})")
     
     try:
-        response = requests.head(url, timeout=timeout)
+        response = requests.head(url, timeout=timeout, verify=verify_ssl)
         if response.status_code < 400:
             logger.info(f"URL {url} is accessible (status code: {response.status_code})")
             return True
@@ -189,5 +190,6 @@ def handle_scraper_error(error: Exception, source_name: str, context: str = "") 
     logger.error(traceback.format_exc())
     
     # Update scraper status in database
-    from app.utils.db_utils import update_scraper_status
-    update_scraper_status(source_name, "error", error_msg) 
+    # --> Temporarily disable DB update during testing <--
+    # from app.utils.db_utils import update_scraper_status
+    # update_scraper_status(source_name, "error", error_msg) 

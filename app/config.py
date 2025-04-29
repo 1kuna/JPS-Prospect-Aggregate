@@ -1,6 +1,10 @@
 import os
 import pathlib
 from typing import List, Dict, Any, Optional
+from dotenv import load_dotenv
+
+# Environment variables loading
+load_dotenv()
 
 # Base paths
 BASE_DIR = pathlib.Path(__file__).parent.parent.absolute()
@@ -21,8 +25,15 @@ LOG_FILE_BACKUP_COUNT = int(os.getenv("LOG_FILE_BACKUP_COUNT", 3))  # Keep only 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 
 # Scraper URLs
-ACQUISITION_GATEWAY_URL = os.getenv("ACQUISITION_GATEWAY_URL", "https://acquisitiongateway.gov/forecast")
-SSA_CONTRACT_FORECAST_URL = os.getenv("SSA_CONTRACT_FORECAST_URL", "https://www.ssa.gov/osdbu/contract-forecast-intro.html")
+ACQUISITION_GATEWAY_URL = "https://acquisitiongateway.gov/forecast"
+SSA_CONTRACT_FORECAST_URL = "https://www.ssa.gov/osdbu/contract-forecast-intro.html"
+COMMERCE_FORECAST_URL = "https://www.commerce.gov/oam/industry/procurement-forecasts"
+HHS_FORECAST_URL = "https://osdbu.hhs.gov/industry/opportunity-forecast"
+DHS_FORECAST_URL = "https://apfs-cloud.dhs.gov/forecast/"
+DOJ_FORECAST_URL = "https://www.justice.gov/jmd/doj-forecast-contracting-opportunities"
+DOS_FORECAST_URL = "https://www.state.gov/procurement-forecast"
+TREASURY_FORECAST_URL = "https://osdbu.forecast.treasury.gov/"
+DOT_FORECAST_URL = "https://www.transportation.gov/osdbu/procurement-assistance/summary-forecast"
 
 # Database configuration
 DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{os.path.join(DATA_DIR, 'proposals.db')}")
@@ -66,6 +77,13 @@ class Config:
     # Scraper URLs
     ACQUISITION_GATEWAY_URL: str = ACQUISITION_GATEWAY_URL
     SSA_CONTRACT_FORECAST_URL: str = SSA_CONTRACT_FORECAST_URL
+    COMMERCE_FORECAST_URL: str = COMMERCE_FORECAST_URL
+    HHS_FORECAST_URL: str = HHS_FORECAST_URL
+    DHS_FORECAST_URL: str = DHS_FORECAST_URL
+    DOJ_FORECAST_URL: str = DOJ_FORECAST_URL
+    DOS_FORECAST_URL: str = DOS_FORECAST_URL
+    TREASURY_FORECAST_URL: str = TREASURY_FORECAST_URL
+    DOT_FORECAST_URL: str = DOT_FORECAST_URL
 
     # Logging configuration
     LOG_LEVEL: str = LOG_LEVEL
@@ -120,7 +138,7 @@ active_config = config_by_name[os.getenv('FLASK_ENV', 'default')]
 __all__ = [
     'active_config', 'BASE_DIR', 'LOGS_DIR', 'DATA_DIR', 'DOWNLOADS_DIR',
     'LOG_FORMAT', 'LOG_FILE_MAX_BYTES', 'LOG_FILE_BACKUP_COUNT', 'LOG_LEVEL',
-    'ACQUISITION_GATEWAY_URL', 'SSA_CONTRACT_FORECAST_URL',
+    'ACQUISITION_GATEWAY_URL', 'SSA_CONTRACT_FORECAST_URL', 'COMMERCE_FORECAST_URL', 'HHS_FORECAST_URL', 'DHS_FORECAST_URL', 'DOJ_FORECAST_URL', 'DOS_FORECAST_URL', 'TREASURY_FORECAST_URL', 'DOT_FORECAST_URL',
     'DATABASE_URL', 'REDIS_URL',
     'SCRAPE_INTERVAL_HOURS', 'HEALTH_CHECK_INTERVAL_MINUTES',
     'CSV_ENCODINGS', 'FILE_FRESHNESS_SECONDS',

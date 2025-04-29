@@ -403,33 +403,40 @@ class BaseScraper:
         try:
             self.logger.info(f"Navigating to URL: {url}")
             
+            if not self.page:
+                raise ScraperError("Page object is not initialized. Call setup_browser first.")
+
             # Navigate to the URL
-            response = self.page.goto(url, timeout=timeout)
+            response = self.page.goto(url, timeout=timeout, wait_until='domcontentloaded')
             
-            # Check if navigation was successful
-            if response.status >= 400:
-                error_msg = f"Failed to navigate to URL {url}: status code {response.status}"
-                self.logger.error(error_msg)
-                raise ScraperError(error_msg)
+            # Check if navigation response is generally okay (ignore strict 404 for now if content loaded)
+            # We will rely on subsequent element waits to confirm page validity
+            if response and not response.ok:
+                self.logger.warning(f"Navigation to {url} resulted in status {response.status}. URL: {response.url}")
+                # Consider raising an error or returning False depending on desired strictness
             
-            # Wait for the page to load
-            self.page.wait_for_load_state("networkidle", timeout=timeout)
+            # Optional: Wait for a specific load state if needed after goto, but goto usually handles it.
+            # try:
+            #     self.page.wait_for_load_state("load", timeout=timeout) 
+            # except PlaywrightTimeoutError:
+            #     self.logger.warning(f"wait_for_load_state('load') timed out for {url}, proceeding anyway.")
             
-            # Handle any popups
+            # Handle any popups (if implemented in subclass)
             self.handle_popups()
             
-            self.logger.info(f"Successfully navigated to URL: {url}")
+            self.logger.info(f"Navigation attempted for URL: {url}. Subsequent checks will verify content.")
             
-            return True
-        except PlaywrightTimeoutError:
-            error_msg = f"Timeout navigating to URL: {url}"
+            return True # Indicate navigation attempt was made
+        except PlaywrightTimeoutError as e:
+            error_msg = f"Timeout navigating to URL: {url}: {str(e)}"
             self.logger.error(error_msg)
-            raise ScraperError(error_msg)
+            self.logger.error(traceback.format_exc())
+            raise ScraperError(error_msg) from e
         except Exception as e:
             error_msg = f"Error navigating to URL {url}: {str(e)}"
             self.logger.error(error_msg)
             self.logger.error(traceback.format_exc())
-            raise ScraperError(error_msg)
+            raise ScraperError(error_msg) from e
     
     def handle_popups(self):
         """
@@ -489,8 +496,17 @@ class BaseScraper:
             # Run the processing phase
             if process_func and result["data"]:
                 self.logger.info("Running processing phase")
-                processed_data = process_func(result["data"])
-                result["data"] = processed_data
+                # Add session scope and data source retrieval
+                from app.database.connection import session_scope
+                from app.models import DataSource
+                with session_scope() as session:
+                    data_source = self.get_or_create_data_source(session)
+                    if not data_source:
+                        raise ScraperError(f"Could not find or create DataSource for {self.source_name}")
+                    
+                    # Pass session and data_source to process_func
+                    processed_data = process_func(result["data"], session, data_source)
+                    result["data"] = processed_data
             
             result["success"] = True
             self.logger.info(f"Structured scraping for {self.source_name} completed successfully")

@@ -20,11 +20,10 @@ class DownloadTracker:
         self.data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'data')
         
         # Ensure the data directory exists
-        self.tracker_dir = os.path.join(self.data_dir, 'tracker')
-        ensure_directory(self.tracker_dir)
+        ensure_directory(self.data_dir)
         
-        # Path to the timestamps file
-        self.timestamps_file = os.path.join(self.tracker_dir, "download_timestamps.json")
+        # Path to the timestamps file (now directly in data_dir)
+        self.timestamps_file = os.path.join(self.data_dir, "download_timestamps.json")
         
         # Load existing timestamps or create a new file
         self.timestamps = self._load_timestamps()
