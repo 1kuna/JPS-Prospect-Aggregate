@@ -1,8 +1,21 @@
 import pandas as pd
 import hashlib
 import os
+import sys
 from pathlib import Path
 import logging
+import re
+from datetime import datetime
+
+# --- Start temporary path adjustment for direct execution ---
+# Calculate the path to the project root directory (JPS-Prospect-Aggregate)
+_project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+# Add the project root to the Python path if it's not already there
+if _project_root not in sys.path:
+    sys.path.insert(0, _project_root)
+# --- End temporary path adjustment ---
+
+from app.utils.parsing import parse_value_range, fiscal_quarter_to_date
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -57,6 +70,9 @@ def generate_id(row: pd.Series) -> str:
 
 def normalize_columns_doc(df: pd.DataFrame, canonical_cols: list[str]) -> pd.DataFrame:
     """Renames DOC columns, normalizes, handles extras."""
+    # Keep track of original columns for potential use in parsing
+    original_cols = df.columns.tolist()
+    
     # Define the explicit mapping for DOC from Excel header
     rename_map = {
         # Raw DOC Name: Canonical Name
@@ -68,53 +84,80 @@ def normalize_columns_doc(df: pd.DataFrame, canonical_cols: list[str]) -> pd.Dat
         'Place Of Performance City': 'place_city',
         'Place Of Performance State': 'place_state',
         'Place Of Performance Country': 'place_country',
-        'Estimated Value Range': 'estimated_value', # Requires parsing
-        # 'Estimated Solicitation Fiscal Year' + 'Quarter' -> solicitation_date (handled below)
+        'Estimated Value Range': 'estimated_value_raw', # Rename raw value first
+        'Estimated Solicitation Fiscal Year': 'solicitation_fy_raw',
+        'Estimated Solicitation Fiscal Quarter': 'solicitation_qtr_raw',
         'Anticipated Set Aside And Type': 'set_aside',
         'Anticipated Action Award Type': 'contract_type'
         # 'award_date' not directly available in source header
     }
     logging.info(f"Applying DOC specific column mapping: {rename_map}")
-    df = df.rename(columns=rename_map)
+    # Only rename columns that actually exist in the DataFrame
+    rename_map_existing = {k: v for k, v in rename_map.items() if k in df.columns}
+    df = df.rename(columns=rename_map_existing)
 
     # --- Handle combined/derived fields --- 
     # Combine Fiscal Year and Quarter for solicitation_date
-    # TODO: Implement parsing for 'solicitation_date'. Combine 'Estimated Solicitation Fiscal Year' and 'Estimated Solicitation Fiscal Quarter' into a date.
-    if 'Estimated Solicitation Fiscal Year' in df.columns and \
-       'Estimated Solicitation Fiscal Quarter' in df.columns:
-        logging.info("'solicitation_date' requires parsing from FY and Quarter.")
-    df['solicitation_date'] = pd.NA # Initialize as NA until parsed
+    if 'solicitation_fy_raw' in df.columns and 'solicitation_qtr_raw' in df.columns:
+        # Ensure quarter is string 'Qx' format
+        df['solicitation_qtr_str'] = df['solicitation_qtr_raw'].astype(str).apply(lambda x: f'Q{x}' if x.isdigit() else x) 
+        # Combine FY and Quarter into a single string for the helper function
+        df['solicitation_fyq_raw'] = df['solicitation_fy_raw'].astype(str) + ' ' + df['solicitation_qtr_str']
+        df['solicitation_date'] = df['solicitation_fyq_raw'].apply(fiscal_quarter_to_date)
+    else:
+        df['solicitation_date'] = pd.NaT
+        logging.warning("Could not parse solicitation date - FY or Quarter column missing.")
     
     # Parse estimated value 
-    # TODO: Implement parsing for 'estimated_value' from 'Estimated Value Range' string. Handle ranges and symbols.
-    if 'estimated_value' in df.columns:
-        logging.info("'estimated_value' requires parsing from range string.")
-        # Attempt basic numeric conversion after rename, might result in NA
-        df['estimated_value'] = pd.to_numeric(df['estimated_value'], errors='coerce')
+    if 'estimated_value_raw' in df.columns:
+        parsed_values = df['estimated_value_raw'].apply(parse_value_range)
+        df['estimated_value'] = parsed_values.apply(lambda x: x[0])
+        df['est_value_unit'] = parsed_values.apply(lambda x: x[1])
+    else:
+        df['estimated_value'] = pd.NA 
+        df['est_value_unit'] = pd.NA
+        
+    # Initialize missing award date
+    df['award_date'] = pd.NaT
+    
+    # Initialize missing place country if not mapped
+    if 'place_country' not in df.columns:
+        df['place_country'] = 'USA' # Assume USA
+        
+    # Drop raw/intermediate columns used for parsing
+    cols_to_drop = ['estimated_value_raw', 'solicitation_fy_raw', 'solicitation_qtr_raw', 
+                    'solicitation_qtr_str', 'solicitation_fyq_raw']
+    df = df.drop(columns=[col for col in cols_to_drop if col in df.columns], errors='ignore')
 
     # --- General normalization (lowercase, snake_case) ---
     df.columns = df.columns.str.strip().str.lower().str.replace(r'\s+\(.*?\)', '', regex=True).str.replace(r'\s+', '_', regex=True).str.replace(r'[^a-z0-9_]', '', regex=True)
 
     # Identify unmapped columns AFTER normalization and derivation
     current_cols = df.columns.tolist()
-    unmapped_cols = [col for col in current_cols if col not in canonical_cols and col not in ['source', 'id']]
+    normalized_canonical = [c.strip().lower().replace(' ', '_').replace(r'[^a-z0-9_]', '') for c in canonical_cols]
+    unmapped_cols = [col for col in current_cols if col not in normalized_canonical and col not in ['source', 'id']]
 
     # Handle 'extra' column
     if unmapped_cols:
         logging.info(f"Found unmapped columns for 'extra': {unmapped_cols}")
-        df['extra'] = df[unmapped_cols].to_dict(orient='records')
+        for col in unmapped_cols:
+             # Check if the column dtype suggests it might be datetime-like
+             if pd.api.types.is_datetime64_any_dtype(df[col]):
+                 # Convert datetime-like columns to string safely
+                 df[col] = df[col].astype(str)
+        df['extra'] = df[unmapped_cols].astype(str).to_dict(orient='records')
         df = df.drop(columns=unmapped_cols)
     else:
         df['extra'] = None
 
     # Ensure all canonical columns exist
-    for col in canonical_cols:
-        if col not in df.columns and col != 'id':
+    for col in normalized_canonical:
+        if col not in df.columns:
            df[col] = pd.NA
 
-    # Return dataframe with only existing canonical columns (order adjusted later)
-    final_cols = [col for col in canonical_cols if col in df.columns and col != 'id']
-    return df[final_cols]
+    # Return dataframe with only canonical columns in the correct order
+    final_cols_order = [col for col in normalized_canonical if col in df.columns]
+    return df[final_cols_order]
 
 # --- Main Transformation Function ---
 
@@ -167,7 +210,15 @@ def transform_doc() -> pd.DataFrame | None:
 
         df_final = df_normalized[final_ordered_cols]
 
-        logging.info(f"DOC Transformation complete. Processed {len(df_final)} rows.")
+        logging.info(f"Transformation complete. Processed {len(df_final)} rows.")
+        
+        # TEMPORARY EXPORT CODE
+        export_path = os.path.join('data', 'processed', 'doc.csv')
+        os.makedirs(os.path.dirname(export_path), exist_ok=True)
+        df_final.to_csv(export_path, index=False)
+        logging.info(f"Temporarily exported data to {export_path}")
+        # END TEMPORARY EXPORT CODE
+
         return df_final
 
     except pd.errors.EmptyDataError:

@@ -1,0 +1,142 @@
+source,native_id,id,requirement_title,requirement_description,naics,estimated_value,est_value_unit,solicitation_date,award_date,office,place_city,place_state,place_country,contract_type,set_aside,loaded_at,extra
+SSA,RCF-25-12004-03,0c3d8694f74b69011f4c3737a279faa9,REPLACE AN EXISTING CONTRACT,"Region 3 - Mid Atlantic Social Security Center - 
+ Utilities - Philadelphia Electric Company (PECO)",,300000.0,Per FY,,2025-04-15,DERC,,,USA,,,,
+SSA,RCF-25-00013-06,9886b6332080d0d354bbc12ad19dcbff,A NEW REQUIREMENT,"Contract to provide investigative services for the 
+ Cooperative Disability Investigations Unit in Dallas, 
+ Texas.",,475000.0,Per FY,,2025-04-19,DERC,,,USA,,,,
+SSA,RCF-25-11026-02,5d8855354f28643432da405054fa0908,REPLACE AN EXISTING CONTRACT,"New York- Electrical Supply Utility Service (Engie 
+ Resources LLC)- Addabbo",221122.0,840000.0,Per FY,,2025-12-26,DERC,Region 02,,USA,Delivery / Task Order,an unrestricted competition,,
+SSA,RCF-25-12005-03,cdf909de626ccd516a7533a4feb2dc85,REPLACE AN EXISTING CONTRACT,"Region 3 - Mid Atlantic Social Security Center - 
+ Utilites - Electric (Constellation)",221112.0,540000.0,Per FY,,2025-04-15,DERC,Region 03,,USA,Delivery / Task Order,an unrestricted competition,,
+SSA,RCF-25-11024-02,e33f13ebd0f76b23012db8c1a5bcac7d,REPLACE AN EXISTING CONTRACT,"New York- Electric Delivery Utility Service (Con 
+ Edison) - Addabbo",221112.0,840000.0,Per FY,,2025-12-24,DERC,Region 02,,USA,Delivery / Task Order,an unrestricted competition,,
+SSA,OCIO-25-234B0,2efabee41fd968b258babb86b89d2bfa,A NEW REQUIREMENT,receive state''s death data vis NAPHSIS,,273000.0,Per FY,,2025-08-29,DERC,,,USA,,,,
+SSA,ODD-25-12345,873ade3bb351f189f0f2f2c56c6bd8b5,A NEW REQUIREMENT,"The BPA holders perform two workloads for SSA, DDS 
+ disability case medical assessments, the quality 
+ reviews of post adjudication pre affectation cases 
+ for the Office of Quality Review (OQR)",,50000000.0,Per FY,,2025-09-30,DERC,,,USA,,,,
+SSA,COBM-25-30021,9eb23bb6aa334fbfbffcc52571d8d70e,A NEW REQUIREMENT,Boiler support staff,,3000000.0,Per FY,,2025-08-01,DFC,,,USA,,,,
+SSA,COBM-25-20011,9ed697f9eb3c35133663487fe003fe6e,A NEW REQUIREMENT,HQ and NSC Network Cabling Services -,,2699602.0,Per FY,,2025-09-29,DFC,,,USA,,,,
+SSA,COBM-25-00004,07580ab296af05ec3d7fc178f925eb86,A NEW REQUIREMENT,4th Quarter ALEA/DELEG Purchases,,750000.0,Per FY,,2025-09-30,DFC,,,USA,,,,
+SSA,COBM-25-00003,76c6476234df76490b3fdf289ba3af51,A NEW REQUIREMENT,3rd Quarter ALEA/DELEG Purchases,,750000.0,Per FY,,2025-06-30,DFC,,,USA,,,,
+SSA,RCF-25-25014-09,4e473d67293ba4a4ab374f1bdec3fbe4,A NEW REQUIREMENT,"Sole source service to provide electricity and gas to 
+ Frank Hagel Federal Building. Contract is a new 
+ requirement every year.",,2000000.0,Per FY,,2025-08-01,DFC,,,USA,,,,
+SSA,RCF-25-11016-02,82117fdc3c1367065f0ec90fd95af321,REPLACE AN EXISTING CONTRACT,"New York- Operations and Maintenance contract for 
+ Addabbo (Recompete) - Base Year to replace contract
+ 28321320D00060005",238220.0,9450000.0,Per FY,,2025-12-23,DFC,Region 02,,USA,Delivery / Task Order,an unrestricted competition,,
+SSA,OEM-26-10005,6d3add09757856700f696ce55eff7e06,REPLACE AN EXISTING CONTRACT,"EMERGENCY RESPONSE CONTRACT-CONTINUITY 
+ OF OPERATIONS (COOP) New Contract to renew/re-up 
+ 28321320FDX030289",541611.0,1775305.0,Per FY,,2026-08-23,DFC,Headquarters,,USA,Delivery / Task Order,an unrestricted competition,,
+SSA,OCIO-25-199F0,97758b13ceb3ca598f5aee02d55d5712,A NEW REQUIREMENT,SSC Hardware Refreshment,,1000000.0,Per FY,,2025-05-01,DITEM,,,USA,,,,
+SSA,DCS-25-163E0,2a88d8dafedc786dd9418e20aad06446,A NEW REQUIREMENT,"Procure Gigavue hardware and software to provide 
+ greater network traffic port speeds and to provide 
+ system redundancy within the datacenters.",,655365.0,Per FY,,2025-06-03,DITEM,,,USA,,,,
+SSA,DCS-25-134G0,546a6292168dc7691b4bfd3519dafb97,A NEW REQUIREMENT,"Redesign the Systems Media Center (SMC) area to 
+ support the COSS SecuritySTAT",,2000000.0,Per FY,,2025-06-01,DITEM,,,USA,,,,
+SSA,DCS-25-180D0,c9fa6a6442025027fabe0f329fabbfb2,A NEW REQUIREMENT,"High Speed Scanners supporting Wage Reporting, 
+ Accounting, Medicare Initiatives",,1750000.0,Per FY,,2025-04-25,DITEM,,,USA,,,,
+SSA,DCS-25-164F0,ff905a7f37233bf9b6bc700cd050be1c,A NEW REQUIREMENT,"Replacement of existing SMG software appliance that 
+ does not meet agency technical and security 
+ requirements for filtering messages for Spam and 
+ malware. Purchase of replacement must be awarded as 
+ soon as possible prior to renewal of SMG.",,980000.0,Per FY,,2025-09-26,DITSM,,,USA,,,,
+SSA,DCS-25-314H0,0eceea1c2b24f61d1ed8e34d351afc45,REPLACE AN EXISTING CONTRACT,"SailPoint IdentityIQ
+ R313 314H0",511210.0,872022.0,Per FY,,2025-09-21,DITSM,Headquarters,,USA,Delivery / Task Order,an unrestricted competition,,
+SSA,DCS-25-313U0,806e1cc64a1f9a46819e167f0906a491,REPLACE AN EXISTING CONTRACT,"Rocket DBS Software
+ R313 313U0",511210.0,686100.15,Per FY,,2025-08-20,DITSM,Headquarters,,USA,Purchase Order,an unrestricted competition,,
+SSA,DCS-25-316D0,e9e8d78aef752653206b16ea62fbad58,REPLACE AN EXISTING CONTRACT,"Freedom Scientific JAWS Kiosk
+ R313 316D0",511210.0,351600.48,Per FY,,2025-08-01,DITSM,Headquarters,,USA,Contract - Firm-fixed-price,an unrestricted competition,,
+SSA,DCS-25-317W0,59e1c9430cf681e7c01cf0e7c9bb7018,REPLACE AN EXISTING CONTRACT,"Adobe BPA AEM Forms
+ R313 317W0",511210.0,3104150.0,Per FY,,2025-09-24,DITSM,Headquarters,,USA,Delivery / Task Order,an unrestricted competition,,
+SSA,DCS-25-316W0,c705204366e7e65cde30e3a8f0815165,REPLACE AN EXISTING CONTRACT,"Precisely Mainframe
+ R313 316W0",511210.0,405898.0,Per FY,,2025-09-30,DITSM,Headquarters,,USA,Contract - Firm-fixed-price,an unrestricted competition,,
+SSA,DCS-25-316V3,25774c51d0036407a7b7601c7aec4ba8,REPLACE AN EXISTING CONTRACT,"Lead Tools Documents Imaging PDF
+ R313 316V3",513210.0,275000.0,Per FY,,2025-08-09,DITSM,Headquarters,,USA,Purchase Order,an unrestricted competition,,
+SSA,DCS-25-163C0,236ff5cac57bccb963c502690f5173c0,A NEW REQUIREMENT,"acquire professional services for the VMware Telco 
+ Cloud product.  
+ the current contract PoP is 8/21/24 â 8/20/25.",,585919.2,Per FY,,2025-08-01,DITSM,,,USA,,,,
+SSA,DCS-25-316G2,c396502db2f2ca1491c60bebee0d0915,REPLACE AN EXISTING CONTRACT,"UiPath RPA
+ R313 316G2",511210.0,5500000.0,Per FY,,2025-07-23,DITSM,Headquarters,,USA,Delivery / Task Order,an unrestricted competition,,
+SSA,DCS-25-316R1,13150eb284d911e944fc9a22accf820d,REPLACE AN EXISTING CONTRACT,"Palo Alto
+ R313 316R1",511210.0,2100000.0,Per FY,,2025-07-30,DITSM,Headquarters,,USA,Delivery / Task Order,an unrestricted competition,,
+SSA,COB-25-25014,4e8e68a213379094fd4013db0e495b84,A NEW REQUIREMENT,"The purpose of this requirement is to exercise 
+ option year 4 of the AFI contract 
+ #28321321D0060014, with Accuity AVS Inc which has a 
+ POP of 4/25/2025 to 4/24/2026 for program 
+ management and support of the SSI program.",,6728855.0,Per FY,,2025-04-25,DITSS,,,USA,,,,
+SSA,OIG-25-0001,642a2aedaf5c1aef85cdcc70cf74f7bb,A NEW REQUIREMENT,"Procure services to assist with the Titan and other 
+ IT Mod Upgrades/maintenance",,3000000.0,Per FY,,2025-09-01,DITSS,,,USA,,,,
+SSA,DCS-25-724J2,d26538ce4a75235c71c202ce3cc9e45f,REPLACE AN EXISTING CONTRACT,"New Red Hat Consulting Contract which replaces 
+ #28321322FDX030243",541519.0,1989927.36,Per FY,,2025-09-26,DITSS,Headquarters,,USA,Delivery / Task Order,an unrestricted competition,,
+SSA,OCIO-25-145C1,3323dedc25ae4e34a67b125bafd24685,REPLACE AN EXISTING CONTRACT,"$0 for OAG for the analysis to reimplement SSOARS on 
+ a FM QSMO provider.   FM QSMO is a Treasury program 
+ which vets the vendors.",,500000.0,Per FY,,2025-06-15,DITSS,,,USA,,,,
+SSA,COB-25-25015,105dbad481f8f8d452159c749f9b0091,A NEW REQUIREMENT,"The purpose of this requirement is to exercise 
+ option year 4 of the AFI contract 
+ #28321321D0060014, with Accuity AVS Inc., POP: 
+ 4/25/2025 - 4/24/2026 for reimbursement of 
+ financial institution fees paid by Accuity AVS Inc.",,3222000.0,Per FY,,2025-04-25,DITSS,,,USA,,,,
+SSA,DCS-25-709B1,7f3a4f2a9577fb5614ac41d5dc6d4c0d,A NEW REQUIREMENT,"OCIO\OSOHE\DBOPC\DESPOB needs to procure three new 
+ mail inserters (one SSN card inserter and two 
+ notice inserters) for the Second Support Center 
+ (SSC).
+ 
+ This effort adds the capabilities of Notice 
+ production in the SSC.",,4907600.0,Per FY,,2025-05-01,DOC,,,USA,,,,
+SSA,COMLM-25-10015,d9559758049e16cad92d0679fa1023a7,A NEW REQUIREMENT,Mail Services Contract,,1587600.0,Per FY,,2025-09-28,DOC,,,USA,,,,
+SSA,OIG-25-0004,47de06cfee09f4a422ab26f952c3c314,A NEW REQUIREMENT,"Body worn cameras and digital evidence management 
+ systems",,400000.0,Per FY,,2025-09-30,DOC,,,USA,,,,
+SSA,OCIO-25-887E0,1bc13a4907b0992072d679ac640303c7,REPLACE AN EXISTING CONTRACT,"To comply with HSPD-12 guidelines, SSA must 
+ maintain card stock for credential replacement, 
+ biometric renewal, lifecycle replacement, and 
+ event-driven replacement (i.e. lost, stolen, 
+ forgotten, compromised, and damaged cards).",541519.0,800000.0,Per FY,,2025-04-25,DOC,Headquarters,,USA,Delivery / Task Order,an unrestricted competition,,
+SSA,DCS-25-267F0,d27bb652b307a3b989c5391d010664fa,REPLACE AN EXISTING CONTRACT,Purchase additional FMV reports via SEWP.,541519.0,384000.0,Per FY,,2025-05-05,DOC,Headquarters,,USA,Delivery / Task Order,an unrestricted competition,,
+SSA,OPE-25-00018,e8a32de9e65f4c0efe64a18ea7c10c66,A NEW REQUIREMENT,"Contract for Background Investigations and 
+ Adjudicative Support Services",,1688262.0,Per FY,,2025-09-30,DOC,,,USA,,,,
+SSA,COB-25-25017,355ad322c199b89702c1fda3060f409e,A NEW REQUIREMENT,"To secure the ongoing acquisition of an online wage 
+ verification system that SSA can use to 
+ substantiate employment, wage amounts, and other 
+ employment-related data. POP: 06/12/25 - 06/11/26.",,6711107.0,Per FY,,2025-06-06,DOC,,,USA,,,,
+SSA,OIG-25-0005,c5094c72117ccbd75857a1f3c2e97e2b,A NEW REQUIREMENT,"Audit of SSA's Financial
+ Statements",,500000.0,Per FY,,2025-12-31,DPC,,,USA,,,,
+SSA,ORDES-25-00007,d3257a591f0b0cce1f9ab3e588e11e7b,A NEW REQUIREMENT,"Provides training, certification, technical 
+ assistance and data support to the Work Incentives 
+ Planning and Assistance cooperative agreement 
+ program.",,6900000.0,Per FY,,2025-07-18,DPC,,,USA,,,,
+SSA,ORDES-25-00012,91b3398d51621cf89a1a489236b8c285,A NEW REQUIREMENT,"The second round of the Disability Research Surveys 
+ (DRS 2.0) is a suite of three surveys that a 
+ contractor will develop.",,9000000.0,Per FY,,2025-08-01,DPC,,,USA,,,,
+SSA,ORDES-25-00015,44c0008c4a6475430f99678b8e813fa6,A NEW REQUIREMENT,"CHESS will fund the provision of services to help 
+ disabled people experiencing homelessness (PEH) 
+ apply for SSI and receive the correct decision as 
+ early as possible. We are also exploring waiving 
+ SSI program rules to facilitate the process.",,6000000.0,Per FY,,2025-09-30,DPC,,,USA,,,,
+SSA,ORDES-26-00002,75317d53e1c7b9a1da90ecfd415c33b7,A NEW REQUIREMENT,"The TPM contractor provides marketing and outreach 
+ to program stakeholders by managing the two Ticket 
+ program related websites, operating the Ticket 
+ Program Help Line call center and managing day-to-
+ day operations for all aspects of the program.",,19000000.0,Per FY,,2025-10-01,DPC,,,USA,,,,
+SSA,OISP-25-00005,8e3a9daba20c97297411abd4de66a3db,A NEW REQUIREMENT,"Contract for new work measurement study, to improve 
+ the study design and metrics based on current 
+ assessment. Develop and test a prototype for the 
+ study design including protocols and instruments 
+ that can be used by SSA to continue est",,382140.0,Per FY,,2025-04-26,DPC,,,USA,,,,
+SSA,RCF-25-25033-09,9bb347ab77659f7e8b798dea142f695e,A NEW REQUIREMENT,"New contract BASE year (TBD) on Los Angeles 
+ investigative services contract number TBD - Two 
+ investigators provided by contractor TBD. 180-day 
+ lead time.",,2879952.0,Per FY,,2025-05-01,DWRC,,,USA,,,,
+SSA,CORM-25-00001,e4f12b33e714b4821505d6029239fec0,A NEW REQUIREMENT,Support Furniture,,500000.0,Per FY,,2025-09-30,DWRC,,,USA,,,,
+SSA,RCF-25-25012-09,6fa3ad0da571685967353bda9cf299c7,A NEW REQUIREMENT,"Contractor to provide labor and materials to provide 
+ Warehouse support services for FHFB. Contract length 
+ is base year plus 4 option years.",,305000.0,Per FY,,2025-09-30,DWRC,,,USA,,,,
+SSA,DCS-25-038H0,f05319eeb85ed2273a207ec9c384dab8,A NEW REQUIREMENT,"F5 announced end of new software support for our 
+ current appliances for January 2026.  This requires 
+ we refresh with new appliances in FY 2025.",,3947731.0,Per FY,,2025-06-09,OCIO,,,USA,,,,
+SSA,COBM-25-10011,9ed697f9eb3c35133663487fe003fe6e,A NEW REQUIREMENT,HQ and NSC Network Cabling Services -,,2699602.0,Per FY,,2025-09-29,OFLM,,,USA,,,,
+SSA,RCF-25-25034-09,12088c1515abe3d9f1ddc6a5506498c9,A NEW REQUIREMENT,"Solicitation for 17 new Regional Medical 
+ Consultants to perform contract services. Contract 
+ services will include adjudication and review of 
+ SSA Disability Claims. FY25 APP will cover training 
+ and orientation cases only.",,314500.0,Per FY,,2025-07-01,RC-RG09,,,USA,,,,

@@ -1,0 +1,146 @@
+import re
+import logging
+from datetime import datetime
+import pandas as pd
+
+def parse_value_range(value_str):
+    """Parses common value range strings into a numeric value and a unit string."""
+    if pd.isna(value_str):
+        return pd.NA, pd.NA
+    value_str = str(value_str).strip().upper().replace(',', '')
+    numeric_val, unit_str = pd.NA, value_str
+    try:
+        numeric_val = float(value_str.replace('$', ''))
+        unit_str = None
+        return numeric_val, unit_str
+    except ValueError:
+        pass 
+    
+    # Define multipliers
+    multipliers = {'K': 1000, 'THOUSAND': 1000, 'M': 1000000, 'MILLION': 1000000}
+    unit_pattern = r'(K|THOUSAND|M|MILLION)?'
+
+    # Regex patterns:
+    # 1. Range pattern
+    range_pattern = re.compile(r'(?:BETWEEN\s*\$?|\$?)(?P<low>[\d.]+)\s*{unit_pattern}\s*(?:-|TO|AND)\s*\$?\s*(?P<high>[\d.]+)\s*{unit_pattern}'.format(unit_pattern=unit_pattern))
+    # 2. Threshold pattern (Updated to include >=, <=, < OR =, > OR =)
+    threshold_pattern = re.compile(r'(?:OVER|UNDER|LESS THAN|>=|<=|>|<|< OR =|> OR =)\s*\$?(?P<thresh>[\d.]+)\s*{unit_pattern}'.format(unit_pattern=unit_pattern))
+    # 3. Simple Number + Unit pattern
+    simple_unit_pattern = re.compile(r'\$?([\d.]+)\s*{unit_pattern}'.format(unit_pattern=unit_pattern))
+
+    range_match = range_pattern.search(value_str)
+    threshold_match = threshold_pattern.search(value_str)
+    simple_unit_match = simple_unit_pattern.match(value_str)
+
+    if range_match:
+        low_val = float(range_match.group('low'))
+        low_unit = range_match.group(2) # Group index might change based on pattern structure
+        numeric_val = low_val * multipliers.get(low_unit, 1)
+        unit_str = value_str
+    elif threshold_match:
+        val = float(threshold_match.group('thresh'))
+        unit = threshold_match.group(2) # Group index might change
+        numeric_val = val * multipliers.get(unit, 1)
+        unit_str = value_str
+    elif simple_unit_match:
+        # Need to adjust group indices if unit_pattern changes captures
+        val = float(simple_unit_match.group(1))
+        unit = simple_unit_match.group(2) # Assuming unit is the second capture group
+        if unit:
+            numeric_val = val * multipliers.get(unit, 1)
+            unit_str = unit 
+        else: # It matched as a simple number without unit (already tried float conversion)
+             logging.warning(f"Could not parse estimated value: {value_str}")
+             numeric_val = pd.NA
+             unit_str = value_str
+    else:
+        logging.warning(f"Could not parse estimated value: {value_str}")
+        numeric_val = pd.NA
+        unit_str = value_str if value_str else pd.NA
+
+    return numeric_val, unit_str
+
+def fiscal_quarter_to_date(qtr_str):
+    """Converts FY/Quarter string to a representative date (e.g., 'FY2024 Q2', '2025 3RD')."""
+    if pd.isna(qtr_str): return pd.NaT
+    qtr_str = str(qtr_str).strip().upper()
+    # Updated regex to handle 'Qn' or 'Nth' formats, with year potentially before or after.
+    match = re.search(r'(?:FY)?(\d{2,4})?\s*(?:Q([1-4])|([1-4])(?:ST|ND|RD|TH))|(?:Q([1-4])|([1-4])(?:ST|ND|RD|TH))\s*(?:FY)?(\d{2,4})?', qtr_str)
+    if match:
+        # Extract year and quarter from potentially different groups
+        year_part = match.group(1) or match.group(6)
+        quarter_part = match.group(2) or match.group(3) or match.group(4) or match.group(5)
+
+        if quarter_part:
+            quarter, current_year = int(quarter_part), datetime.now().year
+            year = current_year
+            if year_part: year = 2000 + int(year_part) if int(year_part) < 100 else int(year_part)
+            # Adjust month based on fiscal quarter start (Oct = Q1, Jan = Q2, Apr = Q3, Jul = Q4)
+            # Target the *start* of the quarter
+            if quarter == 1: month, year_offset = 10, -1 # Q1 starts in previous calendar year
+            elif quarter == 2: month, year_offset = 1, 0
+            elif quarter == 3: month, year_offset = 4, 0
+            elif quarter == 4: month, year_offset = 7, 0
+            else: # Should not happen due to regex
+                 logging.warning(f"Invalid quarter number {quarter} parsed from '{qtr_str}'")
+                 return pd.NaT
+
+            fiscal_year = year # Use the derived/provided year as the fiscal year
+            calendar_year = fiscal_year + year_offset
+
+            try:
+                return pd.Timestamp(f'{calendar_year}-{month:02d}-01')
+            except ValueError:
+                logging.warning(f"Date formation error Y={calendar_year}, M={month} from '{qtr_str}'")
+    logging.warning(f"Could not parse fiscal quarter: {qtr_str}")
+    return pd.NaT
+
+def split_place(place_str):
+    """Splits a place string into City and State, handling common variations."""
+    if pd.isna(place_str):
+        return pd.NA, pd.NA
+
+    cleaned_str = str(place_str).replace('[', '').replace(']', '').strip()
+
+    # Handle specific known non-city places first (case-insensitive checks)
+    cleaned_upper = cleaned_str.upper()
+    if cleaned_upper == 'NATIONWIDE':
+        return "Nationwide", pd.NA
+    if 'TBD' in cleaned_upper:
+        return pd.NA, pd.NA
+    # Handle specific territory/common non-standard formats
+    if cleaned_upper == 'PUERTO RICO, UNITED STATES' or cleaned_upper == 'PUERTO RICO':
+        return pd.NA, "PR"
+    # Add other territories if needed, e.g.:
+    # if cleaned_upper == 'GUAM, UNITED STATES' or cleaned_upper == 'GUAM':
+    #     return pd.NA, "GU"
+
+    # Check for multi-state format (e.g., AZ, CA, OK, TX)
+    parts_upper = [p.strip() for p in cleaned_upper.split(',') if p.strip()]
+    is_multi_state = len(parts_upper) > 1 and all(len(p) <= 3 and p.isalpha() for p in parts_upper)
+    if is_multi_state:
+        logging.info(f"Detected multi-state place: {place_str}. Storing original string in state.")
+        return pd.NA, place_str.strip()
+
+    # Proceed with standard City, State or State parsing (using original case string)
+    parts = [p.strip() for p in cleaned_str.split(',') if p.strip()]
+    if len(parts) == 2:
+        city, state_part = parts[0], parts[1]
+        # Handle "State, United States" format where State is likely an abbreviation
+        if state_part.upper() == 'UNITED STATES' and len(city) <= 3 and city.isalpha():
+            return pd.NA, city.upper()
+        # Standard City, State format check
+        if len(state_part) <= 3 and state_part.isalpha():
+            return city.title(), state_part.upper()
+        else:
+            logging.warning(f"Unexpected place format '{place_str}', treating as city: {city}")
+            return city.title(), pd.NA
+    elif len(parts) == 1:
+        part = parts[0]
+        if len(part) <= 3 and part.isalpha():
+            return pd.NA, part.upper()
+        else:
+            return part.title(), pd.NA
+    else:
+        logging.warning(f"Could not confidently split place: {place_str}")
+        return pd.NA, pd.NA 

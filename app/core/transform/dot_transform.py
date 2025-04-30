@@ -1,8 +1,17 @@
 import pandas as pd
 import hashlib
 import os
+import sys
 from pathlib import Path
+
+# Add project root to sys.path to allow absolute imports
+project_root = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(project_root))
+
 import logging
+import re
+from datetime import datetime
+from app.utils.parsing import parse_value_range, fiscal_quarter_to_date, split_place
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -59,79 +68,81 @@ def normalize_columns_dot(df: pd.DataFrame, canonical_cols: list[str]) -> pd.Dat
     """Renames DOT columns, normalizes, handles extras."""
     # Define the explicit mapping for DOT from CSV header
     rename_map = {
-        # Raw DOT Name: Canonical Name
-        'Sequence Number': 'native_id', # Assuming this is unique
+        'Sequence Number': 'native_id',
         'Procurement Office': 'office',
         'Project Title': 'requirement_title',
         'Description': 'requirement_description',
-        'Estimated Value': 'estimated_value', # Requires parsing (e.g., '>$250K')
+        'Estimated Value': 'estimated_value_raw', # Rename raw
         'NAICS': 'naics',
         'Competition Type': 'set_aside', # Mapping assumption
-        'RFP Quarter': 'solicitation_date', # Requires FY + Quarter parsing
-        'Anticipated Award Date': 'award_date', # Requires date parsing
-        'Place of Performance': 'place_raw', # Needs splitting
+        'RFP Quarter': 'solicitation_qtr_raw', # Rename raw
+        'Anticipated Award Date': 'award_date',
+        'Place of Performance': 'place_raw', # Rename raw
         'Action/Award Type': 'contract_type'
     }
     logging.info(f"Applying DOT specific column mapping: {rename_map}")
-    df = df.rename(columns=rename_map)
+    rename_map_existing = {k: v for k, v in rename_map.items() if k in df.columns}
+    df = df.rename(columns=rename_map_existing)
 
     # --- Handle combined/derived/parsed fields --- 
-    
-    # Split 'Place of Performance' 
-    # TODO: Implement splitting logic for 'place_raw'. Verify format (City, State? Just State? Country?).
-    # Assign results to place_city, place_state, place_country.
     if 'place_raw' in df.columns:
-        logging.info("'place_raw' column found, requires splitting.")
-        df = df.drop(columns=['place_raw']) # Drop the raw column
-    df['place_city'] = pd.NA 
-    df['place_state'] = pd.NA
-    df['place_country'] = pd.NA # Assign default (e.g., 'USA') or leave NA if needed
-    
+        logging.info("Splitting 'place_raw' column.")
+        split_places = df['place_raw'].apply(split_place)
+        df['place_city'] = split_places.apply(lambda x: x[0])
+        df['place_state'] = split_places.apply(lambda x: x[1])
+        df['place_country'] = 'USA' # Assume USA for DOT if not specified
+    else:
+        df['place_city'], df['place_state'], df['place_country'] = pd.NA, pd.NA, 'USA'
 
-    # Parse estimated value
-    # TODO: Implement robust parsing for 'estimated_value'. Handle ranges, K/M/B suffixes, symbols like '>', '$'.
-    if 'estimated_value' in df.columns:
-        logging.info("'estimated_value' column found, requires parsing.")
-        # Example: df['estimated_value'] = parse_value_string(df['estimated_value'])
-        df['estimated_value'] = pd.to_numeric(df['estimated_value'], errors='coerce') # Basic coerce after rename
+    if 'estimated_value_raw' in df.columns:
+        logging.info("Parsing 'estimated_value_raw'.")
+        parsed_values = df['estimated_value_raw'].apply(parse_value_range)
+        df['estimated_value'] = parsed_values.apply(lambda x: x[0])
+        df['est_value_unit'] = parsed_values.apply(lambda x: x[1])
+    else:
+        df['estimated_value'], df['est_value_unit'] = pd.NA, pd.NA
 
-    # Parse solicitation date (from RFP Quarter like 'Q1')
-    # TODO: Implement parsing for 'solicitation_date'. Combine with FY column and convert quarter to date.
-    if 'solicitation_date' in df.columns:
-        # Example: df['solicitation_date'] = parse_fy_quarter(df, fy_col='fy', quarter_col='solicitation_date')
-        logging.warning("'solicitation_date' requires parsing implementation.")
-        df['solicitation_date'] = pd.NA # Set to NA until implemented
+    if 'solicitation_qtr_raw' in df.columns:
+        logging.info("Parsing 'solicitation_qtr_raw'.")
+        # TODO: Confirm if Fiscal Year context is available for DOT quarters
+        # If not, fiscal_quarter_to_date might assume wrong year.
+        # For now, proceed with the helper assuming current/derived FY.
+        df['solicitation_date'] = df['solicitation_qtr_raw'].apply(fiscal_quarter_to_date)
+    else:
+        df['solicitation_date'] = pd.NaT
 
-    # Parse award date
-    # TODO: Implement robust date parsing for 'award_date'.
     if 'award_date' in df.columns:
-        # Example: df['award_date'] = parse_flexible_date(df['award_date'])
-        logging.info("'award_date' column found, requires parsing.")
-        df['award_date'] = pd.to_datetime(df['award_date'], errors='coerce') # Basic coerce after rename
+        logging.info("Parsing 'award_date'.")
+        df['award_date'] = pd.to_datetime(df['award_date'], errors='coerce')
+    else:
+        df['award_date'] = pd.NaT
 
-    # --- General normalization (lowercase, snake_case) ---
+    # Drop raw columns
+    cols_to_drop = ['place_raw', 'estimated_value_raw', 'solicitation_qtr_raw']
+    df = df.drop(columns=[col for col in cols_to_drop if col in df.columns], errors='ignore')
+
+    # --- General normalization ---
     df.columns = df.columns.str.strip().str.lower().str.replace(r'\s+\(.*?\)', '', regex=True).str.replace(r'\s+', '_', regex=True).str.replace(r'[^a-z0-9_]', '', regex=True)
 
-    # Identify unmapped columns
+    # --- Handle Extra/Canonical Columns ---
     current_cols = df.columns.tolist()
-    unmapped_cols = [col for col in current_cols if col not in canonical_cols and col not in ['source', 'id']]
-
-    # Handle 'extra' column
+    normalized_canonical = [c.strip().lower().replace(' ', '_').replace(r'[^a-z0-9_]', '') for c in canonical_cols]
+    unmapped_cols = [col for col in current_cols if col not in normalized_canonical and col not in ['source', 'id']]
     if unmapped_cols:
         logging.info(f"Found unmapped columns for 'extra': {unmapped_cols}")
+        for col in unmapped_cols:
+             if df[col].dtype == 'datetime64[ns]' or df[col].dtype.name == 'datetime64[ns, UTC]':
+                 df[col] = df[col].dt.isoformat()
         df['extra'] = df[unmapped_cols].astype(str).to_dict(orient='records')
         df = df.drop(columns=unmapped_cols)
     else:
         df['extra'] = None
-
-    # Ensure all canonical columns exist
-    for col in canonical_cols:
-        if col not in df.columns and col != 'id':
+    for col in normalized_canonical:
+        if col not in df.columns:
            df[col] = pd.NA
 
-    # Return dataframe with only existing canonical columns (order adjusted later)
-    final_cols = [col for col in canonical_cols if col in df.columns and col != 'id']
-    return df[final_cols]
+    final_cols_order = [col for col in normalized_canonical if col in df.columns]
+    return df[final_cols_order]
 
 # --- Main Transformation Function ---
 
@@ -182,9 +193,17 @@ def transform_dot() -> pd.DataFrame | None:
              final_ordered_cols.remove('extra')
              final_ordered_cols.append('extra')
         
-        df_final = df_normalized[[col for col in final_ordered_cols if col in df_normalized.columns]]
+        df_final = df_normalized[final_ordered_cols]
 
-        logging.info(f"DOT Transformation complete. Processed {len(df_final)} rows.")
+        logging.info(f"Transformation complete. Processed {len(df_final)} rows.")
+        
+        # TEMPORARY EXPORT CODE
+        export_path = os.path.join('data', 'processed', 'dot.csv')
+        os.makedirs(os.path.dirname(export_path), exist_ok=True)
+        df_final.to_csv(export_path, index=False)
+        logging.info(f"Temporarily exported data to {export_path}")
+        # END TEMPORARY EXPORT CODE
+
         return df_final
 
     except pd.errors.EmptyDataError:

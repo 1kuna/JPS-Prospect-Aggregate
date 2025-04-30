@@ -1,8 +1,17 @@
+import os
+import sys
+from pathlib import Path
+
+# Add project root to sys.path to allow absolute imports
+project_root = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(project_root))
+
 import pandas as pd
 import hashlib
-import os
-from pathlib import Path
 import logging
+import re
+from datetime import datetime
+from app.utils.parsing import parse_value_range, fiscal_quarter_to_date
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -67,41 +76,75 @@ def normalize_columns_dhs(df: pd.DataFrame, canonical_cols: list[str]) -> pd.Dat
         'Component': 'office',
         'Title': 'requirement_title',
         'Contract Type': 'contract_type',
-        'Dollar Range': 'estimated_value', # May require parsing
+        'Dollar Range': 'estimated_value_raw', # Rename raw value first
         'Small Business Set-Aside': 'set_aside',
         'Place of Performance City': 'place_city',
         'Place of Performance State': 'place_state',
         'Description': 'requirement_description',
         'Estimated Solicitation Release': 'solicitation_date',
-        'Award Quarter': 'award_date' # May require parsing/conversion
+        'Award Quarter': 'award_date_raw' # Rename raw value first
     }
     logging.info(f"Applying DHS specific column mapping: {rename_map}")
     df = df.rename(columns=rename_map)
+
+    # --- Add Parsing Logic --- 
+    # Parse dates
+    if 'solicitation_date' in df.columns:
+        df['solicitation_date'] = pd.to_datetime(df['solicitation_date'], errors='coerce')
+    if 'award_date_raw' in df.columns:
+        df['award_date'] = df['award_date_raw'].apply(fiscal_quarter_to_date)
+    else: 
+        df['award_date'] = pd.NaT
+
+    # Parse estimated value range
+    if 'estimated_value_raw' in df.columns:
+        parsed_values = df['estimated_value_raw'].apply(parse_value_range)
+        df['estimated_value'] = parsed_values.apply(lambda x: x[0])
+        df['est_value_unit'] = parsed_values.apply(lambda x: x[1])
+    else:
+        df['estimated_value'] = pd.NA 
+        df['est_value_unit'] = pd.NA
+
+    # Initialize Place Country if missing
+    if 'place_country' not in df.columns:
+         df['place_country'] = 'USA' # Assume USA if not specified
+         
+    # Drop raw columns after parsing
+    df = df.drop(columns=['estimated_value_raw', 'award_date_raw'], errors='ignore')
+    # --- End Parsing Logic ---
 
     # General normalization (lowercase, snake_case)
     # Remove content in parentheses (e.g., from place names)
     df.columns = df.columns.str.strip().str.lower().str.replace(r'\s+\(.*?\)', '', regex=True).str.replace(r'\s+', '_', regex=True).str.replace(r'[^a-z0-9_]', '', regex=True)
 
-    # Identify unmapped columns
+    # Identify unmapped columns AFTER normalization and parsing
     current_cols = df.columns.tolist()
-    unmapped_cols = [col for col in current_cols if col not in canonical_cols and col not in ['source', 'id']]
+    # Ensure canonical columns used for comparison are also normalized
+    normalized_canonical = [c.strip().lower().replace(' ', '_').replace(r'[^a-z0-9_]', '') for c in canonical_cols]
+    unmapped_cols = [col for col in current_cols if col not in normalized_canonical and col not in ['source', 'id']]
 
     # Handle 'extra' column
     if unmapped_cols:
         logging.info(f"Found unmapped columns for 'extra': {unmapped_cols}")
-        df['extra'] = df[unmapped_cols].to_dict(orient='records')
+        # Convert potential non-string types in unmapped columns before to_dict
+        for col in unmapped_cols:
+             if df[col].dtype == 'datetime64[ns]' or df[col].dtype.name == 'datetime64[ns, UTC]':
+                 df[col] = df[col].dt.isoformat()
+             # Add other type conversions if necessary (e.g., numeric to str)
+        df['extra'] = df[unmapped_cols].astype(str).to_dict(orient='records') # Ensure all extra data is string
         df = df.drop(columns=unmapped_cols)
     else:
         df['extra'] = None
 
     # Ensure all canonical columns exist
-    for col in canonical_cols:
-        if col not in df.columns and col != 'id': # Don't add 'id' here yet
-           df[col] = pd.NA
+    for col in normalized_canonical:
+        if col not in df.columns:
+           df[col] = pd.NA # Use pd.NA for consistency
 
-    # Return dataframe with only existing canonical columns (order adjusted later)
-    final_cols = [col for col in canonical_cols if col in df.columns and col != 'id']
-    return df[final_cols]
+    # Return dataframe with only canonical columns in the correct order
+    # Use the normalized_canonical list for final selection and ordering
+    final_cols_order = [col for col in normalized_canonical if col in df.columns]
+    return df[final_cols_order]
 
 # --- Main Transformation Function ---
 
@@ -157,7 +200,15 @@ def transform_dhs() -> pd.DataFrame | None:
 
         df_final = df_normalized[final_ordered_cols]
 
-        logging.info(f"DHS Transformation complete. Processed {len(df_final)} rows.")
+        logging.info(f"Transformation complete. Processed {len(df_final)} rows.")
+        
+        # TEMPORARY EXPORT CODE
+        export_path = os.path.join('data', 'processed', 'dhs.csv')
+        os.makedirs(os.path.dirname(export_path), exist_ok=True)
+        df_final.to_csv(export_path, index=False)
+        logging.info(f"Temporarily exported data to {export_path}")
+        # END TEMPORARY EXPORT CODE
+
         return df_final
 
     except pd.errors.EmptyDataError:

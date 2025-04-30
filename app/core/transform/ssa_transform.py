@@ -1,8 +1,17 @@
 import pandas as pd
 import hashlib
 import os
+import sys
 from pathlib import Path
+
+# Add project root to sys.path to allow absolute imports
+project_root = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(project_root))
+
 import logging
+import re
+from datetime import datetime
+from app.utils.parsing import parse_value_range, split_place
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -15,6 +24,7 @@ except NameError:
 
 # Specific data directory for SSA
 DATA_DIR = BASE_DIR / "data" / "raw" / "ssa_forecast"
+PROCESSED_DIR = BASE_DIR / "data" / "processed"
 
 # Hardcoded canonical columns
 CANONICAL_COLUMNS = [
@@ -59,73 +69,82 @@ def generate_id(row: pd.Series) -> str:
 def normalize_columns_ssa(df: pd.DataFrame, canonical_cols: list[str]) -> pd.DataFrame:
     """Renames SSA columns, normalizes, handles extras."""
     # Define the explicit mapping for SSA from Excel header
-    # Uses the first set of headers found
     rename_map = {
-        # Raw SSA Name: Canonical Name
         'APP #': 'native_id',
-        'SITE Type': 'office', # Assumption
-        'REQUIREMENT TYPE': 'requirement_title', # Assumption
+        'SITE Type': 'office',
+        'REQUIREMENT TYPE': 'requirement_title',
         'DESCRIPTION': 'requirement_description',
-        'EST COST PER FY': 'estimated_value', # Needs parsing
-        'PLANNED AWARD DATE': 'award_date', # Needs parsing
+        'EST COST PER FY': 'estimated_value_raw', # Rename raw
+        'PLANNED AWARD DATE': 'award_date',
         'CONTRACT TYPE': 'contract_type',
         'NAICS': 'naics',
-        'TYPE OF COMPETITION': 'set_aside', # Assumption
-        'PLACE OF PERFORMANCE': 'place_raw' # Needs splitting
-        # 'solicitation_date' appears missing
+        'TYPE OF COMPETITION': 'set_aside',
+        'PLACE OF PERFORMANCE': 'place_raw' # Rename raw
     }
     logging.info(f"Applying SSA specific column mapping: {rename_map}")
-    # Filter DataFrame to only columns that exist before renaming to avoid errors with repeated headers
-    df = df[list(rename_map.keys())] 
+    # Filter DataFrame to only columns that exist before renaming 
+    existing_raw_cols = [col for col in rename_map.keys() if col in df.columns]
+    df = df[existing_raw_cols]
     df = df.rename(columns=rename_map)
 
     # --- Parsing Logic --- 
-    # TODO: Implement splitting logic for 'place_raw'. Verify format.
     if 'place_raw' in df.columns:
-        logging.info("'place_raw' requires splitting.")
-        df = df.drop(columns=['place_raw'])
-    df['place_city'] = pd.NA
-    df['place_state'] = pd.NA
-    df['place_country'] = pd.NA # Default?
+        logging.info("Splitting 'place_raw'.")
+        split_places = df['place_raw'].apply(split_place)
+        df['place_city'] = split_places.apply(lambda x: x[0])
+        df['place_state'] = split_places.apply(lambda x: x[1])
+        df['place_country'] = 'USA' # Assume USA
+    else:
+        df['place_city'], df['place_state'], df['place_country'] = pd.NA, pd.NA, 'USA'
 
-    # TODO: Implement parsing for 'estimated_value'.
-    if 'estimated_value' in df.columns:
-        logging.info("'estimated_value' requires parsing.")
-        df['estimated_value'] = pd.to_numeric(df['estimated_value'], errors='coerce') # Basic coerce
+    if 'estimated_value_raw' in df.columns:
+        logging.info("Parsing 'estimated_value_raw'.")
+        # Cost seems per FY, might need adjustments later if total value is needed
+        parsed_values = df['estimated_value_raw'].apply(parse_value_range)
+        df['estimated_value'] = parsed_values.apply(lambda x: x[0])
+        df['est_value_unit'] = parsed_values.apply(lambda x: x[1])
+        if df['est_value_unit'].isnull().all(): # If all units are None after parse
+            df['est_value_unit'] = df['est_value_unit'].fillna('Per FY') # Indicate original context
+        elif df['est_value_unit'].notnull().any():
+             df['est_value_unit'] = df['est_value_unit'].astype(str) + ' (Per FY)' # Append context
+        else:
+             df['est_value_unit'] = 'Per FY'
+    else:
+        df['estimated_value'], df['est_value_unit'] = pd.NA, pd.NA
 
-    # TODO: Implement parsing for 'award_date'.
     if 'award_date' in df.columns:
-        logging.info("'award_date' requires parsing.")
+        logging.info("Parsing 'award_date'.")
         df['award_date'] = pd.to_datetime(df['award_date'], errors='coerce')
+    else:
+        df['award_date'] = pd.NaT
 
     # Initialize missing columns
-    df['solicitation_date'] = pd.NA
+    df['solicitation_date'] = pd.NaT
+    
+    # Drop raw columns
+    cols_to_drop = ['place_raw', 'estimated_value_raw']
+    df = df.drop(columns=[col for col in cols_to_drop if col in df.columns], errors='ignore')
 
     # --- General normalization (lowercase, snake_case) ---
     df.columns = df.columns.str.strip().str.lower().str.replace(r'\s+\(.*?\)', '', regex=True).str.replace(r'\s+', '_', regex=True).str.replace(r'[^a-z0-9_]', '', regex=True)
 
-    # Identify unmapped columns AFTER normalization and derivation
-    # Note: We explicitly selected columns earlier, so this should ideally be empty unless 
-    # canonical_cols contains items not in the initial rename_map
+    # --- Handle Extra/Canonical Columns ---
     current_cols = df.columns.tolist()
-    unmapped_cols = [col for col in current_cols if col not in canonical_cols and col not in ['source', 'id']]
-
-    # Handle 'extra' column
+    normalized_canonical = [c.strip().lower().replace(' ', '_').replace(r'[^a-z0-9_]', '') for c in canonical_cols]
+    # Note: SSA starts by selecting specific columns, so unmapped should be minimal
+    unmapped_cols = [col for col in current_cols if col not in normalized_canonical and col not in ['source', 'id']]
     if unmapped_cols:
-        logging.info(f"Found unmapped columns for 'extra': {unmapped_cols}")
+        logging.warning(f"Unexpected unmapped columns found for SSA: {unmapped_cols}") # Should ideally not happen
         df['extra'] = df[unmapped_cols].astype(str).to_dict(orient='records')
         df = df.drop(columns=unmapped_cols)
     else:
         df['extra'] = None
-
-    # Ensure all canonical columns exist (excluding 'id')
-    for col in canonical_cols:
-        if col not in df.columns and col != 'id':
+    for col in normalized_canonical:
+        if col not in df.columns:
            df[col] = pd.NA
 
-    # Return dataframe with only existing canonical columns (order adjusted later)
-    final_cols = [col for col in canonical_cols if col in df.columns and col != 'id']
-    return df[final_cols]
+    final_cols_order = [col for col in normalized_canonical if col in df.columns]
+    return df[final_cols_order]
 
 # --- Main Transformation Function ---
 
@@ -180,6 +199,14 @@ def transform_ssa() -> pd.DataFrame | None:
         df_final = df_normalized[[col for col in final_ordered_cols if col in df_normalized.columns]]
 
         logging.info(f"SSA Transformation complete. Processed {len(df_final)} rows.")
+
+        # TEMPORARY EXPORT CODE
+        export_path = os.path.join('data', 'processed', 'ssa.csv')
+        os.makedirs(os.path.dirname(export_path), exist_ok=True)
+        df_final.to_csv(export_path, index=False)
+        logging.info(f"Temporarily exported data to {export_path}")
+        # END TEMPORARY EXPORT CODE
+
         return df_final
 
     except pd.errors.EmptyDataError:

@@ -25,7 +25,7 @@ CANONICAL_COLUMNS = [
     'source', 'native_id', 'requirement_title', 'requirement_description',
     'naics', 'estimated_value', 'est_value_unit', 'solicitation_date',
     'award_date', 'office', 'place_city', 'place_state', 'place_country',
-    'contract_type', 'set_aside', 'loaded_at', 'extra'
+    'contract_type', 'set_aside', 'loaded_at', 'extra', 'id'
 ]
 
 def find_latest_raw_file(data_dir: Path) -> Path | None:
@@ -73,8 +73,28 @@ def normalize_columns(df: pd.DataFrame, canonical_cols: list[str]) -> pd.DataFra
     if 'requirement_description' not in df.columns and 'Summary' in df.columns:
         df = df.rename(columns={'Summary': 'requirement_description'})
 
+    # --- Add Parsing Logic --- 
+    # Parse dates (assuming standard formats, add error handling)
+    if 'solicitation_date' in df.columns:
+        df['solicitation_date'] = pd.to_datetime(df['solicitation_date'], errors='coerce')
+    if 'award_date' in df.columns:
+        df['award_date'] = pd.to_datetime(df['award_date'], errors='coerce')
+
+    # Parse estimated value (simple numeric conversion, assumes no units/ranges in source)
+    if 'estimated_value' in df.columns:
+        df['estimated_value'] = pd.to_numeric(df['estimated_value'], errors='coerce')
+        df['est_value_unit'] = None # Explicitly set unit to None if only number exists
+    else:
+        df['estimated_value'] = pd.NA # Ensure column exists even if not in source
+        df['est_value_unit'] = pd.NA
+
+    # --- End Parsing Logic ---
+
     # Normalize all column names AFTER explicit renaming (lowercase, snake_case)
     df.columns = df.columns.str.strip().str.lower().str.replace(r'\s+\(\w+\)', '', regex=True).str.replace(r'\s+', '_', regex=True).str.replace(r'[^a-z0-9_]', '', regex=True)
+
+    # Remove duplicate columns after normalization, keeping the first occurrence
+    df = df.loc[:, ~df.columns.duplicated()]
 
     # Identify unmapped columns AFTER normalization
     # These are columns that were not explicitly mapped and whose normalized name is not in canonical_cols
@@ -163,6 +183,14 @@ def transform_acquisition_gateway() -> pd.DataFrame | None:
         df_final = df_normalized[final_ordered_cols]
 
         logging.info(f"Transformation complete. Processed {len(df_final)} rows.")
+
+        # TEMPORARY EXPORT CODE
+        export_path = os.path.join('data', 'processed', 'acqg.csv')
+        os.makedirs(os.path.dirname(export_path), exist_ok=True)
+        df_final.to_csv(export_path, index=False)
+        logging.info(f"Temporarily exported data to {export_path}")
+        # END TEMPORARY EXPORT CODE
+
         return df_final
 
     except pd.errors.EmptyDataError:

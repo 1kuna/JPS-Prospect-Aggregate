@@ -1,8 +1,17 @@
 import pandas as pd
 import hashlib
 import os
+import sys
 from pathlib import Path
+
+# Add project root to sys.path to allow absolute imports
+project_root = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(project_root))
+
 import logging
+import re
+from datetime import datetime
+from app.utils.parsing import parse_value_range, fiscal_quarter_to_date, split_place
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -59,7 +68,6 @@ def normalize_columns_doj(df: pd.DataFrame, canonical_cols: list[str]) -> pd.Dat
     """Renames DOJ columns, normalizes, handles extras."""
     # Define the explicit mapping for DOJ from Excel header
     rename_map = {
-        # Raw DOJ Name: Canonical Name
         'Action Tracking Number': 'native_id',
         'Bureau': 'office',
         'Contract Name': 'requirement_title',
@@ -67,68 +75,70 @@ def normalize_columns_doj(df: pd.DataFrame, canonical_cols: list[str]) -> pd.Dat
         'Contract Type (Pricing)': 'contract_type',
         'NAICS Code': 'naics',
         'Small Business Approach': 'set_aside',
-        'Estimated Total Contract Value (Range)': 'estimated_value', # Requires parsing
-        'Target Solicitation Date': 'solicitation_date', # Requires date parsing
-        'Target Award Date': 'award_date', # Requires date parsing
-        'Place of Performance': 'place_raw', # Temporary name, split below
+        'Estimated Total Contract Value (Range)': 'estimated_value_raw',
+        'Target Solicitation Date': 'solicitation_date',
+        'Target Award Date': 'award_date',
+        'Place of Performance': 'place_raw',
         'Country': 'place_country'
     }
     logging.info(f"Applying DOJ specific column mapping: {rename_map}")
-    df = df.rename(columns=rename_map)
+    rename_map_existing = {k: v for k, v in rename_map.items() if k in df.columns}
+    df = df.rename(columns=rename_map_existing)
 
-    # --- Handle combined/derived fields --- 
-    
-    # Split 'Place of Performance' 
-    # TODO: Implement splitting logic for 'place_raw'. Verify format (City, State?) and improve handling. Assign to place_city, place_state.
+    # --- Handle combined/derived fields ---
     if 'place_raw' in df.columns:
-        logging.info("'place_raw' column found, requires splitting.")
+        logging.info("Splitting 'place_raw' column.")
+        split_places = df['place_raw'].apply(split_place)
+        df['place_city'] = split_places.apply(lambda x: x[0])
+        df['place_state'] = split_places.apply(lambda x: x[1])
         df = df.drop(columns=['place_raw'])
-    df['place_city'] = pd.NA
-    df['place_state'] = pd.NA
-    # Country is mapped directly, keep it if present
+    else:
+        df['place_city'], df['place_state'] = pd.NA, pd.NA
     if 'place_country' not in df.columns:
-        df['place_country'] = pd.NA # Or default to 'USA'
+        df['place_country'] = 'USA'
 
-    # Parse estimated value
-    # TODO: Implement robust parsing for 'estimated_value' from range string.
-    if 'estimated_value' in df.columns:
-        logging.info("'estimated_value' requires parsing.")
-        df['estimated_value'] = pd.to_numeric(df['estimated_value'], errors='coerce') # Basic coerce
+    if 'estimated_value_raw' in df.columns:
+        logging.info("Parsing 'estimated_value_raw'.")
+        parsed_values = df['estimated_value_raw'].apply(parse_value_range)
+        df['estimated_value'] = parsed_values.apply(lambda x: x[0])
+        df['est_value_unit'] = parsed_values.apply(lambda x: x[1])
+        df = df.drop(columns=['estimated_value_raw'])
+    else:
+        df['estimated_value'], df['est_value_unit'] = pd.NA, pd.NA
 
-    # Parse date columns
-    # TODO: Implement robust date parsing for 'solicitation_date'.
     if 'solicitation_date' in df.columns:
-        logging.info("'solicitation_date' requires parsing.")
+        logging.info("Parsing 'solicitation_date'.")
         df['solicitation_date'] = pd.to_datetime(df['solicitation_date'], errors='coerce')
-    
-    # TODO: Implement robust date parsing for 'award_date'.
+    else:
+        df['solicitation_date'] = pd.NaT
     if 'award_date' in df.columns:
-        logging.info("'award_date' requires parsing.")
+        logging.info("Parsing 'award_date'.")
         df['award_date'] = pd.to_datetime(df['award_date'], errors='coerce')
+    else:
+        df['award_date'] = pd.NaT
 
-    # --- General normalization (lowercase, snake_case) ---
+    # --- General normalization ---
     df.columns = df.columns.str.strip().str.lower().str.replace(r'\s+\(.*?\)', '', regex=True).str.replace(r'\s+', '_', regex=True).str.replace(r'[^a-z0-9_]', '', regex=True)
 
-    # Identify unmapped columns AFTER normalization and derivation
+    # --- Handle Extra/Canonical Columns ---
     current_cols = df.columns.tolist()
-    unmapped_cols = [col for col in current_cols if col not in canonical_cols and col not in ['source', 'id']]
-
-    # Handle 'extra' column
+    normalized_canonical = [c.strip().lower().replace(' ', '_').replace(r'[^a-z0-9_]', '') for c in canonical_cols]
+    unmapped_cols = [col for col in current_cols if col not in normalized_canonical and col not in ['source', 'id']]
     if unmapped_cols:
         logging.info(f"Found unmapped columns for 'extra': {unmapped_cols}")
-        df['extra'] = df[unmapped_cols].to_dict(orient='records')
+        for col in unmapped_cols:
+             if df[col].dtype == 'datetime64[ns]' or df[col].dtype.name == 'datetime64[ns, UTC]':
+                 df[col] = df[col].dt.isoformat()
+        df['extra'] = df[unmapped_cols].astype(str).to_dict(orient='records')
         df = df.drop(columns=unmapped_cols)
     else:
         df['extra'] = None
-
-    # Ensure all canonical columns exist
-    for col in canonical_cols:
-        if col not in df.columns and col != 'id':
+    for col in normalized_canonical:
+        if col not in df.columns:
            df[col] = pd.NA
 
-    # Return dataframe with only existing canonical columns (order adjusted later)
-    final_cols = [col for col in canonical_cols if col in df.columns and col != 'id']
-    return df[final_cols]
+    final_cols_order = [col for col in normalized_canonical if col in df.columns]
+    return df[final_cols_order]
 
 # --- Main Transformation Function ---
 
@@ -181,7 +191,15 @@ def transform_doj() -> pd.DataFrame | None:
 
         df_final = df_normalized[final_ordered_cols]
 
-        logging.info(f"DOJ Transformation complete. Processed {len(df_final)} rows.")
+        logging.info(f"Transformation complete. Processed {len(df_final)} rows.")
+        
+        # TEMPORARY EXPORT CODE
+        export_path = os.path.join('data', 'processed', 'doj.csv')
+        os.makedirs(os.path.dirname(export_path), exist_ok=True)
+        df_final.to_csv(export_path, index=False)
+        logging.info(f"Temporarily exported data to {export_path}")
+        # END TEMPORARY EXPORT CODE
+
         return df_final
 
     except pd.errors.EmptyDataError:

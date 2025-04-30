@@ -1,8 +1,18 @@
 import pandas as pd
 import hashlib
 import os
+import sys
 from pathlib import Path
+
+# Add project root to sys.path to allow absolute imports
+project_root = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(project_root))
+
 import logging
+import re
+from datetime import datetime
+# Import parsing functions
+from app.utils.parsing import parse_value_range, fiscal_quarter_to_date, split_place
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -54,28 +64,28 @@ def generate_id(row: pd.Series) -> str:
     unique_string = f"{naics}-{title}-{desc}"
     return hashlib.md5(unique_string.encode('utf-8')).hexdigest()
 
+# --- Helper functions are imported from app.utils.parsing ---
+
 # --- Normalization Function (TREASURY specific) ---
 
 def normalize_columns_treasury(df: pd.DataFrame, canonical_cols: list[str]) -> pd.DataFrame:
     """Renames TREASURY columns, normalizes, handles extras."""
     # Define the explicit mapping for TREASURY from HTML table header
     rename_map = {
-        # Raw TREASURY Name: Canonical Name
-        'Specific Id': 'native_id', # Primary choice for ID
+        'Specific Id': 'native_id',
         'Bureau': 'office',
         'Type of Requirement': 'requirement_title',
-        # Description appears missing
-        'Place of Performance': 'place_raw', # Needs splitting
+        'Place of Performance': 'place_raw',
         'Contract Type': 'contract_type',
         'NAICS': 'naics',
-        'Estimated Total Contract Value': 'estimated_value', # Needs parsing
+        'Estimated Total Contract Value': 'estimated_value_raw',
         'Type of Small Business Set-aside': 'set_aside',
-        'Projected Award FY_Qtr': 'award_date', # Needs FY+Quarter parsing
-        'Projected Period of Performance Start': 'solicitation_date' # Assumption, needs date parsing
+        'Projected Award FY_Qtr': 'award_qtr_raw',
+        'Projected Period of Performance Start': 'solicitation_date'
     }
     logging.info(f"Applying TREASURY specific column mapping: {rename_map}")
     
-    # Handle alternative native_id if 'Specific Id' is missing
+    # Handle alternative native_id
     if 'Specific Id' not in df.columns and 'ShopCart/req' in df.columns:
         rename_map['ShopCart/req'] = 'native_id'
         logging.info("Using 'ShopCart/req' as native_id fallback.")
@@ -83,59 +93,69 @@ def normalize_columns_treasury(df: pd.DataFrame, canonical_cols: list[str]) -> p
          rename_map['Contract Number'] = 'native_id'
          logging.info("Using 'Contract Number' as native_id fallback.")
          
-    # Apply renaming
-    df = df.rename(columns=rename_map)
+    rename_map_existing = {k: v for k, v in rename_map.items() if k in df.columns}
+    df = df.rename(columns=rename_map_existing)
 
     # --- Parsing Logic --- 
-    # TODO: Implement splitting logic for 'place_raw'. Verify format.
     if 'place_raw' in df.columns:
-        logging.info("'place_raw' requires splitting.")
-        df = df.drop(columns=['place_raw'])
-    df['place_city'] = pd.NA
-    df['place_state'] = pd.NA
-    df['place_country'] = pd.NA # Default?
+        logging.info("Splitting 'place_raw'.")
+        split_places = df['place_raw'].apply(split_place)
+        df['place_city'] = split_places.apply(lambda x: x[0])
+        df['place_state'] = split_places.apply(lambda x: x[1])
+        df['place_country'] = 'USA' # Assume USA
+    else:
+        df['place_city'], df['place_state'], df['place_country'] = pd.NA, pd.NA, 'USA'
 
-    # TODO: Implement parsing for 'estimated_value'.
-    if 'estimated_value' in df.columns:
-        logging.info("'estimated_value' requires parsing.")
-        df['estimated_value'] = pd.to_numeric(df['estimated_value'], errors='coerce') # Basic coerce
+    if 'estimated_value_raw' in df.columns:
+        logging.info("Parsing 'estimated_value_raw'.")
+        parsed_values = df['estimated_value_raw'].apply(parse_value_range)
+        df['estimated_value'] = parsed_values.apply(lambda x: x[0])
+        df['est_value_unit'] = parsed_values.apply(lambda x: x[1])
+    else:
+        df['estimated_value'], df['est_value_unit'] = pd.NA, pd.NA
 
-    # TODO: Implement parsing for 'award_date' from FY_Qtr.
-    if 'award_date' in df.columns:
-        logging.info("'award_date' requires FY+Quarter parsing.")
-        df['award_date'] = pd.NA # Set to NA until implemented
+    if 'award_qtr_raw' in df.columns:
+        logging.info("Parsing 'award_qtr_raw'.")
+        df['award_date'] = df['award_qtr_raw'].apply(fiscal_quarter_to_date)
+    else:
+        df['award_date'] = pd.NaT
 
-    # TODO: Implement parsing for 'solicitation_date'.
     if 'solicitation_date' in df.columns:
-        logging.info("'solicitation_date' requires parsing.")
+        logging.info("Parsing 'solicitation_date'.")
         df['solicitation_date'] = pd.to_datetime(df['solicitation_date'], errors='coerce')
+    else:
+        df['solicitation_date'] = pd.NaT
 
     # Initialize missing columns
-    df['requirement_description'] = pd.NA
+    if 'requirement_description' not in df.columns:
+        df['requirement_description'] = pd.NA
+        
+    # Drop raw columns
+    cols_to_drop = ['place_raw', 'estimated_value_raw', 'award_qtr_raw']
+    df = df.drop(columns=[col for col in cols_to_drop if col in df.columns], errors='ignore')
 
     # --- General normalization (lowercase, snake_case) ---
     df.columns = df.columns.str.strip().str.lower().str.replace(r'\s+\(.*?\)', '', regex=True).str.replace(r'\s+', '_', regex=True).str.replace(r'[^a-z0-9_]', '', regex=True)
 
-    # Identify unmapped columns AFTER normalization and derivation
+    # --- Handle Extra/Canonical Columns ---
     current_cols = df.columns.tolist()
-    unmapped_cols = [col for col in current_cols if col not in canonical_cols and col not in ['source', 'id']]
-
-    # Handle 'extra' column
+    normalized_canonical = [c.strip().lower().replace(' ', '_').replace(r'[^a-z0-9_]', '') for c in canonical_cols]
+    unmapped_cols = [col for col in current_cols if col not in normalized_canonical and col not in ['source', 'id']]
     if unmapped_cols:
         logging.info(f"Found unmapped columns for 'extra': {unmapped_cols}")
+        for col in unmapped_cols:
+             if df[col].dtype == 'datetime64[ns]' or df[col].dtype.name == 'datetime64[ns, UTC]':
+                 df[col] = df[col].dt.isoformat()
         df['extra'] = df[unmapped_cols].astype(str).to_dict(orient='records')
         df = df.drop(columns=unmapped_cols)
     else:
         df['extra'] = None
-
-    # Ensure all canonical columns exist (excluding 'id')
-    for col in canonical_cols:
-        if col not in df.columns and col != 'id':
+    for col in normalized_canonical:
+        if col not in df.columns:
            df[col] = pd.NA
 
-    # Return dataframe with only existing canonical columns (order adjusted later)
-    final_cols = [col for col in canonical_cols if col in df.columns and col != 'id']
-    return df[final_cols]
+    final_cols_order = [col for col in normalized_canonical if col in df.columns]
+    return df[final_cols_order]
 
 # --- Main Transformation Function ---
 
@@ -204,9 +224,17 @@ def transform_treasury() -> pd.DataFrame | None:
              final_ordered_cols.remove('extra')
              final_ordered_cols.append('extra')
         
-        df_final = df_normalized[[col for col in final_ordered_cols if col in df_normalized.columns]]
+        df_final = df_normalized[final_ordered_cols]
 
-        logging.info(f"TREASURY Transformation complete. Processed {len(df_final)} rows.")
+        logging.info(f"Transformation complete. Processed {len(df_final)} rows.")
+
+        # TEMPORARY EXPORT CODE
+        export_path = os.path.join('data', 'processed', 'treasury.csv')
+        os.makedirs(os.path.dirname(export_path), exist_ok=True)
+        df_final.to_csv(export_path, index=False)
+        logging.info(f"Temporarily exported data to {export_path}")
+        # END TEMPORARY EXPORT CODE
+
         return df_final
 
     except pd.errors.EmptyDataError:
