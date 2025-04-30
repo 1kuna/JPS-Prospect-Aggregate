@@ -15,7 +15,8 @@ import platform
 import time
 import traceback
 import datetime
-from app.core.scrapers import AcquisitionGatewayScraper, SSAContractForecastScraper
+from app.core.scrapers.acquisition_gateway import AcquisitionGatewayScraper
+from app.core.scrapers.ssa_scraper import SsaScraper
 
 # Set up logging using the centralized utility
 logger = logger.bind(name="api.routes")
@@ -394,8 +395,8 @@ def pull_data_source(source_id):
             # --- Select and run the appropriate scraper --- 
             if "Acquisition Gateway" in data_source.name: # Or use a more robust mapping
                 scraper_instance = AcquisitionGatewayScraper(session) # Assuming session is needed
-            elif "SSA Contract Forecast" in data_source.name:
-                scraper_instance = SSAContractForecastScraper(session) # Assuming session is needed
+            elif "SSA Forecast" in data_source.name:
+                scraper_instance = SsaScraper(session) # Assuming session is needed
             else:
                 logger.warning(f"No specific scraper found for source: {data_source.name}. Cannot run pull.")
                 raise ValueError(f"No scraper configured for data source '{data_source.name}'")

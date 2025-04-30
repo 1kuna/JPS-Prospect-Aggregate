@@ -7,6 +7,8 @@ from app.database.connection import session_scope
 from app.models import DataSource, ScraperStatus
 from app.config import LOGS_DIR
 from app.utils.logger import logger, cleanup_logs
+from app.core.scrapers.acquisition_gateway import AcquisitionGatewayScraper
+from app.core.scrapers.ssa_scraper import SsaScraper
 
 # Set up logging with the centralized utility
 logger = logger.bind(name="health_check")
@@ -100,19 +102,17 @@ def check_scraper_health(scraper_instance, source_name):
         "response_time": response_time
     }
 
-def check_acquisition_gateway():
-    """Check the health of the Acquisition Gateway scraper"""
-    from app.core.scrapers.acquisition_gateway import AcquisitionGatewayScraper
+def check_acquisition_gateway_health():
+    """Check the health of the Acquisition Gateway Forecast scraper"""
     logger.info("Starting health check for Acquisition Gateway Forecast")
     scraper = AcquisitionGatewayScraper()
     return check_scraper_health(scraper, "Acquisition Gateway Forecast")
 
-def check_ssa_contract_forecast():
-    """Check the health of the SSA Contract Forecast scraper"""
-    from app.core.scrapers.ssa_contract_forecast import SSAContractForecastScraper
-    logger.info("Starting health check for SSA Contract Forecast")
-    scraper = SSAContractForecastScraper()
-    return check_scraper_health(scraper, "SSA Contract Forecast")
+def check_ssa_forecast_health():
+    """Check the health of the SSA Forecast scraper"""
+    scraper = SsaScraper(debug_mode=False)
+    logger.info("Starting health check for SSA Forecast")
+    return check_scraper_health(scraper, "SSA Forecast")
 
 # Add more check functions for each scraper as needed
 
@@ -123,7 +123,7 @@ def check_all_scrapers():
     
     # Check each scraper
     try:
-        results.append(check_acquisition_gateway())
+        results.append(check_acquisition_gateway_health())
     except Exception as e:
         logger.error(f"Error checking Acquisition Gateway Forecast: {e}")
         results.append({
@@ -134,14 +134,13 @@ def check_all_scrapers():
         })
     
     try:
-        results.append(check_ssa_contract_forecast())
+        results.append(check_ssa_forecast_health())
     except Exception as e:
-        logger.error(f"Error checking SSA Contract Forecast: {e}")
+        logger.error(f"Error checking SSA Forecast: {e}")
         results.append({
-            "source_name": "SSA Contract Forecast",
-            "status": "not_working",
-            "error_message": str(e),
-            "response_time": 0
+            "source_name": "SSA Forecast",
+            "status": "error",
+            "message": str(e)
         })
     
     # Clean up old log files, keeping only the last 3

@@ -93,11 +93,11 @@ def process_excel_file(excel_file_path):
     
     try:
         # Get or create the SSA Contract Forecast data source
-        data_source = session.query(DataSource).filter_by(name="SSA Contract Forecast").first()
+        data_source = session.query(DataSource).filter_by(name="SSA Forecast").first()
         if not data_source:
-            logger.info("Creating SSA Contract Forecast data source")
+            logger.info("Creating SSA Forecast data source")
             data_source = DataSource(
-                name="SSA Contract Forecast",
+                name="SSA Forecast",
                 url="https://www.ssa.gov/osdbu/contract-forecast-intro.html",
                 description="Social Security Administration Contract Forecast"
             )

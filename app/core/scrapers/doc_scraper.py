@@ -5,6 +5,7 @@ import os
 import traceback
 import sys
 import shutil
+import datetime # Added datetime import
 from urllib.parse import urljoin
 
 # --- Start temporary path adjustment for direct execution ---
@@ -19,8 +20,7 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 # Local application imports
 from app.core.base_scraper import BaseScraper
 # Proposal model likely not needed if just downloading
-# from app.models import Proposal 
-from app.database.download_tracker import download_tracker # Use the singleton instance
+# from app.models import Proposal
 from app.exceptions import ScraperError
 from app.utils.logger import logger
 from app.utils.db_utils import update_scraper_status # Keep for commented out code
@@ -34,15 +34,15 @@ from app.utils.scraper_utils import (
 )
 
 # Set up logging using the centralized utility
-logger = logger.bind(name="scraper.commerce_forecast")
+logger = logger.bind(name="scraper.doc")
 
-class CommerceForecastScraper(BaseScraper):
-    """Scraper for the Commerce Forecast site."""
+class DocScraper(BaseScraper):
+    """Scraper for the Department of Commerce (DOC) Forecast site."""
     
     def __init__(self, debug_mode=False):
-        """Initialize the Commerce Forecast scraper."""
+        """Initialize the DOC Forecast scraper."""
         super().__init__(
-            source_name="Commerce Forecast",
+            source_name="DOC Forecast",
             base_url=COMMERCE_FORECAST_URL,
             debug_mode=debug_mode
         )
@@ -109,43 +109,71 @@ class CommerceForecastScraper(BaseScraper):
             download_locator = self._find_download_link_locator()
             
             if not download_locator:
-                self.logger.error("Could not find the Commerce download link locator")
+                self.logger.error("Could not find the DOC download link locator")
                 self._save_debug_info()
-                raise ScraperError("Could not find the Commerce forecast download link locator")
+                raise ScraperError("Could not find the DOC forecast download link locator")
 
             # Dispatch click event on the locator and wait for the download
             self.logger.info(f"Dispatching click event on download link locator and waiting for download...")
             with self.page.expect_download(timeout=90000) as download_info:
                  # Use dispatch_event on the located element
-                 download_locator.dispatch_event('click') 
+                 download_locator.dispatch_event('click')
 
             download = download_info.value
-            final_path = os.path.join(self.download_path, download.suggested_filename)
-            self.logger.info(f"Download initiated. File expected at: {final_path}")
 
-            # Verify the file exists (saved by _handle_download)
+            # --- Start modification for timestamped filename ---
+            original_filename = download.suggested_filename
+            if not original_filename:
+                self.logger.warning("Download suggested_filename is empty, using default 'doc_download.xlsx'") # Assuming excel
+                original_filename = "doc_download.xlsx"
+
+            _, ext = os.path.splitext(original_filename)
+            if not ext:
+                ext = '.xlsx' # Default extension
+                self.logger.warning(f"Original filename '{original_filename}' had no extension, defaulting to '{ext}'")
+
+            timestamp_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            # Use hardcoded identifier 'doc'
+            final_filename = f"doc_{timestamp_str}{ext}" 
+            final_path = os.path.join(self.download_path, final_filename)
+            self.logger.info(f"Original suggested filename: {original_filename}")
+            self.logger.info(f"Saving with standardized filename: {final_filename} to {final_path}")
+            # --- End modification ---
+
+            # Use the new final_path for saving and verification
+            self.logger.info(f"Download complete. File expected at: {final_path}")
+
+            # Verify the file exists (saved by _handle_download or playwright) using the new path
             if not os.path.exists(final_path) or os.path.getsize(final_path) == 0:
                 self.logger.error(f"Verification failed: File not found or empty at {final_path}")
                 # Attempt to save manually as fallback (using original playwright path)
                 try:
-                    fallback_path = download.path()
-                    shutil.move(fallback_path, final_path)
-                    self.logger.warning(f"Manually moved file from {fallback_path} to {final_path}")
+                    # Save the download to the *new* final_path
+                    download.save_as(final_path)
+                    self.logger.warning(f"Manually saved file to {final_path}")
                     if not os.path.exists(final_path) or os.path.getsize(final_path) == 0:
-                         raise ScraperError(f"Download failed even after fallback move: File missing or empty at {final_path}")
-                except Exception as move_err:
-                     raise ScraperError(f"Download failed: File missing/empty at {final_path} and fallback move failed: {move_err}")
+                         raise ScraperError(f"Download failed even after manual save: File missing or empty at {final_path}")
+                except Exception as save_err:
+                    # Try moving if save_as fails (e.g., if BaseScraper saved it somewhere else)
+                    try:
+                        fallback_path = download.path() # Playwright's temporary path
+                        shutil.move(fallback_path, final_path)
+                        self.logger.warning(f"Manually moved file from {fallback_path} to {final_path}")
+                        if not os.path.exists(final_path) or os.path.getsize(final_path) == 0:
+                            raise ScraperError(f"Download failed after fallback move: File missing or empty at {final_path}")
+                    except Exception as move_err:
+                        raise ScraperError(f"Download failed: File missing/empty at {final_path}. Manual save failed: {save_err}. Fallback move failed: {move_err}")
 
             self.logger.info(f"Download verification successful. File saved at: {final_path}")
             return final_path
             
         except PlaywrightTimeoutError as e:
-            handle_scraper_error(e, self.source_name, "Timeout downloading Commerce forecast document")
-            raise ScraperError(f"Timeout downloading Commerce forecast document: {str(e)}")
+            handle_scraper_error(e, self.source_name, "Timeout downloading DOC forecast document")
+            raise ScraperError(f"Timeout downloading DOC forecast document: {str(e)}")
         except Exception as e:
             # Ensure error is re-raised after handling
-            handle_scraper_error(e, self.source_name, "Error downloading Commerce forecast document")
-            raise ScraperError(f"Failed to download Commerce forecast document: {str(e)}")
+            handle_scraper_error(e, self.source_name, "Error downloading DOC forecast document")
+            raise ScraperError(f"Failed to download DOC forecast document: {str(e)}")
     
     def scrape(self):
         """
@@ -174,18 +202,19 @@ def run_scraper(force=False):
         ScraperError: If an error occurs during scraping
         ImportError: If required dependencies are not installed
     """
-    source_name = "Commerce Forecast" # Define source name for reuse
+    source_name = "DOC Forecast"
     local_logger = logger
     scraper = None
     
     try:
         # Check if we should run the scraper using the singleton instance
-        if not force and download_tracker.should_download(source_name):
-            local_logger.info(f"Skipping scrape for {source_name} due to recent download")
-            return True
-        
+        # Removed interval check logic
+        # if not force and download_tracker.should_download(source_name):
+        #     local_logger.info(f"Skipping scrape for {source_name} due to recent download")
+        #     return True
+
         # Create an instance of the scraper
-        scraper = CommerceForecastScraper(debug_mode=False)
+        scraper = DocScraper(debug_mode=False)
         
         # Run the scraper
         local_logger.info(f"Running {source_name} scraper")
@@ -199,13 +228,13 @@ def run_scraper(force=False):
             # Error details are in result['error'] if it exists
             error_msg = result.get("error", "Scraper failed without specific error") if result else "Scraper failed without specific error"
             # handle_scraper_error is likely called internally, avoid double logging/handling if possible
-            # handle_scraper_error(ScraperError(error_msg), source_name) 
+            # handle_scraper_error(ScraperError(error_msg), source_name)
             raise ScraperError(error_msg)
         
         # Update the download tracker with the current time
-        download_tracker.set_last_download_time(source_name)
-        local_logger.info(f"Updated download tracker for {source_name}")
-        
+        # Removed: download_tracker.set_last_download_time(source_name)
+        # local_logger.info(f"Updated download tracker for {source_name}")
+            
         # Update the ScraperStatus table to indicate success (Currently Commented Out)
         # update_scraper_status(source_name, "working", None)
             
@@ -238,6 +267,6 @@ if __name__ == "__main__":
     # This block allows the script to be run directly for testing
     try:
         run_scraper(force=True)
-        print("Commerce Forecast scraper finished successfully (DB operations skipped).")
+        print("DOC Forecast scraper finished successfully (DB operations skipped).")
     except Exception as e:
-        print(f"Commerce Forecast scraper failed: {e}") 
+        print(f"DOC Forecast scraper failed: {e}") 

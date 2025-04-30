@@ -18,11 +18,9 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 # Local application imports
 from app.core.base_scraper import BaseScraper
-from app.database.download_tracker import download_tracker
 from app.exceptions import ScraperError
 from app.utils.logger import logger
-# from app.utils.db_utils import update_scraper_status # Keep for commented out code
-from app.config import DOS_FORECAST_URL, DOWNLOADS_DIR # Import DOWNLOADS_DIR
+from app.config import DOS_FORECAST_URL, RAW_DATA_DIR # Import RAW_DATA_DIR
 from app.utils.scraper_utils import handle_scraper_error
 
 # Set up logging using the centralized utility
@@ -53,16 +51,29 @@ class DOSForecastScraper(BaseScraper):
         # Known direct URL to the file
         # Ideally, this might be discoverable dynamically, but using the known one for now
         file_url = "https://www.state.gov/wp-content/uploads/2025/02/FY25-Procurement-Forecast-2.xlsx"
-        # Extract filename from URL or define a standard one
+
+        # --- Start modification for timestamped filename ---
+        # Extract original filename from URL
         try:
-            suggested_filename = os.path.basename(file_url)
-        except Exception:
-            suggested_filename = f"dos_forecast_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-        
+            original_filename = os.path.basename(file_url)
+            if not original_filename: # Handle cases where basename might be empty
+                raise ValueError("Could not extract filename from URL")
+        except Exception as e:
+            self.logger.warning(f"Could not extract filename from URL '{file_url}', using default. Error: {e}")
+            original_filename = "dos_forecast_download.xlsx"
+
+        base_name, ext = os.path.splitext(original_filename)
+        timestamp_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        # Use hardcoded identifier 'dos'
+        final_filename = f"dos_{timestamp_str}{ext}" 
+
         # Use the scraper's specific download path
-        target_download_dir = self.download_path 
-        final_path = os.path.join(target_download_dir, suggested_filename)
-        
+        target_download_dir = self.download_path
+        final_path = os.path.join(target_download_dir, final_filename)
+        self.logger.info(f"Original filename from URL: {original_filename}")
+        self.logger.info(f"Saving with standardized filename: {final_filename} to {final_path}")
+        # --- End modification ---
+
         # Ensure the target directory exists
         os.makedirs(target_download_dir, exist_ok=True)
         self.logger.info(f"Ensured download directory exists: {target_download_dir}")
@@ -117,7 +128,7 @@ class DOSForecastScraper(BaseScraper):
                 api_request_context.dispose() # Dispose context on failure
                 raise ScraperError(f"Downloaded file content type ({content_type}) is not Excel.")
 
-            # Save the response body to the file
+            # Save the response body to the file using the new final_path
             self.logger.info("Content-Type appears valid, saving file...")
             with open(final_path, 'wb') as f:
                 f.write(response.body())
@@ -127,7 +138,7 @@ class DOSForecastScraper(BaseScraper):
             # Clean up the API request context
             api_request_context.dispose()
 
-            # Verify the file exists and is not empty
+            # Verify the file exists and is not empty using the new final_path
             if not os.path.exists(final_path) or os.path.getsize(final_path) == 0:
                 self.logger.error(f"Verification failed: File not found or empty at {final_path} after direct download")
                 raise ScraperError("Download verification failed after direct download: File missing or empty")
@@ -173,10 +184,11 @@ def run_scraper(force=False):
     scraper = None
     
     try:
-        if not force and download_tracker.should_download(source_name): 
-            local_logger.info(f"Skipping scrape for {source_name} due to recent download")
-            return {"success": True, "message": "Skipped due to recent download"}
-        
+        # Removed interval check logic
+        # if not force and download_tracker.should_download(source_name):
+        #     local_logger.info(f"Skipping scrape for {source_name} due to recent download")
+        #     return {"success": True, "message": "Skipped due to recent download"}
+
         scraper = DOSForecastScraper(debug_mode=False)
         local_logger.info(f"Running {source_name} scraper")
         result = scraper.scrape() 
@@ -188,8 +200,6 @@ def run_scraper(force=False):
                  local_logger.warning(f"{source_name} scraper failed, potentially due to site technical difficulties.")
             raise ScraperError(error_msg)
         
-        download_tracker.set_last_download_time(source_name)
-        local_logger.info(f"Updated download tracker for {source_name}")
         return {"success": True, "file_path": result.get("file_path"), "message": f"{source_name} scraped successfully"}
     
     except ImportError as e:

@@ -1,0 +1,18 @@
+canonical_name,mandatory,data_type,list_view,description
+source,True,TEXT,False,"Agency shorthand (e.g., VA, DHS); also the partition key."
+native_id,True,TEXT,False,Unique identifier supplied by the agency; required for deduplication.
+requirement_title,True,TEXT,True,Short title of the procurement requirement.
+requirement_description,True,TEXT,False,Longer description or statement of work.
+naics,True,TEXT,True,Six‑digit NAICS industry code.
+estimated_value,True,NUMERIC,True,"Upper‑bound or single‑point estimate of contract value, expressed in dollars."
+est_value_unit,False,TEXT,False,"Unit qualifier if the value is expressed as a range (e.g., 'MUSD', 'kUSD')."
+solicitation_date,True,DATE,True,Planned solicitation release date.
+award_date,False,DATE,False,Planned or actual contract award date.
+office,True,TEXT,True,Sub‑agency or office symbol responsible for the buy.
+place_city,False,TEXT,False,City for place of performance.
+place_state,False,TEXT,False,State or region for place of performance.
+place_country,False,TEXT,False,Country for place of performance; default USA when blank.
+contract_type,False,TEXT,False,"FFP, IDIQ, BPA, etc."
+set_aside,False,TEXT,False,"Anticipated socio‑economic set‑aside (SB, 8(a), WOSB, etc.)."
+loaded_at,True,TIMESTAMPTZ,False,Timestamp when the row was inserted/updated in ETL.
+extra,True,JSONB,False,Blob of every unmapped key/value from the source file.

@@ -15,25 +15,29 @@ import traceback
 import glob
 import pathlib
 import re
+import logging
+from abc import ABC, abstractmethod
+from contextlib import contextmanager
+from typing import Optional, Generator, Any, Dict
 
 # Third-party imports
 import requests
 from bs4 import BeautifulSoup
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import sync_playwright, Browser, Page, Playwright, BrowserContext, Download
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 # Local application imports
 from app.database.connection import get_db, session_scope
 from app.models import DataSource
 from app.exceptions import ScraperError
-from app.config import LOGS_DIR, DOWNLOADS_DIR, LOG_FORMAT, LOG_FILE_MAX_BYTES, LOG_FILE_BACKUP_COUNT
-from app.utils.file_utils import clean_old_files, find_files
+from app.config import LOGS_DIR, RAW_DATA_DIR, LOG_FORMAT, LOG_FILE_MAX_BYTES, LOG_FILE_BACKUP_COUNT
+from app.utils.file_utils import clean_old_files, find_files, ensure_directory
 from app.utils.logger import logger
 
 # Directory creation is now centralized in config.py, no need to create them here
 
 
-class BaseScraper:
+class BaseScraper(ABC):
     """
     Base scraper class with common functionality for all scrapers.
     
@@ -65,19 +69,15 @@ class BaseScraper:
         self.source_name = source_name
         self.base_url = base_url
         self.debug_mode = debug_mode
-        
-        # Create a download directory specific to this scraper
-        self.download_path = os.path.join(DOWNLOADS_DIR, source_name.lower().replace(' ', '_'))
-        os.makedirs(self.download_path, exist_ok=True)
-        
-        # Setup logging
-        self.setup_logging()
-        
-        # Initialize playwright attributes (will be set in setup_browser)
-        self.playwright = None
-        self.browser = None
-        self.context = None
-        self.page = None
+        self.playwright: Optional[Playwright] = None
+        self.browser: Optional[Browser] = None
+        self.context: Optional[BrowserContext] = None
+        self.page: Optional[Page] = None
+        # Use the specific directory for this scraper within RAW_DATA_DIR
+        self.download_path = os.path.join(RAW_DATA_DIR, source_name.lower().replace(' ', '_'))
+        ensure_directory(self.download_path) # Ensure it exists
+        self.logger = logger.bind(name=f"scraper.{source_name.lower().replace(' ', '_')}")
+        self.logger.info(f"Initialized {source_name} scraper. Debug mode: {debug_mode}")
     
     # -------------------------------------------------------------------------
     # Logging and Setup Methods
@@ -140,26 +140,23 @@ class BaseScraper:
             self.logger.error(traceback.format_exc())
             raise ScraperError(error_msg)
     
-    def _handle_download(self, download):
-        """
-        Handle file downloads from the browser.
-        
-        Args:
-            download: Playwright download object
-        """
-        try:
-            # Get the suggested filename
-            filename = download.suggested_filename
-            
-            # Create the download path
-            download_path = os.path.join(self.download_path, filename)
-            
+    def _handle_download(self, download: Download) -> None:
+        """Callback function to handle downloads initiated by Playwright."""
+        suggested_filename = download.suggested_filename
+        # Ensure the target download directory for this scraper exists
+        download_dir = os.path.join(RAW_DATA_DIR, self.source_name.lower().replace(' ', '_')) # Use RAW_DATA_DIR
+        ensure_directory(download_dir)
+        # save_path = os.path.join(download_dir, suggested_filename) # Path calculation no longer needed here
+        self.logger.info(f"Download event triggered: {suggested_filename}")
+        # Removed the automatic save_as call. Scraper-specific methods will handle saving/moving.
+        self.logger.info(f"BaseScraper._handle_download: Letting scraper-specific method handle saving/moving of {suggested_filename}.")
+        # try:
             # Save the file
-            download.save_as(download_path)
+            # download.save_as(save_path) # REMOVED THIS LINE
             
-            self.logger.info(f"Downloaded file: {filename}")
-        except Exception as e:
-            self.logger.error(f"Failed to handle download: {str(e)}")
+            # self.logger.info(f"Downloaded file: {suggested_filename}")
+        # except Exception as e:
+        #     self.logger.error(f"Failed to handle download: {str(e)}")
     
     def cleanup_browser(self):
         """
@@ -212,7 +209,7 @@ class BaseScraper:
         if file_pattern is None:
             file_pattern = f"{self.source_name.lower().replace(' ', '_')}*.csv"
         
-        download_dir = os.path.join(DOWNLOADS_DIR, self.source_name.lower().replace(' ', '_'))
+        download_dir = os.path.join(RAW_DATA_DIR, self.source_name.lower().replace(' ', '_'))
         
         if not os.path.exists(download_dir):
             logger.warning(f"Download directory doesn't exist: {download_dir}")

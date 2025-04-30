@@ -5,6 +5,7 @@ import os
 import sys
 import time
 import shutil
+import datetime # Added datetime import
 
 # --- Start temporary path adjustment for direct execution ---
 # Calculate the path to the project root directory (JPS-Prospect-Aggregate)
@@ -20,8 +21,7 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 # Local application imports
 from app.core.base_scraper import BaseScraper
-from app.database.download_tracker import download_tracker
-from app.config import LOGS_DIR, DOWNLOADS_DIR, TREASURY_FORECAST_URL, PAGE_NAVIGATION_TIMEOUT # Assuming TREASURY_FORECAST_URL exists in config
+from app.config import LOGS_DIR, RAW_DATA_DIR, TREASURY_FORECAST_URL, PAGE_NAVIGATION_TIMEOUT # Use RAW_DATA_DIR
 from app.exceptions import ScraperError
 from app.utils.file_utils import ensure_directory, find_files
 from app.utils.logger import logger
@@ -91,28 +91,55 @@ class TreasuryScraper(BaseScraper):
                     raise
 
             download = download_info.value
-            # The file is saved by the _handle_download callback in BaseScraper
-            final_path = os.path.join(self.download_path, download.suggested_filename)
+
+            # --- Start modification for timestamped filename ---
+            original_filename = download.suggested_filename
+            if not original_filename:
+                # Treasury files are often CSV, but check content type if unsure
+                self.logger.warning("Download suggested_filename is empty, using default 'treasury_download.csv'")
+                original_filename = "treasury_download.csv"
+
+            _, ext = os.path.splitext(original_filename)
+            if not ext:
+                ext = '.csv' # Default extension
+                self.logger.warning(f"Original filename '{original_filename}' had no extension, defaulting to '{ext}'")
+                
+            timestamp_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            # Use hardcoded identifier 'treasury'
+            final_filename = f"treasury_{timestamp_str}{ext}" 
+            final_path = os.path.join(self.download_path, final_filename)
+            self.logger.info(f"Original suggested filename: {original_filename}")
+            self.logger.info(f"Saving with standardized filename: {final_filename} to {final_path}")
+            # --- End modification ---
+
+            # The file is saved by the _handle_download callback in BaseScraper or manually below
             self.logger.info(f"Download triggered. File expected at: {final_path}")
 
             # Wait a moment for the file system to register the download completely
             time.sleep(5)
 
-            # Verify the file exists and is not empty
+            # Verify the file exists and is not empty using the new final_path
             if not os.path.exists(final_path) or os.path.getsize(final_path) == 0:
                 self.logger.error(f"Verification failed: File not found or empty at {final_path}")
-                # Attempt to save manually as fallback
+                # Attempt to save manually first
                 try:
-                    fallback_path = download.path()
-                    if fallback_path and os.path.exists(fallback_path):
-                        shutil.move(fallback_path, final_path)
-                        self.logger.warning(f"Manually moved file from {fallback_path} to {final_path}")
-                        if not os.path.exists(final_path) or os.path.getsize(final_path) == 0:
-                             raise ScraperError(f"Download failed even after fallback move: File missing or empty at {final_path}")
-                    else:
-                        raise ScraperError(f"Download failed: File missing/empty at {final_path} and Playwright download path unavailable.")
-                except Exception as move_err:
-                    raise ScraperError(f"Download failed: File missing/empty at {final_path} and fallback move failed: {move_err}")
+                    download.save_as(final_path)
+                    self.logger.warning(f"Manually saved file to {final_path}")
+                    if not os.path.exists(final_path) or os.path.getsize(final_path) == 0:
+                        raise ScraperError(f"Download failed even after manual save: File missing or empty at {final_path}")
+                except Exception as save_err:
+                    # If save_as failed, try moving from playwright temp path
+                    try:
+                        fallback_path = download.path()
+                        if fallback_path and os.path.exists(fallback_path):
+                            shutil.move(fallback_path, final_path)
+                            self.logger.warning(f"Manually moved file from {fallback_path} to {final_path}")
+                            if not os.path.exists(final_path) or os.path.getsize(final_path) == 0:
+                                raise ScraperError(f"Download failed after fallback move: File missing or empty at {final_path}")
+                        else:
+                            raise ScraperError(f"Download failed: File missing/empty at {final_path}, manual save failed ({save_err}), and Playwright temp path unavailable.")
+                    except Exception as move_err:
+                        raise ScraperError(f"Download failed: File missing/empty at {final_path}. Manual save failed: {save_err}. Fallback move failed: {move_err}")
 
             self.logger.info(f"Download verification successful. File path: {final_path}")
             return final_path
@@ -149,7 +176,6 @@ class TreasuryScraper(BaseScraper):
                  raise ScraperError("Download function did not return a file path.")
 
             # Record successful download
-            download_tracker.set_last_download_time(self.source_name)
             self.logger.info(f"Successfully downloaded file: {downloaded_file_path}")
 
             # Optionally save a permanent copy - adapt path as needed
@@ -194,12 +220,14 @@ def run_scraper(force=False):
 
     try:
         # Check if we should run based on last download time
-        scrape_interval_hours = 24 # Example interval
+        # Removed interval check logic
+        # scrape_interval_hours = 24 # Example interval
         # Use the default source_name here as scraper instance doesn't exist yet
-        if not force and download_tracker.should_download(source_name, scrape_interval_hours):
-             local_logger.info(f"Skipping {source_name} scrape due to recent download.")
+        # Removed interval check logic
+        # if not force and download_tracker.should_download(source_name, scrape_interval_hours):
+        #      local_logger.info(f"Skipping {source_name} scrape due to recent download.")
              # update_scraper_status(source_name, "skipped", "Ran recently") # Optional: Update status
-             return None # Indicate skipped, not failed
+        #      return None # Indicate skipped, not failed
 
         # Create an instance of the scraper
         scraper = TreasuryScraper(debug_mode=False)

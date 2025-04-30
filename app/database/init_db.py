@@ -56,18 +56,18 @@ def init_database():
             
             # Add SSA Contract Forecast data source if it doesn't exist
             ssa_forecast = session.query(DataSource).filter_by(
-                name="SSA Contract Forecast"
+                name="SSA Forecast"
             ).first()
             
             if not ssa_forecast:
-                logger.info("Creating SSA Contract Forecast data source...")
+                logger.info("Creating SSA Forecast data source...")
                 ssa_forecast = DataSource(
-                    name="SSA Contract Forecast",
+                    name="SSA Forecast",
                     url="https://www.ssa.gov/foia/contract_forecast.html",
-                    description="SSA Contract Forecast"
+                    description="SSA Forecast"
                 )
                 session.add(ssa_forecast)
-                logger.info("Added SSA Contract Forecast data source")
+                logger.info("Added SSA Forecast data source")
             
         logger.info("Database initialization completed successfully!")
         

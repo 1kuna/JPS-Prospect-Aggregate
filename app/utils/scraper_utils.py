@@ -7,12 +7,12 @@ import shutil
 from typing import Optional, Dict, Any, List, Union
 import pandas as pd
 import requests
-from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError, Page, Locator
 
 from app.exceptions import ScraperError
 from app.utils.logger import logger
 from app.utils.file_utils import ensure_directory
-from app.config import DOWNLOADS_DIR
+from app.config import RAW_DATA_DIR as DOWNLOADS_DIR
 
 def check_url_accessibility(url: str, timeout: int = 10, verify_ssl: bool = True) -> bool:
     """

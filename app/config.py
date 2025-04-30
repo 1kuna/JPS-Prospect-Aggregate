@@ -10,11 +10,11 @@ load_dotenv()
 BASE_DIR = pathlib.Path(__file__).parent.parent.absolute()
 LOGS_DIR = os.path.join(BASE_DIR, 'logs')
 DATA_DIR = os.path.join(BASE_DIR, 'data')
-DOWNLOADS_DIR = os.path.join(DATA_DIR, 'downloads')
+RAW_DATA_DIR = os.path.join(DATA_DIR, 'raw')
 TEMP_DIR = os.path.join(BASE_DIR, 'temp')
 
 # Ensure directories exist (directly, without using file_utils to avoid circular imports)
-for directory in [LOGS_DIR, DATA_DIR, DOWNLOADS_DIR, TEMP_DIR]:
+for directory in [LOGS_DIR, DATA_DIR, RAW_DATA_DIR, TEMP_DIR]:
     os.makedirs(directory, exist_ok=True)
 
 # Define all configuration variables at the module level
@@ -136,7 +136,7 @@ active_config = config_by_name[os.getenv('FLASK_ENV', 'default')]
 
 # Export all configuration variables for convenience
 __all__ = [
-    'active_config', 'BASE_DIR', 'LOGS_DIR', 'DATA_DIR', 'DOWNLOADS_DIR',
+    'active_config', 'BASE_DIR', 'LOGS_DIR', 'DATA_DIR', 'RAW_DATA_DIR',
     'LOG_FORMAT', 'LOG_FILE_MAX_BYTES', 'LOG_FILE_BACKUP_COUNT', 'LOG_LEVEL',
     'ACQUISITION_GATEWAY_URL', 'SSA_CONTRACT_FORECAST_URL', 'COMMERCE_FORECAST_URL', 'HHS_FORECAST_URL', 'DHS_FORECAST_URL', 'DOJ_FORECAST_URL', 'DOS_FORECAST_URL', 'TREASURY_FORECAST_URL', 'DOT_FORECAST_URL',
     'DATABASE_URL', 'REDIS_URL',

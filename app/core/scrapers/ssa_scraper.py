@@ -5,6 +5,7 @@ import os
 import traceback
 import sys
 import shutil
+import datetime
 
 # --- Start temporary path adjustment for direct execution ---
 # Calculate the path to the project root directory (JPS-Prospect-Aggregate)
@@ -20,7 +21,6 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 # Local application imports
 from app.core.base_scraper import BaseScraper
 from app.models import Proposal
-from app.database.download_tracker import DownloadTracker
 from app.exceptions import ScraperError
 from app.utils.logger import logger
 from app.utils.db_utils import update_scraper_status
@@ -33,15 +33,15 @@ from app.utils.scraper_utils import (
 )
 
 # Set up logging using the centralized utility
-logger = logger.bind(name="scraper.ssa_contract_forecast")
+logger = logger.bind(name="scraper.ssa")
 
-class SSAContractForecastScraper(BaseScraper):
-    """Scraper for the SSA Contract Forecast site."""
+class SsaScraper(BaseScraper):
+    """Scraper for the Social Security Administration (SSA) Forecast site."""
     
     def __init__(self, debug_mode=False):
-        """Initialize the SSA Contract Forecast scraper."""
+        """Initialize the SSA Forecast scraper."""
         super().__init__(
-            source_name="SSA Contract Forecast",
+            source_name="SSA Forecast",
             base_url=SSA_CONTRACT_FORECAST_URL,
             debug_mode=debug_mode
         )
@@ -122,28 +122,56 @@ class SSAContractForecastScraper(BaseScraper):
             # Click the link and wait for the download
             self.logger.info(f"Clicking link '{excel_link_href}' and waiting for download...")
             # Use the specific link found
-            link_selector = f'a[href="{excel_link_href}"]' 
+            link_selector = f'a[href="{excel_link_href}"]'
             with self.page.expect_download(timeout=60000) as download_info:
                  self.page.click(link_selector)
-            
+
             download = download_info.value
-            # The file is saved by the _handle_download callback in BaseScraper
-            # Construct the expected final path
-            final_path = os.path.join(self.download_path, download.suggested_filename)
+
+            # --- Start modification for timestamped filename ---
+            original_filename = download.suggested_filename
+            if not original_filename:
+                self.logger.warning("Download suggested_filename is empty, using default 'ssa_download.xlsx'")
+                original_filename = "ssa_download.xlsx"
+
+            _, ext = os.path.splitext(original_filename)
+            if not ext:
+                ext = '.xlsx' # Default extension
+                self.logger.warning(f"Original filename '{original_filename}' had no extension, defaulting to '{ext}'")
+
+            timestamp_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            # Use hardcoded identifier 'ssa'
+            final_filename = f"ssa_{timestamp_str}{ext}"
+            final_path = os.path.join(self.download_path, final_filename)
+            self.logger.info(f"Original suggested filename: {original_filename}")
+            self.logger.info(f"Saving with standardized filename: {final_filename} to {final_path}")
+            # --- End modification ---
+
+            # The file is saved by the _handle_download callback in BaseScraper or manually below
             self.logger.info(f"Download complete. File expected at: {final_path}")
 
-            # Verify the file exists (saved by _handle_download)
+            # Verify the file exists (saved by _handle_download or manually) using the new final_path
             if not os.path.exists(final_path) or os.path.getsize(final_path) == 0:
                 self.logger.error(f"Verification failed: File not found or empty at {final_path}")
-                # Attempt to save manually as fallback (using original playwright path)
+                # Attempt to save manually first
                 try:
-                    fallback_path = download.path()
-                    shutil.move(fallback_path, final_path)
-                    self.logger.warning(f"Manually moved file from {fallback_path} to {final_path}")
+                    download.save_as(final_path)
+                    self.logger.warning(f"Manually saved file to {final_path}")
                     if not os.path.exists(final_path) or os.path.getsize(final_path) == 0:
-                         raise ScraperError(f"Download failed even after fallback move: File missing or empty at {final_path}")
-                except Exception as move_err:
-                     raise ScraperError(f"Download failed: File missing/empty at {final_path} and fallback move failed: {move_err}")
+                        raise ScraperError(f"Download failed even after manual save: File missing or empty at {final_path}")
+                except Exception as save_err:
+                    # If save_as failed, try moving from playwright temp path
+                    try:
+                        fallback_path = download.path()
+                        if fallback_path and os.path.exists(fallback_path):
+                            shutil.move(fallback_path, final_path)
+                            self.logger.warning(f"Manually moved file from {fallback_path} to {final_path}")
+                            if not os.path.exists(final_path) or os.path.getsize(final_path) == 0:
+                                raise ScraperError(f"Download failed after fallback move: File missing or empty at {final_path}")
+                        else:
+                            raise ScraperError(f"Download failed: File missing/empty at {final_path}, manual save failed ({save_err}), and Playwright temp path unavailable.")
+                    except Exception as move_err:
+                        raise ScraperError(f"Download failed: File missing/empty at {final_path}. Manual save failed: {save_err}. Fallback move failed: {move_err}")
 
             # Return the path within the scraper's download directory
             return final_path
@@ -175,7 +203,7 @@ class SSAContractForecastScraper(BaseScraper):
 
 def run_scraper(force=False):
     """
-    Run the SSA Contract Forecast scraper.
+    Run the SSA Forecast scraper.
     
     Args:
         force (bool): Whether to force scraping even if recently run
@@ -187,65 +215,66 @@ def run_scraper(force=False):
         ScraperError: If an error occurs during scraping
         ImportError: If required dependencies are not installed
     """
-    local_logger = logger
     scraper = None
-    download_tracker = DownloadTracker()
+    source_name = "SSA Forecast"
     
     try:
         # Check if we should run the scraper
-        if not force and download_tracker.should_download("SSA Contract Forecast"):
-            local_logger.info("Skipping scrape due to recent download")
-            return True
-        
+        # Removed interval check logic
+        # if not force and download_tracker.should_download(source_name):
+        #     logger.info(f"Skipping scrape for {source_name} due to recent download")
+        #     return True
+
         # Create an instance of the scraper
-        scraper = SSAContractForecastScraper(debug_mode=False)
+        scraper = SsaScraper(debug_mode=False)
         
         # Run the scraper
-        local_logger.info("Running SSA Contract Forecast scraper")
+        logger.info(f"Running {source_name} scraper")
         success = scraper.scrape()
         
         # If scraper.scrape() returns False, it means an error occurred
         if not success:
             error_msg = "Scraper failed without specific error"
-            handle_scraper_error(ScraperError(error_msg), "SSA Contract Forecast")
+            handle_scraper_error(ScraperError(error_msg), source_name)
             raise ScraperError(error_msg)
         
         # Update the download tracker with the current time
-        download_tracker.set_last_download_time("SSA Contract Forecast")
-        local_logger.info("Updated download tracker with current time")
+        # Removed: download_tracker.set_last_download_time(source_name)
+        # logger.info(f"Updated download tracker for {source_name}")
         
         # Update the ScraperStatus table to indicate success
         # --> Temporarily skip this during direct script execution <---
-        # update_scraper_status("SSA Contract Forecast", "working", None)
+        # update_scraper_status(source_name, "working", None)
             
         return True
     except ImportError as e:
         error_msg = f"Import error: {str(e)}"
-        local_logger.error(error_msg)
-        local_logger.error("Playwright module not found. Please install it with 'pip install playwright'")
-        local_logger.error("Then run 'playwright install' to install the browsers")
-        handle_scraper_error(e, "SSA Contract Forecast", "Import error")
+        logger.error(error_msg)
+        logger.error("Playwright module not found. Please install it with 'pip install playwright'")
+        logger.error("Then run 'playwright install' to install the browsers")
+        handle_scraper_error(e, source_name, "Import error")
         raise
     except ScraperError as e:
-        handle_scraper_error(e, "SSA Contract Forecast")
+        handle_scraper_error(e, source_name)
         raise
     except Exception as e:
         # Ensure error_msg is defined or handled appropriately
         error_msg = f"Error running scraper: {str(e)}"
-        handle_scraper_error(e, "SSA Contract Forecast", "Error running scraper")
+        handle_scraper_error(e, source_name, "Error running scraper")
         raise ScraperError(error_msg)
     finally:
         if scraper:
             try:
-                local_logger.info("Cleaning up scraper resources")
+                logger.info("Cleaning up scraper resources")
                 scraper.cleanup_browser() # Correct method name
             except Exception as cleanup_error:
-                local_logger.error(f"Error during scraper cleanup: {str(cleanup_error)}")
+                logger.error(f"Error during scraper cleanup: {str(cleanup_error)}")
 
 if __name__ == "__main__":
     # This block allows the script to be run directly for testing
+    source_name = "SSA Forecast" # Define source_name here
     try:
         run_scraper(force=True)
-        print("Scraper finished successfully (DB operations skipped).")
+        print(f"{source_name} scraper finished successfully (DB operations skipped).")
     except Exception as e:
-        print(f"Scraper failed: {e}")
+        print(f"{source_name} scraper failed: {e}")

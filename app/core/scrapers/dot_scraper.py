@@ -5,6 +5,7 @@ import os
 import sys
 import time
 import shutil
+import datetime # Added datetime import
 
 # --- Start temporary path adjustment for direct execution ---
 _project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
@@ -19,8 +20,7 @@ from playwright.sync_api import sync_playwright
 
 # Local application imports
 from app.core.base_scraper import BaseScraper
-from app.database.download_tracker import download_tracker
-from app.config import LOGS_DIR, DOWNLOADS_DIR, DOT_FORECAST_URL, PAGE_NAVIGATION_TIMEOUT # Use DOT_FORECAST_URL
+from app.config import LOGS_DIR, RAW_DATA_DIR, DOT_FORECAST_URL, PAGE_NAVIGATION_TIMEOUT # Use RAW_DATA_DIR
 from app.exceptions import ScraperError
 from app.utils.file_utils import ensure_directory
 from app.utils.logger import logger
@@ -124,27 +124,53 @@ class DotScraper(BaseScraper):
                      self.logger.info("Closing the download initiation page.")
                      new_page.close()
 
-            # The file is saved by the _handle_download callback in BaseScraper
-            final_path = os.path.join(self.download_path, download.suggested_filename)
+            # --- Start modification for timestamped filename ---
+            original_filename = download.suggested_filename
+            if not original_filename:
+                self.logger.warning("Download suggested_filename is empty, using default 'dot_download.csv'")
+                original_filename = "dot_download.csv"
+
+            _, ext = os.path.splitext(original_filename)
+            if not ext:
+                ext = '.csv' # Default extension
+                self.logger.warning(f"Original filename '{original_filename}' had no extension, defaulting to '{ext}'")
+
+            timestamp_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            # Use hardcoded identifier 'dot'
+            final_filename = f"dot_{timestamp_str}{ext}"
+            final_path = os.path.join(self.download_path, final_filename)
+            self.logger.info(f"Original suggested filename: {original_filename}")
+            self.logger.info(f"Saving with standardized filename: {final_filename} to {final_path}")
+            # --- End modification ---
+
+            # The file is saved by the _handle_download callback in BaseScraper or manually below
             self.logger.info(f"Download triggered. File expected at: {final_path}")
 
-            # Wait a moment for the file system
+            # Wait a moment for the file system (allow _handle_download time)
             time.sleep(5)
 
-            # Verify the file exists and is not empty
+            # Verify the file exists and is not empty using the new final_path
             if not os.path.exists(final_path) or os.path.getsize(final_path) == 0:
                 self.logger.error(f"Verification failed: File not found or empty at {final_path}")
+                # Attempt to save manually first
                 try:
-                    fallback_path = download.path()
-                    if fallback_path and os.path.exists(fallback_path):
-                        shutil.move(fallback_path, final_path)
-                        self.logger.warning(f"Manually moved file from {fallback_path} to {final_path}")
-                        if not os.path.exists(final_path) or os.path.getsize(final_path) == 0:
-                             raise ScraperError(f"Download failed even after fallback move: File missing or empty at {final_path}")
-                    else:
-                        raise ScraperError(f"Download failed: File missing/empty at {final_path} and Playwright download path unavailable.")
-                except Exception as move_err:
-                    raise ScraperError(f"Download failed: File missing/empty at {final_path} and fallback move failed: {move_err}")
+                    download.save_as(final_path)
+                    self.logger.warning(f"Manually saved file to {final_path}")
+                    if not os.path.exists(final_path) or os.path.getsize(final_path) == 0:
+                        raise ScraperError(f"Download failed even after manual save: File missing or empty at {final_path}")
+                except Exception as save_err:
+                     # If save_as failed, try moving from playwright temp path
+                    try:
+                        fallback_path = download.path()
+                        if fallback_path and os.path.exists(fallback_path):
+                            shutil.move(fallback_path, final_path)
+                            self.logger.warning(f"Manually moved file from {fallback_path} to {final_path}")
+                            if not os.path.exists(final_path) or os.path.getsize(final_path) == 0:
+                                raise ScraperError(f"Download failed after fallback move: File missing or empty at {final_path}")
+                        else:
+                            raise ScraperError(f"Download failed: File missing/empty at {final_path}, manual save failed ({save_err}), and Playwright temp path unavailable.")
+                    except Exception as move_err:
+                        raise ScraperError(f"Download failed: File missing/empty at {final_path}. Manual save failed: {save_err}. Fallback move failed: {move_err}")
 
             self.logger.info(f"Download verification successful. File path: {final_path}")
             return final_path
@@ -179,7 +205,6 @@ class DotScraper(BaseScraper):
             if not downloaded_file_path:
                  raise ScraperError("Download function did not return a file path.")
 
-            download_tracker.set_last_download_time(self.source_name)
             self.logger.info(f"Successfully downloaded file: {downloaded_file_path}")
             return downloaded_file_path
 
@@ -205,11 +230,6 @@ def run_scraper(force=False):
     source_name = "DOT Forecast" # Default source name - updated
 
     try:
-        scrape_interval_hours = 24
-        if not force and download_tracker.should_download(source_name, scrape_interval_hours):
-             local_logger.info(f"Skipping {source_name} scrape due to recent download.")
-             return None
-
         # Initialize scraper instance but don't call base setup_browser yet
         scraper = DotScraper(debug_mode=False)
         source_name = scraper.source_name

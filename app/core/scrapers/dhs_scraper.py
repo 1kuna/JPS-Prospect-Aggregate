@@ -18,7 +18,6 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 # Local application imports
 from app.core.base_scraper import BaseScraper
-from app.database.download_tracker import download_tracker
 from app.exceptions import ScraperError
 from app.utils.logger import logger
 # from app.utils.db_utils import update_scraper_status # Keep for commented out code
@@ -81,16 +80,30 @@ class DHSForecastScraper(BaseScraper):
 
             download = download_info.value
             download_path = download.path() # Playwright saves to a temp location
-            
-            # Use a predictable filename or keep the suggested one
-            # For now, let's use the suggested filename which should be based on the download
-            final_filename = download.suggested_filename or f"dhs_forecast_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+
+            # --- Start modification for timestamped filename ---
+            original_filename = download.suggested_filename
+            if not original_filename:
+                self.logger.warning("Download suggested_filename is empty, using default 'dhs_download.csv'")
+                original_filename = "dhs_download.csv" # Keep default but extension will be used
+
+            _, ext = os.path.splitext(original_filename)
+            if not ext: # Ensure there's an extension
+                ext = '.csv' # Default extension if none found
+                self.logger.warning(f"Original filename '{original_filename}' had no extension, defaulting to '{ext}'")
+                
+            timestamp_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            # Use hardcoded identifier 'dhs'
+            final_filename = f"dhs_{timestamp_str}{ext}" 
             final_path = os.path.join(self.download_path, final_filename)
-            
+            self.logger.info(f"Original suggested filename: {original_filename}")
+            self.logger.info(f"Saving with standardized filename: {final_filename} to {final_path}")
+            # --- End modification ---
+
             # Ensure the target directory exists before moving
             os.makedirs(self.download_path, exist_ok=True)
-            
-            # Move the downloaded file to the target directory
+
+            # Move the downloaded file to the target directory using the new final_path
             try:
                  shutil.move(download_path, final_path)
                  self.logger.info(f"Download complete. Moved file to: {final_path}")
@@ -98,7 +111,7 @@ class DHSForecastScraper(BaseScraper):
                  self.logger.error(f"Error moving downloaded file from {download_path} to {final_path}: {move_err}")
                  raise ScraperError(f"Failed to move downloaded file: {move_err}") from move_err
 
-            # Verify the file exists (saved by _handle_download)
+            # Verify the file exists using the new final_path
             if not os.path.exists(final_path) or os.path.getsize(final_path) == 0:
                 self.logger.error(f"Verification failed: File not found or empty at {final_path}")
                 raise ScraperError(f"Download verification failed: File missing or empty at {final_path}")
@@ -137,12 +150,14 @@ def run_scraper(force=False):
     try:
         # Check if scraping should be skipped based on frequency
         # Note: `DHS_FORECAST_SCRAPE_INTERVAL_HOURS` would need to be added to config
-        # if not force and download_tracker.should_download(source_name, DHS_FORECAST_SCRAPE_INTERVAL_HOURS): 
+        # Removed interval check logic
+        # if not force and download_tracker.should_download(source_name, DHS_FORECAST_SCRAPE_INTERVAL_HOURS):
         # For now, just using a default or skipping this check if interval not defined
-        if not force and download_tracker.should_download(source_name): # Default interval check
-            local_logger.info(f"Skipping scrape for {source_name} due to recent download")
-            return {"success": True, "message": "Skipped due to recent download"}
-        
+        # Removed interval check logic
+        # if not force and download_tracker.should_download(source_name): # Default interval check
+        #    local_logger.info(f"Skipping scrape for {source_name} due to recent download")
+        #    return {"success": True, "message": "Skipped due to recent download"}
+
         scraper = DHSForecastScraper(debug_mode=False)
         local_logger.info(f"Running {source_name} scraper")
         result = scraper.scrape() 
@@ -152,8 +167,8 @@ def run_scraper(force=False):
             # Error logging should happen deeper, just raise
             raise ScraperError(error_msg)
         
-        download_tracker.set_last_download_time(source_name)
-        local_logger.info(f"Updated download tracker for {source_name}")
+        # Removed: download_tracker.set_last_download_time(source_name)
+        # local_logger.info(f"Updated download tracker for {source_name}")
         # update_scraper_status(source_name, "working", None) # Keep commented out
         return {"success": True, "file_path": result.get("file_path"), "message": f"{source_name} scraped successfully"}
     

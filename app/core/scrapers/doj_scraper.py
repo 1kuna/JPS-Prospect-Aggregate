@@ -18,10 +18,8 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 # Local application imports
 from app.core.base_scraper import BaseScraper
-from app.database.download_tracker import download_tracker
 from app.exceptions import ScraperError
 from app.utils.logger import logger
-# from app.utils.db_utils import update_scraper_status # Keep for commented out code
 from app.config import DOJ_FORECAST_URL # Need to add this to config.py
 from app.utils.scraper_utils import handle_scraper_error
 
@@ -77,14 +75,29 @@ class DOJForecastScraper(BaseScraper):
             download = download_info.value
             download_path = download.path() # Playwright saves to a temp location
             
-            # Use the suggested filename or create a fallback
-            final_filename = download.suggested_filename or f"doj_forecast_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+            # --- Start modification for timestamped filename ---
+            original_filename = download.suggested_filename
+            if not original_filename:
+                self.logger.warning("Download suggested_filename is empty, using default 'doj_download.xlsx'")
+                original_filename = "doj_download.xlsx"
+
+            _, ext = os.path.splitext(original_filename)
+            if not ext:
+                ext = '.xlsx' # Default extension
+                self.logger.warning(f"Original filename '{original_filename}' had no extension, defaulting to '{ext}'")
+
+            timestamp_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            # Use hardcoded identifier 'doj'
+            final_filename = f"doj_{timestamp_str}{ext}" 
             final_path = os.path.join(self.download_path, final_filename)
-            
+            self.logger.info(f"Original suggested filename: {original_filename}")
+            self.logger.info(f"Saving with standardized filename: {final_filename} to {final_path}")
+            # --- End modification ---
+
             # Ensure the target directory exists before moving
             os.makedirs(self.download_path, exist_ok=True)
             
-            # Move the downloaded file to the target directory
+            # Move the downloaded file to the target directory using the new final_path
             try:
                  shutil.move(download_path, final_path)
                  self.logger.info(f"Download complete. Moved file to: {final_path}")
@@ -92,7 +105,7 @@ class DOJForecastScraper(BaseScraper):
                  self.logger.error(f"Error moving downloaded file from {download_path} to {final_path}: {move_err}")
                  raise ScraperError(f"Failed to move downloaded file: {move_err}") from move_err
 
-            # Verify the file exists
+            # Verify the file exists using the new final_path
             if not os.path.exists(final_path) or os.path.getsize(final_path) == 0:
                 self.logger.error(f"Verification failed: File not found or empty at {final_path}")
                 raise ScraperError(f"Download verification failed: File missing or empty at {final_path}")
@@ -128,10 +141,6 @@ def run_scraper(force=False):
     scraper = None
     
     try:
-        if not force and download_tracker.should_download(source_name): 
-            local_logger.info(f"Skipping scrape for {source_name} due to recent download")
-            return {"success": True, "message": "Skipped due to recent download"}
-        
         scraper = DOJForecastScraper(debug_mode=False)
         local_logger.info(f"Running {source_name} scraper")
         result = scraper.scrape() 
@@ -140,8 +149,6 @@ def run_scraper(force=False):
             error_msg = result.get("error", f"{source_name} scraper failed without specific error") if result else f"{source_name} scraper failed without specific error"
             raise ScraperError(error_msg)
         
-        download_tracker.set_last_download_time(source_name)
-        local_logger.info(f"Updated download tracker for {source_name}")
         return {"success": True, "file_path": result.get("file_path"), "message": f"{source_name} scraped successfully"}
     
     except ImportError as e:
