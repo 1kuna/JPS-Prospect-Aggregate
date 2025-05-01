@@ -12,6 +12,7 @@ import logging
 import re
 from datetime import datetime
 from app.utils.parsing import parse_value_range
+from app.database.crud import bulk_upsert_prospects
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -76,7 +77,7 @@ def normalize_columns_hhs(df: pd.DataFrame, canonical_cols: list[str]) -> pd.Dat
         'Target Solicitation Month/Year': 'solicitation_date_raw', # Rename raw
         'Target Award Month/Year (Award by)': 'award_date_raw', # Rename raw
         'Operating Division': 'office',
-        'Anticipated Acquisition Strategy': 'contract_type'
+        'Anticipated Acquisition Strategy': 'set_aside'
     }
     logging.info(f"Applying HHS specific column mapping: {rename_map}")
     rename_map_existing = {k: v for k, v in rename_map.items() if k in df.columns}
@@ -197,12 +198,21 @@ def transform_hhs() -> pd.DataFrame | None:
 
         logging.info(f"Transformation complete. Processed {len(df_final)} rows.")
 
-        # TEMPORARY EXPORT CODE
-        export_path = os.path.join('data', 'processed', 'hhs.csv')
-        os.makedirs(os.path.dirname(export_path), exist_ok=True)
-        df_final.to_csv(export_path, index=False)
-        logging.info(f"Temporarily exported data to {export_path}")
+        # TEMPORARY EXPORT CODE - COMMENTED OUT
+        # export_path = os.path.join('data', 'processed', 'hhs.csv')
+        # os.makedirs(os.path.dirname(export_path), exist_ok=True)
+        # df_final.to_csv(export_path, index=False)
+        # logging.info(f"Temporarily exported data to {export_path}")
         # END TEMPORARY EXPORT CODE
+
+        # Upsert data to database
+        try:
+            logging.info(f"Attempting to upsert {len(df_final)} records for HHS.")
+            bulk_upsert_prospects(df_final)
+            logging.info(f"Successfully upserted HHS data.")
+        except Exception as db_error:
+            logging.error(f"Database upsert failed for HHS: {db_error}", exc_info=True)
+            # Optionally return None or re-raise
 
         return df_final
 

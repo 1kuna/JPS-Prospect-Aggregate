@@ -13,6 +13,7 @@ import re
 from datetime import datetime
 # Import parsing functions
 from app.utils.parsing import parse_value_range, fiscal_quarter_to_date, split_place
+from app.database.crud import bulk_upsert_prospects # Import the upsert function
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -74,14 +75,15 @@ def normalize_columns_treasury(df: pd.DataFrame, canonical_cols: list[str]) -> p
     rename_map = {
         'Specific Id': 'native_id',
         'Bureau': 'office',
-        'Type of Requirement': 'requirement_title',
+        'PSC': 'requirement_title',
+        'Type of Requirement': 'requirement_type',
         'Place of Performance': 'place_raw',
         'Contract Type': 'contract_type',
         'NAICS': 'naics',
         'Estimated Total Contract Value': 'estimated_value_raw',
         'Type of Small Business Set-aside': 'set_aside',
         'Projected Award FY_Qtr': 'award_qtr_raw',
-        'Projected Period of Performance Start': 'solicitation_date'
+        'Project Period of Performance Start': 'solicitation_date'
     }
     logging.info(f"Applying TREASURY specific column mapping: {rename_map}")
     
@@ -228,12 +230,21 @@ def transform_treasury() -> pd.DataFrame | None:
 
         logging.info(f"Transformation complete. Processed {len(df_final)} rows.")
 
-        # TEMPORARY EXPORT CODE
-        export_path = os.path.join('data', 'processed', 'treasury.csv')
-        os.makedirs(os.path.dirname(export_path), exist_ok=True)
-        df_final.to_csv(export_path, index=False)
-        logging.info(f"Temporarily exported data to {export_path}")
+        # TEMPORARY EXPORT CODE - COMMENTED OUT
+        # export_path = os.path.join('data', 'processed', 'treasury.csv')
+        # os.makedirs(os.path.dirname(export_path), exist_ok=True)
+        # df_final.to_csv(export_path, index=False)
+        # logging.info(f"Temporarily exported data to {export_path}")
         # END TEMPORARY EXPORT CODE
+        
+        # Upsert data to database
+        try:
+            logging.info(f"Attempting to upsert {len(df_final)} records for TREASURY.")
+            bulk_upsert_prospects(df_final)
+            logging.info(f"Successfully upserted TREASURY data.")
+        except Exception as db_error:
+            logging.error(f"Database upsert failed for TREASURY: {db_error}", exc_info=True)
+            # Optionally return None or re-raise
 
         return df_final
 

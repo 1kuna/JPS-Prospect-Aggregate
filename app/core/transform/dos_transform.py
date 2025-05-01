@@ -12,6 +12,7 @@ import logging
 import re
 from datetime import datetime
 from app.utils.parsing import parse_value_range, fiscal_quarter_to_date
+from app.database.crud import bulk_upsert_prospects
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -224,12 +225,21 @@ def transform_dos() -> pd.DataFrame | None:
 
         logging.info(f"DOS Transformation complete. Processed {len(df_final)} rows.")
 
-        # TEMPORARY EXPORT CODE
-        export_path = os.path.join('data', 'processed', 'dos.csv')
-        os.makedirs(os.path.dirname(export_path), exist_ok=True)
-        df_final.to_csv(export_path, index=False)
-        logging.info(f"Temporarily exported data to {export_path}")
+        # TEMPORARY EXPORT CODE - COMMENTED OUT
+        # export_path = os.path.join('data', 'processed', 'dos.csv')
+        # os.makedirs(os.path.dirname(export_path), exist_ok=True)
+        # df_final.to_csv(export_path, index=False)
+        # logging.info(f"Temporarily exported data to {export_path}")
         # END TEMPORARY EXPORT CODE
+
+        # Upsert data to database
+        try:
+            logging.info(f"Attempting to upsert {len(df_final)} records for DOS.")
+            bulk_upsert_prospects(df_final)
+            logging.info(f"Successfully upserted DOS data.")
+        except Exception as db_error:
+            logging.error(f"Database upsert failed for DOS: {db_error}", exc_info=True)
+            # Optionally return None or re-raise
 
         return df_final
 

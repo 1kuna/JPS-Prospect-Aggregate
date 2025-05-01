@@ -11,6 +11,8 @@ load_dotenv()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+# Get a logger for this module
+logger = logging.getLogger(__name__)
 
 # --- SQLite Configuration --- 
 default_db_name = "jps_aggregate.db"
@@ -37,16 +39,21 @@ try:
         db_path_str = DATABASE_URL.split("///", 1)[1]
         db_path = Path(db_path_str)
         db_path.parent.mkdir(parents=True, exist_ok=True)
-        logging.info(f"Ensuring database directory exists: {db_path.parent}")
+        logger.info(f"Ensuring database directory exists: {db_path.parent}")
 
-    # echo=True will log all SQL statements - useful for debugging, disable in prod
+    # echo=False explicitly prevents SQLAlchemy from logging SQL via its internal echo flag
     # connect_args are specific to SQLite to potentially handle thread issues if needed
     engine = create_engine(DATABASE_URL, echo=False, connect_args={"check_same_thread": False})
+    
+    # Additionally, set the SQLAlchemy engine logger level to WARNING to suppress INFO logs
+    # This is belt-and-suspenders approach due to potential multiple basicConfig calls elsewhere
+    logging.getLogger('sqlalchemy.engine').setLevel(logging.WARNING)
+    
     # Create a configured "Session" class
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-    logging.info(f"Database engine and session configured for: {DATABASE_URL}")
+    logger.info(f"Database engine and session configured for: {DATABASE_URL}")
 except Exception as e:
-    logging.error(f"Failed to create database engine for {DATABASE_URL}: {e}", exc_info=True)
+    logger.error(f"Failed to create database engine for {DATABASE_URL}: {e}", exc_info=True)
     engine = None
     SessionLocal = None
 

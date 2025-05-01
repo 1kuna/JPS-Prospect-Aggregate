@@ -3,6 +3,16 @@ import hashlib
 import os
 from pathlib import Path
 import logging
+import sys # Add sys import if needed for path adjustments
+
+# --- Start temporary path adjustment ---
+# Adjust path if necessary to find app modules
+_project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+if _project_root not in sys.path:
+    sys.path.insert(0, _project_root)
+# --- End temporary path adjustment ---
+
+from app.database.crud import bulk_upsert_prospects # Import the upsert function
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -184,12 +194,22 @@ def transform_acquisition_gateway() -> pd.DataFrame | None:
 
         logging.info(f"Transformation complete. Processed {len(df_final)} rows.")
 
-        # TEMPORARY EXPORT CODE
-        export_path = os.path.join('data', 'processed', 'acqg.csv')
-        os.makedirs(os.path.dirname(export_path), exist_ok=True)
-        df_final.to_csv(export_path, index=False)
-        logging.info(f"Temporarily exported data to {export_path}")
+        # TEMPORARY EXPORT CODE - COMMENTED OUT
+        # export_path = os.path.join('data', 'processed', 'acqg.csv')
+        # os.makedirs(os.path.dirname(export_path), exist_ok=True)
+        # df_final.to_csv(export_path, index=False)
+        # logging.info(f"Temporarily exported data to {export_path}")
         # END TEMPORARY EXPORT CODE
+
+        # Upsert data to database
+        try:
+            logging.info(f"Attempting to upsert {len(df_final)} records for ACQG.")
+            bulk_upsert_prospects(df_final)
+            logging.info(f"Successfully upserted ACQG data.")
+        except Exception as db_error:
+            logging.error(f"Database upsert failed for ACQG: {db_error}", exc_info=True)
+            # Decide if failure should halt the process or just be logged
+            # return None # Optionally return None or re-raise
 
         return df_final
 

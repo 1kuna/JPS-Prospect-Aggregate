@@ -12,9 +12,10 @@ import logging
 import re
 from datetime import datetime
 from app.utils.parsing import parse_value_range, fiscal_quarter_to_date
+from app.database.crud import bulk_upsert_prospects # Import the upsert function
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Define the base data directory
 try:
@@ -76,13 +77,17 @@ def normalize_columns_dhs(df: pd.DataFrame, canonical_cols: list[str]) -> pd.Dat
         'Component': 'office',
         'Title': 'requirement_title',
         'Contract Type': 'contract_type',
-        'Dollar Range': 'estimated_value_raw', # Rename raw value first
+        'Contract Vehicle': 'contract_vehicle',      # Add to extra
+        'Dollar Range': 'estimated_value_raw',      # Rename raw value first
         'Small Business Set-Aside': 'set_aside',
+        'Small Business Program': 'small_business_program', # Add to extra
+        'Contract Status': 'contract_status',        # Add to extra
         'Place of Performance City': 'place_city',
         'Place of Performance State': 'place_state',
         'Description': 'requirement_description',
         'Estimated Solicitation Release': 'solicitation_date',
-        'Award Quarter': 'award_date_raw' # Rename raw value first
+        'Award Quarter': 'award_date_raw'           # Rename raw value first
+        # Skipping Contact info, Contract Number/Contractor for now
     }
     logging.info(f"Applying DHS specific column mapping: {rename_map}")
     df = df.rename(columns=rename_map)
@@ -202,12 +207,21 @@ def transform_dhs() -> pd.DataFrame | None:
 
         logging.info(f"Transformation complete. Processed {len(df_final)} rows.")
         
-        # TEMPORARY EXPORT CODE
-        export_path = os.path.join('data', 'processed', 'dhs.csv')
-        os.makedirs(os.path.dirname(export_path), exist_ok=True)
-        df_final.to_csv(export_path, index=False)
-        logging.info(f"Temporarily exported data to {export_path}")
+        # TEMPORARY EXPORT CODE - COMMENTED OUT
+        # export_path = os.path.join('data', 'processed', 'dhs.csv')
+        # os.makedirs(os.path.dirname(export_path), exist_ok=True)
+        # df_final.to_csv(export_path, index=False)
+        # logging.info(f"Temporarily exported data to {export_path}")
         # END TEMPORARY EXPORT CODE
+
+        # Upsert data to database
+        try:
+            logging.info(f"Attempting to upsert {len(df_final)} records for DHS.")
+            bulk_upsert_prospects(df_final)
+            logging.info(f"Successfully upserted DHS data.")
+        except Exception as db_error:
+            logging.error(f"Database upsert failed for DHS: {db_error}", exc_info=True)
+            # Optionally return None or re-raise
 
         return df_final
 
@@ -224,7 +238,10 @@ def transform_dhs() -> pd.DataFrame | None:
 # Example usage
 if __name__ == "__main__":
     transformed_data = transform_dhs()
-    if transformed_data is not None:
-        print(transformed_data.head())
-        print(f"\nTransformed DataFrame shape: {transformed_data.shape}")
-        print(f"\nColumns: {transformed_data.columns.tolist()}") 
+    # if transformed_data is not None:
+    #     # Commenting out direct prints to avoid potential encoding issues in terminal
+    #     # print(transformed_data.head())
+    #     # print(f"\nTransformed DataFrame shape: {transformed_data.shape}")
+    #     # print(f"\nColumns: {transformed_data.columns.tolist()}") 
+    # Logging within the transform_dhs function provides progress info.
+    pass # Keep the block for potential future direct testing, but do nothing now 

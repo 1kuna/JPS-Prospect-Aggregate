@@ -6,6 +6,7 @@ from pathlib import Path
 import logging
 import re
 from datetime import datetime
+import json # Import json library
 
 # --- Start temporary path adjustment for direct execution ---
 # Calculate the path to the project root directory (JPS-Prospect-Aggregate)
@@ -16,9 +17,27 @@ if _project_root not in sys.path:
 # --- End temporary path adjustment ---
 
 from app.utils.parsing import parse_value_range, fiscal_quarter_to_date
+from app.database.crud import bulk_upsert_prospects # Import the upsert function
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+# --- Explicit Logging Configuration for this script ---
+# Get the root logger
+logger = logging.getLogger()
+# Set the overall level (captures INFO, WARNING, ERROR, CRITICAL)
+logger.setLevel(logging.INFO)
+# Remove existing handlers to avoid duplicates if script is re-run in same session
+if logger.hasHandlers():
+    logger.handlers.clear()
+# Create a console handler
+handler = logging.StreamHandler(sys.stdout)
+handler.setLevel(logging.INFO)
+# Create a formatter
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+handler.setFormatter(formatter)
+# Add the handler to the logger
+logger.addHandler(handler)
+# *** Silence the SQLAlchemy engine logger AFTER setting up the main logger ***
+logging.getLogger('sqlalchemy.engine').setLevel(logging.WARNING)
+# --- End Logging Configuration ---
 
 # Define the base data directory
 try:
@@ -88,7 +107,9 @@ def normalize_columns_doc(df: pd.DataFrame, canonical_cols: list[str]) -> pd.Dat
         'Estimated Solicitation Fiscal Year': 'solicitation_fy_raw',
         'Estimated Solicitation Fiscal Quarter': 'solicitation_qtr_raw',
         'Anticipated Set Aside And Type': 'set_aside',
-        'Anticipated Action Award Type': 'contract_type'
+        'Anticipated Action Award Type': 'action_award_type',
+        'Competition Strategy': 'competition_strategy',
+        'Anticipated Contract Vehicle': 'contract_vehicle'
         # 'award_date' not directly available in source header
     }
     logging.info(f"Applying DOC specific column mapping: {rename_map}")
@@ -131,23 +152,53 @@ def normalize_columns_doc(df: pd.DataFrame, canonical_cols: list[str]) -> pd.Dat
 
     # --- General normalization (lowercase, snake_case) ---
     df.columns = df.columns.str.strip().str.lower().str.replace(r'\s+\(.*?\)', '', regex=True).str.replace(r'\s+', '_', regex=True).str.replace(r'[^a-z0-9_]', '', regex=True)
+    
+    # --- Remove duplicate columns after normalization, keeping first occurrence ---
+    df = df.loc[:, ~df.columns.duplicated()]
+    logging.info(f"Columns after deduplication: {df.columns.tolist()}") # Log remaining columns
 
     # Identify unmapped columns AFTER normalization and derivation
     current_cols = df.columns.tolist()
     normalized_canonical = [c.strip().lower().replace(' ', '_').replace(r'[^a-z0-9_]', '') for c in canonical_cols]
     unmapped_cols = [col for col in current_cols if col not in normalized_canonical and col not in ['source', 'id']]
 
-    # Handle 'extra' column
+    # Handle 'extra' column using proper JSON serialization
     if unmapped_cols:
         logging.info(f"Found unmapped columns for 'extra': {unmapped_cols}")
-        for col in unmapped_cols:
-             # Check if the column dtype suggests it might be datetime-like
-             if pd.api.types.is_datetime64_any_dtype(df[col]):
-                 # Convert datetime-like columns to string safely
-                 df[col] = df[col].astype(str)
-        df['extra'] = df[unmapped_cols].astype(str).to_dict(orient='records')
+        
+        def row_to_extra_json(row):
+            extra_dict = {}
+            for col in unmapped_cols:
+                val = row.get(col) # Use .get() for safety
+                # More aggressive sanitization before JSON dump
+                if pd.isna(val):
+                    sanitized_val = None
+                elif isinstance(val, (datetime, pd.Timestamp)):
+                    sanitized_val = val.isoformat()
+                elif isinstance(val, (int, float, bool, str)):
+                     # Keep known safe types
+                     sanitized_val = val
+                else:
+                    # Fallback: Convert unknown types to string representation
+                    try:
+                        sanitized_val = str(val)
+                    except Exception:
+                         # Ultimate fallback if str() fails
+                         sanitized_val = "CONVERSION_ERROR"
+                extra_dict[col] = sanitized_val
+            try:
+                # Convert sanitized dict to JSON string
+                return json.dumps(extra_dict)
+            except TypeError as e:
+                logging.warning(f"Could not JSON serialize sanitized extra data for a row: {e}. Storing as string repr.")
+                # Fallback: store a string representation of the dict if JSON fails
+                return str(extra_dict) # Use the sanitized dict for repr
+
+        # Apply the function row-wise
+        df['extra'] = df.apply(row_to_extra_json, axis=1)
         df = df.drop(columns=unmapped_cols)
     else:
+        # Ensure 'extra' column exists, initialize with None (will become NULL in DB)
         df['extra'] = None
 
     # Ensure all canonical columns exist
@@ -212,12 +263,21 @@ def transform_doc() -> pd.DataFrame | None:
 
         logging.info(f"Transformation complete. Processed {len(df_final)} rows.")
         
-        # TEMPORARY EXPORT CODE
-        export_path = os.path.join('data', 'processed', 'doc.csv')
-        os.makedirs(os.path.dirname(export_path), exist_ok=True)
-        df_final.to_csv(export_path, index=False)
-        logging.info(f"Temporarily exported data to {export_path}")
+        # TEMPORARY EXPORT CODE - COMMENTED OUT
+        # export_path = os.path.join('data', 'processed', 'doc.csv')
+        # os.makedirs(os.path.dirname(export_path), exist_ok=True)
+        # df_final.to_csv(export_path, index=False)
+        # logging.info(f"Temporarily exported data to {export_path}")
         # END TEMPORARY EXPORT CODE
+
+        # Upsert data to database
+        try:
+            logging.info(f"Attempting to upsert {len(df_final)} records for DOC.")
+            bulk_upsert_prospects(df_final)
+            logging.info(f"Successfully upserted DOC data.")
+        except Exception as db_error:
+            logging.error(f"Database upsert failed for DOC: {db_error}", exc_info=True)
+            # Optionally return None or re-raise
 
         return df_final
 
@@ -234,7 +294,10 @@ def transform_doc() -> pd.DataFrame | None:
 # Example usage
 if __name__ == "__main__":
     transformed_data = transform_doc()
-    if transformed_data is not None:
-        print(transformed_data.head())
-        print(f"\nTransformed DataFrame shape: {transformed_data.shape}")
-        print(f"\nColumns: {transformed_data.columns.tolist()}") 
+    # if transformed_data is not None:
+    #     # Commenting out direct prints 
+    #     # print(transformed_data.head())
+    #     # print(f"\nTransformed DataFrame shape: {transformed_data.shape}")
+    #     # print(f"\nColumns: {transformed_data.columns.tolist()}") 
+    # Logging within the transform_doc function provides progress info.
+    pass # Keep the block for potential future direct testing, but do nothing now 

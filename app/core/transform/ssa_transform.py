@@ -12,6 +12,7 @@ import logging
 import re
 from datetime import datetime
 from app.utils.parsing import parse_value_range, split_place
+from app.database.crud import bulk_upsert_prospects # Import the upsert function
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -72,8 +73,8 @@ def normalize_columns_ssa(df: pd.DataFrame, canonical_cols: list[str]) -> pd.Dat
     rename_map = {
         'APP #': 'native_id',
         'SITE Type': 'office',
-        'REQUIREMENT TYPE': 'requirement_title',
-        'DESCRIPTION': 'requirement_description',
+        'REQUIREMENT TYPE': 'requirement_type',
+        'DESCRIPTION': 'requirement_title',
         'EST COST PER FY': 'estimated_value_raw', # Rename raw
         'PLANNED AWARD DATE': 'award_date',
         'CONTRACT TYPE': 'contract_type',
@@ -118,7 +119,8 @@ def normalize_columns_ssa(df: pd.DataFrame, canonical_cols: list[str]) -> pd.Dat
     else:
         df['award_date'] = pd.NaT
 
-    # Initialize missing columns
+    # Initialize missing columns that weren't directly mapped
+    # requirement_description is no longer directly mapped, will be handled below
     df['solicitation_date'] = pd.NaT
     
     # Drop raw columns
@@ -200,12 +202,21 @@ def transform_ssa() -> pd.DataFrame | None:
 
         logging.info(f"SSA Transformation complete. Processed {len(df_final)} rows.")
 
-        # TEMPORARY EXPORT CODE
-        export_path = os.path.join('data', 'processed', 'ssa.csv')
-        os.makedirs(os.path.dirname(export_path), exist_ok=True)
-        df_final.to_csv(export_path, index=False)
-        logging.info(f"Temporarily exported data to {export_path}")
+        # TEMPORARY EXPORT CODE - COMMENTED OUT
+        # export_path = os.path.join('data', 'processed', 'ssa.csv')
+        # os.makedirs(os.path.dirname(export_path), exist_ok=True)
+        # df_final.to_csv(export_path, index=False)
+        # logging.info(f"Temporarily exported data to {export_path}")
         # END TEMPORARY EXPORT CODE
+
+        # Upsert data to database
+        try:
+            logging.info(f"Attempting to upsert {len(df_final)} records for SSA.")
+            bulk_upsert_prospects(df_final)
+            logging.info(f"Successfully upserted SSA data.")
+        except Exception as db_error:
+            logging.error(f"Database upsert failed for SSA: {db_error}", exc_info=True)
+            # Optionally return None or re-raise
 
         return df_final
 

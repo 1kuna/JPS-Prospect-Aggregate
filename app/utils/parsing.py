@@ -7,15 +7,24 @@ def parse_value_range(value_str):
     """Parses common value range strings into a numeric value and a unit string."""
     if pd.isna(value_str):
         return pd.NA, pd.NA
-    value_str = str(value_str).strip().upper().replace(',', '')
-    numeric_val, unit_str = pd.NA, value_str
+    value_str_orig = str(value_str).strip() # Keep original for unit if unparsed
+    value_str = value_str_orig.upper().replace(',', '')
+
+    # Explicitly check for TBD
+    if value_str == 'TBD':
+        # Return NA for numeric value, NA for unit. Suppresses warning.
+        return pd.NA, pd.NA
+
+    numeric_val, unit_str = pd.NA, value_str_orig # Default unit is original string if unparsed
+
+    # --- Start existing parsing logic ---
     try:
         numeric_val = float(value_str.replace('$', ''))
-        unit_str = None
+        unit_str = None # Successfully parsed as number, no unit needed
         return numeric_val, unit_str
     except ValueError:
         pass 
-    
+
     # Define multipliers
     multipliers = {'K': 1000, 'THOUSAND': 1000, 'M': 1000000, 'MILLION': 1000000}
     unit_pattern = r'(K|THOUSAND|M|MILLION)?'
@@ -36,34 +45,42 @@ def parse_value_range(value_str):
         low_val = float(range_match.group('low'))
         low_unit = range_match.group(2) # Group index might change based on pattern structure
         numeric_val = low_val * multipliers.get(low_unit, 1)
-        unit_str = value_str
+        unit_str = value_str_orig # Store original range string as unit
     elif threshold_match:
         val = float(threshold_match.group('thresh'))
         unit = threshold_match.group(2) # Group index might change
         numeric_val = val * multipliers.get(unit, 1)
-        unit_str = value_str
+        unit_str = value_str_orig # Store original threshold string as unit
     elif simple_unit_match:
         # Need to adjust group indices if unit_pattern changes captures
         val = float(simple_unit_match.group(1))
         unit = simple_unit_match.group(2) # Assuming unit is the second capture group
         if unit:
             numeric_val = val * multipliers.get(unit, 1)
-            unit_str = unit 
+            unit_str = unit
         else: # It matched as a simple number without unit (already tried float conversion)
-             logging.warning(f"Could not parse estimated value: {value_str}")
+             # This case should ideally be caught by the initial float() try block,
+             # but if it somehow reaches here, treat as unparsed.
              numeric_val = pd.NA
-             unit_str = value_str
+             unit_str = value_str_orig # Keep original as unit
     else:
-        logging.warning(f"Could not parse estimated value: {value_str}")
-        numeric_val = pd.NA
-        unit_str = value_str if value_str else pd.NA
+        # Value string did not match any pattern and wasn't a simple float
+        # Keep defaults: numeric_val = pd.NA, unit_str = value_str_orig
+        # logging.warning(f"Could not parse estimated value: {value_str_orig}") # Removed warning
+        pass # Keep NA, original value
 
     return numeric_val, unit_str
 
 def fiscal_quarter_to_date(qtr_str):
     """Converts FY/Quarter string to a representative date (e.g., 'FY2024 Q2', '2025 3RD')."""
     if pd.isna(qtr_str): return pd.NaT
-    qtr_str = str(qtr_str).strip().upper()
+    qtr_str_orig = str(qtr_str).strip()
+    qtr_str = qtr_str_orig.upper()
+
+    # Explicitly check for TBD
+    if qtr_str == 'TBD':
+        return pd.NaT # Return NaT silently
+
     # Updated regex to handle 'Qn' or 'Nth' formats, with year potentially before or after.
     match = re.search(r'(?:FY)?(\d{2,4})?\s*(?:Q([1-4])|([1-4])(?:ST|ND|RD|TH))|(?:Q([1-4])|([1-4])(?:ST|ND|RD|TH))\s*(?:FY)?(\d{2,4})?', qtr_str)
     if match:
@@ -82,7 +99,7 @@ def fiscal_quarter_to_date(qtr_str):
             elif quarter == 3: month, year_offset = 4, 0
             elif quarter == 4: month, year_offset = 7, 0
             else: # Should not happen due to regex
-                 logging.warning(f"Invalid quarter number {quarter} parsed from '{qtr_str}'")
+                 logging.warning(f"Invalid quarter number {quarter} parsed from '{qtr_str_orig}'")
                  return pd.NaT
 
             fiscal_year = year # Use the derived/provided year as the fiscal year
@@ -91,8 +108,9 @@ def fiscal_quarter_to_date(qtr_str):
             try:
                 return pd.Timestamp(f'{calendar_year}-{month:02d}-01')
             except ValueError:
-                logging.warning(f"Date formation error Y={calendar_year}, M={month} from '{qtr_str}'")
-    logging.warning(f"Could not parse fiscal quarter: {qtr_str}")
+                logging.warning(f"Date formation error Y={calendar_year}, M={month} from '{qtr_str_orig}'") # Log original string
+    # Log warning only if it wasn't handled (i.e., not TBD and didn't match/parse correctly)
+    logging.warning(f"Could not parse fiscal quarter: {qtr_str_orig}") # Log original string
     return pd.NaT
 
 def split_place(place_str):
@@ -107,6 +125,7 @@ def split_place(place_str):
     if cleaned_upper == 'NATIONWIDE':
         return "Nationwide", pd.NA
     if 'TBD' in cleaned_upper:
+        # Return "TBD" explicitly for place as well? Or keep NA? Let's keep NA for now.
         return pd.NA, pd.NA
     # Handle specific territory/common non-standard formats
     if cleaned_upper == 'PUERTO RICO, UNITED STATES' or cleaned_upper == 'PUERTO RICO':

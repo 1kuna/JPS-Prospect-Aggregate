@@ -3,6 +3,7 @@ import pandas as pd
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import SQLAlchemyError
+import numpy as np
 
 from .models import Prospect
 from .session import get_db
@@ -10,44 +11,60 @@ from .session import get_db
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-def bulk_upsert_prospects(df: pd.DataFrame):
+def bulk_upsert_prospects(df_in: pd.DataFrame):
     """
     Performs a bulk UPSERT (INSERT ON CONFLICT DO UPDATE) of prospect data 
     from a Pandas DataFrame into the prospects table.
 
     Args:
-        df (pd.DataFrame): DataFrame containing prospect data matching the 
+        df_in (pd.DataFrame): DataFrame containing prospect data matching the 
                            Prospect model schema.
     """
-    if df.empty:
+    if df_in.empty:
         logging.info("DataFrame is empty, skipping database insertion.")
         return
 
-    # Convert DataFrame to list of dictionaries
-    # Important: Ensure DataFrame columns match the Prospect model fields exactly
-    # Handle NaN/NaT values appropriately for the database
-    # Convert NaT to None for date/timestamp fields
-    for col in df.select_dtypes(include=['datetime64[ns]', 'datetime64[ns, UTC]']).columns:
-        df[col] = df[col].apply(lambda x: x if pd.notna(x) else None)
-    # Convert numeric NaN to None
-    for col in df.select_dtypes(include=['number']).columns:
-         df[col] = df[col].apply(lambda x: x if pd.notna(x) else None)
-    # Convert object NaN/None to None
-    for col in df.select_dtypes(include=['object']).columns:
-         df[col] = df[col].apply(lambda x: x if pd.notna(x) else None)
-         
+    # Work on a copy to avoid SettingWithCopyWarning
+    df = df_in.copy()
+
+    # --- Replace previous NaN handling with fillna/replace ---
+    # Aggressively convert all forms of null/NaN to Python None
+    # Fill pandas NA/NaT with numpy NaN first, then replace numpy NaN with None
+    try:
+        df = df.fillna(value=np.nan).replace([np.nan], [None])
+        logging.debug("DataFrame NaN/null values replaced with None using fillna/replace.")
+    except ImportError:
+        logging.error("Numpy not found. Cannot perform robust NaN replacement. Falling back to df.where().")
+        # Fallback if numpy isn't available (less robust)
+        df = df.where(pd.notna(df), None)
+
+    # Drop loaded_at column so the database default is used
+    if 'loaded_at' in df.columns:
+        df = df.drop(columns=['loaded_at'])
+        
     data_to_insert = df.to_dict(orient='records')
 
     if not data_to_insert:
         logging.warning("Converted data to insert is empty.")
         return
 
-    with get_db() as db: # Use context manager for session handling
+    with get_db() as db:
         if not db:
             logging.error("Failed to get database session. Aborting upsert.")
             return
-            
+
         try:
+            # --- Debugging Logs --- REMOVED ---
+            # log_limit = 3
+            # logging.debug(f"--- Pre-Upsert Data Sample (First {log_limit} Records) ---")
+            # for i, record in enumerate(data_to_insert[:log_limit]):
+            #      est_val = record.get('estimated_value', 'MISSING_KEY')
+            #      logging.debug(f"Record {i} estimated_value: {est_val} (Type: {type(est_val)})" )
+            #      # Log the full record for detailed inspection
+            #      logging.debug(f"Record {i} full data: {record}")
+            # logging.debug("--- End Pre-Upsert Sample ---")
+            # --- End Debugging Logs ---
+
             # Prepare the insert statement
             stmt = insert(Prospect.__table__).values(data_to_insert)
 
@@ -66,16 +83,36 @@ def bulk_upsert_prospects(df: pd.DataFrame):
                 set_=update_columns
             )
 
+            # logging.debug("Executing upsert statement...") # Keep this DEBUG log?
             # Execute the bulk upsert
             db.execute(on_conflict_stmt)
             db.commit()
             logging.info(f"Successfully upserted {len(data_to_insert)} records.")
 
         except SQLAlchemyError as e:
-            logging.error(f"Database error during bulk upsert: {e}", exc_info=True)
+            logging.error(f"Database error during bulk upsert: {e}", exc_info=True) # Keep original error log
+            # --- Log data on error --- REMOVED ---
+            # try:
+            #     import json
+            #     # Convert the list of dicts to a JSON string for easier logging
+            #     data_as_json = json.dumps(data_to_insert, indent=1, default=str) # Use default=str for non-serializable types
+            #     logging.error(f"Data causing SQLAlchemyError (potentially large):\n{data_as_json}")
+            # except Exception as dump_error:
+            #      logging.error(f"Could not dump data_to_insert as JSON: {dump_error}")
+            #      logging.error(f"Data sample on error: {data_to_insert[:2]}") # Log a small sample instead
+            # --- End log data on error ---
             db.rollback() # Rollback on error
         except Exception as e:
-            logging.error(f"An unexpected error occurred during bulk upsert: {e}", exc_info=True)
+            logging.error(f"An unexpected error occurred during bulk upsert: {e}", exc_info=True) # Keep original error log
+            # --- Log data on error --- REMOVED ---
+            # try:
+            #     import json
+            #     data_as_json = json.dumps(data_to_insert, indent=1, default=str)
+            #     logging.error(f"Data causing unexpected error (potentially large):\n{data_as_json}")
+            # except Exception as dump_error:
+            #      logging.error(f"Could not dump data_to_insert as JSON: {dump_error}")
+            #      logging.error(f"Data sample on error: {data_to_insert[:2]}")
+            # --- End log data on error ---
             db.rollback()
             # Optionally re-raise if the calling function should handle it
             # raise 
