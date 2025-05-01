@@ -1,7 +1,7 @@
 agency for international development - USAID (not available)
 department of agriculture - "temporarily unavailable"
 ✅ department of commerce - https://www.commerce.gov/oam/industry/procurement-forecasts
-✅ department of defense - acq gateway
+department of defense - https://business.defense.gov/Archived-Pages/Acquisition-Forecasts/
 department of education - https://www.ed.gov/about/doing-business-ed/forecast-of-ed-contract-opportunities
 department of energy - ? (may 2025)
 ✅ department of health and human services - https://osdbu.hhs.gov/industry/opportunity-forecast
@@ -20,5 +20,6 @@ national science foundation - https://www.nsf.gov/osdbu/nsf-acquisition-forecast
 ✅ nuclear regulatory commission - acq gateway
 office of personnel management - ?
 ✅ social security administration - https://www.ssa.gov/osdbu/contract-forecast-intro.html
+FedBizOpps? - 
 
 https://www.acquisition.gov/procurement-forecasts
