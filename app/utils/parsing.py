@@ -72,14 +72,17 @@ def parse_value_range(value_str):
     return numeric_val, unit_str
 
 def fiscal_quarter_to_date(qtr_str):
-    """Converts FY/Quarter string to a representative date (e.g., 'FY2024 Q2', '2025 3RD')."""
-    if pd.isna(qtr_str): return pd.NaT
+    """Converts FY/Quarter string to a representative date and extracts the fiscal year.
+    Returns a tuple: (pd.Timestamp, fiscal_year).
+    Returns (pd.NaT, pd.NA) on failure or TBD.
+    """
+    if pd.isna(qtr_str): return pd.NaT, pd.NA # Return tuple
     qtr_str_orig = str(qtr_str).strip()
     qtr_str = qtr_str_orig.upper()
 
     # Explicitly check for TBD
     if qtr_str == 'TBD':
-        return pd.NaT # Return NaT silently
+        return pd.NaT, pd.NA # Return tuple
 
     # Updated regex to handle 'Qn' or 'Nth' formats, with year potentially before or after.
     match = re.search(r'(?:FY)?(\d{2,4})?\s*(?:Q([1-4])|([1-4])(?:ST|ND|RD|TH))|(?:Q([1-4])|([1-4])(?:ST|ND|RD|TH))\s*(?:FY)?(\d{2,4})?', qtr_str)
@@ -100,18 +103,20 @@ def fiscal_quarter_to_date(qtr_str):
             elif quarter == 4: month, year_offset = 7, 0
             else: # Should not happen due to regex
                  logging.warning(f"Invalid quarter number {quarter} parsed from '{qtr_str_orig}'")
-                 return pd.NaT
+                 return pd.NaT, pd.NA # Return tuple
 
             fiscal_year = year # Use the derived/provided year as the fiscal year
             calendar_year = fiscal_year + year_offset
 
             try:
-                return pd.Timestamp(f'{calendar_year}-{month:02d}-01')
+                # Return both the timestamp and the fiscal year
+                return pd.Timestamp(f'{calendar_year}-{month:02d}-01'), fiscal_year
             except ValueError:
                 logging.warning(f"Date formation error Y={calendar_year}, M={month} from '{qtr_str_orig}'") # Log original string
+                return pd.NaT, pd.NA # Return tuple on date creation error
     # Log warning only if it wasn't handled (i.e., not TBD and didn't match/parse correctly)
     logging.warning(f"Could not parse fiscal quarter: {qtr_str_orig}") # Log original string
-    return pd.NaT
+    return pd.NaT, pd.NA # Return tuple on regex failure or other parse issues
 
 def split_place(place_str):
     """Splits a place string into City and State, handling common variations."""

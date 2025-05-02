@@ -31,7 +31,7 @@ PROCESSED_DIR = BASE_DIR / "data" / "processed"
 CANONICAL_COLUMNS = [
     'source', 'native_id', 'requirement_title', 'requirement_description',
     'naics', 'estimated_value', 'est_value_unit', 'solicitation_date',
-    'award_date', 'office', 'place_city', 'place_state', 'place_country',
+    'award_date', 'award_fiscal_year', 'office', 'place_city', 'place_state', 'place_country',
     'contract_type', 'set_aside', 'loaded_at', 'extra', 'id'
 ]
 
@@ -76,7 +76,7 @@ def normalize_columns_ssa(df: pd.DataFrame, canonical_cols: list[str]) -> pd.Dat
         'REQUIREMENT TYPE': 'requirement_type',
         'DESCRIPTION': 'requirement_title',
         'EST COST PER FY': 'estimated_value_raw', # Rename raw
-        'PLANNED AWARD DATE': 'award_date',
+        'PLANNED AWARD DATE': 'award_date_raw', # Rename raw
         'CONTRACT TYPE': 'contract_type',
         'NAICS': 'naics',
         'TYPE OF COMPETITION': 'set_aside',
@@ -113,18 +113,22 @@ def normalize_columns_ssa(df: pd.DataFrame, canonical_cols: list[str]) -> pd.Dat
     else:
         df['estimated_value'], df['est_value_unit'] = pd.NA, pd.NA
 
-    if 'award_date' in df.columns:
-        logging.info("Parsing 'award_date'.")
-        df['award_date'] = pd.to_datetime(df['award_date'], errors='coerce')
+    # Parse award date and extract year
+    if 'award_date_raw' in df.columns:
+        logging.info("Parsing 'award_date_raw'.")
+        df['award_date'] = pd.to_datetime(df['award_date_raw'], errors='coerce')
+        # Extract year, handle NaT safely
+        df['award_fiscal_year'] = df['award_date'].dt.year.astype('Int64')
     else:
         df['award_date'] = pd.NaT
+        df['award_fiscal_year'] = pd.NA
 
     # Initialize missing columns that weren't directly mapped
     # requirement_description is no longer directly mapped, will be handled below
     df['solicitation_date'] = pd.NaT
     
-    # Drop raw columns
-    cols_to_drop = ['place_raw', 'estimated_value_raw']
+    # Drop raw columns *before* handling extras
+    cols_to_drop = ['place_raw', 'estimated_value_raw', 'award_date_raw'] # Added award_date_raw
     df = df.drop(columns=[col for col in cols_to_drop if col in df.columns], errors='ignore')
 
     # --- General normalization (lowercase, snake_case) ---
@@ -137,6 +141,10 @@ def normalize_columns_ssa(df: pd.DataFrame, canonical_cols: list[str]) -> pd.Dat
     unmapped_cols = [col for col in current_cols if col not in normalized_canonical and col not in ['source', 'id']]
     if unmapped_cols:
         logging.warning(f"Unexpected unmapped columns found for SSA: {unmapped_cols}") # Should ideally not happen
+        # Convert datetime-like columns before creating JSON
+        for col in unmapped_cols:
+            if pd.api.types.is_datetime64_any_dtype(df[col]):
+                df[col] = df[col].astype(str) 
         df['extra'] = df[unmapped_cols].astype(str).to_dict(orient='records')
         df = df.drop(columns=unmapped_cols)
     else:

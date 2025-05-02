@@ -30,7 +30,7 @@ DATA_DIR = BASE_DIR / "data" / "raw" / "dos_forecast"
 CANONICAL_COLUMNS = [
     'source', 'native_id', 'requirement_title', 'requirement_description',
     'naics', 'estimated_value', 'est_value_unit', 'solicitation_date',
-    'award_date', 'office', 'place_city', 'place_state', 'place_country',
+    'award_date', 'award_fiscal_year', 'office', 'place_city', 'place_state', 'place_country',
     'contract_type', 'set_aside', 'loaded_at', 'extra', 'id'
 ]
 
@@ -85,6 +85,7 @@ def normalize_columns_dos(df: pd.DataFrame, canonical_cols: list[str]) -> pd.Dat
         'Award Type': 'contract_type',
         'Anticipated Award Date': 'award_date_raw', # Raw - Primary Date
         'Target Award Quarter': 'award_qtr_raw',    # Raw - Secondary Quarter
+        'Fiscal Year': 'award_fiscal_year_raw', # Added direct FY mapping
         'Anticipated Set Aside': 'set_aside',
         'Anticipated Solicitation Release Date': 'solicitation_date' 
         # NAICS code not present in source
@@ -94,21 +95,42 @@ def normalize_columns_dos(df: pd.DataFrame, canonical_cols: list[str]) -> pd.Dat
     df = df.rename(columns=rename_map_existing)
 
     # --- Handle potential alternative/derived fields ---
-    # Award Date Parsing (Prioritize date, then quarter)
+    # Award Date/Year Parsing (Priority: FY column -> Date col -> Quarter col)
+    df['award_date'] = pd.NaT # Initialize columns
+    df['award_fiscal_year'] = pd.NA
+
+    # 1. Try parsing direct Fiscal Year column first
+    if 'award_fiscal_year_raw' in df.columns:
+        df['award_fiscal_year'] = pd.to_numeric(df['award_fiscal_year_raw'], errors='coerce')
+        logging.info("Processed 'Fiscal Year' column for award_fiscal_year.")
+
+    # 2. Try parsing Anticipated Award Date (if FY parse failed or didn't exist)
     if 'award_date_raw' in df.columns:
-        logging.info("Parsing 'award_date_raw' as primary.")
-        df['award_date'] = pd.to_datetime(df['award_date_raw'], errors='coerce')
-        # If primary parsing failed, try quarter if it exists
-        if 'award_qtr_raw' in df.columns:
-            needs_qtr_parse = df['award_date'].isna()
-            if needs_qtr_parse.any():
-                 logging.info("Some award dates failed primary parse, trying 'award_qtr_raw'.")
-                 df.loc[needs_qtr_parse, 'award_date'] = df.loc[needs_qtr_parse, 'award_qtr_raw'].apply(fiscal_quarter_to_date)
-    elif 'award_qtr_raw' in df.columns:
-        logging.info("Parsing 'award_qtr_raw' as only award date source.")
-        df['award_date'] = df['award_qtr_raw'].apply(fiscal_quarter_to_date)
-    else:
-        df['award_date'] = pd.NaT
+        # Attempt direct parsing of the date
+        parsed_date = pd.to_datetime(df['award_date_raw'], errors='coerce')
+        # Update award_date where parsing worked
+        df['award_date'] = df['award_date'].fillna(parsed_date) 
+        
+        # Update award_fiscal_year *only if it's still missing* and date parse worked
+        needs_fy_from_date_mask = df['award_fiscal_year'].isna() & parsed_date.notna()
+        if needs_fy_from_date_mask.any():
+            logging.info("Using year from 'Anticipated Award Date' as fallback for award_fiscal_year.")
+            df.loc[needs_fy_from_date_mask, 'award_fiscal_year'] = parsed_date[needs_fy_from_date_mask].dt.year
+
+    # 3. Try parsing Target Award Quarter (if both FY and Date parse failed/missing)
+    if 'award_qtr_raw' in df.columns:
+        # Identify rows where award_date is still NaT (meaning direct date failed or was missing)
+        # AND award_fiscal_year is still NA (meaning direct FY failed or was missing)
+        needs_qtr_parse_mask = df['award_date'].isna() & df['award_fiscal_year'].isna() & df['award_qtr_raw'].notna()
+        if needs_qtr_parse_mask.any():
+            logging.info("Using 'Target Award Quarter' as final fallback for award date/year.")
+            # Apply fiscal_quarter_to_date only to rows needing it
+            parsed_qtr_info = df.loc[needs_qtr_parse_mask, 'award_qtr_raw'].apply(fiscal_quarter_to_date)
+            # Update award_date and award_fiscal_year using the tuple returned
+            df.loc[needs_qtr_parse_mask, 'award_date'] = parsed_qtr_info.apply(lambda x: x[0])
+            df.loc[needs_qtr_parse_mask, 'award_fiscal_year'] = parsed_qtr_info.apply(lambda x: x[1])
+
+    # --- End Award Date/Year Parsing ---
 
     # Estimated Value Parsing (Prioritize 'estimated_value_raw', then 'dollar_value_raw')
     if 'estimated_value_raw' in df.columns:
@@ -142,7 +164,7 @@ def normalize_columns_dos(df: pd.DataFrame, canonical_cols: list[str]) -> pd.Dat
     if 'place_country' not in df.columns: df['place_country'] = 'USA' # Default
 
     # Drop raw columns used only for parsing
-    cols_to_drop = ['estimated_value_raw', 'dollar_value_raw', 'award_date_raw', 'award_qtr_raw']
+    cols_to_drop = ['estimated_value_raw', 'dollar_value_raw', 'award_date_raw', 'award_qtr_raw', 'award_fiscal_year_raw']
     df = df.drop(columns=[col for col in cols_to_drop if col in df.columns], errors='ignore')
 
     # --- General normalization (lowercase, snake_case) ---
@@ -166,6 +188,10 @@ def normalize_columns_dos(df: pd.DataFrame, canonical_cols: list[str]) -> pd.Dat
     for col in normalized_canonical:
         if col not in df.columns:
            df[col] = pd.NA
+
+    # Convert award_fiscal_year to nullable integer type
+    if 'award_fiscal_year' in df.columns:
+        df['award_fiscal_year'] = pd.to_numeric(df['award_fiscal_year'], errors='coerce').astype('Int64')
 
     final_cols_order = [col for col in normalized_canonical if col in df.columns]
     return df[final_cols_order]

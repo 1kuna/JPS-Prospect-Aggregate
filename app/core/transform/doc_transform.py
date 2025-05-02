@@ -52,7 +52,7 @@ DATA_DIR = BASE_DIR / "data" / "raw" / "doc_forecast"
 CANONICAL_COLUMNS = [
     'source', 'native_id', 'requirement_title', 'requirement_description',
     'naics', 'estimated_value', 'est_value_unit', 'solicitation_date',
-    'award_date', 'office', 'place_city', 'place_state', 'place_country',
+    'award_date', 'award_fiscal_year', 'office', 'place_city', 'place_state', 'place_country',
     'contract_type', 'set_aside', 'loaded_at', 'extra', 'id'
 ]
 
@@ -125,6 +125,12 @@ def normalize_columns_doc(df: pd.DataFrame, canonical_cols: list[str]) -> pd.Dat
         # Combine FY and Quarter into a single string for the helper function
         df['solicitation_fyq_raw'] = df['solicitation_fy_raw'].astype(str) + ' ' + df['solicitation_qtr_str']
         df['solicitation_date'] = df['solicitation_fyq_raw'].apply(fiscal_quarter_to_date)
+        # Ensure result is datetime type, handling potential tuples from helper
+        if not df['solicitation_date'].empty:
+            # Check if the helper returned tuples (date, year) - only keep date
+            if isinstance(df['solicitation_date'].iloc[0], tuple):
+                df['solicitation_date'] = df['solicitation_date'].apply(lambda x: x[0] if isinstance(x, tuple) else x)
+            df['solicitation_date'] = pd.to_datetime(df['solicitation_date'], errors='coerce')
     else:
         df['solicitation_date'] = pd.NaT
         logging.warning("Could not parse solicitation date - FY or Quarter column missing.")
@@ -138,8 +144,9 @@ def normalize_columns_doc(df: pd.DataFrame, canonical_cols: list[str]) -> pd.Dat
         df['estimated_value'] = pd.NA 
         df['est_value_unit'] = pd.NA
         
-    # Initialize missing award date
+    # Initialize missing award date and fiscal year
     df['award_date'] = pd.NaT
+    df['award_fiscal_year'] = pd.NA # Initialize new column
     
     # Initialize missing place country if not mapped
     if 'place_country' not in df.columns:
@@ -205,6 +212,10 @@ def normalize_columns_doc(df: pd.DataFrame, canonical_cols: list[str]) -> pd.Dat
     for col in normalized_canonical:
         if col not in df.columns:
            df[col] = pd.NA
+
+    # Convert award_fiscal_year to nullable integer type
+    if 'award_fiscal_year' in df.columns:
+        df['award_fiscal_year'] = pd.to_numeric(df['award_fiscal_year'], errors='coerce').astype('Int64')
 
     # Return dataframe with only canonical columns in the correct order
     final_cols_order = [col for col in normalized_canonical if col in df.columns]

@@ -1,7 +1,7 @@
 import os
 from sqlalchemy import (create_engine, Column, String, Text, 
                           Numeric, Date, TIMESTAMP, JSON, Index,
-                          ForeignKey, Float)
+                          ForeignKey, Float, Integer)
 from sqlalchemy.orm import sessionmaker, declarative_base, relationship
 from sqlalchemy.sql import func
 import logging
@@ -25,6 +25,7 @@ class Prospect(Base):
     est_value_unit = Column(String)
     solicitation_date = Column(Date, index=True)
     award_date = Column(Date, index=True)
+    award_fiscal_year = Column(Integer, index=True, nullable=True)
     office = Column(Text)
     place_city = Column(Text)
     place_state = Column(Text)

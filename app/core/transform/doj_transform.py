@@ -30,7 +30,7 @@ DATA_DIR = BASE_DIR / "data" / "raw" / "doj_forecast"
 CANONICAL_COLUMNS = [
     'source', 'native_id', 'requirement_title', 'requirement_description',
     'naics', 'estimated_value', 'est_value_unit', 'solicitation_date',
-    'award_date', 'office', 'place_city', 'place_state', 'place_country',
+    'award_date', 'award_fiscal_year', 'office', 'place_city', 'place_state', 'place_country',
     'contract_type', 'set_aside', 'loaded_at', 'extra', 'id'
 ]
 
@@ -78,7 +78,7 @@ def normalize_columns_doj(df: pd.DataFrame, canonical_cols: list[str]) -> pd.Dat
         'Small Business Approach': 'set_aside',
         'Estimated Total Contract Value (Range)': 'estimated_value_raw',
         'Target Solicitation Date': 'solicitation_date',
-        'Target Award Date': 'award_date',
+        'Target Award Date': 'award_date_raw',
         'Place of Performance': 'place_raw',
         'Country': 'place_country'
     }
@@ -112,16 +112,45 @@ def normalize_columns_doj(df: pd.DataFrame, canonical_cols: list[str]) -> pd.Dat
         df['solicitation_date'] = pd.to_datetime(df['solicitation_date'], errors='coerce')
     else:
         df['solicitation_date'] = pd.NaT
-    if 'award_date' in df.columns:
-        logging.info("Parsing 'award_date'.")
-        df['award_date'] = pd.to_datetime(df['award_date'], errors='coerce')
-    else:
-        df['award_date'] = pd.NaT
+    
+    # --- Award Date Parsing (Try direct date first, then fiscal quarter) ---
+    df['award_date'] = pd.NaT # Initialize columns
+    df['award_fiscal_year'] = pd.NA
+
+    if 'award_date_raw' in df.columns:
+        logging.info("Parsing 'award_date_raw' - trying direct datetime first...")
+        # Attempt direct parsing
+        df['award_date'] = pd.to_datetime(df['award_date_raw'], errors='coerce')
+        
+        # Extract year where direct parsing worked
+        df['award_fiscal_year'] = df['award_date'].dt.year
+
+        # Identify rows where direct parsing failed (result is NaT)
+        needs_fallback_parse_mask = df['award_date'].isna() & df['award_date_raw'].notna()
+        
+        if needs_fallback_parse_mask.any():
+            logging.info("Direct date parse failed for some rows, trying fiscal_quarter_to_date fallback...")
+            # Apply fiscal_quarter_to_date only to rows needing it, using the raw value
+            parsed_qtr_info = df.loc[needs_fallback_parse_mask, 'award_date_raw'].apply(fiscal_quarter_to_date)
+            
+            # Update award_date and award_fiscal_year using the tuple returned
+            df.loc[needs_fallback_parse_mask, 'award_date'] = parsed_qtr_info.apply(lambda x: x[0])
+            df.loc[needs_fallback_parse_mask, 'award_fiscal_year'] = parsed_qtr_info.apply(lambda x: x[1])
+    # else: award_date and award_fiscal_year remain NaT/NA from initialization
+    # --- End Award Date Parsing ---
+
+    # Ensure final type is nullable Integer
+    if 'award_fiscal_year' in df.columns:
+         df['award_fiscal_year'] = pd.to_numeric(df['award_fiscal_year'], errors='coerce').astype('Int64')
 
     # --- General normalization ---
     df.columns = df.columns.str.strip().str.lower().str.replace(r'\s+\(.*?\)', '', regex=True).str.replace(r'\s+', '_', regex=True).str.replace(r'[^a-z0-9_]', '', regex=True)
 
     # --- Handle Extra/Canonical Columns ---
+    # Drop raw columns *before* identifying extras
+    cols_to_drop = ['place_raw', 'estimated_value_raw', 'award_date_raw']
+    df = df.drop(columns=[col for col in cols_to_drop if col in df.columns], errors='ignore')
+
     current_cols = df.columns.tolist()
     normalized_canonical = [c.strip().lower().replace(' ', '_').replace(r'[^a-z0-9_]', '') for c in canonical_cols]
     unmapped_cols = [col for col in current_cols if col not in normalized_canonical and col not in ['source', 'id']]

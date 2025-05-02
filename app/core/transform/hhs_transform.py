@@ -30,7 +30,7 @@ DATA_DIR = BASE_DIR / "data" / "raw" / "hhs_forecast"
 CANONICAL_COLUMNS = [
     'source', 'native_id', 'requirement_title', 'requirement_description',
     'naics', 'estimated_value', 'est_value_unit', 'solicitation_date',
-    'award_date', 'office', 'place_city', 'place_state', 'place_country',
+    'award_date', 'award_fiscal_year', 'office', 'place_city', 'place_state', 'place_country',
     'contract_type', 'set_aside', 'loaded_at', 'extra', 'id'
 ]
 
@@ -106,11 +106,14 @@ def normalize_columns_hhs(df: pd.DataFrame, canonical_cols: list[str]) -> pd.Dat
     if 'award_date_raw' in df.columns:
         logging.info("Parsing 'award_date_raw'.")
         df['award_date'] = pd.to_datetime(df['award_date_raw'], errors='coerce')
+        # Extract year, handle NaT safely
+        df['award_fiscal_year'] = df['award_date'].dt.year.astype('Int64')
         # Fallback for specific formats if infer fails broadly
         # for fmt in date_formats:
         #     df['award_date'] = df['award_date'].fillna(pd.to_datetime(df['award_date_raw'], format=fmt, errors='coerce'))
     else:
         df['award_date'] = pd.NaT
+        df['award_fiscal_year'] = pd.NA
 
     # Initialize missing place columns
     df['place_city'] = pd.NA
@@ -141,6 +144,10 @@ def normalize_columns_hhs(df: pd.DataFrame, canonical_cols: list[str]) -> pd.Dat
     for col in normalized_canonical:
         if col not in df.columns:
            df[col] = pd.NA
+
+    # Convert award_fiscal_year to nullable integer type (already done in extraction step)
+    # if 'award_fiscal_year' in df.columns:
+    #     df['award_fiscal_year'] = pd.to_numeric(df['award_fiscal_year'], errors='coerce').astype('Int64')
 
     final_cols_order = [col for col in normalized_canonical if col in df.columns]
     return df[final_cols_order]

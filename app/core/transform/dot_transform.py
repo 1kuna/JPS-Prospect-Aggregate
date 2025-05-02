@@ -30,7 +30,7 @@ DATA_DIR = BASE_DIR / "data" / "raw" / "dot_forecast"
 CANONICAL_COLUMNS = [
     'source', 'native_id', 'requirement_title', 'requirement_description',
     'naics', 'estimated_value', 'est_value_unit', 'solicitation_date',
-    'award_date', 'office', 'place_city', 'place_state', 'place_country',
+    'award_date', 'award_fiscal_year', 'office', 'place_city', 'place_state', 'place_country',
     'contract_type', 'set_aside', 'loaded_at', 'extra', 'id'
 ]
 
@@ -77,7 +77,7 @@ def normalize_columns_dot(df: pd.DataFrame, canonical_cols: list[str]) -> pd.Dat
         'NAICS': 'naics',
         'Competition Type': 'set_aside', # Mapping assumption
         'RFP Quarter': 'solicitation_qtr_raw', # Rename raw
-        'Anticipated Award Date': 'award_date',
+        'Anticipated Award Date': 'award_date_raw', # Rename raw
         'Place of Performance': 'place_raw', # Rename raw
         'Action/Award Type': 'action_award_type',
         'Contract Vehicle': 'contract_vehicle' # Add contract vehicle to extra
@@ -110,17 +110,27 @@ def normalize_columns_dot(df: pd.DataFrame, canonical_cols: list[str]) -> pd.Dat
         # If not, fiscal_quarter_to_date might assume wrong year.
         # For now, proceed with the helper assuming current/derived FY.
         df['solicitation_date'] = df['solicitation_qtr_raw'].apply(fiscal_quarter_to_date)
+        # Ensure result is datetime type, handling potential tuples from helper
+        if not df['solicitation_date'].empty:
+            # Check if the helper returned tuples (date, year) - only keep date
+            if isinstance(df['solicitation_date'].iloc[0], tuple):
+                df['solicitation_date'] = df['solicitation_date'].apply(lambda x: x[0] if isinstance(x, tuple) else x)
+            df['solicitation_date'] = pd.to_datetime(df['solicitation_date'], errors='coerce')
     else:
         df['solicitation_date'] = pd.NaT
 
-    if 'award_date' in df.columns:
-        logging.info("Parsing 'award_date'.")
-        df['award_date'] = pd.to_datetime(df['award_date'], errors='coerce')
+    # Parse award date and extract year
+    if 'award_date_raw' in df.columns:
+        logging.info("Parsing 'award_date_raw'.")
+        df['award_date'] = pd.to_datetime(df['award_date_raw'], errors='coerce')
+        # Extract year, handle NaT safely
+        df['award_fiscal_year'] = df['award_date'].dt.year.astype('Int64')
     else:
         df['award_date'] = pd.NaT
+        df['award_fiscal_year'] = pd.NA
 
     # Drop raw columns
-    cols_to_drop = ['place_raw', 'estimated_value_raw', 'solicitation_qtr_raw']
+    cols_to_drop = ['place_raw', 'estimated_value_raw', 'solicitation_qtr_raw', 'award_date_raw']
     df = df.drop(columns=[col for col in cols_to_drop if col in df.columns], errors='ignore')
 
     # --- General normalization ---

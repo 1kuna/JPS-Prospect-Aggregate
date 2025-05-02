@@ -34,7 +34,7 @@ DOCS_DIR = BASE_DIR / "docs"
 CANONICAL_COLUMNS = [
     'source', 'native_id', 'requirement_title', 'requirement_description',
     'naics', 'estimated_value', 'est_value_unit', 'solicitation_date',
-    'award_date', 'office', 'place_city', 'place_state', 'place_country',
+    'award_date', 'award_fiscal_year', 'office', 'place_city', 'place_state', 'place_country',
     'contract_type', 'set_aside', 'loaded_at', 'extra', 'id'
 ]
 
@@ -66,7 +66,8 @@ def normalize_columns(df: pd.DataFrame, canonical_cols: list[str]) -> pd.DataFra
         'NAICS Code': 'naics',
         'Estimated Contract Value': 'estimated_value',
         'Estimated Solicitation Date': 'solicitation_date',
-        'Ultimate Completion Date': 'award_date', # Using this for award_date
+        'Ultimate Completion Date': 'award_date_raw', # Renaming raw column first
+        'Estimated Award FY': 'award_fiscal_year', # Added mapping for FY
         'Organization': 'office',
         'Place of Performance City': 'place_city',
         'Place of Performance State': 'place_state',
@@ -77,7 +78,9 @@ def normalize_columns(df: pd.DataFrame, canonical_cols: list[str]) -> pd.DataFra
     }
 
     # Apply the explicit renaming
-    df = df.rename(columns=rename_map)
+    # Rename only columns that exist in the input DataFrame
+    rename_map_existing = {k: v for k, v in rename_map.items() if k in df.columns}
+    df = df.rename(columns=rename_map_existing)
 
     # Handle potential alternative for description if 'Body' wasn't present but 'Summary' is
     if 'requirement_description' not in df.columns and 'Summary' in df.columns:
@@ -87,8 +90,32 @@ def normalize_columns(df: pd.DataFrame, canonical_cols: list[str]) -> pd.DataFra
     # Parse dates (assuming standard formats, add error handling)
     if 'solicitation_date' in df.columns:
         df['solicitation_date'] = pd.to_datetime(df['solicitation_date'], errors='coerce')
-    if 'award_date' in df.columns:
-        df['award_date'] = pd.to_datetime(df['award_date'], errors='coerce')
+    
+    # Parse award date (Ultimate Completion Date) 
+    if 'award_date_raw' in df.columns:
+        df['award_date'] = pd.to_datetime(df['award_date_raw'], errors='coerce')
+    else:
+        df['award_date'] = pd.NaT # Ensure column exists
+
+    # Parse/Extract award fiscal year (Prioritize mapped 'Estimated Award FY')
+    if 'award_fiscal_year' in df.columns:
+        # Attempt to convert the explicitly mapped FY column first
+        df['award_fiscal_year'] = pd.to_numeric(df['award_fiscal_year'], errors='coerce')
+        # Fallback: If conversion failed or was null, try extracting from award_date (if available)
+        if 'award_date' in df.columns:
+             fallback_mask = df['award_fiscal_year'].isna()
+             df.loc[fallback_mask, 'award_fiscal_year'] = df.loc[fallback_mask, 'award_date'].dt.year
+    elif 'award_date' in df.columns:
+        # Only award_date (from completion date) is available, extract year from it
+        logging.warning("'Estimated Award FY' not found in source, extracting year from 'Ultimate Completion Date' as fallback.")
+        df['award_fiscal_year'] = df['award_date'].dt.year
+    else:
+        # Neither column is available
+        df['award_fiscal_year'] = pd.NA # Ensure column exists
+
+    # Ensure final type is nullable Integer
+    if 'award_fiscal_year' in df.columns:
+         df['award_fiscal_year'] = df['award_fiscal_year'].astype('Int64')
 
     # Parse estimated value (simple numeric conversion, assumes no units/ranges in source)
     if 'estimated_value' in df.columns:
@@ -127,6 +154,10 @@ def normalize_columns(df: pd.DataFrame, canonical_cols: list[str]) -> pd.DataFra
     for col in canonical_cols:
         if col not in df.columns:
             df[col] = pd.NA # Add missing canonical columns
+
+    # Convert award_fiscal_year to nullable integer type (already done in extraction step)
+    # if 'award_fiscal_year' in df.columns:
+    #     df['award_fiscal_year'] = pd.to_numeric(df['award_fiscal_year'], errors='coerce').astype('Int64')
 
     # Return dataframe with only canonical columns in the specified order
     # Filter canonical_cols to only those actually present (should be all now)

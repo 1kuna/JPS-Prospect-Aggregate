@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import SQLAlchemyError
 import numpy as np
+import datetime # Import datetime
 
 from .models import Prospect
 from .session import get_db
@@ -27,11 +28,30 @@ def bulk_upsert_prospects(df_in: pd.DataFrame):
     # Work on a copy to avoid SettingWithCopyWarning
     df = df_in.copy()
 
+    # --- Convert Timestamp columns to Python date objects for SQLite compatibility ---
+    date_columns = ['award_date', 'solicitation_date']
+    for col in date_columns:
+        if col in df.columns:
+            # Ensure the column is actually datetime first before using .dt accessor
+            if pd.api.types.is_datetime64_any_dtype(df[col]):
+                # Convert NaT to None before converting to date object
+                # Apply .dt.date only where the value is not NaT
+                df[col] = df[col].apply(lambda x: x.date() if pd.notna(x) else None)
+                logging.debug(f"Converted column '{col}' to Python date objects.")
+            else:
+                # If column exists but isn't datetime, try converting just in case
+                # This might happen if data wasn't parsed correctly upstream
+                logging.warning(f"Column '{col}' exists but is not datetime type ({df[col].dtype}). Attempting conversion.")
+                df[col] = pd.to_datetime(df[col], errors='coerce').dt.date
+    # --- End Date Conversion ---
+
     # --- Replace previous NaN handling with fillna/replace ---
     # Aggressively convert all forms of null/NaN to Python None
     # Fill pandas NA/NaT with numpy NaN first, then replace numpy NaN with None
     try:
         df = df.fillna(value=np.nan).replace([np.nan], [None])
+        # Address FutureWarning by inferring object types after fillna/replace
+        df = df.infer_objects(copy=False) 
         logging.debug("DataFrame NaN/null values replaced with None using fillna/replace.")
     except ImportError:
         logging.error("Numpy not found. Cannot perform robust NaN replacement. Falling back to df.where().")

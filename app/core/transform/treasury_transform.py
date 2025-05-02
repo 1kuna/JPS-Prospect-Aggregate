@@ -31,7 +31,7 @@ DATA_DIR = BASE_DIR / "data" / "raw" / "treasury_forecast"
 CANONICAL_COLUMNS = [
     'source', 'native_id', 'requirement_title', 'requirement_description',
     'naics', 'estimated_value', 'est_value_unit', 'solicitation_date',
-    'award_date', 'office', 'place_city', 'place_state', 'place_country',
+    'award_date', 'award_fiscal_year', 'office', 'place_city', 'place_state', 'place_country',
     'contract_type', 'set_aside', 'loaded_at', 'extra', 'id'
 ]
 
@@ -118,9 +118,13 @@ def normalize_columns_treasury(df: pd.DataFrame, canonical_cols: list[str]) -> p
 
     if 'award_qtr_raw' in df.columns:
         logging.info("Parsing 'award_qtr_raw'.")
-        df['award_date'] = df['award_qtr_raw'].apply(fiscal_quarter_to_date)
+        # Use updated fiscal_quarter_to_date which returns (date, year)
+        parsed_award_info = df['award_qtr_raw'].apply(fiscal_quarter_to_date)
+        df['award_date'] = parsed_award_info.apply(lambda x: x[0])
+        df['award_fiscal_year'] = parsed_award_info.apply(lambda x: x[1])
     else:
         df['award_date'] = pd.NaT
+        df['award_fiscal_year'] = pd.NA
 
     if 'solicitation_date' in df.columns:
         logging.info("Parsing 'solicitation_date'.")
@@ -155,6 +159,10 @@ def normalize_columns_treasury(df: pd.DataFrame, canonical_cols: list[str]) -> p
     for col in normalized_canonical:
         if col not in df.columns:
            df[col] = pd.NA
+
+    # Convert award_fiscal_year to nullable integer type
+    if 'award_fiscal_year' in df.columns:
+        df['award_fiscal_year'] = pd.to_numeric(df['award_fiscal_year'], errors='coerce').astype('Int64')
 
     final_cols_order = [col for col in normalized_canonical if col in df.columns]
     return df[final_cols_order]
