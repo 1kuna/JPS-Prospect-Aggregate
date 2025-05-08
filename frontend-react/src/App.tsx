@@ -1,7 +1,7 @@
 import { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { AppProviders } from './contexts/AppContexts';
+import { QueryClient, QueryClientProvider } from 'react-query';
 import styles from './App.module.css';
 
 // Lazy load pages
@@ -13,10 +13,13 @@ const DirectDatabaseAccess = lazy(() => import('./pages/DirectDatabaseAccess'));
 // Loading fallback - replaced complex skeleton with simple text
 const PageSkeleton = () => <div className={styles.pageSkeleton}>Loading page...</div>;
 
+// Create a client
+const queryClient = new QueryClient();
+
 function App() {
   return (
     <ErrorBoundary>
-      <AppProviders>
+      <QueryClientProvider client={queryClient}>
         <Router>
           <div className={styles.appContainer}>
             <Suspense fallback={<PageSkeleton />}>
@@ -30,7 +33,7 @@ function App() {
             </Suspense>
           </div>
         </Router>
-      </AppProviders>
+      </QueryClientProvider>
     </ErrorBoundary>
   );
 }

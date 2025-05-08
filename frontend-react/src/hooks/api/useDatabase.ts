@@ -1,101 +1,194 @@
-import { useApiQuery, useApiMutation } from './useApi';
+import { useQuery, useMutation, useQueryClient } from 'react-query';
 
-interface DatabaseStatus {
+const API_BASE_URL = '/api/database'; // Base URL for database operations
+
+// --- Type Definitions (assuming these are representative) ---
+export interface DatabaseStatus {
   status: string;
-  lastBackup: string;
-  size: number;
+  lastBackup: string; // Should ideally be Date or ISO string
+  size: string; // Or number, units should be clear
+  health?: string;
+  uptime?: string;
 }
 
-interface DatabaseBackup {
+export interface DatabaseBackup {
   id: string;
-  timestamp: string;
-  size: number;
-  status: string;
+  timestamp: string; // Should ideally be Date or ISO string
+  size: string; // Or number, units should be clear
+  status?: string;
 }
 
-// Query for database status
+export interface QueryResult {
+  columns: string[];
+  rows: (string | number | boolean | null)[][];
+  rowCount: number;
+  executionTime: number; // ms
+  message?: string;
+}
+
+// --- API Call Functions (Placeholders) ---
+
+async function fetchDatabaseStatusAPI(): Promise<DatabaseStatus> {
+  console.log('Fetching database status...');
+  // const response = await fetch(`${API_BASE_URL}/status`);
+  // if (!response.ok) throw new Error('Failed to fetch database status');
+  // return response.json();
+  await new Promise(resolve => setTimeout(resolve, 300));
+  return { status: 'Online', lastBackup: new Date().toISOString(), size: '1.2 GB', health: 'Good', uptime: '7 days' };
+}
+
+async function fetchDatabaseBackupsAPI(): Promise<DatabaseBackup[]> {
+  console.log('Fetching database backups...');
+  // const response = await fetch(`${API_BASE_URL}/backups`);
+  // if (!response.ok) throw new Error('Failed to fetch database backups');
+  // return response.json();
+  await new Promise(resolve => setTimeout(resolve, 600));
+  return [
+    { id: 'backup-1', timestamp: new Date(Date.now() - 86400000).toISOString(), size: '1.2 GB', status: 'Completed' },
+    { id: 'backup-2', timestamp: new Date(Date.now() - 172800000).toISOString(), size: '1.1 GB', status: 'Completed' },
+  ];
+}
+
+async function rebuildDatabaseAPI(): Promise<void> {
+  console.log('Rebuilding database...');
+  // const response = await fetch(`${API_BASE_URL}/rebuild`, { method: 'POST' });
+  // if (!response.ok) throw new Error('Failed to rebuild database');
+  await new Promise(resolve => setTimeout(resolve, 2000));
+}
+
+async function initializeDatabaseAPI(): Promise<void> {
+  console.log('Initializing database...');
+  // const response = await fetch(`${API_BASE_URL}/initialize`, { method: 'POST' });
+  // if (!response.ok) throw new Error('Failed to initialize database');
+  await new Promise(resolve => setTimeout(resolve, 3000));
+}
+
+async function resetDatabaseAPI(): Promise<void> {
+  console.log('Resetting database...');
+  // const response = await fetch(`${API_BASE_URL}/reset`, { method: 'POST' });
+  // if (!response.ok) throw new Error('Failed to reset database');
+  await new Promise(resolve => setTimeout(resolve, 1500));
+}
+
+async function createBackupAPI(): Promise<DatabaseBackup> { // Assuming API returns the created backup info
+  console.log('Creating database backup...');
+  // const response = await fetch(`${API_BASE_URL}/backups`, { method: 'POST' });
+  // if (!response.ok) throw new Error('Failed to create backup');
+  // return response.json();
+  await new Promise(resolve => setTimeout(resolve, 2500));
+  return { id: `backup-${Date.now()}`, timestamp: new Date().toISOString(), size: '1.3 GB', status: 'Completed' };
+}
+
+async function restoreBackupAPI({ backupId }: { backupId: string }): Promise<void> {
+  console.log(`Restoring backup ${backupId}...`);
+  // const response = await fetch(`${API_BASE_URL}/backups/restore`, { method: 'POST', body: JSON.stringify({ backupId }) });
+  // if (!response.ok) throw new Error('Failed to restore backup');
+  await new Promise(resolve => setTimeout(resolve, 4000));
+}
+
+async function executeQueryAPI({ query }: { query: string }): Promise<QueryResult> {
+  console.log('Executing query:', query);
+  // const response = await fetch(`${API_BASE_URL}/query`, { method: 'POST', body: JSON.stringify({ query }) });
+  // if (!response.ok) { 
+  //   const errorData = await response.json().catch(() => ({ message: 'Query execution failed' }));
+  //   throw new Error(errorData.message || 'Query execution failed');
+  // }
+  // return response.json();
+  await new Promise(resolve => setTimeout(resolve, 1000));
+  if (query.toLowerCase().includes('error')) throw new Error('Simulated query error');
+  return {
+    columns: ['id', 'name', 'value'],
+    rows: [[1, 'Test', 100], [2, 'Sample', 200]],
+    rowCount: 2,
+    executionTime: 150,
+    message: 'Query executed successfully'
+  };
+}
+
+// --- React Query Keys ---
+const dbQueryKeys = {
+  all: ['database'] as const,
+  status: () => [...dbQueryKeys.all, 'status'] as const,
+  backups: () => [...dbQueryKeys.all, 'backups'] as const,
+};
+
+// --- React Query Hooks ---
+
 export const useDatabaseStatus = () => {
-  return useApiQuery<DatabaseStatus>({
-    queryKey: ['database', 'status'],
-    endpoint: '/api/database/status',
-  });
+  return useQuery<DatabaseStatus, Error>(dbQueryKeys.status(), fetchDatabaseStatusAPI);
 };
 
-// Query for available backups
 export const useDatabaseBackups = () => {
-  // @ts-ignore
-  return (useApiQuery as any)<DatabaseBackup[]>({
-    queryKey: ['database', 'backups'],
-    endpoint: '/api/database/backups',
-  });
+  return useQuery<DatabaseBackup[], Error>(dbQueryKeys.backups(), fetchDatabaseBackupsAPI);
 };
 
-// Mutation for rebuilding database
 export const useRebuildDatabase = () => {
-  // @ts-ignore
-  return (useApiMutation as any)<void>({
-    endpoint: '/api/database/rebuild',
-    method: 'POST',
-    successMessage: 'Database rebuilt successfully',
-    errorMessage: 'Failed to rebuild database',
-    invalidateQueries: [['database']],
-  });
+  const queryClient = useQueryClient();
+  return useMutation<void, Error, void>(
+    rebuildDatabaseAPI,
+    {
+      onSuccess: () => {
+        queryClient.invalidateQueries(dbQueryKeys.all()); // Invalidate all DB related queries
+      },
+    }
+  );
 };
 
-// Mutation for initializing database
 export const useInitializeDatabase = () => {
-  // @ts-ignore
-  return (useApiMutation as any)<void>({
-    endpoint: '/api/database/initialize',
-    method: 'POST',
-    successMessage: 'Database initialized successfully',
-    errorMessage: 'Failed to initialize database',
-    invalidateQueries: [['database']],
-  });
+  const queryClient = useQueryClient();
+  return useMutation<void, Error, void>(
+    initializeDatabaseAPI,
+    {
+      onSuccess: () => {
+        queryClient.invalidateQueries(dbQueryKeys.all());
+      },
+    }
+  );
 };
 
-// Mutation for resetting database
 export const useResetDatabase = () => {
-  // @ts-ignore
-  return (useApiMutation as any)<void>({
-    endpoint: '/api/database/reset',
-    method: 'POST',
-    successMessage: 'Database reset successfully',
-    errorMessage: 'Failed to reset database',
-    invalidateQueries: [['database']],
-  });
+  const queryClient = useQueryClient();
+  return useMutation<void, Error, void>(
+    resetDatabaseAPI,
+    {
+      onSuccess: () => {
+        queryClient.invalidateQueries(dbQueryKeys.all());
+      },
+    }
+  );
 };
 
-// Mutation for creating backup
 export const useCreateBackup = () => {
-  // @ts-ignore
-  return (useApiMutation as any)<void>({
-    endpoint: '/api/database/backups',
-    method: 'POST',
-    successMessage: 'Backup created successfully',
-    errorMessage: 'Failed to create backup',
-    invalidateQueries: [['database'], ['database', 'backups']],
-  });
+  const queryClient = useQueryClient();
+  return useMutation<DatabaseBackup, Error, void>(
+    createBackupAPI,
+    {
+      onSuccess: (newBackup) => {
+        queryClient.invalidateQueries(dbQueryKeys.backups());
+        // Optionally add the new backup to the cache immediately
+        // queryClient.setQueryData(dbQueryKeys.backups(), (oldData: DatabaseBackup[] | undefined) => 
+        //  [...(oldData || []), newBackup]
+        // );
+        queryClient.invalidateQueries(dbQueryKeys.status()); // Backup might affect status
+      },
+    }
+  );
 };
 
-// Mutation for restoring backup
 export const useRestoreBackup = () => {
-  // @ts-ignore
-  return (useApiMutation as any)<void, Error, { backupId: string }>({
-    endpoint: '/api/database/backups/restore',
-    method: 'POST',
-    successMessage: 'Backup restored successfully',
-    errorMessage: 'Failed to restore backup',
-    invalidateQueries: [['database']],
-  });
+  const queryClient = useQueryClient();
+  return useMutation<void, Error, { backupId: string }>(
+    restoreBackupAPI,
+    {
+      onSuccess: () => {
+        queryClient.invalidateQueries(dbQueryKeys.all());
+      },
+    }
+  );
 };
 
-// Mutation for direct SQL query execution
 export const useExecuteQuery = () => {
-  // @ts-ignore
-  return (useApiMutation as any)<unknown, Error, { query: string }>({
-    endpoint: '/api/database/query',
-    method: 'POST',
-    errorMessage: 'Query execution failed',
-  });
+  // No cache invalidation by default for arbitrary queries, 
+  // but component might want to refetch specific data based on query type.
+  return useMutation<QueryResult, Error, { query: string }>(executeQueryAPI);
 }; 

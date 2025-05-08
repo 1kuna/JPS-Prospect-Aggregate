@@ -1,24 +1,30 @@
 import { useMemo } from 'react';
 import { DataPageLayout } from '@/components/layout';
-import { DataTable } from '@/components/data-display/DataTable';
-import { useDataSources } from '@/hooks';
+import { DataTable, Column } from '@/components/data-display';
+import { useListDataSources, useDeleteDataSource } from '@/hooks/api/useDataSources';
+import { DataSource } from '@/types';
+import { Button } from '@/components/ui';
 
 export default function DataSources() {
-  const { data, isLoading, error, refetch } = useDataSources.useList();
-  const { mutate: deleteDataSource } = useDataSources.useDelete();
+  const {
+    data,
+    isLoading,
+    isError,
+    error,
+    refetch
+  } = useListDataSources();
 
-  const handleDelete = async (id: number) => {
-    deleteDataSource(id, {
-      onSuccess: () => {
-        refetch();
-      },
-      onError: () => {
-        console.error('Failed to delete data source');
-      }
-    });
+  const deleteMutation = useDeleteDataSource();
+
+  const handleDelete = async (id: DataSource['id']) => {
+    try {
+      await deleteMutation.mutateAsync(id);
+    } catch (err) {
+      console.error('Failed to delete data source:', err);
+    }
   };
 
-  const columns = useMemo(() => [
+  const columns: Column<DataSource>[] = useMemo(() => [
     {
       header: 'Name',
       accessorKey: 'name',
@@ -33,31 +39,45 @@ export default function DataSources() {
     },
     {
       header: 'Actions',
-      cell: ({ row }: { row: any }) => (
+      cell: ({ row }: { row: DataSource }) => (
         <div>
-          <button onClick={() => alert('Edit form disabled')}>Edit</button>
-          <button onClick={() => handleDelete(row.original.id)}>Delete</button>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => alert('Edit form placeholder')}
+          >
+            Edit
+          </Button>
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={() => handleDelete(row.id)}
+            disabled={deleteMutation.isLoading && deleteMutation.variables === row.id}
+          >
+            {deleteMutation.isLoading && deleteMutation.variables === row.id ? 'Deleting...' : 'Delete'}
+          </Button>
         </div>
       ),
     },
-  ], [deleteDataSource]);
+  ], [deleteMutation.isLoading, deleteMutation.variables, handleDelete]);
+
+  const pageError = isError ? (error as Error) : null;
 
   return (
     <DataPageLayout
       title="Data Sources"
-      data={data}
+      data={data ?? []}
       loading={isLoading}
-      error={error}
+      error={pageError}
       onRefresh={refetch}
-      renderContent={(pageData) => (
-        <>
-          <DataTable
-            data={pageData}
-            columns={columns as any[]}
-            isLoading={isLoading}
-          />
-        </>
-      )}
-    />
+    >
+      <>
+        <DataTable
+          data={data ?? []}
+          columns={columns}
+          isLoading={isLoading}
+        />
+      </>
+    </DataPageLayout>
   );
 } 

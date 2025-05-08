@@ -1,6 +1,7 @@
 import React from 'react';
 import { PageLayout } from './PageLayout';
 import styles from './DataPageLayout.module.css'; // Import CSS module
+import { Button } from '@/components/ui'; // Updated import
 
 interface DataPageLayoutProps<T> {
   title: string;
@@ -11,7 +12,8 @@ interface DataPageLayoutProps<T> {
   onRefresh?: () => void; // Made optional as it wasn't always used
   emptyMessage?: string;
   renderHeader?: () => React.ReactNode;
-  renderContent: (data: T | T[]) => React.ReactNode;
+  children: React.ReactNode; // Added children prop
+  renderChildrenOnEmpty?: boolean; // New prop
 }
 
 export function DataPageLayout<T>({
@@ -23,15 +25,16 @@ export function DataPageLayout<T>({
   onRefresh,
   emptyMessage = 'No data available',
   renderHeader,
-  renderContent
+  children,
+  renderChildrenOnEmpty = false // Default to false
 }: DataPageLayoutProps<T>) {
   // Loading state
   if (loading && (!data || (Array.isArray(data) && data.length === 0))) {
     return (
-      <PageLayout title={title} subtitle={subtitle} isLoading={true}>
+      <PageLayout title={title} subtitle={subtitle}>
         {/* Apply loading styles */}
         <div className={styles.loadingContainer}>
-          <div>Loading data...</div> {/* Replaced Spinner */}
+          <div>Loading data...</div>
         </div>
       </PageLayout>
     );
@@ -45,15 +48,15 @@ export function DataPageLayout<T>({
         <div
           className={styles.errorBox} // Apply CSS module class
         >
-          <h3 className={styles.errorTitle}>Error loading data</h3> {/* Apply CSS module class & remove inline style */}
-          <p>{error.message}</p> {/* Replaced AlertDescription */}
+          <h3 className={styles.errorTitle}>Error loading data</h3>
+          <p>{error.message}</p>
           {onRefresh && (
-            <button // Replaced Button
-              className={styles.actionButton} // Apply button styles
+            <Button // Replaced button
+              variant="outline"
               onClick={onRefresh}
             >
               Retry
-            </button>
+            </Button>
           )}
         </div>
       </PageLayout>
@@ -61,23 +64,23 @@ export function DataPageLayout<T>({
   }
 
   // Empty state
-  if (!data || (Array.isArray(data) && data.length === 0)) {
+  if (!renderChildrenOnEmpty && (!data || (Array.isArray(data) && data.length === 0))) {
     return (
       <PageLayout title={title} subtitle={subtitle}>
          {/* Apply empty box styles */}
         <div
           className={styles.emptyBox} // Apply CSS module class
         >
-          <h3 className={styles.emptyTitle}>No data available</h3> {/* Apply CSS module class & remove inline style */}
-          <p>{emptyMessage}</p> {/* Replaced AlertDescription */}
+          <h3 className={styles.emptyTitle}>No data available</h3>
+          <p>{emptyMessage}</p>
         </div>
         {onRefresh && (
-          <button // Replaced Button
-            className={styles.actionButton} // Apply button styles
+          <Button // Replaced button
+            variant="outline"
             onClick={onRefresh}
           >
             Refresh
-          </button>
+          </Button>
         )}
       </PageLayout>
     );
@@ -94,7 +97,7 @@ export function DataPageLayout<T>({
             {renderHeader()}
           </div>
         )}
-        {renderContent(data)}
+        {children} {/* Replaced renderContent(data) with children */}
       </div>
     </PageLayout>
   );

@@ -1,25 +1,25 @@
 import { useState } from 'react';
 import { DataPageLayout } from '@/components/layout';
-import { DataTable } from '@/components/data-display/DataTable';
-import { useProposals } from '@/hooks/api/useProposals';
+import { DataTable, Column } from '@/components/data-display';
+import { useInfiniteProposals, useProposalStatistics } from '@/hooks/api/useProposals';
+import { Proposal, ProposalFilters } from '@/types/proposals';
 import styles from './Proposals.module.css';
-
-// Define placeholder type for filters
-type ProposalFilters = any;
+import { Button } from '@/components/ui';
 
 export default function Proposals() {
   const [filters] = useState<ProposalFilters>({});
   
   const {
-    data,
+    data: proposals,
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
     isLoading,
+    isError,
     error
-  } = useProposals.useInfiniteList(filters);
+  } = useInfiniteProposals(filters);
 
-  const { data: statistics } = useProposals.useStatistics();
+  const { data: statisticsData, isLoading: isLoadingStats } = useProposalStatistics();
 
   const handleLoadMore = () => {
     if (hasNextPage && !isFetchingNextPage) {
@@ -27,10 +27,7 @@ export default function Proposals() {
     }
   };
 
-  // Flatten pages of data for the table
-  const proposals = data?.pages.flatMap((page: any) => page.data) ?? [];
-
-  const columns = [
+  const columns: Column<Proposal>[] = [
     {
       header: 'Title',
       accessorKey: 'title',
@@ -46,54 +43,54 @@ export default function Proposals() {
     {
       header: 'Created',
       accessorKey: 'createdAt',
-      cell: ({ row }: { row: any }) => new Date(row.original.createdAt).toLocaleDateString(),
+      cell: ({ row }: { row: Proposal }) => 
+        new Date(row.createdAt).toLocaleDateString(),
     },
     {
       header: 'Actions',
-      cell: ({ row }: { row: any }) => (
+      cell: ({ row }: { row: Proposal }) => (
         <div>
-          <button
-            className={styles.actionButton}
-            onClick={() => window.open(row.original.url, '_blank')}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => row.url && window.open(row.url, '_blank')}
           >
             View
-          </button>
+          </Button>
         </div>
       ),
     },
   ];
 
+  const pageError = isError ? (error as Error) : null;
+  const totalProposals = statisticsData?.data?.total ?? 0;
+
   return (
     <DataPageLayout
       title="Proposals"
-      subtitle={`Total: ${statistics?.data.total ?? 0} proposals`}
-      data={proposals}
-      loading={isLoading}
-      error={error}
-      renderHeader={() => (
-        <div>Filters Placeholder (Component Missing)</div>
-      )}
-      renderContent={(pageData) => (
-        <>
-          <DataTable
-            data={pageData}
-            columns={columns as any[]}
-            isLoading={isLoading}
-          />
-          
-          {hasNextPage && (
-            <div className={styles.loadMoreContainer}>
-              <button
-                className={styles.loadMoreButton}
-                onClick={handleLoadMore}
-                disabled={isFetchingNextPage}
-              >
-                {isFetchingNextPage ? 'Loading...' : 'Load More'}
-              </button>
-            </div>
-          )}
-        </>
-      )}
-    />
+      subtitle={`Total: ${totalProposals} proposals`}
+      data={proposals ?? []}
+      loading={isLoading || isLoadingStats}
+      error={pageError}
+    >
+      <>
+        <DataTable
+          data={proposals?.pages.flatMap(page => page.data) ?? []}
+          columns={columns}
+          isLoading={isLoading}
+        />
+        
+        {hasNextPage && (
+          <div className={styles.loadMoreContainer}>
+            <Button
+              onClick={handleLoadMore}
+              disabled={isFetchingNextPage}
+            >
+              {isFetchingNextPage ? 'Loading...' : 'Load More'}
+            </Button>
+          </div>
+        )}
+      </>
+    </DataPageLayout>
   );
 } 

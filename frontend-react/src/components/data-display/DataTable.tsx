@@ -1,8 +1,9 @@
 import React from 'react';
 import styles from './DataTable.module.css'; // Import CSS module
+import { Button } from '@/components/ui'; // Import Button using barrel file
 
 // Define a generic Column type for TanStack Table
-interface Column<TData> {
+export interface Column<TData> {
   accessorKey: keyof TData | string; // Revert accessorKey type
   header: string;
   cell?: (info: { row: TData }) => React.ReactNode; // Correct cell prop type
@@ -171,23 +172,25 @@ export function DataTable<T>({
           {/* Page Navigation */}
           <div className={styles.pageNavWrapper}>
             <div className={styles.pageNavInner}>
-                <button
+                <Button // Replaced button
+                  variant="outline"
                   onClick={() => handlePageChange(Math.max(1, pagination.page - 1))}
                   disabled={pagination.page <= 1}
-                  className={styles.pageButton}
+                  // className={styles.pageButton} // Removed local style
                 >
                   Previous
-                </button>
+                </Button>
                 <span className={styles.pageInfo}>
                     Page {pagination.page} of {pagination.totalPages}
                 </span>
-                <button
+                <Button // Replaced button
+                  variant="outline"
                   onClick={() => handlePageChange(Math.min(pagination.totalPages, pagination.page + 1))}
                   disabled={pagination.page >= pagination.totalPages}
-                  className={styles.pageButton}
+                  // className={styles.pageButton} // Removed local style
                 >
                   Next
-                </button>
+                </Button>
             </div>
           </div>
 

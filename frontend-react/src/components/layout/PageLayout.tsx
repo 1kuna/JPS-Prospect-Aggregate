@@ -6,7 +6,6 @@ interface PageLayoutProps {
   description?: string;
   subtitle?: string;
   children: React.ReactNode;
-  isLoading?: boolean;
 }
 
 export function PageLayout({ 
@@ -14,7 +13,6 @@ export function PageLayout({
   description,
   subtitle,
   children, 
-  isLoading = false 
 }: PageLayoutProps) {
   return (
     <div className={styles.pageLayoutContainer}>
@@ -29,7 +27,7 @@ export function PageLayout({
           <p className={styles.pageDescription}>{description}</p>
         )}
       </div>
-      {isLoading ? <PageSkeleton /> : children}
+      {children}
     </div>
   );
 }

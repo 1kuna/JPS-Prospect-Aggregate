@@ -1,20 +1,17 @@
-import { DataPageLayout } from '@/components/layout';
+import { PageLayout } from '@/components/layout';
 
 export default function Dashboard() {
-  // Placeholder data
-  const isLoading = false;
+  // const isLoading = false; // This isLoading is not directly used by PageLayout here
 
   return (
-    <DataPageLayout
+    <PageLayout
       title="Dashboard"
       subtitle="Overview of your data collection system"
-      data={null}
-      loading={isLoading}
-      renderContent={() => (
-        <div className="space-y-6">
-          <div>Dashboard content temporarily removed due to missing components.</div>
-        </div>
-      )}
-    />
+    >
+      {/* TODO: Implement dashboard components */}
+      <div>
+        <div>Dashboard content will be here.</div>
+      </div>
+    </PageLayout>
   );
 } 

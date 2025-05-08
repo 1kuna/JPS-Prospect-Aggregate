@@ -3,6 +3,7 @@ import { DataPageLayout } from '@/components/layout';
 import { useExecuteQuery } from '@/hooks/api/useDatabase';
 import styles from './DirectDatabaseAccess.module.css';
 import { DatabaseOperations } from '@/components/DatabaseOperations';
+import { Button } from '@/components/ui';
 
 export default function DirectDatabaseAccess() {
   const [query, setQuery] = useState('');
@@ -50,52 +51,50 @@ export default function DirectDatabaseAccess() {
           </p>
         </div>
       )}
-      renderContent={() => (
-        <div className={styles.contentWrapper}>
-          <div>
-            <label htmlFor="query" className={styles.queryLabel}>
-              SQL Query
-            </label>
-            <textarea
-              id="query"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="SELECT * FROM proposals LIMIT 10;"
-              className={styles.queryTextarea}
-            />
-          </div>
-          
-          <div className={styles.buttonGroup}>
-            <button
-              onClick={handleExecute}
-              disabled={!query.trim() || isLoading}
-              className={styles.actionButton}
-            >
-              {isLoading ? 'Executing...' : 'Execute Query'}
-            </button>
-            <button
-              onClick={handleClear}
-              disabled={!query && !results}
-              className={styles.actionButton}
-            >
-              Clear
-            </button>
-          </div>
-
-          {results && (
-            <div className={styles.resultsWrapper}>
-              <h3 className={styles.resultsTitle}>Results</h3>
-              <pre className={styles.resultsPre}>
-                {results}
-              </pre>
-            </div>
-          )}
-
-          <div className={styles.operationsWrapper}>
-            <DatabaseOperations />
-          </div>
+    >
+      <div className={styles.contentWrapper}>
+        <div>
+          <label htmlFor="query" className={styles.queryLabel}>
+            SQL Query
+          </label>
+          <textarea
+            id="query"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="SELECT * FROM proposals LIMIT 10;"
+            className={styles.queryTextarea}
+          />
         </div>
-      )}
-    />
+        
+        <div className={styles.buttonGroup}>
+          <Button
+            onClick={handleExecute}
+            disabled={!query.trim() || isLoading}
+          >
+            {isLoading ? 'Executing...' : 'Execute Query'}
+          </Button>
+          <Button
+            variant="outline"
+            onClick={handleClear}
+            disabled={!query && !results}
+          >
+            Clear
+          </Button>
+        </div>
+
+        {results && (
+          <div className={styles.resultsWrapper}>
+            <h3 className={styles.resultsTitle}>Results</h3>
+            <pre className={styles.resultsPre}>
+              {results}
+            </pre>
+          </div>
+        )}
+
+        <div className={styles.operationsWrapper}>
+          <DatabaseOperations />
+        </div>
+      </div>
+    </DataPageLayout>
   );
 } 

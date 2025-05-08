@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button } from '@/components/ui/button';
+import { Button } from '@/components/ui';
 import {
   useDatabaseStatus,
   useDatabaseBackups,
@@ -24,25 +24,11 @@ export function DatabaseOperations() {
   const { mutate: restoreBackup, isLoading: isRestoring } = useRestoreBackup();
 
   const handleRebuild = () => {
-    rebuildDatabase(undefined, {
-      onSuccess: () => {
-        // Intentionally empty
-      },
-      onError: () => {
-        // Intentionally empty
-      }
-    });
+    rebuildDatabase();
   };
 
   const handleInitialize = () => {
-    initializeDatabase(undefined, {
-      onSuccess: () => {
-        // Intentionally empty
-      },
-      onError: () => {
-        // Intentionally empty
-      }
-    });
+    initializeDatabase();
   };
 
   const handleReset = () => {
@@ -64,25 +50,11 @@ export function DatabaseOperations() {
   };
 
   const handleCreateBackup = () => {
-    createBackup(undefined, {
-      onSuccess: () => {
-        // Intentionally empty
-      },
-      onError: () => {
-        // Intentionally empty
-      }
-    });
+    createBackup();
   };
 
   const handleRestoreBackup = (backupId: string) => {
-    restoreBackup({ backupId }, {
-      onSuccess: () => {
-        // Intentionally empty
-      },
-      onError: () => {
-        // Intentionally empty
-      }
-    });
+    restoreBackup({ backupId });
   };
 
   const isLoading = statusLoading || backupsLoading || isRebuilding || 

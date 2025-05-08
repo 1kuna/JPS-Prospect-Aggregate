@@ -1,16 +1,19 @@
 export interface Proposal {
-  id: number;
+  id: string | number;
   title: string;
   status: ProposalStatus;
-  dataSourceId: number;
+  dataSource?: {
+    id: string | number;
+    name: string;
+  };
+  dataSourceId?: number;
   createdAt: string;
-  updatedAt: string;
-  // Add other proposal-specific fields
+  updatedAt?: string;
+  url?: string;
   search?: string;
 }
 
-// Enum for Proposal Status (assuming these are possible statuses)
-enum ProposalStatus {
+export enum ProposalStatus {
   DRAFT = 'Draft',
   SUBMITTED = 'Submitted',
   REVIEW = 'In Review',
