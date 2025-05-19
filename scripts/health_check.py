@@ -3,8 +3,9 @@ import sys
 import time
 import datetime
 
-from app.database.connection import session_scope
-from app.models import DataSource, ScraperStatus
+# from app.database.connection import session_scope # Removed
+from app.models import db, DataSource, ScraperStatus # Added db
+from app import create_app # Added for app context
 from app.config import LOGS_DIR
 from app.utils.logger import logger, cleanup_logs
 from app.core.scrapers.acquisition_gateway import AcquisitionGatewayScraper
@@ -67,33 +68,37 @@ def check_scraper_health(scraper_instance, source_name):
     response_time = time.time() - start_time
     logger.info(f"Health check for {source_name} completed in {response_time:.2f} seconds with status: {status}")
     
-    # Update the database
-    with session_scope() as session:
-        # Get the data source
-        data_source = session.query(DataSource).filter_by(name=source_name).first()
-        if data_source:
-            # Check if there's an existing status record
-            status_record = session.query(ScraperStatus).filter_by(source_id=data_source.id).first()
-            if status_record:
-                # Update existing record
-                status_record.status = status
-                status_record.last_checked = datetime.datetime.utcnow()
-                status_record.error_message = error_message
-                status_record.response_time = response_time
-                logger.info(f"Updated existing status record for {source_name}")
-            else:
-                # Create new record
-                new_status = ScraperStatus(
-                    source_id=data_source.id,
-                    status=status,
-                    last_checked=datetime.datetime.utcnow(),
-                    error_message=error_message,
-                    response_time=response_time
-                )
-                session.add(new_status)
-                logger.info(f"Created new status record for {source_name}")
+    # Update the database within app context
+    # session_scope is replaced by using db.session directly within an app_context
+    # The app_context should ideally be managed around the call to check_scraper_health
+    # or around a group of such calls (e.g., in check_all_scrapers).
+    # For a standalone script, it's often cleaner to wrap the main logic.
+
+    # The following block will be moved to a context-managed call or assume context exists.
+    # For now, we assume this function is called within an app_context managed by its caller.
+    session = db.session
+    data_source = session.query(DataSource).filter_by(name=source_name).first()
+    if data_source:
+        status_record = session.query(ScraperStatus).filter_by(source_id=data_source.id).first()
+        if status_record:
+            status_record.status = status
+            status_record.last_checked = datetime.datetime.utcnow()
+            status_record.error_message = error_message
+            # status_record.response_time = response_time # Assuming response_time column exists
+            logger.info(f"Updated existing status record for {source_name}")
         else:
-            logger.warning(f"Data source not found for {source_name}")
+            new_status = ScraperStatus(
+                source_id=data_source.id,
+                status=status,
+                last_checked=datetime.datetime.utcnow(),
+                error_message=error_message,
+                # response_time=response_time # Assuming response_time column exists
+            )
+            session.add(new_status)
+            logger.info(f"Created new status record for {source_name}")
+        session.commit() # Commit changes for this health check
+    else:
+        logger.warning(f"Data source not found for {source_name}")
     
     return {
         "source_name": source_name,
@@ -156,4 +161,6 @@ def check_all_scrapers():
 
 if __name__ == "__main__":
     """Run health checks when script is executed directly"""
-    check_all_scrapers() 
+    app = create_app()
+    with app.app_context(): # Manage app context here for standalone run
+        check_all_scrapers() 

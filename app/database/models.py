@@ -1,32 +1,31 @@
 import os
-from sqlalchemy import (create_engine, Column, String, Text, 
+from sqlalchemy import (Column, String, Text,
                           Numeric, Date, TIMESTAMP, JSON, Index,
-                          ForeignKey, Float, Integer)
-from sqlalchemy.orm import sessionmaker, declarative_base, relationship
+                          ForeignKey, Float, Integer) # Keep create_engine for now, might be used by create_tables
+from sqlalchemy.orm import relationship # remove sessionmaker, declarative_base
 from sqlalchemy.sql import func
 import logging
+from app.database import db # Import db from flask_sqlalchemy instance
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# Use declarative_base() for modern SQLAlchemy
-Base = declarative_base()
+# Base = declarative_base() # Remove: Use db.Model as the base
 
-class Prospect(Base):
-    __tablename__ = 'prospects'
+class Prospect(db.Model): # Renamed back to Prospect
+    __tablename__ = 'prospects' # Renamed back to prospects
 
     id = Column(String, primary_key=True)  # Generated MD5 hash
-    source = Column(String, nullable=False, index=True)
     native_id = Column(String, index=True)
-    requirement_title = Column(Text)
-    requirement_description = Column(Text)
+    title = Column(Text)
+    description = Column(Text)
+    agency = Column(Text)
     naics = Column(String, index=True)
     estimated_value = Column(Numeric)
     est_value_unit = Column(String)
-    solicitation_date = Column(Date, index=True)
+    release_date = Column(Date, index=True)
     award_date = Column(Date, index=True)
     award_fiscal_year = Column(Integer, index=True, nullable=True)
-    office = Column(Text)
     place_city = Column(Text)
     place_state = Column(Text)
     place_country = Column(Text)
@@ -35,25 +34,58 @@ class Prospect(Base):
     loaded_at = Column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now(), index=True)
     extra = Column(JSON)
 
-    # Optional: Add __repr__ for better debugging
+    # Foreign Key to DataSource
+    source_id = Column(Integer, ForeignKey('data_sources.id'), nullable=True, index=True)
+    data_source = relationship("DataSource", back_populates="prospects") # Renamed back
+
+    # Relationship to InferredProposalData (one-to-one)
+    inferred_data = relationship(
+        "InferredProspectData", # Renamed back
+        back_populates="prospect", # Renamed back
+        uselist=False,
+        cascade="all, delete-orphan"
+    )
+
     def __repr__(self):
-        return f"<Prospect(id='{self.id}', source='{self.source}', title='{self.requirement_title[:30]}...')>"
+        return f"<Prospect(id='{self.id}', source_id='{self.source_id}', title='{self.title[:30] if self.title else ''}...')>" # Renamed from Prospect
 
-class InferredProspectData(Base):
-    __tablename__ = 'inferred_prospect_data'
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "native_id": self.native_id,
+            "title": self.title,
+            "description": self.description,
+            "agency": self.agency,
+            "naics": self.naics,
+            "estimated_value": str(self.estimated_value) if self.estimated_value is not None else None,
+            "est_value_unit": self.est_value_unit,
+            "release_date": self.release_date.isoformat() if self.release_date else None,
+            "award_date": self.award_date.isoformat() if self.award_date else None,
+            "award_fiscal_year": self.award_fiscal_year,
+            "place_city": self.place_city,
+            "place_state": self.place_state,
+            "place_country": self.place_country,
+            "contract_type": self.contract_type,
+            "set_aside": self.set_aside,
+            "loaded_at": self.loaded_at.isoformat() if self.loaded_at else None,
+            "extra": self.extra,
+            "source_id": self.source_id,
+            "source_name": self.data_source.name if self.data_source else None,
+            # Add inferred data if needed in the future
+            # "inferred_data": self.inferred_data.to_dict() if self.inferred_data else None
+        }
 
-    prospect_id = Column(String, ForeignKey('prospects.id'), primary_key=True)
+class InferredProspectData(db.Model): # Renamed back
+    __tablename__ = 'inferred_prospect_data' # Renamed back
+
+    prospect_id = Column(String, ForeignKey('prospects.id'), primary_key=True) # Renamed back
     inferred_requirement_title = Column(Text, nullable=True)
     inferred_requirement_description = Column(Text, nullable=True)
     inferred_naics = Column(String, nullable=True)
-    # Use Float for inferred numeric values, matching the schema created by the temp script
-    # SQLAlchemy Numeric requires precision/scale, Float is simpler for SQLite/general use here
-    inferred_estimated_value = Column(Float, nullable=True) 
+    inferred_estimated_value = Column(Float, nullable=True)
     inferred_est_value_unit = Column(String, nullable=True)
-    # Store inferred dates as Text for flexibility, consistent with temp script
     inferred_solicitation_date = Column(Text, nullable=True)
     inferred_award_date = Column(Text, nullable=True)
-    inferred_office = Column(Text, nullable=True)
     inferred_place_city = Column(Text, nullable=True)
     inferred_place_state = Column(Text, nullable=True)
     inferred_place_country = Column(Text, nullable=True)
@@ -62,44 +94,84 @@ class InferredProspectData(Base):
     inferred_at = Column(TIMESTAMP(timezone=False), server_default=func.now(), onupdate=func.now())
     inferred_by_model = Column(String, nullable=True)
 
-    # Define the relationship back to Prospect (optional but useful for ORM queries)
-    prospect = relationship("Prospect", back_populates="inferred_data")
+    # Define the relationship back to Proposal
+    prospect = relationship("Prospect", back_populates="inferred_data") # Renamed back
 
     def __repr__(self):
-        return f"<InferredProspectData(prospect_id='{self.prospect_id}')>"
+        return f"<InferredProspectData(prospect_id='{self.prospect_id}')>" # Renamed from InferredProspectData
 
-# Need to add the corresponding relationship in the Prospect model
-Prospect.inferred_data = relationship(
-    "InferredProspectData", 
-    back_populates="prospect", 
-    uselist=False, # One-to-one relationship
-    cascade="all, delete-orphan" # Optional: delete inferred data if prospect is deleted
-)
+# The relationship on Proposal model for inferred_data is already defined above.
 
-# Example of how to add explicit indexes if not using inline index=True
-# Index('idx_prospects_source', Prospect.source)
-# Index('idx_prospects_native_id', Prospect.native_id)
-# Index('idx_prospects_naics', Prospect.naics)
-# Index('idx_prospects_award_date', Prospect.award_date)
-# Index('idx_prospects_solicitation_date', Prospect.solicitation_date)
+class DataSource(db.Model): # Changed from Base to db.Model
+    __tablename__ = 'data_sources'
 
-def create_tables(engine):
-    """Creates all tables defined in the Base metadata."""
-    try:
-        logging.info("Attempting to create tables...")
-        Base.metadata.create_all(engine)
-        logging.info("Tables checked/created successfully.")
-    except Exception as e:
-        logging.error(f"Error creating tables: {e}", exc_info=True)
-        raise
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String, nullable=False, unique=True, index=True)
+    url = Column(String, nullable=True)
+    description = Column(Text, nullable=True)
+    last_scraped = Column(TIMESTAMP(timezone=True), nullable=True)
+    frequency = Column(String, nullable=True) # e.g., 'daily', 'weekly'
 
-# You might want a function to get the engine from session.py
-# or handle engine creation directly where needed.
-# from .session import engine # Example if engine is defined in session.py
+    status_records = relationship("ScraperStatus", back_populates="data_source", cascade="all, delete-orphan")
+    prospects = relationship("Prospect", back_populates="data_source") # Renamed back
+
+    def __repr__(self):
+        return f"<DataSource(id={self.id}, name='{self.name}')>"
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "name": self.name,
+            "url": self.url,
+            "description": self.description,
+            "last_scraped": self.last_scraped.isoformat() if self.last_scraped else None,
+            "frequency": self.frequency
+        }
+
+class ScraperStatus(db.Model): # Changed from Base to db.Model
+    __tablename__ = 'scraper_status'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    source_id = Column(Integer, ForeignKey('data_sources.id'), nullable=False, index=True)
+    status = Column(String, nullable=True) # e.g., 'working', 'failed', 'pending'
+    last_checked = Column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now())
+    details = Column(Text, nullable=True) # For error messages or other info
+
+    data_source = relationship("DataSource", back_populates="status_records")
+
+    def __repr__(self):
+        return f"<ScraperStatus(id={self.id}, source_id={self.source_id}, status='{self.status}')>"
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "source_id": self.source_id,
+            "status": self.status,
+            "last_checked": self.last_checked.isoformat() if self.last_checked else None,
+            "details": self.details
+        }
+
+# Removed Index definitions as index=True is used inline.
+
+# The create_tables function is generally not used with Flask-Migrate/Alembic
+# for schema evolution after initial setup. It's more for initial creation or tests.
+# Flask-SQLAlchemy's db.create_all() would be used, typically within an app context.
+# def create_tables():
+#     """Creates all tables defined in db.metadata."""
+#     try:
+#         logging.info("Attempting to create tables using db.create_all()...")
+#         # Ensure this is called within a Flask app context if using db.create_all()
+#         # For example:
+#         # from flask import current_app
+#         # with current_app.app_context():
+#         #     db.create_all()
+#         # logging.info("Tables checked/created successfully.")
+#         logging.warning("create_tables function is commented out. Use Flask-Migrate for schema management.")
+#     except Exception as e:
+#         logging.error(f"Error creating tables: {e}", exc_info=True)
+#         raise
+
+# Example of how to get engine if needed elsewhere, though db.engine is available in app context.
 # if __name__ == "__main__":
-#     # This would require database connection setup
-#     # For demonstration purposes only
-#     # DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://user:password@host:port/database')
-#     # engine = create_engine(DATABASE_URL)
-#     # create_tables(engine)
+#     # This block is unlikely to work directly without a Flask app context for db
 #     pass 

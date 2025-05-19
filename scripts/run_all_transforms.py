@@ -13,15 +13,17 @@ if str(project_root) not in sys.path:
 # --- End Path Setup ---
 
 # --- Import Database Components ---
-# Import engine and Base BEFORE other imports that might use them indirectly
-try:
-    from app.database.session import engine # Get the configured engine
-    from app.database.models import Base    # Get the base class for models
-except ImportError as e:
-    logging.basicConfig() # Ensure logging is configured even if imports fail early
-    logging.error(f"Failed to import database components (engine, Base): {e}", exc_info=True)
-    logging.error("Ensure database session and models are correctly defined.")
-    sys.exit(1)
+# Import necessary components after ORM consolidation
+from app import create_app # To create an app context
+from app.models import db    # The Flask-SQLAlchemy instance
+# try: # Old imports removed
+#     from app.database.session import engine # Get the configured engine
+#     from app.database.models import Base    # Get the base class for models
+# except ImportError as e:
+#     logging.basicConfig() # Ensure logging is configured even if imports fail early
+#     logging.error(f"Failed to import database components (engine, Base): {e}", exc_info=True)
+#     logging.error("Ensure database session and models are correctly defined.")
+#     sys.exit(1)
 # --- End DB Imports ---
 
 # --- Logging Setup ---
@@ -84,19 +86,18 @@ def run_single_transform(transform_func):
 def main():
     """Main function to run all transformations sequentially."""
     
-    # --- Ensure Database Tables Exist ---
-    logger.info("Checking and creating database tables if necessary...")
-    try:
-        if engine:
-            Base.metadata.create_all(bind=engine)
+    app = create_app() # Create a Flask app instance
+    with app.app_context(): # Push an application context
+        # --- Ensure Database Tables Exist ---
+        logger.info("Checking and creating database tables if necessary...")
+        try:
+            # engine is now db.engine, and Base.metadata is db.metadata
+            db.create_all() # Creates tables based on models registered with db
             logger.info("Database tables checked/created successfully.")
-        else:
-            logger.error("Database engine is not available. Cannot create tables.")
+        except Exception as e:
+            logger.error(f"Error creating database tables: {e}", exc_info=True)
             sys.exit(1)
-    except Exception as e:
-        logger.error(f"Error creating database tables: {e}", exc_info=True)
-        sys.exit(1)
-    # --- End Table Creation ---
+        # --- End Table Creation ---
     
     logger.info(">>> Starting all data transformations <<<")
     overall_start_time = time.time()

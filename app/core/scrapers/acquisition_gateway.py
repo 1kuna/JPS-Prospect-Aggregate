@@ -24,8 +24,7 @@ from playwright_stealth import stealth_sync
 
 # Local application imports
 from app.core.base_scraper import BaseScraper
-from app.database.connection import session_scope, get_db as db_session
-from app.models import Proposal, ScraperStatus, DataSource
+from app.models import Prospect, ScraperStatus, DataSource, db
 from app.config import LOGS_DIR, RAW_DATA_DIR, ACQUISITION_GATEWAY_URL, PAGE_NAVIGATION_TIMEOUT
 from app.exceptions import ScraperError
 from app.utils.file_utils import ensure_directory, find_files

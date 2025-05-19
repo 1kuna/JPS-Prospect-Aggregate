@@ -20,7 +20,7 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 # Local application imports
 from app.core.base_scraper import BaseScraper
-from app.models import Proposal
+from app.database.models import Prospect, DataSource, ScraperStatus
 from app.exceptions import ScraperError
 from app.utils.logger import logger
 from app.utils.db_utils import update_scraper_status

@@ -27,8 +27,8 @@ from playwright.sync_api import sync_playwright, Browser, Page, Playwright, Brow
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 # Local application imports
-from app.database.connection import get_db, session_scope
-from app.models import DataSource
+# from app.database.connection import get_db, session_scope # Removed dead import
+from app.models import DataSource, db # Added db for potential direct use
 from app.exceptions import ScraperError
 from app.config import LOGS_DIR, RAW_DATA_DIR, LOG_FORMAT, LOG_FILE_MAX_BYTES, LOG_FILE_BACKUP_COUNT
 from app.utils.file_utils import clean_old_files, find_files, ensure_directory
@@ -493,17 +493,21 @@ class BaseScraper(ABC):
             # Run the processing phase
             if process_func and result["data"]:
                 self.logger.info("Running processing phase")
-                # Add session scope and data source retrieval
-                from app.database.connection import session_scope
-                from app.models import DataSource
-                with session_scope() as session:
-                    data_source = self.get_or_create_data_source(session)
-                    if not data_source:
-                        raise ScraperError(f"Could not find or create DataSource for {self.source_name}")
-                    
-                    # Pass session and data_source to process_func
-                    processed_data = process_func(result["data"], session, data_source)
-                    result["data"] = processed_data
+                # Use db.session directly
+                # from app.database.connection import session_scope # Removed
+                from app.models import DataSource # db is already imported at the top
+                
+                # Flask-SQLAlchemy's db.session is typically managed by the app context,
+                # so a 'with' block for the session itself isn't usually needed here.
+                # Operations will be part of the current session.
+                session = db.session
+                data_source = self.get_or_create_data_source(session)
+                if not data_source:
+                    raise ScraperError(f"Could not find or create DataSource for {self.source_name}")
+                
+                # Pass session and data_source to process_func
+                processed_data = process_func(result["data"], session, data_source)
+                result["data"] = processed_data
             
             result["success"] = True
             self.logger.info(f"Structured scraping for {self.source_name} completed successfully")

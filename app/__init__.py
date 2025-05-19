@@ -7,6 +7,7 @@ This module creates and configures the Flask application.
 from flask import Flask
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
+from flask_migrate import Migrate
 from app.config import config_by_name as config
 from app.database import db  # Import the db instance from database.py
 # Logging is configured automatically on import of app.utils.logger
@@ -24,6 +25,12 @@ def create_app(config_name='default'):
     # Initialize extensions
     CORS(app, resources={r'/api/*': {'origins': '*'}}) # Configure origins properly for production
     db.init_app(app) # Initialize SQLAlchemy with the app
+
+    # Initialize Flask-Migrate
+    migrate = Migrate(app, db)
+
+    # Import models here to ensure they are registered with SQLAlchemy
+    from app import models # noqa
 
     # Register blueprints
     from app.api import api as api_blueprint

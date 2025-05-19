@@ -19,17 +19,15 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 # Local application imports
 from app.core.base_scraper import BaseScraper
-# Proposal model likely not needed if just downloading
-# from app.models import Proposal
 from app.exceptions import ScraperError
 from app.utils.logger import logger
-from app.utils.db_utils import update_scraper_status # Keep for commented out code
+from app.utils.db_utils import update_scraper_status, get_data_source_id_by_name
 # We need to add COMMERCE_FORECAST_URL to config.py
 from app.config import COMMERCE_FORECAST_URL 
 from app.utils.scraper_utils import (
-    # check_url_accessibility, # Removed this check
-    # download_file, # Not directly used
-    # save_permanent_copy, # Not directly used
+    check_url_accessibility,
+    download_file,
+    save_permanent_copy,
     handle_scraper_error
 )
 

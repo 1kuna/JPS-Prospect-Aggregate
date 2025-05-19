@@ -5,10 +5,10 @@ JPS Prospect Aggregate - Data Collectors Package
 from app.core.base_scraper import BaseScraper
 from .acquisition_gateway import AcquisitionGatewayScraper
 from .doc_scraper import DocScraper
-from .dhs_scraper import DhsScraper
-from .doj_scraper import DojScraper
-from .dos_scraper import DosScraper
-from .hhs_forecast import HhsForecastScraper
+from .dhs_scraper import DHSForecastScraper as DhsScraper
+from .doj_scraper import DOJForecastScraper as DojScraper
+from .dos_scraper import DOSForecastScraper as DosScraper
+from .hhs_forecast import HHSForecastScraper as HhsForecastScraper
 from .ssa_scraper import SsaScraper
 from .treasury_scraper import TreasuryScraper
 from .dot_scraper import DotScraper

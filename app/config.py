@@ -36,7 +36,9 @@ TREASURY_FORECAST_URL = "https://osdbu.forecast.treasury.gov/"
 DOT_FORECAST_URL = "https://www.transportation.gov/osdbu/procurement-assistance/summary-forecast"
 
 # Database configuration
-DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{os.path.join(DATA_DIR, 'proposals.db')}")
+# Use an absolute path for the SQLite database
+DEFAULT_DB_PATH = os.path.join(BASE_DIR, 'jps.db')
+DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{DEFAULT_DB_PATH}")
 
 # Redis configuration
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
