@@ -33,8 +33,15 @@ def create_app(config_name='default'):
     from app import models # noqa
 
     # Register blueprints
-    from app.api import api as api_blueprint
-    app.register_blueprint(api_blueprint)
+    from app.api.main import main_bp
+    from app.api.proposals import proposals_bp
+    from app.api.data_sources import data_sources_bp
+    from app.api.scrapers import scrapers_bp
+
+    app.register_blueprint(main_bp, url_prefix='/api')
+    app.register_blueprint(proposals_bp, url_prefix='/api/proposals')
+    app.register_blueprint(data_sources_bp, url_prefix='/api/data-sources')
+    app.register_blueprint(scrapers_bp, url_prefix='/api/data-sources') # Scraper routes are under data-sources
 
     # Register error handlers if defined in api.errors
     try:
