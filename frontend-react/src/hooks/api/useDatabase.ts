@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from 'react-query';
+import { keepPreviousData, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 const API_BASE_URL = '/api/database'; // Base URL for database operations
 
@@ -115,11 +115,16 @@ const dbQueryKeys = {
 // --- React Query Hooks ---
 
 export const useDatabaseStatus = () => {
+  // No placeholderData needed for a single status object typically
   return useQuery<DatabaseStatus, Error>(dbQueryKeys.status(), fetchDatabaseStatusAPI);
 };
 
 export const useDatabaseBackups = () => {
-  return useQuery<DatabaseBackup[], Error>(dbQueryKeys.backups(), fetchDatabaseBackupsAPI);
+  return useQuery<DatabaseBackup[], Error>(
+    dbQueryKeys.backups(), 
+    fetchDatabaseBackupsAPI,
+    { placeholderData: keepPreviousData } // Added placeholderData for better UX
+  );
 };
 
 export const useRebuildDatabase = () => {

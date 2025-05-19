@@ -1,4 +1,4 @@
-import { useQuery, useInfiniteQuery, useQueryClient, useMutation } from 'react-query';
+import { useQuery, useInfiniteQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { Proposal, ProposalFilters, ProposalStatistics, ProposalStatus } from '@/types/proposals';
 
 // Placeholder API base URL

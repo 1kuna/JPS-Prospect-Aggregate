@@ -2,15 +2,15 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App.tsx'
 import './index.css'
-import { BrowserRouter } from 'react-router-dom'
-import { AppProviders } from './contexts/AppContexts.tsx'
+// import { BrowserRouter } from 'react-router-dom' // Keep the import for now, or remove if not used elsewhere
+import { AppProviders } from '@/contexts/AppContexts.tsx'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <BrowserRouter>
+    {/* <BrowserRouter> */}
       <AppProviders>
         <App />
       </AppProviders>
-    </BrowserRouter>
+    {/* </BrowserRouter> */}
   </React.StrictMode>,
 )
