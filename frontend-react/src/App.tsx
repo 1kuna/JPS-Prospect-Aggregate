@@ -19,21 +19,8 @@ const queryClient = new QueryClient();
 function App() {
   // Effect to toggle .dark class on <html> based on OS/browser preference
   useEffect(() => {
-    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-    const handleChange = () => {
-      if (mediaQuery.matches) {
-        document.documentElement.classList.add('dark');
-      } else {
-        document.documentElement.classList.remove('dark');
-      }
-    };
-
-    handleChange(); // Set initial theme
-    mediaQuery.addEventListener('change', handleChange);
-
-    return () => {
-      mediaQuery.removeEventListener('change', handleChange);
-    };
+    // Ensure the .dark class is not present if we're forcing light mode
+    document.documentElement.classList.remove('dark');
   }, []);
 
   return (

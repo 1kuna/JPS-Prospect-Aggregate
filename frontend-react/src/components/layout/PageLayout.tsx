@@ -22,15 +22,15 @@ export function PageLayout({
       <div className="mb-4"> {/* Basic spacing for header content */} 
         {title && (
           // Consider replacing with Tailwind classes: e.g., "text-3xl font-bold tracking-tight mb-1"
-          <h1 className="text-2xl font-semibold text-gray-900 dark:text-white">{title}</h1>
+          <h1 className="text-gray-900 text-2xl font-semibold">{title}</h1>
         )}
         {subtitle && (
           // Consider replacing with Tailwind classes: e.g., "text-sm text-gray-600 dark:text-gray-400"
-          <p className="text-sm text-gray-500 dark:text-gray-400">{subtitle}</p>
+          <p className="text-sm text-gray-600">{subtitle}</p>
         )}
         {description && (
           // Consider replacing with Tailwind classes
-          <p className="text-gray-700 dark:text-gray-300">{description}</p>
+          <p className="text-gray-700">{description}</p>
         )}
       </div>
       <main>{children}</main> {/* Wrapped children in <main> for semantics */} 
