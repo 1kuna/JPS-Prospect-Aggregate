@@ -15,15 +15,15 @@ from .dot_scraper import DotScraper
 
 # Dictionary mapping agency names to scraper classes
 SCRAPERS = {
-    "Acquisition Gateway": AcquisitionGatewayScraper,
-    "Department of Commerce": DocScraper,
-    "Department of Homeland Security": DhsScraper,
-    "Department of Justice": DojScraper,
-    "Department of State": DosScraper,
-    "Department of Health and Human Services": HhsForecastScraper,
-    "Social Security Administration": SsaScraper,
-    "Treasury Forecast": TreasuryScraper,
-    "DOT Forecast": DotScraper,
+    "acq_gateway": AcquisitionGatewayScraper,
+    "doc": DocScraper,
+    "dhs": DhsScraper,
+    "doj": DojScraper,
+    "dos": DosScraper,
+    "hhs": HhsForecastScraper,
+    "ssa": SsaScraper,
+    "treasury": TreasuryScraper,
+    "dot": DotScraper,
 }
 
 # Explicitly define what is exported when using 'from app.core.scrapers import *'

@@ -2,8 +2,7 @@ import datetime
 from app.models import db, DataSource, ScraperStatus
 from app.exceptions import NotFoundError, ScraperError, DatabaseError
 from app.utils.logger import logger
-from app.core.scrapers.acquisition_gateway import AcquisitionGatewayScraper
-from app.core.scrapers.ssa_scraper import SsaScraper
+from app.core.scrapers import SCRAPERS # Import the central SCRAPERS registry
 
 # Set up logging using the centralized utility
 logger = logger.bind(name="services.scraper_service")
@@ -17,16 +16,12 @@ class ScraperService:
             if not data_source:
                 raise NotFoundError(f"Data source with ID {source_id} not found.")
 
-            scraper_instance = None
-            scraper_name_map = {
-                "Acquisition Gateway": AcquisitionGatewayScraper,
-                "SSA Forecast": SsaScraper,
-                # Add other scrapers here
-            }
-            
-            ScraperClass = scraper_name_map.get(data_source.name)
+            if not data_source.scraper_key:
+                raise ScraperError(f"Data source {data_source.name} (ID: {source_id}) does not have a scraper_key configured.")
+
+            ScraperClass = SCRAPERS.get(data_source.scraper_key)
             if not ScraperClass:
-                raise ScraperError(f"No scraper configured for data source: {data_source.name}")
+                raise ScraperError(f"No scraper configured for scraper_key: '{data_source.scraper_key}' for data source: {data_source.name}")
 
             scraper_instance = ScraperClass()
             

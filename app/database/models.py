@@ -109,6 +109,7 @@ class DataSource(db.Model): # Changed from Base to db.Model
     name = Column(String, nullable=False, unique=True, index=True)
     url = Column(String, nullable=True)
     description = Column(Text, nullable=True)
+    scraper_key = Column(String, nullable=True, index=True) # New column
     last_scraped = Column(TIMESTAMP(timezone=True), nullable=True)
     frequency = Column(String, nullable=True) # e.g., 'daily', 'weekly'
 
@@ -124,6 +125,7 @@ class DataSource(db.Model): # Changed from Base to db.Model
             "name": self.name,
             "url": self.url,
             "description": self.description,
+            "scraper_key": self.scraper_key, # Added scraper_key
             "last_scraped": self.last_scraped.isoformat() if self.last_scraped else None,
             "frequency": self.frequency
         }
