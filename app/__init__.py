@@ -14,7 +14,6 @@ from app.database import db  # Import the db instance from database.py
 
 # Setup logging as early as possible
 # Logging is configured automatically on import of app.utils.logger
-# setup_logging()
 
 def create_app(config_name='default'):
     """Create and configure an instance of the Flask application."""

@@ -230,13 +230,3 @@ export function useDeleteProposal() {
     }
   );
 }
-
-/* The following comment is outdated and can be removed.
-// The following hooks are automatically created by createEntityHooks:
-// - useProposals().useList() - Get list of proposals with pagination
-// - useProposals().useGet(id) - Get single proposal
-// - useProposals().useCreate() - Create new proposal
-// - useProposals().useUpdate(id) - Update proposal
-// - useProposals().useDelete(id) - Delete proposal
-// - useProposals().useInfiniteList() - Get infinite-loading list 
-*/ 

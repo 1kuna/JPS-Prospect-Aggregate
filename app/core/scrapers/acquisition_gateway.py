@@ -18,7 +18,6 @@ if _project_root not in sys.path:
 
 # Third-party imports
 import requests
-from bs4 import BeautifulSoup
 import pandas as pd # Add pandas
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError, sync_playwright
 from playwright_stealth import stealth_sync
@@ -29,15 +28,9 @@ from app.core.base_scraper import BaseScraper
 from app.models import Prospect, ScraperStatus, DataSource, db
 from app.config import LOGS_DIR, RAW_DATA_DIR, ACQUISITION_GATEWAY_URL, PAGE_NAVIGATION_TIMEOUT
 from app.exceptions import ScraperError
-from app.utils.file_utils import ensure_directory, find_files
-from app.utils.db_utils import update_scraper_status
+from app.utils.file_utils import ensure_directory
 from app.utils.logger import logger
-from app.utils.scraper_utils import (
-    check_url_accessibility,
-    download_file,
-    save_permanent_copy,
-    handle_scraper_error
-)
+from app.utils.scraper_utils import handle_scraper_error
 from app.database.crud import bulk_upsert_prospects # Add bulk_upsert_prospects
 import hashlib # Add hashlib
 
@@ -415,18 +408,12 @@ def check_last_download():
         logger.error(f"Error during removed check_last_download logic: {str(e)}")
         return False # Return False to indicate scrape should proceed on error
 
-def run_scraper(force=False):
+def run_scraper():
     """
     Run the Acquisition Gateway scraper.
     
-    Args:
-        force (bool): Whether to force the scraper to run even if it ran recently
-        
     Returns:
         bool: True if scraping was successful, False otherwise
-        
-    Raises:
-        ScraperError: If an error occurs during scraping
     """
     # Use a local logger from the module-level logger
     local_logger = logger 
@@ -576,7 +563,7 @@ if __name__ == "__main__":
     print("Running Acquisition Gateway scraper directly...") # Updated print message
     try:
         # Example of running with force flag, adjust as needed
-        result_path = run_scraper(force=True)
+        result_path = run_scraper()
         if result_path:
             print(f"Scraper finished successfully. Downloaded file: {result_path}")
         else:

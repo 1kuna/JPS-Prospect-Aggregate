@@ -16,13 +16,11 @@ import glob
 import pathlib
 import re
 import logging
-from abc import ABC, abstractmethod
-from contextlib import contextmanager
-from typing import Optional, Generator, Any, Dict
+from abc import ABC
+from typing import Optional, Any, Dict
 
 # Third-party imports
 import requests
-from bs4 import BeautifulSoup
 from playwright.sync_api import sync_playwright, Browser, Page, Playwright, BrowserContext, Download
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
@@ -31,7 +29,7 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from app.models import DataSource, db # Added db for potential direct use
 from app.exceptions import ScraperError
 from app.config import LOGS_DIR, RAW_DATA_DIR, LOG_FORMAT, LOG_FILE_MAX_BYTES, LOG_FILE_BACKUP_COUNT
-from app.utils.file_utils import clean_old_files, find_files, ensure_directory
+from app.utils.file_utils import clean_old_files, ensure_directory
 from app.utils.logger import logger
 
 # Directory creation is now centralized in config.py, no need to create them here

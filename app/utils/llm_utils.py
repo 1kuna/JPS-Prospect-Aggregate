@@ -92,14 +92,3 @@ def call_ollama(prompt: str, model_name: str, options: Optional[Dict[str, Any]] 
     except Exception as e:
         logger.error(f"Unexpected Error during Ollama call: {e}", exc_info=True)
         return None
-
-# --- Example Usage (for testing this utility directly) ---
-# if __name__ == "__main__":
-#     test_prompt = "Why is the sky blue?"
-#     test_model = "llama3:8b" # Make sure this model is available in your Ollama instance
-#     logger.info(f"Sending test prompt to Ollama model '{test_model}'...")
-#     result = call_ollama(test_prompt, test_model)
-#     if result:
-#         logger.info(f"Ollama Response:\n{result}")
-#     else:
-#         logger.error("Failed to get response from Ollama.") 

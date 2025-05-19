@@ -13,7 +13,6 @@ from flask import current_app
 from pathlib import Path
 
 # Set up logging using the centralized utility
-# logger = logger.bind(name="utils.db") # Logger is already configured
 
 def cleanup_old_backups(backup_dir, max_backups=5):
     """
@@ -79,7 +78,7 @@ def rebuild_database(max_backups=5):
     cleanup_old_backups(str(db_dir), max_backups=max_backups)
     
     # Import here to avoid circular imports
-    # from src.database.db import engine, Session # Corrected/updated import needed if used
+    # from app.database.db import engine, Session # Corrected/updated import needed if used
     # For now, assuming engine and Session are not directly used for backup logic.
     # If rebuild logic is added, it should use get_db() or the initialized engine from app.database.session
     

@@ -68,7 +68,7 @@ def cleanup_logs(logs_dir=None, keep_count=3):
     Returns:
         Dictionary with log types as keys and number of deleted files as values
     """
-    from src.utils.file_utils import clean_old_files
+    from app.utils.file_utils import clean_old_files
     
     if logs_dir is None:
         logs_dir = LOGS_DIR

@@ -23,7 +23,6 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 logger = logging.getLogger(__name__)
 
 # --- Configuration ---
-# DB_PATH = _project_root / 'data' / 'jps_aggregate.db' # Removed: Will get from app config
 
 # --- Helper function to get DB path from app config ---
 def get_db_path_from_app_config(app):

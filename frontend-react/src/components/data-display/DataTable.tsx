@@ -176,7 +176,6 @@ export function DataTable<T>({
                   variant="outline"
                   onClick={() => handlePageChange(Math.max(1, pagination.page - 1))}
                   disabled={pagination.page <= 1}
-                  // className={styles.pageButton} // Removed local style
                 >
                   Previous
                 </Button>
@@ -187,7 +186,6 @@ export function DataTable<T>({
                   variant="outline"
                   onClick={() => handlePageChange(Math.min(pagination.totalPages, pagination.page + 1))}
                   disabled={pagination.page >= pagination.totalPages}
-                  // className={styles.pageButton} // Removed local style
                 >
                   Next
                 </Button>

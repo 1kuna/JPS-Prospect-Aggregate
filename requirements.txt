@@ -7,9 +7,6 @@ apscheduler==3.10.4
 python-dotenv==1.0.1
 playwright==1.42.0
 openpyxl==3.1.2
-# celery==5.4.0
-# redis==5.0.1
-# flower==2.0.1
 pytest==8.0.0
 black==24.1.1
 mypy==1.8.0
@@ -19,7 +16,6 @@ tenacity==8.2.3
 psutil==5.9.8
 loguru==0.7.0
 waitress==2.1.2
-# psycopg2-binary # Removed as we are using SQLite for now
 Flask-SQLAlchemy
 python-dateutil
 Flask-Migrate

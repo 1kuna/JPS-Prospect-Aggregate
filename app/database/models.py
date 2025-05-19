@@ -10,8 +10,6 @@ from app.database import db # Import db from flask_sqlalchemy instance
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# Base = declarative_base() # Remove: Use db.Model as the base
-
 class Prospect(db.Model): # Renamed back to Prospect
     __tablename__ = 'prospects' # Renamed back to prospects
 
@@ -154,26 +152,3 @@ class ScraperStatus(db.Model): # Changed from Base to db.Model
         }
 
 # Removed Index definitions as index=True is used inline.
-
-# The create_tables function is generally not used with Flask-Migrate/Alembic
-# for schema evolution after initial setup. It's more for initial creation or tests.
-# Flask-SQLAlchemy's db.create_all() would be used, typically within an app context.
-# def create_tables():
-#     """Creates all tables defined in db.metadata."""
-#     try:
-#         logging.info("Attempting to create tables using db.create_all()...")
-#         # Ensure this is called within a Flask app context if using db.create_all()
-#         # For example:
-#         # from flask import current_app
-#         # with current_app.app_context():
-#         #     db.create_all()
-#         # logging.info("Tables checked/created successfully.")
-#         logging.warning("create_tables function is commented out. Use Flask-Migrate for schema management.")
-#     except Exception as e:
-#         logging.error(f"Error creating tables: {e}", exc_info=True)
-#         raise
-
-# Example of how to get engine if needed elsewhere, though db.engine is available in app context.
-# if __name__ == "__main__":
-#     # This block is unlikely to work directly without a Flask app context for db
-#     pass 

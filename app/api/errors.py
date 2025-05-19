@@ -2,7 +2,7 @@
 
 from flask import jsonify, current_app
 from sqlalchemy.exc import SQLAlchemyError
-from src.exceptions import (
+from app.exceptions import (
     AppError, ValidationError, NotFoundError, DatabaseError, 
     ScraperError, AuthenticationError, AuthorizationError
 )
