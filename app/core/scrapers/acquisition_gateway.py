@@ -19,8 +19,10 @@ if _project_root not in sys.path:
 # Third-party imports
 import requests
 from bs4 import BeautifulSoup
+import pandas as pd # Add pandas
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError, sync_playwright
 from playwright_stealth import stealth_sync
+import traceback # Add traceback
 
 # Local application imports
 from app.core.base_scraper import BaseScraper
@@ -36,6 +38,8 @@ from app.utils.scraper_utils import (
     save_permanent_copy,
     handle_scraper_error
 )
+from app.database.crud import bulk_upsert_prospects # Add bulk_upsert_prospects
+import hashlib # Add hashlib
 
 # Set up logging
 logger = logger.bind(name="scraper.acquisition_gateway")
@@ -207,6 +211,167 @@ class AcquisitionGatewayScraper(BaseScraper):
             handle_scraper_error(e, self.source_name, "Error downloading CSV")
             raise ScraperError(f"Error downloading CSV: {str(e)}")
     
+    def process_func(self, file_path: str):
+        """
+        Process the downloaded CSV file, transform data to Prospect objects, 
+        and insert into the database using logic adapted from acqg_transform.py.
+        """
+        self.logger.info(f"Processing downloaded CSV file: {file_path}")
+        try:
+            df = pd.read_csv(file_path, header=0, on_bad_lines='skip')
+            self.logger.info(f"Loaded {len(df)} rows from {file_path}")
+
+            if df.empty:
+                self.logger.info("Downloaded file is empty. Nothing to process.")
+                return
+
+            # --- Start: Logic adapted from acqg_transform.normalize_columns ---
+            rename_map = {
+                # Raw Name from AcqG CSV : Prospect Model Field Name
+                'Listing ID': 'native_id',
+                'Title': 'title',
+                'Body': 'description', # Prioritizing Body
+                'NAICS Code': 'naics',
+                'Estimated Contract Value': 'estimated_value',
+                'Estimated Solicitation Date': 'release_date', # Maps to Prospect.release_date
+                'Ultimate Completion Date': 'award_date_raw',    # Raw, to be parsed to Prospect.award_date
+                'Estimated Award FY': 'award_fiscal_year',
+                'Organization': 'agency', # Maps to Prospect.agency
+                'Place of Performance City': 'place_city',
+                'Place of Performance State': 'place_state',
+                'Place of Performance Country': 'place_country',
+                'Contract Type': 'contract_type',
+                'Set Aside Type': 'set_aside'
+                # 'Summary' is a fallback for 'description' if 'Body' isn't present
+            }
+            
+            # Rename only columns that exist in the input DataFrame
+            rename_map_existing = {k: v for k, v in rename_map.items() if k in df.columns}
+            df.rename(columns=rename_map_existing, inplace=True)
+
+            # Fallback for description
+            if 'description' not in df.columns and 'Summary' in df.columns:
+                df.rename(columns={'Summary': 'description'}, inplace=True)
+
+            # Date Parsing
+            if 'release_date' in df.columns:
+                df['release_date'] = pd.to_datetime(df['release_date'], errors='coerce').dt.date
+            else:
+                df['release_date'] = None
+            
+            if 'award_date_raw' in df.columns:
+                df['award_date'] = pd.to_datetime(df['award_date_raw'], errors='coerce').dt.date
+            else:
+                df['award_date'] = None # Ensure column exists if raw version wasn't there
+
+            # Fiscal Year Parsing/Extraction
+            if 'award_fiscal_year' in df.columns:
+                df['award_fiscal_year'] = pd.to_numeric(df['award_fiscal_year'], errors='coerce')
+                if 'award_date' in df.columns: # Fallback for NA fiscal years if award_date is present
+                    fallback_mask = df['award_fiscal_year'].isna() & df['award_date'].notna()
+                    df.loc[fallback_mask, 'award_fiscal_year'] = df.loc[fallback_mask, 'award_date'].dt.year
+            elif 'award_date' in df.columns and df['award_date'].notna().any(): # Only award_date available
+                self.logger.warning("'Estimated Award FY' not in source, extracting year from 'Ultimate Completion Date' as fallback for award_fiscal_year.")
+                df['award_fiscal_year'] = df['award_date'].dt.year
+            else:
+                df['award_fiscal_year'] = pd.NA
+            
+            if 'award_fiscal_year' in df.columns: # Ensure correct type
+                df['award_fiscal_year'] = df['award_fiscal_year'].astype('Int64')
+
+            # Estimated Value Parsing
+            if 'estimated_value' in df.columns:
+                df['estimated_value'] = pd.to_numeric(df['estimated_value'], errors='coerce')
+                df['est_value_unit'] = None # AcqG source doesn't seem to have separate units
+            else:
+                df['estimated_value'] = pd.NA
+                df['est_value_unit'] = pd.NA
+            # --- End: Logic adapted from acqg_transform.normalize_columns ---
+
+            # Normalize all column names AFTER explicit renaming (lowercase, snake_case)
+            # This step is from the original transform script, may not be strictly necessary if mapping directly to Prospect fields
+            # but retained for consistency with original transform script's approach to finding 'extra' fields.
+            df.columns = df.columns.str.strip().str.lower().str.replace(r'\\s+\\(\\w+\\)', '', regex=True).str.replace(r'\\s+', '_', regex=True).str.replace(r'[^a-z0-9_]', '', regex=True)
+            df = df.loc[:, ~df.columns.duplicated()] # Remove duplicates after normalization
+
+            # Define Prospect model columns (excluding 'loaded_at' and 'id' initially)
+            prospect_model_fields = [col.name for col in Prospect.__table__.columns if col.name not in ['loaded_at', 'id', 'source_id']]
+            
+            # Handle 'extra' column for unmapped fields
+            current_cols_normalized = df.columns.tolist()
+            # Identify unmapped columns based on normalized names not being in prospect_model_fields (after our renaming)
+            # The rename_map already targets Prospect model names (or intermediate like award_date_raw)
+            # So, we look for columns in df that aren't Prospect fields.
+            unmapped_cols = [col for col in current_cols_normalized if col not in prospect_model_fields and col not in ['award_date_raw']] # award_date_raw is intermediate
+
+            if unmapped_cols:
+                self.logger.info(f"Found unmapped columns to be included in 'extra': {unmapped_cols}")
+                # Create 'extra' from the original DataFrame *before* dropping these columns to preserve original values if needed.
+                # This is tricky if names were changed significantly by normalization. Assuming we use the current df state.
+                df['extra'] = df[unmapped_cols].to_dict(orient='records')
+                # df = df.drop(columns=unmapped_cols) # Not strictly needed if we select only prospect_columns later
+            else:
+                df['extra'] = None
+            
+            # Ensure all Prospect model columns exist, fill with None/NA if not
+            for col in prospect_model_fields:
+                if col not in df.columns:
+                    df[col] = pd.NA
+            
+            # Add source_id
+            data_source_obj = db.session.query(DataSource).filter_by(name=self.source_name).first()
+            if data_source_obj:
+                df['source_id'] = data_source_obj.id
+            else:
+                self.logger.warning(f"DataSource '{self.source_name}' not found. 'source_id' will be None.")
+                df['source_id'] = None
+            
+            # --- Start: ID Generation (adapted from acqg_transform.generate_id) ---
+            def generate_prospect_id(row: pd.Series) -> str:
+                # Use Prospect field names (which should be columns in df now)
+                naics_val = str(row.get('naics', ''))
+                title_val = str(row.get('title', ''))
+                desc_val = str(row.get('description', ''))
+                # Include source_name for uniqueness across different scrapers if native_id is not globally unique
+                # However, AcqG's Listing ID (native_id) should be unique for AcqG.
+                # The original transform script's ID logic didn't use native_id. Let's stick to title/desc/naics for now for consistency with that.
+                unique_string = f"{naics_val}-{title_val}-{desc_val}-{self.source_name}" # Added source_name for cross-source safety
+                return hashlib.md5(unique_string.encode('utf-8')).hexdigest()
+
+            df['id'] = df.apply(generate_prospect_id, axis=1)
+            # --- End: ID Generation ---
+
+            # Select only columns that exist in the Prospect model for upsert
+            final_prospect_columns = [col.name for col in Prospect.__table__.columns if col.name != 'loaded_at'] # loaded_at is auto
+            df_to_insert = df[[col for col in final_prospect_columns if col in df.columns]]
+
+            # Ensure no completely empty rows are attempted for insertion
+            df_to_insert.dropna(how='all', inplace=True)
+
+            if df_to_insert.empty:
+                self.logger.info("After processing, no valid data rows to insert.")
+                return
+
+            self.logger.info(f"Attempting to insert/update {len(df_to_insert)} records for {self.source_name}.")
+            bulk_upsert_prospects(df_to_insert)
+            self.logger.info(f"Successfully inserted/updated records for {self.source_name} from {file_path}.")
+
+        except FileNotFoundError:
+            self.logger.error(f"CSV file not found at {file_path}")
+            raise ScraperError(f"Processing failed: CSV file not found at {file_path}")
+        except pd.errors.EmptyDataError:
+            self.logger.error(f"No data or empty CSV file at {file_path}")
+            # No ScraperError here, just log and return, as it's not a processing failure but empty source data.
+            return
+        except KeyError as e:
+            self.logger.error(f"Missing expected column during CSV processing: {e}. This might indicate a change in the CSV format or an issue with mappings.")
+            self.logger.error(traceback.format_exc())
+            raise ScraperError(f"Processing failed due to missing column: {e}")
+        except Exception as e:
+            self.logger.error(f"Error processing file {file_path}: {str(e)}")
+            self.logger.error(traceback.format_exc())
+            raise ScraperError(f"Error processing file {file_path}: {str(e)}")
+    
     def scrape(self):
         """
         Run the scraper to download the file.
@@ -217,8 +382,8 @@ class AcquisitionGatewayScraper(BaseScraper):
         # Simplified call: only setup and extract
         return self.scrape_with_structure(
             setup_func=self.navigate_to_forecast_page,
-            extract_func=self.download_csv_file
-            # No process_func needed
+            extract_func=self.download_csv_file,
+            process_func=self.process_func # Add process_func
         )
 
 def check_last_download():

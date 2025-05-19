@@ -17,10 +17,17 @@ if _project_root not in sys.path:
 
 # Third-party imports
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+import pandas as pd
+import hashlib
+import traceback
+import re
+from datetime import datetime
+import json
 
 # Local application imports
 from app.core.base_scraper import BaseScraper
-from app.database.models import Prospect, DataSource, ScraperStatus
+from app.database.models import Prospect, DataSource, ScraperStatus, db
+from app.database.crud import bulk_upsert_prospects
 from app.exceptions import ScraperError
 from app.utils.logger import logger
 from app.utils.db_utils import update_scraper_status
@@ -31,6 +38,7 @@ from app.utils.scraper_utils import (
     save_permanent_copy,
     handle_scraper_error
 )
+from app.utils.parsing import parse_value_range, split_place
 
 # Set up logging using the centralized utility
 logger = logger.bind(name="scraper.ssa")
@@ -187,6 +195,159 @@ class SsaScraper(BaseScraper):
             handle_scraper_error(e, self.source_name, "Error downloading forecast document")
             raise ScraperError(f"Failed to download forecast document: {str(e)}")
     
+    def process_func(self, file_path: str):
+        """
+        Process the downloaded Excel file (.xlsm), transform data to Prospect objects,
+        and insert into the database using logic adapted from ssa_transform.py.
+        """
+        self.logger.info(f"Processing downloaded Excel file: {file_path}")
+        try:
+            # SSA transform: reads 'Sheet1', header is row 5 (index 4), engine='openpyxl' for .xlsm
+            df = pd.read_excel(file_path, sheet_name='Sheet1', header=4, engine='openpyxl')
+            df.dropna(how='all', inplace=True) # Pre-processing from transform script
+            self.logger.info(f"Loaded {len(df)} rows from {file_path} after initial dropna.")
+
+            if df.empty:
+                self.logger.info("Downloaded file is empty. Nothing to process.")
+                return
+
+            # --- Start: Logic adapted from ssa_transform.normalize_columns_ssa ---
+            rename_map = {
+                'APP #': 'native_id',
+                'SITE Type': 'agency', # Mapped to Prospect.agency (was 'office' in transform)
+                'DESCRIPTION': 'description', # Mapped to Prospect.description (was 'requirement_title' in transform)
+                # 'REQUIREMENT TYPE': 'requirement_type', # This will go to extra
+                'EST COST PER FY': 'estimated_value_raw',
+                'PLANNED AWARD DATE': 'award_date_raw',
+                'CONTRACT TYPE': 'contract_type',
+                'NAICS': 'naics',
+                'TYPE OF COMPETITION': 'set_aside',
+                'PLACE OF PERFORMANCE': 'place_raw'
+            }
+            # Rename only columns that exist in the input DataFrame
+            rename_map_existing = {k: v for k, v in rename_map.items() if k in df.columns}
+            df.rename(columns=rename_map_existing, inplace=True)
+
+            # Place of Performance Parsing
+            if 'place_raw' in df.columns:
+                split_places_data = df['place_raw'].apply(split_place)
+                df['place_city'] = split_places_data.apply(lambda x: x[0])
+                df['place_state'] = split_places_data.apply(lambda x: x[1])
+                df['place_country'] = 'USA'  # Assume USA
+            else:
+                df['place_city'], df['place_state'], df['place_country'] = pd.NA, pd.NA, 'USA'
+
+            # Estimated Value Parsing
+            if 'estimated_value_raw' in df.columns:
+                parsed_values = df['estimated_value_raw'].apply(parse_value_range)
+                df['estimated_value'] = parsed_values.apply(lambda x: x[0])
+                # Add " (Per FY)" to unit as per transform script logic if unit is present
+                df['est_value_unit'] = parsed_values.apply(lambda x: x[1])
+                unit_mask = df['est_value_unit'].notna()
+                df.loc[unit_mask, 'est_value_unit'] = df.loc[unit_mask, 'est_value_unit'].astype(str) + ' (Per FY)'
+                df['est_value_unit'].fillna('Per FY', inplace=True) # Default if no unit parsed
+            else:
+                df['estimated_value'], df['est_value_unit'] = pd.NA, pd.NA
+
+            # Award Date and Fiscal Year Parsing
+            if 'award_date_raw' in df.columns:
+                df['award_date'] = pd.to_datetime(df['award_date_raw'], errors='coerce').dt.date
+                df['award_fiscal_year'] = pd.to_datetime(df['award_date_raw'], errors='coerce').dt.year.astype('Int64')
+            else:
+                df['award_date'] = None
+                df['award_fiscal_year'] = pd.NA
+
+            # Initialize missing Prospect fields
+            df['title'] = df.get('description', pd.NA) # Using description as title for SSA as per initial thought, or set to NA
+                                                      # The original transform maps 'DESCRIPTION' source to 'requirement_title'.
+                                                      # If 'title' is a distinct concept, it might be empty for SSA.
+                                                      # For now, let's use description for title. If a dedicated title field appears, adjust.
+            df['release_date'] = None # SSA transform has solicitation_date = pd.NaT
+
+            # Drop raw/intermediate columns
+            cols_to_drop = ['place_raw', 'estimated_value_raw', 'award_date_raw']
+            df.drop(columns=[col for col in cols_to_drop if col in df.columns], errors='ignore', inplace=True)
+            # --- End: Logic adapted from ssa_transform.normalize_columns_ssa ---
+
+            # Standardize column names
+            df.columns = df.columns.str.strip().str.lower().str.replace(r'\\s+\\(.*?\\)', '', regex=True).str.replace(r'\\s+', '_', regex=True).str.replace(r'[^a-z0-9_]', '', regex=True)
+            df = df.loc[:, ~df.columns.duplicated()]
+
+            prospect_model_fields = [col.name for col in Prospect.__table__.columns if col.name not in ['loaded_at', 'id', 'source_id']]
+            current_cols_normalized = df.columns.tolist()
+            # Ensure 'requirement_type' from source (if exists after rename) is handled by extra if not in prospect_model_fields
+            # The original ssa_transform script includes 'requirement_type' in its explicit rename_map for source columns.
+            # If this normalized to 'requirement_type' and is not a Prospect field, it will be in unmapped_cols.
+            unmapped_cols = [col for col in current_cols_normalized if col not in prospect_model_fields]
+
+            if unmapped_cols:
+                self.logger.info(f"Found unmapped columns for 'extra' for SSA: {unmapped_cols}")
+                def row_to_extra_json(row):
+                    extra_dict = {}
+                    for col_name in unmapped_cols:
+                        val = row.get(col_name)
+                        if pd.isna(val):
+                            extra_dict[col_name] = None
+                        elif pd.api.types.is_datetime64_any_dtype(val) or isinstance(val, (datetime, pd.Timestamp)):
+                            extra_dict[col_name] = pd.to_datetime(val).isoformat()
+                        elif isinstance(val, (int, float, bool, str)):
+                            extra_dict[col_name] = val
+                        else:
+                            try: extra_dict[col_name] = str(val)
+                            except Exception: extra_dict[col_name] = "CONVERSION_ERROR"
+                    try: return json.dumps(extra_dict)
+                    except TypeError: return str(extra_dict)
+                df['extra'] = df.apply(row_to_extra_json, axis=1)
+            else:
+                df['extra'] = None
+
+            for col in prospect_model_fields:
+                if col not in df.columns:
+                    df[col] = pd.NA
+
+            data_source_obj = db.session.query(DataSource).filter_by(name=self.source_name).first()
+            df['source_id'] = data_source_obj.id if data_source_obj else None
+
+            # --- ID Generation (adapted from ssa_transform.generate_id) ---
+            # Transform uses: naics, requirement_title (now mapped to description), requirement_description (not present after mapping)
+            # Adjusting to use Prospect.naics, Prospect.description, Prospect.agency for uniqueness and consistency.
+            def generate_prospect_id(row: pd.Series) -> str:
+                naics_val = str(row.get('naics', ''))
+                # title_val = str(row.get('title', '')) # Using description for title, as per current mapping
+                desc_val = str(row.get('description', ''))
+                agency_val = str(row.get('agency', '')) # Adding agency for better uniqueness
+                unique_string = f"{naics_val}-{desc_val}-{agency_val}-{self.source_name}" # Consistent with other fallback IDs
+                return hashlib.md5(unique_string.encode('utf-8')).hexdigest()
+            df['id'] = df.apply(generate_prospect_id, axis=1)
+            # --- End: ID Generation ---
+
+            final_prospect_columns = [col.name for col in Prospect.__table__.columns if col.name != 'loaded_at']
+            df_to_insert = df[[col for col in final_prospect_columns if col in df.columns]]
+
+            df_to_insert.dropna(how='all', inplace=True)
+            if df_to_insert.empty:
+                self.logger.info("After SSA processing, no valid data rows to insert.")
+                return
+
+            self.logger.info(f"Attempting to insert/update {len(df_to_insert)} SSA records.")
+            bulk_upsert_prospects(df_to_insert)
+            self.logger.info(f"Successfully inserted/updated SSA records from {file_path}.")
+
+        except FileNotFoundError:
+            self.logger.error(f"SSA Excel file not found: {file_path}")
+            raise ScraperError(f"Processing failed: SSA Excel file not found: {file_path}")
+        except pd.errors.EmptyDataError:
+            self.logger.error(f"No data or empty SSA Excel file: {file_path}")
+            return
+        except KeyError as e:
+            self.logger.error(f"Missing expected column during SSA Excel processing: {e}.")
+            self.logger.error(traceback.format_exc())
+            raise ScraperError(f"Processing failed due to missing column: {e}")
+        except Exception as e:
+            self.logger.error(f"Error processing SSA file {file_path}: {str(e)}")
+            self.logger.error(traceback.format_exc())
+            raise ScraperError(f"Error processing SSA file {file_path}: {str(e)}")
+
     def scrape(self):
         """
         Run the scraper to download the forecast document.
@@ -197,8 +358,8 @@ class SsaScraper(BaseScraper):
         # Use the structured scrape method from the base class - only extract
         return self.scrape_with_structure(
             # No setup_func needed if navigation happens in extract
-            extract_func=self.download_forecast_document
-            # No process_func needed
+            extract_func=self.download_forecast_document,
+            process_func=self.process_func
         )
 
 def run_scraper(force=False):

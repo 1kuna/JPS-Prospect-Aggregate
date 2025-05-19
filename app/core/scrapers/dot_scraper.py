@@ -17,17 +17,27 @@ if _project_root not in sys.path:
 import requests
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import sync_playwright
+import pandas as pd
+import hashlib
+import traceback # Added traceback
+import re # Added re
+from datetime import datetime # Added datetime
+import json # Added json
 
 # Local application imports
 from app.core.base_scraper import BaseScraper
+from app.models import Prospect, DataSource, db # Added Prospect, DataSource, db
+from app.database.crud import bulk_upsert_prospects # Added bulk_upsert_prospects
 from app.config import LOGS_DIR, RAW_DATA_DIR, DOT_FORECAST_URL, PAGE_NAVIGATION_TIMEOUT # Use RAW_DATA_DIR
 from app.exceptions import ScraperError
-from app.utils.file_utils import ensure_directory
+from app.utils.file_utils import ensure_directory, find_files
 from app.utils.logger import logger
 from app.utils.scraper_utils import (
     check_url_accessibility,
+    download_file,
     handle_scraper_error
 )
+from app.utils.parsing import parse_value_range, fiscal_quarter_to_date, split_place # Added parsing utils
 
 # Set up logging
 logger = logger.bind(name="scraper.dot_forecast")
@@ -197,26 +207,165 @@ class DotScraper(BaseScraper):
         """
         Run the scraper to navigate, apply filter, and download the file.
         """
-        self.logger.info(f"Starting scrape for {self.source_name}")
+        # Use the structured scrape method from the base class
+        return self.scrape_with_structure(
+            setup_func=self.navigate_to_forecast_page, # Setup navigates to the page
+            extract_func=self.download_dot_csv,       # Extract downloads the CSV
+            process_func=self.process_func           # Process handles the data
+        )
+
+    def process_func(self, file_path: str):
+        """
+        Process the downloaded CSV file, transform data to Prospect objects, 
+        and insert into the database using logic adapted from dot_transform.py.
+        """
+        self.logger.info(f"Processing downloaded CSV file: {file_path}")
         try:
-            self.navigate_to_forecast_page()
-            downloaded_file_path = self.download_dot_csv()
+            df = pd.read_csv(file_path, header=0, on_bad_lines='skip')
+            df.dropna(how='all', inplace=True) # Pre-processing from transform script
+            self.logger.info(f"Loaded {len(df)} rows from {file_path} after initial dropna.")
 
-            if not downloaded_file_path:
-                 raise ScraperError("Download function did not return a file path.")
+            if df.empty:
+                self.logger.info("Downloaded file is empty. Nothing to process.")
+                return
 
-            self.logger.info(f"Successfully downloaded file: {downloaded_file_path}")
-            return downloaded_file_path
+            # --- Start: Logic adapted from dot_transform.normalize_columns_dot ---
+            rename_map = {
+                'Sequence Number': 'native_id',
+                'Procurement Office': 'agency', # To Prospect.agency
+                'Project Title': 'title',
+                'Description': 'description',
+                'Estimated Value': 'estimated_value_raw',
+                'NAICS': 'naics',
+                'Competition Type': 'set_aside',
+                'RFP Quarter': 'solicitation_qtr_raw',
+                'Anticipated Award Date': 'award_date_raw',
+                'Place of Performance': 'place_raw',
+                # For 'extra'
+                'Action/Award Type': 'action_award_type',
+                'Contract Vehicle': 'contract_vehicle'
+            }
+            rename_map_existing = {k: v for k, v in rename_map.items() if k in df.columns}
+            df.rename(columns=rename_map_existing, inplace=True)
 
-        except ScraperError as e:
-            self.logger.error(f"ScraperError occurred: {e}")
-            raise
+            # Place of Performance
+            if 'place_raw' in df.columns:
+                split_places_data = df['place_raw'].apply(split_place)
+                df['place_city'] = split_places_data.apply(lambda x: x[0])
+                df['place_state'] = split_places_data.apply(lambda x: x[1])
+                df['place_country'] = 'USA' # Default from transform
+            else:
+                df['place_city'], df['place_state'], df['place_country'] = pd.NA, pd.NA, 'USA'
+
+            # Estimated Value
+            if 'estimated_value_raw' in df.columns:
+                parsed_values = df['estimated_value_raw'].apply(parse_value_range)
+                df['estimated_value'] = parsed_values.apply(lambda x: x[0])
+                df['est_value_unit'] = parsed_values.apply(lambda x: x[1])
+            else:
+                df['estimated_value'], df['est_value_unit'] = pd.NA, pd.NA
+
+            # Solicitation Date (Prospect.release_date) from RFP Quarter
+            if 'solicitation_qtr_raw' in df.columns:
+                # fiscal_quarter_to_date returns (timestamp, fiscal_year)
+                parsed_sol_info = df['solicitation_qtr_raw'].apply(fiscal_quarter_to_date)
+                df['release_date'] = parsed_sol_info.apply(lambda x: x[0].date() if pd.notna(x[0]) else None)
+                # df['solicitation_fiscal_year'] = parsed_sol_info.apply(lambda x: x[1]) # Not in Prospect model
+            else:
+                df['release_date'] = None
+
+            # Award Date and Fiscal Year
+            if 'award_date_raw' in df.columns:
+                df['award_date'] = pd.to_datetime(df['award_date_raw'], errors='coerce').dt.date
+                df['award_fiscal_year'] = pd.to_datetime(df['award_date_raw'], errors='coerce').dt.year.astype('Int64') # Get year from original raw string
+            else:
+                df['award_date'] = None
+                df['award_fiscal_year'] = pd.NA
+            
+            if 'award_fiscal_year' in df.columns:
+                 df['award_fiscal_year'] = df['award_fiscal_year'].astype('Int64')
+
+            # Contract Type (Missing from direct mapping in transform, but Prospect has it)
+            # Check if 'action_award_type' or 'contract_vehicle' can serve as contract_type or if it needs to be NA
+            if 'action_award_type' in df.columns and 'contract_type' not in df.columns:
+                 self.logger.info("Using 'action_award_type' for 'contract_type' for DOT as fallback.")
+                 df['contract_type'] = df['action_award_type']
+            elif 'contract_type' not in df.columns:
+                 df['contract_type'] = pd.NA
+
+            cols_to_drop = ['place_raw', 'estimated_value_raw', 'solicitation_qtr_raw', 'award_date_raw']
+            df.drop(columns=[col for col in cols_to_drop if col in df.columns], errors='ignore', inplace=True)
+            # --- End: Logic adapted from dot_transform.normalize_columns_dot ---
+            
+            df.columns = df.columns.str.strip().str.lower().str.replace(r'\\s+\\(.*?\\)', '', regex=True).str.replace(r'\\s+', '_', regex=True).str.replace(r'[^a-z0-9_]', '', regex=True)
+            df = df.loc[:, ~df.columns.duplicated()]
+
+            prospect_model_fields = [col.name for col in Prospect.__table__.columns if col.name not in ['loaded_at', 'id', 'source_id']]
+            current_cols_normalized = df.columns.tolist()
+            unmapped_cols = [col for col in current_cols_normalized if col not in prospect_model_fields]
+
+            if unmapped_cols:
+                self.logger.info(f"Found unmapped columns for 'extra' for DOT: {unmapped_cols}")
+                def row_to_extra_json(row):
+                    extra_dict = {}
+                    for col_name in unmapped_cols:
+                        val = row.get(col_name)
+                        if pd.isna(val):
+                            extra_dict[col_name] = None
+                        elif pd.api.types.is_datetime64_any_dtype(val) or isinstance(val, (datetime, pd.Timestamp)):
+                            extra_dict[col_name] = pd.to_datetime(val).isoformat()
+                        elif isinstance(val, (int, float, bool, str)):
+                            extra_dict[col_name] = val
+                        else:
+                            try: extra_dict[col_name] = str(val)
+                            except Exception: extra_dict[col_name] = "CONVERSION_ERROR"
+                    try: return json.dumps(extra_dict)
+                    except TypeError: return str(extra_dict)
+                df['extra'] = df.apply(row_to_extra_json, axis=1)
+            else:
+                df['extra'] = None
+
+            for col in prospect_model_fields:
+                if col not in df.columns:
+                    df[col] = pd.NA
+            
+            data_source_obj = db.session.query(DataSource).filter_by(name=self.source_name).first()
+            df['source_id'] = data_source_obj.id if data_source_obj else None
+            
+            def generate_prospect_id(row: pd.Series) -> str:
+                naics_val = str(row.get('naics', ''))
+                title_val = str(row.get('title', ''))
+                desc_val = str(row.get('description', ''))
+                unique_string = f"{naics_val}-{title_val}-{desc_val}-{self.source_name}"
+                return hashlib.md5(unique_string.encode('utf-8')).hexdigest()
+            df['id'] = df.apply(generate_prospect_id, axis=1)
+
+            final_prospect_columns = [col.name for col in Prospect.__table__.columns if col.name != 'loaded_at']
+            df_to_insert = df[[col for col in final_prospect_columns if col in df.columns]]
+
+            df_to_insert.dropna(how='all', inplace=True)
+            if df_to_insert.empty:
+                self.logger.info("After DOT processing, no valid data rows to insert.")
+                return
+
+            self.logger.info(f"Attempting to insert/update {len(df_to_insert)} DOT records.")
+            bulk_upsert_prospects(df_to_insert)
+            self.logger.info(f"Successfully inserted/updated DOT records from {file_path}.")
+
+        except FileNotFoundError:
+            self.logger.error(f"DOT CSV file not found: {file_path}")
+            raise ScraperError(f"Processing failed: DOT CSV file not found: {file_path}")
+        except pd.errors.EmptyDataError:
+            self.logger.error(f"No data or empty DOT CSV file: {file_path}")
+            return
+        except KeyError as e:
+            self.logger.error(f"Missing expected column during DOT CSV processing: {e}.")
+            self.logger.error(traceback.format_exc())
+            raise ScraperError(f"Processing failed due to missing column: {e}")
         except Exception as e:
-            self.logger.error(f"An unexpected error occurred during the scrape process: {str(e)}", exc_info=True)
-            handle_scraper_error(e, self.source_name, "Unexpected error during scraping")
-            raise ScraperError(f"Unexpected error during scrape: {str(e)}")
-        finally:
-            self.logger.info(f"Finished scrape attempt for {self.source_name}")
+            self.logger.error(f"Error processing DOT file {file_path}: {str(e)}")
+            self.logger.error(traceback.format_exc())
+            raise ScraperError(f"Error processing DOT file {file_path}: {str(e)}")
 
 def run_scraper(force=False):
     """

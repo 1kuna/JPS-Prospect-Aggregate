@@ -15,13 +15,19 @@ if _project_root not in sys.path:
 
 # Third-party imports
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+import pandas as pd
+import hashlib
+import re
+from datetime import datetime
 
 # Local application imports
 from app.core.base_scraper import BaseScraper
+from app.models import Prospect, DataSource, db
+from app.database.crud import bulk_upsert_prospects
 from app.exceptions import ScraperError
 from app.utils.logger import logger
-# from app.utils.db_utils import update_scraper_status # Keep for commented out code
-from app.config import DHS_FORECAST_URL # Need to add this to config.py
+from app.utils.parsing import parse_value_range, fiscal_quarter_to_date
+from app.config import DHS_FORECAST_URL
 from app.utils.scraper_utils import handle_scraper_error
 
 # Set up logging using the centralized utility
@@ -33,8 +39,8 @@ class DHSForecastScraper(BaseScraper):
     def __init__(self, debug_mode=False):
         """Initialize the DHS Forecast scraper."""
         super().__init__(
-            source_name="DHS Forecast", # Updated source name
-            base_url=DHS_FORECAST_URL, # Updated URL config variable
+            source_name="DHS Forecast",
+            base_url=DHS_FORECAST_URL,
             debug_mode=debug_mode
         )
     
@@ -132,13 +138,160 @@ class DHSForecastScraper(BaseScraper):
             else:
                  raise # Re-raise the original ScraperError
     
+    def process_func(self, file_path: str):
+        """
+        Process the downloaded Excel file, transform data to Prospect objects, 
+        and insert into the database using logic adapted from dhs_transform.py.
+        """
+        self.logger.info(f"Processing downloaded Excel file: {file_path}")
+        try:
+            # DHS transform script handles both xlsx and csv, assuming xlsx primarily based on current scraper
+            # TODO: Determine correct sheet_name and header row for DHS Excel if not default
+            df = pd.read_excel(file_path, sheet_name=0, header=0) 
+            self.logger.info(f"Loaded {len(df)} rows from {file_path}")
+
+            if df.empty:
+                self.logger.info("Downloaded file is empty. Nothing to process.")
+                return
+
+            # --- Start: Logic adapted from dhs_transform.normalize_columns_dhs ---
+            rename_map = {
+                # Raw DHS Name: Prospect Model Field Name (or intermediate)
+                'APFS Number': 'native_id',
+                'NAICS': 'naics',
+                'Component': 'agency', # Maps to Prospect.agency
+                'Title': 'title',
+                'Contract Type': 'contract_type',
+                'Contract Vehicle': 'contract_vehicle',      # To extra
+                'Dollar Range': 'estimated_value_raw',      # To be parsed
+                'Small Business Set-Aside': 'set_aside',
+                'Small Business Program': 'small_business_program', # To extra
+                'Contract Status': 'contract_status',        # To extra
+                'Place of Performance City': 'place_city',
+                'Place of Performance State': 'place_state',
+                'Description': 'description',
+                'Estimated Solicitation Release': 'release_date', # Maps to Prospect.release_date (raw)
+                'Award Quarter': 'award_date_raw'           # To be parsed for award_date & award_fiscal_year
+            }
+            df.rename(columns=rename_map, inplace=True)
+
+            # Date Parsing (Solicitation/Release Date)
+            if 'release_date' in df.columns:
+                df['release_date'] = pd.to_datetime(df['release_date'], errors='coerce').dt.date
+            else:
+                df['release_date'] = None
+
+            # Award Date and Fiscal Year Parsing (from Award Quarter)
+            if 'award_date_raw' in df.columns:
+                parsed_award_info = df['award_date_raw'].apply(fiscal_quarter_to_date)
+                df['award_date'] = parsed_award_info.apply(lambda x: x[0].date() if pd.notna(x[0]) else None)
+                df['award_fiscal_year'] = parsed_award_info.apply(lambda x: x[1])
+            else: 
+                df['award_date'] = None
+                df['award_fiscal_year'] = pd.NA
+            
+            if 'award_fiscal_year' in df.columns: # Ensure correct type
+                df['award_fiscal_year'] = df['award_fiscal_year'].astype('Int64')
+
+            # Estimated Value Parsing (from Dollar Range)
+            if 'estimated_value_raw' in df.columns:
+                parsed_values = df['estimated_value_raw'].apply(parse_value_range)
+                df['estimated_value'] = parsed_values.apply(lambda x: x[0])
+                df['est_value_unit'] = parsed_values.apply(lambda x: x[1])
+            else:
+                df['estimated_value'] = pd.NA 
+                df['est_value_unit'] = pd.NA
+
+            # Initialize Place Country if missing (DHS transform assumes USA)
+            if 'place_country' not in df.columns:
+                 df['place_country'] = 'USA'
+            
+            # Drop raw columns used for parsing after they are processed
+            df.drop(columns=['estimated_value_raw', 'award_date_raw'], errors='ignore', inplace=True)
+            # --- End: Logic adapted from dhs_transform.normalize_columns_dhs ---
+            
+            # Normalize all column names (lowercase, snake_case) - from transform script
+            df.columns = df.columns.str.strip().str.lower().str.replace(r'\\s+\\(.*?\\)', '', regex=True).str.replace(r'\\s+', '_', regex=True).str.replace(r'[^a-z0-9_]', '', regex=True)
+            df = df.loc[:, ~df.columns.duplicated()] # Remove duplicates
+
+            # Define Prospect model fields (excluding auto fields)
+            prospect_model_fields = [col.name for col in Prospect.__table__.columns if col.name not in ['loaded_at', 'id', 'source_id']]
+            
+            # Handle 'extra' column
+            current_cols_normalized = df.columns.tolist()
+            unmapped_cols = [col for col in current_cols_normalized if col not in prospect_model_fields]
+
+            if unmapped_cols:
+                self.logger.info(f"Found unmapped columns for 'extra': {unmapped_cols}")
+                # Convert specific types in unmapped_cols to string before to_dict for JSON compatibility
+                for col_name in unmapped_cols:
+                    if df[col_name].dtype == 'datetime64[ns]' or df[col_name].dtype.name == 'datetime64[ns, UTC]':
+                        df[col_name] = df[col_name].dt.isoformat()
+                    # Add other type conversions if needed (e.g., complex objects)
+                df['extra'] = df[unmapped_cols].astype(str).to_dict(orient='records')
+            else:
+                df['extra'] = None
+            
+            # Ensure all Prospect model columns exist
+            for col in prospect_model_fields:
+                if col not in df.columns:
+                    df[col] = pd.NA
+            
+            # Add source_id
+            data_source_obj = db.session.query(DataSource).filter_by(name=self.source_name).first()
+            if data_source_obj:
+                df['source_id'] = data_source_obj.id
+            else:
+                self.logger.warning(f"DataSource '{self.source_name}' not found. 'source_id' will be None.")
+                df['source_id'] = None
+            
+            # --- Start: ID Generation (adapted from dhs_transform.generate_id) ---
+            def generate_prospect_id(row: pd.Series) -> str:
+                naics_val = str(row.get('naics', ''))
+                title_val = str(row.get('title', '')) # Using 'title' as per Prospect model
+                desc_val = str(row.get('description', '')) # Using 'description' 
+                unique_string = f"{naics_val}-{title_val}-{desc_val}-{self.source_name}"
+                return hashlib.md5(unique_string.encode('utf-8')).hexdigest()
+
+            df['id'] = df.apply(generate_prospect_id, axis=1)
+            # --- End: ID Generation ---
+
+            # Select final columns for Prospect model
+            final_prospect_columns = [col.name for col in Prospect.__table__.columns if col.name != 'loaded_at']
+            df_to_insert = df[[col for col in final_prospect_columns if col in df.columns]]
+
+            df_to_insert.dropna(how='all', inplace=True)
+            if df_to_insert.empty:
+                self.logger.info("After processing, no valid data rows to insert.")
+                return
+
+            self.logger.info(f"Attempting to insert/update {len(df_to_insert)} records for {self.source_name}.")
+            bulk_upsert_prospects(df_to_insert)
+            self.logger.info(f"Successfully inserted/updated records for {self.source_name} from {file_path}.")
+
+        except FileNotFoundError:
+            self.logger.error(f"Excel file not found at {file_path}")
+            raise ScraperError(f"Processing failed: Excel file not found at {file_path}")
+        except pd.errors.EmptyDataError:
+            self.logger.error(f"No data or empty Excel file at {file_path}")
+            return # Not a ScraperError, just empty source.
+        except KeyError as e:
+            self.logger.error(f"Missing expected column during Excel processing: {e}. Check mappings or file format.")
+            self.logger.error(traceback.format_exc())
+            raise ScraperError(f"Processing failed due to missing column: {e}")
+        except Exception as e:
+            self.logger.error(f"Error processing file {file_path}: {str(e)}")
+            self.logger.error(traceback.format_exc())
+            raise ScraperError(f"Error processing file {file_path}: {str(e)}")
+
     def scrape(self):
         """
         Run the scraper to download the forecast document.
         Returns a result dict from scrape_with_structure.
         """
         return self.scrape_with_structure(
-            extract_func=self.download_forecast_document
+            extract_func=self.download_forecast_document,
+            process_func=self.process_func
         )
 
 def run_scraper(force=False):

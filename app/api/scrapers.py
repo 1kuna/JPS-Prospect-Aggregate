@@ -3,6 +3,7 @@ from app.models import db, DataSource, ScraperStatus
 from app.exceptions import NotFoundError, ScraperError, DatabaseError
 from app.utils.logger import logger
 from app.services.scraper_service import ScraperService
+import threading
 
 scrapers_bp = Blueprint('scrapers', __name__)
 
@@ -14,9 +15,19 @@ def pull_data_source(source_id):
     """Trigger a data pull for a specific data source via ScraperService."""
     try:
         # current_app.logger.info(f"Route: Initiating data pull for source ID {source_id}")
-        result = ScraperService.trigger_scrape(source_id)
+        
+        # Run the scraper in a background thread
+        thread = threading.Thread(target=ScraperService.trigger_scrape, args=(source_id,))
+        thread.start()
+
         # current_app.logger.info(f"Route: Scrape service returned: {result}")
-        return jsonify(result), 202 # HTTP 202 Accepted for async operations
+        # Return 202 Accepted with a status message
+        status_url = f"/api/scrapers/status/{source_id}" # Example status URL
+        return jsonify({
+            "status": "accepted",
+            "message": f"Data pull for source ID {source_id} initiated. Check status at {status_url}",
+            "status_url": status_url
+        }), 202 # HTTP 202 Accepted for async operations
     except NotFoundError as nfe:
         # Logged in service or globally
         # current_app.logger.warning(f"Route: NotFoundError for source ID {source_id}: {nfe}")

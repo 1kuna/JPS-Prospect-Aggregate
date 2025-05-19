@@ -16,9 +16,16 @@ if _project_root not in sys.path:
 
 # Third-party imports
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+import pandas as pd
+import hashlib
+import re # Added re
+import json # Added json
+from app.utils.parsing import parse_value_range, fiscal_quarter_to_date # Added parsing utils
 
 # Local application imports
 from app.core.base_scraper import BaseScraper
+from app.models import Prospect, DataSource, db # Added Prospect, DataSource, db
+from app.database.crud import bulk_upsert_prospects # Added bulk_upsert_prospects
 from app.exceptions import ScraperError
 from app.utils.logger import logger
 from app.utils.db_utils import update_scraper_status, get_data_source_id_by_name
@@ -173,6 +180,158 @@ class DocScraper(BaseScraper):
             handle_scraper_error(e, self.source_name, "Error downloading DOC forecast document")
             raise ScraperError(f"Failed to download DOC forecast document: {str(e)}")
     
+    def process_func(self, file_path: str):
+        """
+        Process the downloaded Excel file, transform data to Prospect objects, 
+        and insert into the database using logic adapted from doc_transform.py.
+        """
+        self.logger.info(f"Processing downloaded Excel file: {file_path}")
+        try:
+            # DOC transform script specifics: reads 'Sheet1', header is row 3 (index 2)
+            df = pd.read_excel(file_path, sheet_name='Sheet1', header=2)
+            self.logger.info(f"Loaded {len(df)} rows from {file_path}")
+
+            if df.empty:
+                self.logger.info("Downloaded file is empty. Nothing to process.")
+                return
+
+            # --- Start: Logic adapted from doc_transform.normalize_columns_doc ---
+            rename_map = {
+                # Raw DOC Name: Prospect Model Field Name (or intermediate)
+                'Forecast ID': 'native_id',
+                'Organization': 'agency', # Maps to Prospect.agency
+                'Title': 'title',
+                'Description': 'description',
+                'Naics Code': 'naics',
+                'Place Of Performance City': 'place_city',
+                'Place Of Performance State': 'place_state',
+                'Place Of Performance Country': 'place_country',
+                'Estimated Value Range': 'estimated_value_raw', 
+                'Estimated Solicitation Fiscal Year': 'solicitation_fy_raw',
+                'Estimated Solicitation Fiscal Quarter': 'solicitation_qtr_raw',
+                'Anticipated Set Aside And Type': 'set_aside',
+                # Fields for 'extra':
+                'Anticipated Action Award Type': 'action_award_type',
+                'Competition Strategy': 'competition_strategy',
+                'Anticipated Contract Vehicle': 'contract_vehicle'
+            }
+            rename_map_existing = {k: v for k, v in rename_map.items() if k in df.columns}
+            df.rename(columns=rename_map_existing, inplace=True)
+
+            # Derive Solicitation Date (becomes Prospect.release_date)
+            if 'solicitation_fy_raw' in df.columns and 'solicitation_qtr_raw' in df.columns:
+                df['solicitation_qtr_str'] = df['solicitation_qtr_raw'].astype(str).apply(lambda x: f'Q{x}' if x.isdigit() else x)
+                df['solicitation_fyq_raw'] = df['solicitation_fy_raw'].astype(str) + ' ' + df['solicitation_qtr_str']
+                # fiscal_quarter_to_date returns (timestamp, fiscal_year)
+                parsed_sol_date_info = df['solicitation_fyq_raw'].apply(fiscal_quarter_to_date)
+                df['release_date'] = parsed_sol_date_info.apply(lambda x: x[0].date() if pd.notna(x[0]) else None)
+                # We could also get solicitation_fiscal_year here if needed, but Prospect model doesn't have it directly.
+            else:
+                df['release_date'] = None
+                self.logger.warning("Could not parse solicitation date for DOC - FY or Quarter column missing.")
+
+            # Parse Estimated Value
+            if 'estimated_value_raw' in df.columns:
+                parsed_values = df['estimated_value_raw'].apply(parse_value_range)
+                df['estimated_value'] = parsed_values.apply(lambda x: x[0])
+                df['est_value_unit'] = parsed_values.apply(lambda x: x[1])
+            else:
+                df['estimated_value'] = pd.NA
+                df['est_value_unit'] = pd.NA
+            
+            # Initialize missing Prospect fields not in DOC source directly
+            df['award_date'] = None # DOC transform initializes with NaT
+            df['award_fiscal_year'] = pd.NA
+            
+            # Default place_country if not present (DOC transform assumes USA)
+            if 'place_country' not in df.columns:
+                df['place_country'] = 'USA'
+
+            # Drop raw/intermediate columns
+            cols_to_drop = ['estimated_value_raw', 'solicitation_fy_raw', 'solicitation_qtr_raw', 
+                            'solicitation_qtr_str', 'solicitation_fyq_raw']
+            df.drop(columns=[col for col in cols_to_drop if col in df.columns], errors='ignore', inplace=True)
+            # --- End: Logic adapted from doc_transform.normalize_columns_doc ---
+            
+            # Normalize column names (lowercase, snake_case)
+            df.columns = df.columns.str.strip().str.lower().str.replace(r'\\s+\\(.*?\\)', '', regex=True).str.replace(r'\\s+', '_', regex=True).str.replace(r'[^a-z0-9_]', '', regex=True)
+            df = df.loc[:, ~df.columns.duplicated()] # Remove duplicates
+
+            prospect_model_fields = [col.name for col in Prospect.__table__.columns if col.name not in ['loaded_at', 'id', 'source_id']]
+            
+            # Handle 'extra' column with JSON serialization
+            current_cols_normalized = df.columns.tolist()
+            unmapped_cols = [col for col in current_cols_normalized if col not in prospect_model_fields]
+
+            if unmapped_cols:
+                self.logger.info(f"Found unmapped columns for 'extra' for DOC: {unmapped_cols}")
+                def row_to_extra_json(row):
+                    extra_dict = {}
+                    for col_name in unmapped_cols:
+                        val = row.get(col_name)
+                        if pd.isna(val):
+                            extra_dict[col_name] = None
+                        elif isinstance(val, (datetime, pd.Timestamp)):
+                            extra_dict[col_name] = val.isoformat()
+                        elif isinstance(val, (int, float, bool, str)):
+                            extra_dict[col_name] = val
+                        else:
+                            try:
+                                extra_dict[col_name] = str(val)
+                            except Exception:
+                                extra_dict[col_name] = "CONVERSION_ERROR"
+                    try:
+                        return json.dumps(extra_dict)
+                    except TypeError:
+                        return str(extra_dict) # Fallback
+                df['extra'] = df.apply(row_to_extra_json, axis=1)
+            else:
+                df['extra'] = None
+            
+            for col in prospect_model_fields:
+                if col not in df.columns:
+                    df[col] = pd.NA
+            
+            data_source_obj = db.session.query(DataSource).filter_by(name=self.source_name).first()
+            df['source_id'] = data_source_obj.id if data_source_obj else None
+            
+            # --- ID Generation (adapted from doc_transform.generate_id) ---
+            def generate_prospect_id(row: pd.Series) -> str:
+                naics_val = str(row.get('naics', ''))
+                title_val = str(row.get('title', ''))
+                desc_val = str(row.get('description', ''))
+                unique_string = f"{naics_val}-{title_val}-{desc_val}-{self.source_name}"
+                return hashlib.md5(unique_string.encode('utf-8')).hexdigest()
+            df['id'] = df.apply(generate_prospect_id, axis=1)
+            # --- End: ID Generation ---
+
+            final_prospect_columns = [col.name for col in Prospect.__table__.columns if col.name != 'loaded_at']
+            df_to_insert = df[[col for col in final_prospect_columns if col in df.columns]]
+
+            df_to_insert.dropna(how='all', inplace=True)
+            if df_to_insert.empty:
+                self.logger.info("After DOC processing, no valid data rows to insert.")
+                return
+
+            self.logger.info(f"Attempting to insert/update {len(df_to_insert)} DOC records.")
+            bulk_upsert_prospects(df_to_insert)
+            self.logger.info(f"Successfully inserted/updated DOC records from {file_path}.")
+
+        except FileNotFoundError:
+            self.logger.error(f"DOC Excel file not found: {file_path}")
+            raise ScraperError(f"Processing failed: DOC Excel file not found: {file_path}")
+        except pd.errors.EmptyDataError:
+            self.logger.error(f"No data or empty DOC Excel file: {file_path}")
+            return
+        except KeyError as e:
+            self.logger.error(f"Missing expected column during DOC Excel processing: {e}. Check mappings or file format.")
+            self.logger.error(traceback.format_exc())
+            raise ScraperError(f"Processing failed due to missing column: {e}")
+        except Exception as e:
+            self.logger.error(f"Error processing DOC file {file_path}: {str(e)}")
+            self.logger.error(traceback.format_exc())
+            raise ScraperError(f"Error processing DOC file {file_path}: {str(e)}")
+
     def scrape(self):
         """
         Run the scraper to download the forecast document.
@@ -183,7 +342,8 @@ class DocScraper(BaseScraper):
         # Use the structured scrape method from the base class - only extract
         return self.scrape_with_structure(
             # Setup is handled within download_forecast_document now
-            extract_func=self.download_forecast_document
+            extract_func=self.download_forecast_document,
+            process_func=self.process_func # Add process_func
         )
 
 def run_scraper(force=False):

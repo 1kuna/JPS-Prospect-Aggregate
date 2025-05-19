@@ -15,13 +15,21 @@ if _project_root not in sys.path:
 
 # Third-party imports
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+import pandas as pd
+import hashlib
+import re
+import json
+from datetime import datetime
 
 # Local application imports
 from app.core.base_scraper import BaseScraper
+from app.models import Prospect, DataSource, db
+from app.database.crud import bulk_upsert_prospects
 from app.exceptions import ScraperError
 from app.utils.logger import logger
 from app.config import DOS_FORECAST_URL, RAW_DATA_DIR # Import RAW_DATA_DIR
 from app.utils.scraper_utils import handle_scraper_error
+from app.utils.parsing import parse_value_range, fiscal_quarter_to_date
 
 # Set up logging using the centralized utility
 logger = logger.bind(name="scraper.dos_forecast")
@@ -165,6 +173,169 @@ class DOSForecastScraper(BaseScraper):
             else:
                  raise
     
+    def process_func(self, file_path: str):
+        """
+        Process the downloaded Excel file, transform data to Prospect objects, 
+        and insert into the database using logic adapted from dos_transform.py.
+        """
+        self.logger.info(f"Processing downloaded Excel file: {file_path}")
+        try:
+            # DOS transform: sheet 'FY25-Procurement-Forecast', header index 0
+            df = pd.read_excel(file_path, sheet_name='FY25-Procurement-Forecast', header=0)
+            df.dropna(how='all', inplace=True) # Pre-processing from transform script
+            self.logger.info(f"Loaded {len(df)} rows from {file_path} after initial dropna.")
+
+            if df.empty:
+                self.logger.info("Downloaded file is empty. Nothing to process.")
+                return
+
+            # --- Start: Logic adapted from dos_transform.normalize_columns_dos ---
+            rename_map = {
+                'Contract Number': 'native_id',
+                'Office Symbol': 'agency', # Maps to Prospect.agency
+                'Requirement Title': 'title',
+                'Requirement Description': 'description',
+                'Estimated Value': 'estimated_value_raw1', 
+                'Dollar Value': 'estimated_value_raw2', 
+                'Place of Performance Country': 'place_country',
+                'Place of Performance City': 'place_city',
+                'Place of Performance State': 'place_state',
+                'Award Type': 'contract_type',
+                'Anticipated Award Date': 'award_date_raw',
+                'Target Award Quarter': 'award_qtr_raw',
+                'Fiscal Year': 'award_fiscal_year_raw',
+                'Anticipated Set Aside': 'set_aside',
+                'Anticipated Solicitation Release Date': 'release_date_raw' # for Prospect.release_date
+            }
+            rename_map_existing = {k: v for k, v in rename_map.items() if k in df.columns}
+            df.rename(columns=rename_map_existing, inplace=True)
+
+            # Award Date/Year Parsing (Priority: FY raw -> Date raw -> Quarter raw)
+            df['award_date'] = None # Initialize with None for dt.date compatibility later
+            df['award_fiscal_year'] = pd.NA
+
+            if 'award_fiscal_year_raw' in df.columns:
+                df['award_fiscal_year'] = pd.to_numeric(df['award_fiscal_year_raw'], errors='coerce')
+
+            if 'award_date_raw' in df.columns:
+                parsed_direct_award_date = pd.to_datetime(df['award_date_raw'], errors='coerce')
+                # Fill award_date if it's still None (it is, from initialization)
+                df['award_date'] = df['award_date'].fillna(parsed_direct_award_date.dt.date) 
+                
+                needs_fy_from_date_mask = df['award_fiscal_year'].isna() & parsed_direct_award_date.notna()
+                if needs_fy_from_date_mask.any():
+                    df.loc[needs_fy_from_date_mask, 'award_fiscal_year'] = parsed_direct_award_date[needs_fy_from_date_mask].dt.year
+
+            if 'award_qtr_raw' in df.columns:
+                needs_qtr_parse_mask = df['award_date'].isna() & df['award_fiscal_year'].isna() & df['award_qtr_raw'].notna()
+                if needs_qtr_parse_mask.any():
+                    parsed_qtr_info = df.loc[needs_qtr_parse_mask, 'award_qtr_raw'].apply(fiscal_quarter_to_date)
+                    df.loc[needs_qtr_parse_mask, 'award_date'] = parsed_qtr_info.apply(lambda x: x[0].date() if pd.notna(x[0]) else None)
+                    df.loc[needs_qtr_parse_mask, 'award_fiscal_year'] = parsed_qtr_info.apply(lambda x: x[1])
+            
+            if 'award_fiscal_year' in df.columns: # Ensure type
+                 df['award_fiscal_year'] = pd.to_numeric(df['award_fiscal_year'], errors='coerce').astype('Int64')
+
+            # Estimated Value Parsing (Priority: raw1 then raw2)
+            if 'estimated_value_raw1' in df.columns and df['estimated_value_raw1'].notna().any():
+                parsed_values = df['estimated_value_raw1'].apply(parse_value_range)
+                df['estimated_value'] = parsed_values.apply(lambda x: x[0])
+                df['est_value_unit'] = parsed_values.apply(lambda x: x[1])
+            elif 'estimated_value_raw2' in df.columns:
+                df['estimated_value'] = pd.to_numeric(df['estimated_value_raw2'], errors='coerce')
+                df['est_value_unit'] = None 
+            else:
+                df['estimated_value'] = pd.NA
+                df['est_value_unit'] = pd.NA
+
+            # Solicitation Date (Prospect.release_date)
+            if 'release_date_raw' in df.columns:
+                df['release_date'] = pd.to_datetime(df['release_date_raw'], errors='coerce').dt.date
+            else:
+                df['release_date'] = None
+            
+            # Initialize NAICS (not in DOS source)
+            df['naics'] = pd.NA
+            
+            # Initialize Place columns if missing (default country USA)
+            for col_place in ['place_city', 'place_state']:
+                if col_place not in df.columns: df[col_place] = pd.NA
+            if 'place_country' not in df.columns: df['place_country'] = 'USA'
+
+            cols_to_drop = ['estimated_value_raw1', 'estimated_value_raw2', 'award_date_raw', 'award_qtr_raw', 'award_fiscal_year_raw', 'release_date_raw']
+            df.drop(columns=[col for col in cols_to_drop if col in df.columns], errors='ignore', inplace=True)
+            # --- End: Logic adapted from dos_transform.normalize_columns_dos ---
+            
+            df.columns = df.columns.str.strip().str.lower().str.replace(r'\\s+\\(.*?\\)', '', regex=True).str.replace(r'\\s+', '_', regex=True).str.replace(r'[^a-z0-9_]', '', regex=True)
+            df = df.loc[:, ~df.columns.duplicated()]
+
+            prospect_model_fields = [col.name for col in Prospect.__table__.columns if col.name not in ['loaded_at', 'id', 'source_id']]
+            current_cols_normalized = df.columns.tolist()
+            unmapped_cols = [col for col in current_cols_normalized if col not in prospect_model_fields]
+
+            if unmapped_cols:
+                self.logger.info(f"Found unmapped columns for 'extra' for DOS: {unmapped_cols}")
+                def row_to_extra_json(row):
+                    extra_dict = {}
+                    for col_name in unmapped_cols:
+                        val = row.get(col_name)
+                        if pd.isna(val):
+                            extra_dict[col_name] = None
+                        elif pd.api.types.is_datetime64_any_dtype(val) or isinstance(val, (datetime, pd.Timestamp)):
+                            extra_dict[col_name] = pd.to_datetime(val).isoformat()
+                        elif isinstance(val, (int, float, bool, str)):
+                            extra_dict[col_name] = val
+                        else:
+                            try: extra_dict[col_name] = str(val)
+                            except Exception: extra_dict[col_name] = "CONVERSION_ERROR"
+                    try: return json.dumps(extra_dict)
+                    except TypeError: return str(extra_dict)
+                df['extra'] = df.apply(row_to_extra_json, axis=1)
+            else:
+                df['extra'] = None
+
+            for col in prospect_model_fields:
+                if col not in df.columns:
+                    df[col] = pd.NA
+            
+            data_source_obj = db.session.query(DataSource).filter_by(name=self.source_name).first()
+            df['source_id'] = data_source_obj.id if data_source_obj else None
+            
+            def generate_prospect_id(row: pd.Series) -> str:
+                naics_val = str(row.get('naics', '')) # Will be 'nan' or 'None' for DOS
+                title_val = str(row.get('title', ''))
+                desc_val = str(row.get('description', ''))
+                unique_string = f"{naics_val}-{title_val}-{desc_val}-{self.source_name}"
+                return hashlib.md5(unique_string.encode('utf-8')).hexdigest()
+            df['id'] = df.apply(generate_prospect_id, axis=1)
+
+            final_prospect_columns = [col.name for col in Prospect.__table__.columns if col.name != 'loaded_at']
+            df_to_insert = df[[col for col in final_prospect_columns if col in df.columns]]
+
+            df_to_insert.dropna(how='all', inplace=True)
+            if df_to_insert.empty:
+                self.logger.info("After DOS processing, no valid data rows to insert.")
+                return
+
+            self.logger.info(f"Attempting to insert/update {len(df_to_insert)} DOS records.")
+            bulk_upsert_prospects(df_to_insert)
+            self.logger.info(f"Successfully inserted/updated DOS records from {file_path}.")
+
+        except FileNotFoundError:
+            self.logger.error(f"DOS Excel file not found: {file_path}")
+            raise ScraperError(f"Processing failed: DOS Excel file not found: {file_path}")
+        except pd.errors.EmptyDataError:
+            self.logger.error(f"No data or empty DOS Excel file: {file_path}")
+            return
+        except KeyError as e:
+            self.logger.error(f"Missing expected column during DOS Excel processing: {e}.")
+            self.logger.error(traceback.format_exc())
+            raise ScraperError(f"Processing failed due to missing column: {e}")
+        except Exception as e:
+            self.logger.error(f"Error processing DOS file {file_path}: {str(e)}")
+            self.logger.error(traceback.format_exc())
+            raise ScraperError(f"Error processing DOS file {file_path}: {str(e)}")
+
     def scrape(self):
         """
         Run the scraper to download the forecast document.
@@ -174,7 +345,8 @@ class DOSForecastScraper(BaseScraper):
         # For simplicity, let's assume scrape_with_structure handles setup/cleanup okay
         # and we just pass the direct download function.
         return self.scrape_with_structure(
-            extract_func=self.download_forecast_document
+            extract_func=self.download_forecast_document,
+            process_func=self.process_func
         )
 
 def run_scraper(force=False):
