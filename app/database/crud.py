@@ -1,7 +1,7 @@
 import logging
 import pandas as pd
 # from sqlalchemy.orm import Session # No longer needed directly
-from sqlalchemy.dialects.postgresql import insert # Keep for dialect-specific insert
+from sqlalchemy import insert # Changed to core SQLAlchemy insert
 from sqlalchemy.exc import SQLAlchemyError
 import numpy as np
 import datetime
@@ -10,8 +10,7 @@ import datetime
 # from .session import get_db # Old import
 from app.models import db, Prospect # Changed back to Prospect
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+# Logging is now handled by app.utils.logger (Loguru)
 
 def bulk_upsert_prospects(df_in: pd.DataFrame): # Renamed back
     """

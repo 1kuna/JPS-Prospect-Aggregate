@@ -6,17 +6,18 @@ import pytest
 from flask import Flask
 from app import create_app
 from app.database import db as _db
-from app.config import TestConfig
+# TestConfig is now sourced from active_config in create_app when FLASK_ENV='testing'
+# from app.config import TestConfig # No longer directly needed here
 
-class TestConfig(Config):
-    """Test configuration."""
-    TESTING = True
-    SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
+# The local TestConfig class definition is removed as create_app uses active_config.
+# Ensure FLASK_ENV is set to 'testing' in the test environment.
 
 @pytest.fixture(scope='session')
 def app(request):
     """Session-wide test Flask application."""
-    flask_app = create_app(config_class=TestConfig)
+    # create_app will use active_config.
+    # For tests, FLASK_ENV should be 'testing' so active_config is TestingConfig.
+    flask_app = create_app() 
 
     # Establish an application context before running the tests.
     ctx = flask_app.app_context()

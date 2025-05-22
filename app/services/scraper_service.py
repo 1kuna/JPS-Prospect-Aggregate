@@ -1,7 +1,8 @@
 import datetime
-from app.models import db, DataSource, ScraperStatus
+from app.models import db, DataSource # ScraperStatus will be handled by the utility
 from app.exceptions import NotFoundError, ScraperError, DatabaseError
 from app.utils.logger import logger
+from app.utils.db_utils import update_scraper_status # Import the utility
 from app.core.scrapers import SCRAPERS # Import the central SCRAPERS registry
 
 # Set up logging using the centralized utility
@@ -26,60 +27,50 @@ class ScraperService:
             scraper_instance = ScraperClass()
             
             # Update status to 'working' before starting
-            status_record = session.query(ScraperStatus).filter_by(source_id=source_id).order_by(ScraperStatus.last_checked.desc()).first()
-            if not status_record: # Should have been created with data source
-                status_record = ScraperStatus(source_id=source_id, status='pending', details='Status record created on first pull trigger.')
-                session.add(status_record)
-
-            status_record.status = 'working'
-            status_record.last_checked = datetime.datetime.utcnow()
-            status_record.details = "Scrape process initiated."
-            session.commit()
+            update_scraper_status(source_id=data_source.id, status='working', details="Scrape process initiated.")
 
             try:
                 logger.info(f"Starting scrape for {data_source.name} (ID: {source_id})")
-                scraper_instance.run() 
+                # Assuming scraper_instance.run() is the correct method to execute the scrape.
+                # If run() is from BaseScraper.scrape() which calls scrape_with_structure,
+                # then process_func is part of it. If run() is specific to individual scrapers,
+                # ensure it returns a meaningful result or raises specific exceptions.
+                scraper_instance.run() # This should ideally return the result of process_func or raise error
                 
-                status_record.status = 'completed'
-                status_record.details = f"Scrape completed successfully at {datetime.datetime.utcnow().isoformat()}."
-                data_source.last_scraped = datetime.datetime.utcnow() # Update last_scraped on successful completion
+                # If scrape is successful:
+                update_scraper_status(source_id=data_source.id, status='completed', details=f"Scrape completed successfully at {datetime.datetime.utcnow().isoformat()}.")
+                data_source.last_scraped = datetime.datetime.utcnow()
+                session.commit() # Commit update to data_source.last_scraped
+                
                 logger.info(f"Scrape for {data_source.name} completed successfully.")
-                result_message = f"Data pull for {data_source.name} initiated successfully. Final status: {status_record.status}"
+                # Get the latest status for the return message
+                latest_status_record = session.query(ScraperStatus).filter_by(source_id=source_id).order_by(ScraperStatus.last_checked.desc()).first()
+                final_status_str = latest_status_record.status if latest_status_record else "unknown"
+                result_message = f"Data pull for {data_source.name} processed. Final status: {final_status_str}"
 
-            except Exception as scrape_exc:
+            except Exception as scrape_exc: # Catch any exception from scraper_instance.run()
                 logger.error(f"Scraper for {data_source.name} failed: {scrape_exc}", exc_info=True)
-                status_record.status = 'failed'
-                status_record.details = f"Scrape failed: {str(scrape_exc)[:500]}" # Truncate long errors
-                # We re-raise the ScraperError to be handled by the route or a global error handler
-                raise ScraperError(f"Scraping {data_source.name} failed: {scrape_exc}")
-            finally:
-                status_record.last_checked = datetime.datetime.utcnow()
-                session.commit()
+                error_detail = f"Scrape failed: {str(scrape_exc)[:500]}"
+                update_scraper_status(source_id=data_source.id, status='failed', details=error_detail)
+                # Re-raise as ScraperError to be handled by the route or a global error handler
+                raise ScraperError(f"Scraping {data_source.name} failed: {scrape_exc}") from scrape_exc
+            # No 'finally' block here to commit status, as update_scraper_status handles its own commits.
 
-            return {"status": "success", "message": result_message, "data_source_name": data_source.name, "scraper_status": status_record.status}
+            return {"status": "success", "message": result_message, "data_source_name": data_source.name, "scraper_status": final_status_str}
 
         except NotFoundError as nfe:
-            db.session.rollback()
-            # Re-raise to be caught by Flask error handlers
-            raise nfe
+            # db.session.rollback() # Typically handled by app error handlers or session teardown
+            raise nfe # Re-raise to be caught by Flask error handlers
         except ScraperError as se:
-            db.session.rollback()
-            # Log here or ensure it's logged by the caller/global handler
+            # db.session.rollback()
             logger.error(f"Scraper service error for source ID {source_id}: {se}", exc_info=True)
             raise se
         except Exception as e:
-            db.session.rollback()
+            # db.session.rollback()
             logger.error(f"Unexpected error in scraper service for source ID {source_id}: {e}", exc_info=True)
-            # Attempt to update status record if it exists
-            if 'status_record' in locals() and status_record:
-                try:
-                    status_record.status = 'failed'
-                    status_record.details = f"Pull process failed unexpectedly in service: {str(e)[:500]}"
-                    status_record.last_checked = datetime.datetime.utcnow()
-                    session.commit()
-                except Exception as final_commit_e:
-                    logger.error(f"Failed to commit final error status in service for source ID {source_id}: {final_commit_e}", exc_info=True)
-                    db.session.rollback() # Rollback this nested attempt
-            raise DatabaseError(f"Unexpected error processing pull for {data_source.name if 'data_source' in locals() and data_source else source_id} in service")
+            if data_source: # Check if data_source object was fetched
+                error_detail = f"Pull process failed unexpectedly in service: {str(e)[:500]}"
+                update_scraper_status(source_id=data_source.id, status='failed', details=error_detail)
+            raise DatabaseError(f"Unexpected error processing pull for {data_source.name if data_source else source_id} in service")
 
     # TODO: Add other scraper-related service methods here 

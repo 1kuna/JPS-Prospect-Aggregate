@@ -28,6 +28,9 @@ def cleanup_old_backups(backup_dir, max_backups=5):
     logger.info(f"Cleaned up {deleted} old database backup(s), keeping {max_backups} most recent")
     return deleted
 
+# Ensure datetime is imported if not already at the top of the file
+# import datetime # This should be at the top of the file
+
 def rebuild_database(max_backups=5):
     """
     Rebuild the database with the new schema
@@ -85,58 +88,58 @@ def rebuild_database(max_backups=5):
     logger.info("Database rebuild completed successfully")
     return True
 
-def update_scraper_status(source_name, status, error_message=None):
+def update_scraper_status(source_id: int, status: str, details: Optional[str] = None):
     """
-    Update the scraper status in the database.
+    Update the scraper status in the database for a given source_id.
     
     Args:
-        source_name (str): Name of the data source
-        status (str): Status to set ('working', 'error', etc.)
-        error_message (str, optional): Error message to set
+        source_id (int): The ID of the data source.
+        status (str): Status to set (e.g., 'working', 'completed', 'failed').
+        details (Optional[str]): Additional details or error message.
     """
-    # Use the correct context manager from connection.py
-    # from app.database.session import get_db # Corrected import from app.database.session
-    # Import models from the correct location
     from app.models import db, DataSource, ScraperStatus # Import db from app.models
-    import datetime
+    # Ensure datetime is available
+    # import datetime # This should be at the top of the file if not already present
+
+    logger.info(f"Updating scraper status for source ID {source_id} to '{status}'. Details: {details}")
     
-    logger.info(f"Updating scraper status for {source_name} to {status}")
-    
+    session = db.session
     try:
-        # Use the db.session from Flask-SQLAlchemy
-        session = db.session
-        # Get the data source
-        data_source = session.query(DataSource).filter_by(name=source_name).first()
-        if data_source:
-            # Check if there's an existing status record
-            status_record = session.query(ScraperStatus).filter_by(source_id=data_source.id).first()
-            if status_record:
-                # Update existing record
-                status_record.status = status
-                status_record.last_checked = datetime.datetime.utcnow()
-                status_record.error_message = error_message
-                logger.info(f"Updated existing status record for {source_name} to {status}")
-            else:
-                # Create new record
-                new_status = ScraperStatus(
-                    source_id=data_source.id,
-                    status=status,
-                    last_checked=datetime.datetime.utcnow(),
-                    error_message=error_message
-                )
-                session.add(new_status)
-                logger.info(f"Created new status record for {source_name} with status {status}")
-            
-            # Also update the last_scraped field on the data source
-            data_source.last_scraped = datetime.datetime.utcnow()
-            session.commit()
-            logger.info(f"Updated last_scraped timestamp for {source_name}")
+        # Verify DataSource exists
+        data_source = session.query(DataSource).filter_by(id=source_id).first()
+        if not data_source:
+            logger.warning(f"DataSource with ID {source_id} not found. Cannot update status.")
+            return
+
+        # Find the most recent status record to update, or create a new one
+        status_record = session.query(ScraperStatus).filter_by(source_id=source_id).order_by(ScraperStatus.last_checked.desc()).first()
+        
+        current_time = datetime.datetime.utcnow()
+
+        if not status_record:
+            status_record = ScraperStatus(
+                source_id=source_id,
+                status=status,
+                details=details,
+                last_checked=current_time 
+            )
+            session.add(status_record)
+            logger.info(f"Created new status record for source ID {source_id} with status '{status}'.")
         else:
-            logger.warning(f"Data source not found for {source_name}")
+            status_record.status = status
+            status_record.details = details
+            status_record.last_checked = current_time
+            logger.info(f"Updated existing status record for source ID {source_id} to '{status}'.")
+            
+        session.commit()
+        logger.info(f"Successfully committed status update for source ID {source_id}.")
+
     except Exception as e:
-        logger.error(f"Error updating scraper status: {str(e)}")
-        import traceback
-        logger.error(f"Traceback: {traceback.format_exc()}")
+        logger.error(f"Error updating scraper status for source ID {source_id}: {str(e)}", exc_info=True)
+        try:
+            session.rollback()
+        except Exception as rb_exc:
+            logger.error(f"Failed to rollback session during status update error: {rb_exc}", exc_info=True)
 
 def get_data_source_id_by_name(source_name: str) -> int | None:
     """Fetches the ID of a data source by its name."""

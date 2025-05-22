@@ -7,8 +7,7 @@ from sqlalchemy.sql import func
 import logging
 from app.database import db # Import db from flask_sqlalchemy instance
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+# Logging is now handled by app.utils.logger (Loguru)
 
 class Prospect(db.Model): # Renamed back to Prospect
     __tablename__ = 'prospects' # Renamed back to prospects

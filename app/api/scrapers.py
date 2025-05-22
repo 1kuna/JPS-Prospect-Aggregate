@@ -14,13 +14,10 @@ logger = logger.bind(name="api.scrapers")
 def pull_data_source(source_id):
     """Trigger a data pull for a specific data source via ScraperService."""
     try:
-        # current_app.logger.info(f"Route: Initiating data pull for source ID {source_id}")
-        
         # Run the scraper in a background thread
         thread = threading.Thread(target=ScraperService.trigger_scrape, args=(source_id,))
         thread.start()
 
-        # current_app.logger.info(f"Route: Scrape service returned: {result}")
         # Return 202 Accepted with a status message
         status_url = f"/api/scrapers/status/{source_id}" # Example status URL
         return jsonify({
@@ -29,20 +26,14 @@ def pull_data_source(source_id):
             "status_url": status_url
         }), 202 # HTTP 202 Accepted for async operations
     except NotFoundError as nfe:
-        # Logged in service or globally
-        # current_app.logger.warning(f"Route: NotFoundError for source ID {source_id}: {nfe}")
         raise nfe # Re-raise to be handled by Flask error handlers
     except ScraperError as se:
-        # Logged in service or globally
-        # current_app.logger.error(f"Route: ScraperError for source ID {source_id}: {se}", exc_info=True)
         raise se # Re-raise
     except DatabaseError as de:
-        # Logged in service or globally
-        # current_app.logger.error(f"Route: DatabaseError for source ID {source_id}: {de}", exc_info=True)
         raise de # Re-raise
     except Exception as e:
         # Catch any other unexpected errors that weren't caught by specific handlers
-        current_app.logger.error(f"Route: Unexpected error for source ID {source_id}: {e}", exc_info=True)
+        logger.error(f"Route: Unexpected error for source ID {source_id}: {e}", exc_info=True) # Use blueprint logger
         # Return a generic error response
         return jsonify({
             "status": "error", 

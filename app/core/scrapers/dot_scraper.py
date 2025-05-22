@@ -7,12 +7,6 @@ import time
 import shutil
 import datetime # Added datetime import
 
-# --- Start temporary path adjustment for direct execution ---
-_project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
-if _project_root not in sys.path:
-    sys.path.insert(0, _project_root)
-# --- End temporary path adjustment ---
-
 # Third-party imports
 import requests
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
@@ -28,7 +22,7 @@ import json # Added json
 from app.core.base_scraper import BaseScraper
 from app.models import Prospect, DataSource, db # Added Prospect, DataSource, db
 from app.database.crud import bulk_upsert_prospects # Added bulk_upsert_prospects
-from app.config import LOGS_DIR, RAW_DATA_DIR, DOT_FORECAST_URL, PAGE_NAVIGATION_TIMEOUT # Use RAW_DATA_DIR
+from app.config import active_config # Import active_config
 from app.exceptions import ScraperError
 from app.utils.file_utils import ensure_directory, find_files
 from app.utils.logger import logger
@@ -49,7 +43,7 @@ class DotScraper(BaseScraper):
         """Initialize the DOT scraper."""
         super().__init__(
             source_name="DOT Forecast", # Changed source name
-            base_url=DOT_FORECAST_URL,
+            base_url=active_config.DOT_FORECAST_URL,
             debug_mode=debug_mode
         )
         ensure_directory(self.download_path)
@@ -419,8 +413,8 @@ def run_scraper(force=False):
 
         # Check URL accessibility (start with verify_ssl=True)
         # We might need to adjust this check if it also fails, but try first
-        if not check_url_accessibility(DOT_FORECAST_URL, verify_ssl=True):
-            error_msg = f"URL {DOT_FORECAST_URL} is not accessible"
+        if not check_url_accessibility(active_config.DOT_FORECAST_URL, verify_ssl=True):
+            error_msg = f"URL {active_config.DOT_FORECAST_URL} is not accessible"
             handle_scraper_error(ScraperError(error_msg), source_name)
             raise ScraperError(error_msg)
 

@@ -7,12 +7,6 @@ import sys
 import shutil
 import datetime
 
-# --- Start temporary path adjustment for direct execution ---
-_project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
-if _project_root not in sys.path:
-    sys.path.insert(0, _project_root)
-# --- End temporary path adjustment ---
-
 # Third-party imports
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 import pandas as pd
@@ -28,7 +22,7 @@ from app.models import Prospect, DataSource, db
 from app.database.crud import bulk_upsert_prospects
 from app.exceptions import ScraperError
 from app.utils.logger import logger
-from app.config import HHS_FORECAST_URL
+from app.config import active_config # Import active_config
 from app.utils.scraper_utils import handle_scraper_error
 from app.utils.parsing import parse_value_range
 
@@ -42,7 +36,7 @@ class HHSForecastScraper(BaseScraper):
         """Initialize the HHS Forecast scraper."""
         super().__init__(
             source_name="HHS Forecast",
-            base_url=HHS_FORECAST_URL,
+            base_url=active_config.HHS_FORECAST_URL,
             debug_mode=debug_mode
         )
     

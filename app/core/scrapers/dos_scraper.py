@@ -7,12 +7,6 @@ import sys
 import shutil
 import datetime
 
-# --- Start temporary path adjustment for direct execution ---
-_project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
-if _project_root not in sys.path:
-    sys.path.insert(0, _project_root)
-# --- End temporary path adjustment ---
-
 # Third-party imports
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 import pandas as pd
@@ -27,7 +21,7 @@ from app.models import Prospect, DataSource, db
 from app.database.crud import bulk_upsert_prospects
 from app.exceptions import ScraperError
 from app.utils.logger import logger
-from app.config import DOS_FORECAST_URL, RAW_DATA_DIR # Import RAW_DATA_DIR
+from app.config import active_config # Import active_config
 from app.utils.scraper_utils import handle_scraper_error
 from app.utils.parsing import parse_value_range, fiscal_quarter_to_date
 
@@ -41,7 +35,7 @@ class DOSForecastScraper(BaseScraper):
         """Initialize the DOS Forecast scraper."""
         super().__init__(
             source_name="DOS Forecast", # Updated source name
-            base_url=DOS_FORECAST_URL, # Updated URL config variable
+            base_url=active_config.DOS_FORECAST_URL, # Updated URL config variable
             debug_mode=debug_mode
         )
     
@@ -388,7 +382,7 @@ def run_scraper(force=False):
     except Exception as e:
         error_msg = f"Unexpected error running {source_name} scraper: {str(e)}"
         local_logger.error(error_msg)
-        local_logger.warning(f"The site ({DOS_FORECAST_URL}) may be experiencing technical difficulties.")
+        local_logger.warning(f"The site ({active_config.DOS_FORECAST_URL}) may be experiencing technical difficulties.")
         handle_scraper_error(e, source_name, f"Unexpected error in run_scraper for {source_name} (site might be down)")
         raise ScraperError(error_msg) from e
     finally:

@@ -15,32 +15,53 @@ def get_data_sources():
     """Get all data sources."""
     session = db.session
     try:
-        sources = session.query(DataSource).all()
-        result = []
+        # Subquery for prospect counts
+        prospect_count_subq = session.query(
+            Prospect.source_id,
+            func.count(Prospect.id).label("prospect_count")
+        ).group_by(Prospect.source_id).subquery()
+
+        # Subquery for the latest status for each source
+        # This gets the source_id and the max last_checked timestamp for that source_id
+        latest_status_subq = session.query(
+            ScraperStatus.source_id,
+            func.max(ScraperStatus.last_checked).label("max_last_checked")
+        ).group_by(ScraperStatus.source_id).subquery()
+
+        # Main query
+        query = session.query(
+            DataSource,
+            prospect_count_subq.c.prospect_count,
+            ScraperStatus 
+        ).outerjoin(
+            prospect_count_subq, DataSource.id == prospect_count_subq.c.source_id
+        ).outerjoin(
+            latest_status_subq, DataSource.id == latest_status_subq.c.source_id
+        ).outerjoin(
+            ScraperStatus, (ScraperStatus.source_id == latest_status_subq.c.source_id) & \
+                           (ScraperStatus.last_checked == latest_status_subq.c.max_last_checked)
+        )
+
+        sources_data = query.all()
         
-        for source in sources:
-            # Count prospects for this source
-            prospect_count = session.query(func.count(Prospect.id)).filter(Prospect.source_id == source.id).scalar()
-            
-            # Get the latest status check if available
-            status_record = session.query(ScraperStatus).filter_by(source_id=source.id).order_by(ScraperStatus.last_checked.desc()).first()
-            
+        result = []
+        for source, p_count, status_rec in sources_data:
             result.append({
                 "id": source.id,
                 "name": source.name,
                 "url": source.url,
                 "description": source.description,
                 "last_scraped": source.last_scraped.isoformat() if source.last_scraped else None,
-                "proposalCount": prospect_count,
-                "last_checked": status_record.last_checked.isoformat() if status_record and status_record.last_checked else None,
-                "status": status_record.status if status_record else "unknown"
+                "proposalCount": p_count if p_count is not None else 0,
+                "last_checked": status_rec.last_checked.isoformat() if status_rec and status_rec.last_checked else None,
+                "status": status_rec.status if status_rec else "unknown"
             })
         
         return jsonify({"status": "success", "data": result})
     except Exception as e:
-        current_app.logger.error(f"Error in get_data_sources: {str(e)}")
-        db.session.rollback()
-        return jsonify({"status": "error", "message": str(e)}), 500
+        logger.error(f"Error in get_data_sources: {str(e)}", exc_info=True) # Use blueprint logger and add exc_info
+        # db.session.rollback() # Rollback is usually handled by a session teardown or error handler
+        return jsonify({"status": "error", "message": "An internal error occurred processing your request."}), 500
 
 
 @data_sources_bp.route('/<int:source_id>', methods=['PUT'])

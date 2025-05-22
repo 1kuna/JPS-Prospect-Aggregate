@@ -7,14 +7,6 @@ import sys
 import shutil
 import datetime
 
-# --- Start temporary path adjustment for direct execution ---
-# Calculate the path to the project root directory (JPS-Prospect-Aggregate)
-_project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
-# Add the project root to the Python path if it's not already there
-if _project_root not in sys.path:
-    sys.path.insert(0, _project_root)
-# --- End temporary path adjustment ---
-
 # Third-party imports
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 import pandas as pd
@@ -31,7 +23,7 @@ from app.database.crud import bulk_upsert_prospects
 from app.exceptions import ScraperError
 from app.utils.logger import logger
 from app.utils.db_utils import update_scraper_status
-from app.config import SSA_CONTRACT_FORECAST_URL
+from app.config import active_config # Import active_config
 from app.utils.scraper_utils import (
     check_url_accessibility,
     download_file,
@@ -50,7 +42,7 @@ class SsaScraper(BaseScraper):
         """Initialize the SSA Forecast scraper."""
         super().__init__(
             source_name="SSA Forecast",
-            base_url=SSA_CONTRACT_FORECAST_URL,
+            base_url=active_config.SSA_CONTRACT_FORECAST_URL,
             debug_mode=debug_mode
         )
     

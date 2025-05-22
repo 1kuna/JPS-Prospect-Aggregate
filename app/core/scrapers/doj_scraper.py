@@ -8,12 +8,6 @@ import shutil
 import datetime
 import json
 
-# --- Start temporary path adjustment for direct execution ---
-_project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
-if _project_root not in sys.path:
-    sys.path.insert(0, _project_root)
-# --- End temporary path adjustment ---
-
 # Third-party imports
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 import pandas as pd
@@ -27,7 +21,7 @@ from app.models import Prospect, DataSource, db
 from app.database.crud import bulk_upsert_prospects
 from app.exceptions import ScraperError
 from app.utils.logger import logger
-from app.config import DOJ_FORECAST_URL # Need to add this to config.py
+from app.config import active_config # Import active_config
 from app.utils.scraper_utils import handle_scraper_error
 from app.utils.parsing import parse_value_range, fiscal_quarter_to_date, split_place
 
@@ -41,7 +35,7 @@ class DOJForecastScraper(BaseScraper):
         """Initialize the DOJ Forecast scraper."""
         super().__init__(
             source_name="DOJ Forecast", # Updated source name
-            base_url=DOJ_FORECAST_URL, # Updated URL config variable
+            base_url=active_config.DOJ_FORECAST_URL, # Updated URL config variable
             debug_mode=debug_mode
         )
     

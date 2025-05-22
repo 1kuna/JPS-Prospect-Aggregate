@@ -8,12 +8,6 @@ import shutil
 import datetime # Added datetime import
 from urllib.parse import urljoin
 
-# --- Start temporary path adjustment for direct execution ---
-_project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
-if _project_root not in sys.path:
-    sys.path.insert(0, _project_root)
-# --- End temporary path adjustment ---
-
 # Third-party imports
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 import pandas as pd
@@ -30,7 +24,7 @@ from app.exceptions import ScraperError
 from app.utils.logger import logger
 from app.utils.db_utils import update_scraper_status, get_data_source_id_by_name
 # We need to add COMMERCE_FORECAST_URL to config.py
-from app.config import COMMERCE_FORECAST_URL 
+from app.config import active_config # Import active_config
 from app.utils.scraper_utils import (
     check_url_accessibility,
     download_file,
@@ -48,7 +42,7 @@ class DocScraper(BaseScraper):
         """Initialize the DOC Forecast scraper."""
         super().__init__(
             source_name="DOC Forecast",
-            base_url=COMMERCE_FORECAST_URL,
+            base_url=active_config.COMMERCE_FORECAST_URL,
             debug_mode=debug_mode
         )
     

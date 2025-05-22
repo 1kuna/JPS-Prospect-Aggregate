@@ -8,18 +8,17 @@ from flask import Flask
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
-from app.config import config_by_name as config
+from app.config import active_config # Import active_config
 from app.database import db  # Import the db instance from database.py
 # Logging is configured automatically on import of app.utils.logger
 
 # Setup logging as early as possible
 # Logging is configured automatically on import of app.utils.logger
 
-def create_app(config_name='default'):
+def create_app(config_name='default'): # config_name is no longer used but kept for compatibility
     """Create and configure an instance of the Flask application."""
     app = Flask(__name__)
-    app.config.from_object(config[config_name])
-    # config[config_name].init_app(app) # Config classes don't have init_app
+    app.config.from_object(active_config) # Use active_config directly
 
     # Initialize extensions
     CORS(app, resources={r'/api/*': {'origins': '*'}}) # Configure origins properly for production

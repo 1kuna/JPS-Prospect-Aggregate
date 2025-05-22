@@ -7,16 +7,10 @@ import sys
 import shutil
 import datetime
 
-# --- Start temporary path adjustment for direct execution ---
-_project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
-if _project_root not in sys.path:
-    sys.path.insert(0, _project_root)
-# --- End temporary path adjustment ---
-
 # Third-party imports
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 import pandas as pd
-import hashlib
+# import hashlib # No longer needed here
 import re
 from datetime import datetime
 
@@ -27,7 +21,7 @@ from app.database.crud import bulk_upsert_prospects
 from app.exceptions import ScraperError
 from app.utils.logger import logger
 from app.utils.parsing import parse_value_range, fiscal_quarter_to_date
-from app.config import DHS_FORECAST_URL
+from app.config import active_config # Import active_config
 from app.utils.scraper_utils import handle_scraper_error
 
 # Set up logging using the centralized utility
@@ -40,7 +34,7 @@ class DHSForecastScraper(BaseScraper):
         """Initialize the DHS Forecast scraper."""
         super().__init__(
             source_name="DHS Forecast",
-            base_url=DHS_FORECAST_URL,
+            base_url=active_config.DHS_FORECAST_URL,
             debug_mode=debug_mode
         )
     
@@ -83,52 +77,30 @@ class DHSForecastScraper(BaseScraper):
             self.logger.info(f"Clicking CSV button and waiting for download...")
             with self.page.expect_download(timeout=90000) as download_info:
                  csv_button.click()
+            # download = download_info.value # This line might not be needed if _handle_download sets the path correctly
+            self.logger.info(f"Download triggered for {self.source_name}, should be handled by BaseScraper._handle_download.")
 
-            download = download_info.value
-            download_path = download.path() # Playwright saves to a temp location
+            # Wait a brief moment for the download event to be processed by the callback
+            self.page.wait_for_timeout(2000) # 2 seconds, adjust as needed
 
-            # --- Start modification for timestamped filename ---
-            original_filename = download.suggested_filename
-            if not original_filename:
-                self.logger.warning("Download suggested_filename is empty, using default 'dhs_download.csv'")
-                original_filename = "dhs_download.csv" # Keep default but extension will be used
-
-            _, ext = os.path.splitext(original_filename)
-            if not ext: # Ensure there's an extension
-                ext = '.csv' # Default extension if none found
-                self.logger.warning(f"Original filename '{original_filename}' had no extension, defaulting to '{ext}'")
+            if not self._last_download_path or not os.path.exists(self._last_download_path):
+                # Attempt to get the path from the download object if _last_download_path wasn't set
+                try:
+                    download = download_info.value # Get download object if needed for path
+                    temp_playwright_path = download.path()
+                    self.logger.warning(f"BaseScraper._last_download_path not set or invalid. Playwright temp path: {temp_playwright_path}")
+                except Exception as path_err:
+                    self.logger.error(f"Could not retrieve Playwright download path: {path_err}")
                 
-            timestamp_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            # Use hardcoded identifier 'dhs'
-            final_filename = f"dhs_{timestamp_str}{ext}" 
-            final_path = os.path.join(self.download_path, final_filename)
-            self.logger.info(f"Original suggested filename: {original_filename}")
-            self.logger.info(f"Saving with standardized filename: {final_filename} to {final_path}")
-            # --- End modification ---
+                raise ScraperError("Download failed: File not found or path not set by BaseScraper._handle_download.")
 
-            # Ensure the target directory exists before moving
-            os.makedirs(self.download_path, exist_ok=True)
-
-            # Move the downloaded file to the target directory using the new final_path
-            try:
-                 shutil.move(download_path, final_path)
-                 self.logger.info(f"Download complete. Moved file to: {final_path}")
-            except Exception as move_err:
-                 self.logger.error(f"Error moving downloaded file from {download_path} to {final_path}: {move_err}")
-                 raise ScraperError(f"Failed to move downloaded file: {move_err}") from move_err
-
-            # Verify the file exists using the new final_path
-            if not os.path.exists(final_path) or os.path.getsize(final_path) == 0:
-                self.logger.error(f"Verification failed: File not found or empty at {final_path}")
-                raise ScraperError(f"Download verification failed: File missing or empty at {final_path}")
-
-            self.logger.info(f"Download verification successful. File saved at: {final_path}")
-            return final_path
+            self.logger.info(f"Download process completed. File saved at: {self._last_download_path}")
+            return self._last_download_path
             
         except PlaywrightTimeoutError as e:
-            self.logger.error(f"Timeout error during DHS forecast download: {e}")
-            handle_scraper_error(e, self.source_name, "Timeout during download process")
-            raise ScraperError(f"Timeout during DHS forecast download process: {str(e)}")
+            self.logger.error(f"Timeout error during DHS forecast download initiation: {e}")
+            handle_scraper_error(e, self.source_name, "Timeout during download process initiation")
+            raise ScraperError(f"Timeout during DHS forecast download process initiation: {str(e)}")
         except Exception as e:
             self.logger.error(f"General error during DHS forecast download: {e}")
             handle_scraper_error(e, self.source_name, "Error downloading DHS forecast document")
@@ -145,43 +117,39 @@ class DHSForecastScraper(BaseScraper):
         """
         self.logger.info(f"Processing downloaded Excel file: {file_path}")
         try:
-            # DHS transform script handles both xlsx and csv, assuming xlsx primarily based on current scraper
-            # TODO: Determine correct sheet_name and header row for DHS Excel if not default
             df = pd.read_excel(file_path, sheet_name=0, header=0) 
             self.logger.info(f"Loaded {len(df)} rows from {file_path}")
 
             if df.empty:
                 self.logger.info("Downloaded file is empty. Nothing to process.")
-                return
+                return 0 # Return 0 as no records processed
 
-            # --- Start: Logic adapted from dhs_transform.normalize_columns_dhs ---
-            rename_map = {
-                # Raw DHS Name: Prospect Model Field Name (or intermediate)
-                'APFS Number': 'native_id',
-                'NAICS': 'naics',
-                'Component': 'agency', # Maps to Prospect.agency
-                'Title': 'title',
-                'Contract Type': 'contract_type',
-                'Contract Vehicle': 'contract_vehicle',      # To extra
-                'Dollar Range': 'estimated_value_raw',      # To be parsed
-                'Small Business Set-Aside': 'set_aside',
-                'Small Business Program': 'small_business_program', # To extra
-                'Contract Status': 'contract_status',        # To extra
-                'Place of Performance City': 'place_city',
-                'Place of Performance State': 'place_state',
-                'Description': 'description',
-                'Estimated Solicitation Release': 'release_date', # Maps to Prospect.release_date (raw)
-                'Award Quarter': 'award_date_raw'           # To be parsed for award_date & award_fiscal_year
+            # --- Scraper-specific pre-processing ---
+            # Initial rename to standardized intermediate names, some of which might be final
+            # Prospect field names.
+            initial_rename_map = {
+                'APFS Number': 'native_id', # Final Prospect field
+                'NAICS': 'naics',           # Final Prospect field
+                'Component': 'agency',      # Final Prospect field
+                'Title': 'title',           # Final Prospect field
+                'Contract Type': 'contract_type', # Final Prospect field
+                'Contract Vehicle': 'contract_vehicle_raw', # Will go to extra
+                'Dollar Range': 'estimated_value_raw',      # Needs parsing
+                'Small Business Set-Aside': 'set_aside',     # Final Prospect field
+                'Small Business Program': 'small_business_program_raw', # Will go to extra
+                'Contract Status': 'contract_status_raw',        # Will go to extra
+                'Place of Performance City': 'place_city',    # Final Prospect field
+                'Place of Performance State': 'place_state',   # Final Prospect field
+                'Description': 'description', # Final Prospect field
+                'Estimated Solicitation Release': 'release_date_raw', # Needs parsing
+                'Award Quarter': 'award_date_raw'           # Needs parsing
             }
-            df.rename(columns=rename_map, inplace=True)
+            df.rename(columns=initial_rename_map, inplace=True)
 
             # Date Parsing (Solicitation/Release Date)
-            if 'release_date' in df.columns:
-                df['release_date'] = pd.to_datetime(df['release_date'], errors='coerce').dt.date
-            else:
-                df['release_date'] = None
-
-            # Award Date and Fiscal Year Parsing (from Award Quarter)
+            df['release_date'] = pd.to_datetime(df.get('release_date_raw'), errors='coerce').dt.date if 'release_date_raw' in df.columns else None
+            
+            # Award Date and Fiscal Year Parsing
             if 'award_date_raw' in df.columns:
                 parsed_award_info = df['award_date_raw'].apply(fiscal_quarter_to_date)
                 df['award_date'] = parsed_award_info.apply(lambda x: x[0].date() if pd.notna(x[0]) else None)
@@ -189,11 +157,10 @@ class DHSForecastScraper(BaseScraper):
             else: 
                 df['award_date'] = None
                 df['award_fiscal_year'] = pd.NA
-            
-            if 'award_fiscal_year' in df.columns: # Ensure correct type
+            if 'award_fiscal_year' in df.columns:
                 df['award_fiscal_year'] = df['award_fiscal_year'].astype('Int64')
 
-            # Estimated Value Parsing (from Dollar Range)
+            # Estimated Value Parsing
             if 'estimated_value_raw' in df.columns:
                 parsed_values = df['estimated_value_raw'].apply(parse_value_range)
                 df['estimated_value'] = parsed_values.apply(lambda x: x[0])
@@ -202,72 +169,52 @@ class DHSForecastScraper(BaseScraper):
                 df['estimated_value'] = pd.NA 
                 df['est_value_unit'] = pd.NA
 
-            # Initialize Place Country if missing (DHS transform assumes USA)
-            if 'place_country' not in df.columns:
-                 df['place_country'] = 'USA'
+            # Initialize Place Country (DHS transform assumes USA)
+            df['place_country'] = 'USA'
             
-            # Drop raw columns used for parsing after they are processed
-            df.drop(columns=['estimated_value_raw', 'award_date_raw'], errors='ignore', inplace=True)
-            # --- End: Logic adapted from dhs_transform.normalize_columns_dhs ---
+            # Columns that were raw and have been parsed can be dropped if desired,
+            # or let _process_and_load_data handle them via 'extra' if they are not in final rename map.
+            # For clarity, we might drop them here if they are truly intermediate.
+            # df.drop(columns=['release_date_raw', 'award_date_raw', 'estimated_value_raw'], errors='ignore', inplace=True)
+            # However, if we want them in 'extra', we should keep them and ensure they are not in the final_rename_map's values.
+
+            # --- Define mappings for _process_and_load_data ---
+            # These are the columns that are now ready to be mapped to final Prospect model fields
+            # or are already named as such.
+            final_column_rename_map = {
+                # Source (already renamed or parsed) : Prospect Model Field
+                'native_id': 'native_id',
+                'naics': 'naics',
+                'agency': 'agency',
+                'title': 'title',
+                'description': 'description',
+                'contract_type': 'contract_type',
+                'release_date': 'release_date', # Parsed from release_date_raw
+                'award_date': 'award_date',       # Parsed from award_date_raw
+                'award_fiscal_year': 'award_fiscal_year', # Parsed from award_date_raw
+                'estimated_value': 'estimated_value', # Parsed from estimated_value_raw
+                'est_value_unit': 'est_value_unit', # Parsed from estimated_value_raw
+                'set_aside': 'set_aside',
+                'place_city': 'place_city',
+                'place_state': 'place_state',
+                'place_country': 'place_country',
+                # Raw fields that will go to 'extra' if not explicitly mapped to a model field
+                'contract_vehicle_raw': 'contract_vehicle_raw', 
+                'small_business_program_raw': 'small_business_program_raw',
+                'contract_status_raw': 'contract_status_raw',
+                # Also include original raw fields if they are needed in 'extra' and not dropped
+                'release_date_raw': 'release_date_raw', 
+                'award_date_raw': 'award_date_raw', 
+                'estimated_value_raw': 'estimated_value_raw'
+            }
             
-            # Normalize all column names (lowercase, snake_case) - from transform script
-            df.columns = df.columns.str.strip().str.lower().str.replace(r'\\s+\\(.*?\\)', '', regex=True).str.replace(r'\\s+', '_', regex=True).str.replace(r'[^a-z0-9_]', '', regex=True)
-            df = df.loc[:, ~df.columns.duplicated()] # Remove duplicates
+            # Filter map for only columns present in df to avoid errors during rename
+            final_column_rename_map_existing = {k: v for k, v in final_column_rename_map.items() if k in df.columns}
 
-            # Define Prospect model fields (excluding auto fields)
-            prospect_model_fields = [col.name for col in Prospect.__table__.columns if col.name not in ['loaded_at', 'id', 'source_id']]
-            
-            # Handle 'extra' column
-            current_cols_normalized = df.columns.tolist()
-            unmapped_cols = [col for col in current_cols_normalized if col not in prospect_model_fields]
+            prospect_model_fields = [col.name for col in Prospect.__table__.columns if col.name != 'loaded_at']
+            fields_for_id_hash = ['naics', 'title', 'description'] # Use final Prospect field names
 
-            if unmapped_cols:
-                self.logger.info(f"Found unmapped columns for 'extra': {unmapped_cols}")
-                # Convert specific types in unmapped_cols to string before to_dict for JSON compatibility
-                for col_name in unmapped_cols:
-                    if df[col_name].dtype == 'datetime64[ns]' or df[col_name].dtype.name == 'datetime64[ns, UTC]':
-                        df[col_name] = df[col_name].dt.isoformat()
-                    # Add other type conversions if needed (e.g., complex objects)
-                df['extra'] = df[unmapped_cols].astype(str).to_dict(orient='records')
-            else:
-                df['extra'] = None
-            
-            # Ensure all Prospect model columns exist
-            for col in prospect_model_fields:
-                if col not in df.columns:
-                    df[col] = pd.NA
-            
-            # Add source_id
-            data_source_obj = db.session.query(DataSource).filter_by(name=self.source_name).first()
-            if data_source_obj:
-                df['source_id'] = data_source_obj.id
-            else:
-                self.logger.warning(f"DataSource '{self.source_name}' not found. 'source_id' will be None.")
-                df['source_id'] = None
-            
-            # --- Start: ID Generation (adapted from dhs_transform.generate_id) ---
-            def generate_prospect_id(row: pd.Series) -> str:
-                naics_val = str(row.get('naics', ''))
-                title_val = str(row.get('title', '')) # Using 'title' as per Prospect model
-                desc_val = str(row.get('description', '')) # Using 'description' 
-                unique_string = f"{naics_val}-{title_val}-{desc_val}-{self.source_name}"
-                return hashlib.md5(unique_string.encode('utf-8')).hexdigest()
-
-            df['id'] = df.apply(generate_prospect_id, axis=1)
-            # --- End: ID Generation ---
-
-            # Select final columns for Prospect model
-            final_prospect_columns = [col.name for col in Prospect.__table__.columns if col.name != 'loaded_at']
-            df_to_insert = df[[col for col in final_prospect_columns if col in df.columns]]
-
-            df_to_insert.dropna(how='all', inplace=True)
-            if df_to_insert.empty:
-                self.logger.info("After processing, no valid data rows to insert.")
-                return
-
-            self.logger.info(f"Attempting to insert/update {len(df_to_insert)} records for {self.source_name}.")
-            bulk_upsert_prospects(df_to_insert)
-            self.logger.info(f"Successfully inserted/updated records for {self.source_name} from {file_path}.")
+            return self._process_and_load_data(df, final_column_rename_map_existing, prospect_model_fields, fields_for_id_hash)
 
         except FileNotFoundError:
             self.logger.error(f"Excel file not found at {file_path}")

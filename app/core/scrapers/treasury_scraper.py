@@ -7,14 +7,6 @@ import time
 import shutil
 import datetime # Added datetime import
 
-# --- Start temporary path adjustment for direct execution ---
-# Calculate the path to the project root directory (JPS-Prospect-Aggregate)
-_project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
-# Add the project root to the Python path if it's not already there
-if _project_root not in sys.path:
-    sys.path.insert(0, _project_root)
-# --- End temporary path adjustment ---
-
 # Third-party imports
 import requests
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
@@ -29,7 +21,7 @@ import json # Added json
 from app.core.base_scraper import BaseScraper
 from app.models import Prospect, DataSource, db # Added Prospect, DataSource, db
 from app.database.crud import bulk_upsert_prospects # Added bulk_upsert_prospects
-from app.config import LOGS_DIR, RAW_DATA_DIR, TREASURY_FORECAST_URL, PAGE_NAVIGATION_TIMEOUT # Use RAW_DATA_DIR
+from app.config import active_config # Import active_config
 from app.exceptions import ScraperError
 from app.utils.file_utils import ensure_directory, find_files # Added find_files
 from app.utils.logger import logger
@@ -54,7 +46,7 @@ class TreasuryScraper(BaseScraper):
         """Initialize the Treasury scraper."""
         super().__init__(
             source_name="Treasury Forecast",
-            base_url=TREASURY_FORECAST_URL, # Use config URL
+            base_url=active_config.TREASURY_FORECAST_URL, # Use config URL
             debug_mode=debug_mode
         )
         # Ensure the specific download directory for this scraper exists
@@ -156,7 +148,7 @@ class TreasuryScraper(BaseScraper):
         except PlaywrightTimeoutError as e:
             self.logger.error(f"Timeout error during download process: {str(e)}")
             # Capture screenshot for debugging timeouts
-            screenshot_path = os.path.join(LOGS_DIR, f"treasury_timeout_error_{int(time.time())}.png")
+            screenshot_path = os.path.join(active_config.LOGS_DIR, f"treasury_timeout_error_{int(time.time())}.png")
             try:
                 self.page.screenshot(path=screenshot_path, full_page=True)
                 self.logger.info(f"Screenshot saved to {screenshot_path}")
@@ -399,8 +391,8 @@ def run_scraper(force=False):
         scraper.setup_browser()
 
         # Check URL accessibility, bypassing SSL verification for this specific site
-        if not check_url_accessibility(TREASURY_FORECAST_URL, verify_ssl=False):
-            error_msg = f"URL {TREASURY_FORECAST_URL} is not accessible"
+        if not check_url_accessibility(active_config.TREASURY_FORECAST_URL, verify_ssl=False):
+            error_msg = f"URL {active_config.TREASURY_FORECAST_URL} is not accessible"
             handle_scraper_error(ScraperError(error_msg), source_name)
             raise ScraperError(error_msg)
 
