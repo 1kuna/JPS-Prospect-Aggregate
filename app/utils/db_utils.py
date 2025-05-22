@@ -5,12 +5,13 @@ Database utility functions.
 import sys
 import os
 import datetime
-import shutil
-import glob
+# import shutil # Removed as it was only used by rebuild_database
+import glob # Keep for cleanup_old_backups via clean_old_files
+from typing import Optional # Added for type hinting
 from app.utils.logger import logger
 from app.utils.file_utils import ensure_directory, clean_old_files
-from flask import current_app
-from pathlib import Path
+# from flask import current_app # Removed as it was only used by rebuild_database
+# from pathlib import Path # Removed as it was only used by rebuild_database
 
 # Set up logging using the centralized utility
 
@@ -31,62 +32,7 @@ def cleanup_old_backups(backup_dir, max_backups=5):
 # Ensure datetime is imported if not already at the top of the file
 # import datetime # This should be at the top of the file
 
-def rebuild_database(max_backups=5):
-    """
-    Rebuild the database with the new schema
-    
-    Args:
-        max_backups (int): Maximum number of backups to keep
-    """
-    # Get the database path from the current app's configuration
-    if not current_app:
-        error_msg = "Application context is required to determine database path for rebuild."
-        logger.error(error_msg)
-        raise RuntimeError(error_msg)
-
-    db_uri = current_app.config.get("SQLALCHEMY_DATABASE_URI")
-    if not db_uri or not db_uri.startswith("sqlite:///"):
-        error_msg = f"Invalid or missing SQLALCHEMY_DATABASE_URI in app config: {db_uri}"
-        logger.error(error_msg)
-        raise ValueError(error_msg)
-
-    # Extract path from URI
-    db_path_str = db_uri.split("///", 1)[1]
-    
-    # If the path is relative, it's relative to the instance folder
-    if not Path(db_path_str).is_absolute():
-        db_path = Path(current_app.instance_path) / db_path_str
-    else:
-        db_path = Path(db_path_str)
-
-    db_dir = db_path.parent
-    
-    # Ensure the directory exists
-    ensure_directory(db_dir)
-    
-    # Check if the database exists
-    if not db_path.exists():
-        error_msg = f"Database file not found: {db_path}"
-        logger.error(error_msg)
-        raise FileNotFoundError(error_msg)
-    
-    # Create a backup of the existing database
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup_path = os.path.join(db_dir, f'proposals_backup_{timestamp}.db')
-    
-    logger.info(f"Creating backup of database at: {backup_path}")
-    shutil.copy2(db_path, backup_path)
-    
-    # Clean up old backups, keeping only the specified number of most recent ones
-    cleanup_old_backups(str(db_dir), max_backups=max_backups)
-    
-    # Import here to avoid circular imports
-    # from app.database.db import engine, Session # Corrected/updated import needed if used
-    # For now, assuming engine and Session are not directly used for backup logic.
-    # If rebuild logic is added, it should use get_db() or the initialized engine from app.database.session
-    
-    logger.info("Database rebuild completed successfully")
-    return True
+# The rebuild_database function has been removed as it's unused.
 
 def update_scraper_status(source_id: int, status: str, details: Optional[str] = None):
     """
@@ -98,8 +44,7 @@ def update_scraper_status(source_id: int, status: str, details: Optional[str] = 
         details (Optional[str]): Additional details or error message.
     """
     from app.models import db, DataSource, ScraperStatus # Import db from app.models
-    # Ensure datetime is available
-    # import datetime # This should be at the top of the file if not already present
+    # Ensure datetime is available (already imported at the top)
 
     logger.info(f"Updating scraper status for source ID {source_id} to '{status}'. Details: {details}")
     
