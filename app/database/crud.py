@@ -90,4 +90,58 @@ def bulk_upsert_prospects(df_in: pd.DataFrame): # Renamed back
         session.rollback()
     except Exception as e:
         logging.error(f"An unexpected error occurred during bulk upsert: {e}", exc_info=True)
-        session.rollback() 
+        session.rollback()
+
+
+def get_prospects_paginated(page: int, per_page: int):
+    """
+    Retrieves prospects from the database with pagination.
+
+    Args:
+        page (int): The current page number (1-indexed).
+        per_page (int): The number of items per page.
+
+    Returns:
+        dict: A dictionary containing the paginated prospects and pagination details.
+              Returns None if an error occurs or if per_page is non-positive.
+    """
+    import math
+    # from app.models import Prospect, db # Already imported at the top
+
+    if page <= 0:
+        logging.error("Page number must be positive.")
+        return None # Or raise ValueError
+    if per_page <= 0:
+        logging.error("Per_page must be positive.")
+        return None # Or raise ValueError
+
+    try:
+        offset = (page - 1) * per_page
+        
+        items_query = Prospect.query.offset(offset).limit(per_page)
+        items = items_query.all()
+        
+        if not items and page > 1: # Only log if not the first page and no items
+            logging.info(f"No prospects found for page {page} with {per_page} items per page.")
+            # Still proceed to calculate total and total_pages
+
+        total = Prospect.query.count()
+        
+        if total == 0:
+            total_pages = 0
+        else:
+            total_pages = math.ceil(total / per_page) if per_page > 0 else 0
+
+        return {
+            "items": items,
+            "total": total,
+            "page": page,
+            "per_page": per_page,
+            "total_pages": total_pages,
+        }
+    except SQLAlchemyError as e:
+        logging.error(f"Database error during paginated prospect retrieval: {e}", exc_info=True)
+        return None
+    except Exception as e:
+        logging.error(f"An unexpected error occurred during paginated prospect retrieval: {e}", exc_info=True)
+        return None
