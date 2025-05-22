@@ -3,15 +3,15 @@
 # Standard library imports
 import os
 import traceback
-import sys
-import shutil
-import datetime
+# import sys # Unused
+# import shutil # Unused
+# import datetime # Unused at top level, `from datetime import datetime` is used
 
 # Third-party imports
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 import pandas as pd
 # import hashlib # No longer needed here
-import re
+# import re # Unused
 from datetime import datetime
 
 # Local application imports
@@ -77,21 +77,20 @@ class DHSForecastScraper(BaseScraper):
             self.logger.info(f"Clicking CSV button and waiting for download...")
             with self.page.expect_download(timeout=90000) as download_info:
                  csv_button.click()
-            # download = download_info.value # This line might not be needed if _handle_download sets the path correctly
-            self.logger.info(f"Download triggered for {self.source_name}, should be handled by BaseScraper._handle_download.")
-
+            _ = download_info.value # Access the download object
+            
             # Wait a brief moment for the download event to be processed by the callback
-            self.page.wait_for_timeout(2000) # 2 seconds, adjust as needed
+            self.page.wait_for_timeout(2000) # Adjust as needed
 
             if not self._last_download_path or not os.path.exists(self._last_download_path):
-                # Attempt to get the path from the download object if _last_download_path wasn't set
+                self.logger.error(f"BaseScraper._last_download_path not set or invalid. Value: {self._last_download_path}")
+                # Fallback or detailed error logging
                 try:
-                    download = download_info.value # Get download object if needed for path
-                    temp_playwright_path = download.path()
-                    self.logger.warning(f"BaseScraper._last_download_path not set or invalid. Playwright temp path: {temp_playwright_path}")
+                    download_obj_for_debug = download_info.value
+                    temp_playwright_path = download_obj_for_debug.path()
+                    self.logger.warning(f"Playwright temp download path for debugging: {temp_playwright_path}")
                 except Exception as path_err:
-                    self.logger.error(f"Could not retrieve Playwright download path: {path_err}")
-                
+                    self.logger.error(f"Could not retrieve Playwright temp download path for debugging: {path_err}")
                 raise ScraperError("Download failed: File not found or path not set by BaseScraper._handle_download.")
 
             self.logger.info(f"Download process completed. File saved at: {self._last_download_path}")
@@ -240,71 +239,3 @@ class DHSForecastScraper(BaseScraper):
             extract_func=self.download_forecast_document,
             process_func=self.process_func
         )
-
-def run_scraper(force=False):
-    """Run the DHS Forecast scraper."""
-    source_name = "DHS Forecast"
-    local_logger = logger
-    scraper = None
-    
-    try:
-        # Check if scraping should be skipped based on frequency
-        # Note: `DHS_FORECAST_SCRAPE_INTERVAL_HOURS` would need to be added to config
-        # Removed interval check logic
-        # if not force and download_tracker.should_download(source_name, DHS_FORECAST_SCRAPE_INTERVAL_HOURS):
-        # For now, just using a default or skipping this check if interval not defined
-        # Removed interval check logic
-        # if not force and download_tracker.should_download(source_name): # Default interval check
-        #    local_logger.info(f"Skipping scrape for {source_name} due to recent download")
-        #    return {"success": True, "message": "Skipped due to recent download"}
-
-        scraper = DHSForecastScraper(debug_mode=False)
-        local_logger.info(f"Running {source_name} scraper")
-        result = scraper.scrape() 
-        
-        if not result or not result.get("success", False):
-            error_msg = result.get("error", f"{source_name} scraper failed without specific error") if result else f"{source_name} scraper failed without specific error"
-            # Error logging should happen deeper, just raise
-            raise ScraperError(error_msg)
-        
-        # Removed: download_tracker.set_last_download_time(source_name)
-        # local_logger.info(f"Updated download tracker for {source_name}")
-        # update_scraper_status(source_name, "working", None) # Keep commented out
-        return {"success": True, "file_path": result.get("file_path"), "message": f"{source_name} scraped successfully"}
-    
-    except ImportError as e:
-        error_msg = f"Import error for {source_name}: {str(e)}"
-        local_logger.error(error_msg)
-        handle_scraper_error(e, source_name, "Import error") # Log error centrally
-        raise ScraperError(error_msg) from e # Raise specific error type
-    except ScraperError as e:
-        local_logger.error(f"ScraperError occurred for {source_name}: {str(e)}")
-        # Error should have been logged by handle_scraper_error or within scrape method
-        raise # Re-raise the original ScraperError
-    except Exception as e:
-        error_msg = f"Unexpected error running {source_name} scraper: {str(e)}"
-        handle_scraper_error(e, source_name, f"Unexpected error in run_scraper for {source_name}")
-        raise ScraperError(error_msg) from e # Wrap unexpected errors
-    finally:
-        if scraper:
-            try:
-                local_logger.info(f"Cleaning up {source_name} scraper resources")
-                scraper.cleanup_browser()
-            except Exception as cleanup_error:
-                local_logger.error(f"Error during {source_name} scraper cleanup: {str(cleanup_error)}")
-
-if __name__ == "__main__":
-    try:
-        result = run_scraper(force=True)
-        if result and result.get("success"):
-            print(f"DHS Forecast scraper finished successfully. File at: {result.get('file_path', 'N/A')}")
-        else:
-             # Error should have been logged, print a simpler message
-             print(f"DHS Forecast scraper failed. Check logs for details.")
-             # Optionally, exit with a non-zero code for scripting
-             # sys.exit(1) 
-    except Exception as e:
-        print(f"DHS Forecast scraper failed: {e}")
-        # Print detailed traceback for direct execution errors
-        traceback.print_exc() 
-        # sys.exit(1)

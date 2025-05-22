@@ -2,25 +2,19 @@
 
 # Standard library imports
 import os
-import sys
-import time
-import datetime
-import traceback
-import shutil
+import traceback # Keep one traceback
 
 # Third-party imports
-import requests
 import pandas as pd # Add pandas
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError, sync_playwright
 from playwright_stealth import stealth_sync
-import traceback # Add traceback
 
 # Local application imports
 from app.core.base_scraper import BaseScraper
-from app.models import Prospect, ScraperStatus, DataSource, db
+from app.models import Prospect, DataSource, db # Removed ScraperStatus
 from app.config import active_config # Import active_config
 from app.exceptions import ScraperError
-from app.utils.file_utils import ensure_directory
+# from app.utils.file_utils import ensure_directory # Removed ensure_directory
 from app.utils.logger import logger
 from app.utils.scraper_utils import handle_scraper_error
 from app.database.crud import bulk_upsert_prospects # Add bulk_upsert_prospects
@@ -111,27 +105,20 @@ class AcquisitionGatewayScraper(BaseScraper):
                     self.logger.error(f"Error during button click attempt: {click_err}")
                     raise # Re-raise other click errors
             
-            # Download object is available here (download_info.value)
-            # The actual saving and path setting is now handled by BaseScraper._handle_download
-            self.logger.info(f"Download triggered for {self.source_name}, should be handled by BaseScraper._handle_download.")
-            
+            _ = download_info.value # Access the download object
+
             # Wait a brief moment for the download event to be processed by the callback
-            # This might need adjustment if downloads are very fast or very slow to register
-            self.page.wait_for_timeout(2000) # 2 seconds, adjust as needed
+            self.page.wait_for_timeout(2000) # Adjust as needed
 
             if not self._last_download_path or not os.path.exists(self._last_download_path):
-                # Attempt to get the path from the download object if _last_download_path wasn't set
-                # This is a fallback, ideally _handle_download should reliably set it.
+                self.logger.error(f"BaseScraper._last_download_path not set or invalid. Value: {self._last_download_path}")
+                # Fallback or detailed error logging
                 try:
-                    download = download_info.value
-                    temp_playwright_path = download.path()
-                    self.logger.warning(f"BaseScraper._last_download_path not set or invalid. Playwright temp path: {temp_playwright_path}")
-                    # If we have a path from Playwright, and _handle_download failed to save it to the final location,
-                    # this indicates an issue in _handle_download. We should not try to re-implement saving here.
-                    # For now, we will raise an error if _last_download_path is not correctly set.
+                    download_obj_for_debug = download_info.value 
+                    temp_playwright_path = download_obj_for_debug.path()
+                    self.logger.warning(f"Playwright temp download path for debugging: {temp_playwright_path}")
                 except Exception as path_err:
-                    self.logger.error(f"Could not retrieve Playwright download path: {path_err}")
-                
+                    self.logger.error(f"Could not retrieve Playwright temp download path for debugging: {path_err}")
                 raise ScraperError("Download failed: File not found or path not set by BaseScraper._handle_download.")
 
             self.logger.info(f"Download process completed. File saved at: {self._last_download_path}")
@@ -249,94 +236,3 @@ class AcquisitionGatewayScraper(BaseScraper):
         )
 
 # Removed check_last_download function as it's obsolete.
-
-def run_scraper():
-    """
-    Run the Acquisition Gateway scraper.
-    
-    Args:
-        force (bool): Whether to force scraping (currently unused as interval logic is removed).
-        
-    Returns:
-        str: Path to the downloaded file if successful, otherwise raises an exception.
-    """
-    local_logger = logger.bind(name="scraper.acquisition_gateway.run_scraper")
-    scraper_instance = None
-    source_name = "Acquisition Gateway" # Default, instance will have the true one
-
-    try:
-        # Interval check logic (if any to be restored) would go here
-
-        scraper_instance = AcquisitionGatewayScraper(debug_mode=False) # Or get debug_mode from arg
-        source_name = scraper_instance.source_name # Get source_name from instance
-
-        # URL accessibility check (now uses base method)
-        # Note: BaseScraper's check_url_accessibility uses requests.head, which is less likely to be blocked
-        # than a full browser navigation, so it's a good preliminary check.
-        if not scraper_instance.check_url_accessibility(): 
-            error_msg = f"URL {scraper_instance.base_url} is not accessible via HEAD request."
-            # Log this specific error before raising a more generic ScraperError
-            local_logger.error(error_msg)
-            raise ScraperError(error_msg)
-
-        local_logger.info(f"Running {source_name} scraper via instance method")
-        
-        # The scrape() method (which calls scrape_with_structure) handles:
-        # 1. setup_browser (now stealth-aware)
-        # 2. navigate_to_forecast_page (setup_func)
-        # 3. download_csv_file (extract_func)
-        # 4. process_func (if file downloaded)
-        # 5. cleanup_browser
-        result = scraper_instance.scrape() 
-
-        if result and result.get("success"):
-            # The 'data' key from scrape_with_structure holds the return of extract_func (download_csv_file)
-            # which is the path to the downloaded file.
-            downloaded_file_path = result.get("data") 
-            if downloaded_file_path:
-                local_logger.info(f"Scraping successful for {source_name}. File at: {downloaded_file_path}")
-                # update_scraper_status logic (if any to be restored, e.g., using a ScraperService)
-                return downloaded_file_path
-            else:
-                # This case should ideally be caught earlier if download_csv_file returns None or raises error
-                error_msg = f"{source_name} scrape reported success, but no downloaded file path was returned."
-                local_logger.error(error_msg)
-                raise ScraperError(error_msg)
-        else:
-            error_msg = result.get("error", "Scraping failed without specific error message.") if result else "Scraping failed (no result)."
-            # Log the specific error message from the result if available
-            local_logger.error(f"{source_name} scraping failed: {error_msg}")
-            raise ScraperError(error_msg)
-
-    except ScraperError as e:
-        # Log specific scraper errors (already logged deeper if coming from scraper methods)
-        local_logger.error(f"ScraperError in {source_name} run_scraper: {e}")
-        # update_scraper_status logic (if any to be restored)
-        raise # Re-raise to be caught by main caller or script exit
-    except Exception as e:
-        # Catch-all for unexpected errors during run_scraper setup or result handling
-        error_msg = f"Unexpected error running {source_name} scraper: {str(e)}"
-        local_logger.error(error_msg, exc_info=True) # Log with traceback
-        # update_scraper_status logic (if any to be restored)
-        raise ScraperError(error_msg) from e # Wrap in ScraperError and chain
-    # No finally block for scraper_instance.cleanup_browser() needed here, 
-    # as scrape() method (via scrape_with_structure) handles its own cleanup.
-
-if __name__ == "__main__":
-    # This block allows the script to be run directly for testing
-    print("Running Acquisition Gateway scraper directly...")
-    try:
-        # Example of running with force flag (though 'force' is not used in current run_scraper)
-        result_path = run_scraper(force=True) 
-        if result_path:
-            print(f"Scraper finished successfully. Downloaded file: {result_path}")
-        else:
-            # This path should ideally not be reached if errors are raised correctly
-            print("Scraper run did not result in a downloaded file (or an error was expected but not raised). Check logs.")
-    except ScraperError as e:
-        print(f"Scraper failed with error: {e}")
-    except Exception as e:
-        # This will catch errors from run_scraper if they weren't ScraperError type (should be wrapped)
-        print(f"An unexpected error occurred at the main execution level: {e}")
-        import traceback
-        traceback.print_exc()

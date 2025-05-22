@@ -70,5 +70,5 @@ def check_scraper_status(source_id):
     except NotFoundError as nfe:
         raise nfe
     except Exception as e:
-        current_app.logger.error(f"Error checking scraper status for source ID {source_id}: {e}", exc_info=True)
+        logger.error(f"Error checking scraper status for source ID {source_id}: {e}", exc_info=True)
         raise DatabaseError(f"Could not retrieve status for data source {source_id}") 

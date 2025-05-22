@@ -8,16 +8,11 @@ and data processing.
 
 # Standard library imports
 import os
-import sys
-import time
 import datetime
 import traceback
-import glob
-import pathlib
 import re
-import logging
 from abc import ABC
-from typing import Optional, Any, Dict
+from typing import Optional #, Any, Dict # Any, Dict were not used
 import hashlib # Add hashlib import
 
 # Third-party imports
@@ -648,18 +643,19 @@ class BaseScraper(ABC):
                 self.logger.info("Running processing phase")
                 # Use db.session directly
                 # from app.database.connection import session_scope # Removed
-                from app.models import DataSource # db is already imported at the top
-                
-                # Flask-SQLAlchemy's db.session is typically managed by the app context,
-                # so a 'with' block for the session itself isn't usually needed here.
-                # Operations will be part of the current session.
-                session = db.session
-                data_source = self.get_or_create_data_source(session)
+                # from app.models import DataSource # db is already imported at the top 
+                # -> This import is at the top of the file.
+
+                # Flask-SQLAlchemy's db.session is typically managed by the app context.
+                # Get or create the data source - this ensures the source exists in DB.
+                # self.get_or_create_data_source uses db.session directly.
+                data_source = self.get_or_create_data_source(db.session) 
                 if not data_source:
+                    # This check is important to ensure data source exists before processing.
                     raise ScraperError(f"Could not find or create DataSource for {self.source_name}")
                 
-                # Pass session and data_source to process_func
-                processed_data = process_func(result["data"], session, data_source)
+                # Call process_func without session and data_source arguments
+                processed_data = process_func(result["data"]) 
                 result["data"] = processed_data
             
             result["success"] = True
@@ -689,4 +685,12 @@ class BaseScraper(ABC):
         Raises:
             NotImplementedError: If the method is not implemented by a subclass
         """
-        raise NotImplementedError("Subclasses must implement scrape method") 
+        raise NotImplementedError("Subclasses must implement scrape method")
+
+    def run(self):
+        """
+        Run the scraper.
+
+        This method is a simple wrapper around the scrape method.
+        """
+        return self.scrape()

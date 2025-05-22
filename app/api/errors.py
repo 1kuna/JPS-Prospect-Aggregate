@@ -1,11 +1,15 @@
 """Error handlers for the API."""
 
-from flask import jsonify, current_app
+from flask import jsonify # current_app removed
 from sqlalchemy.exc import SQLAlchemyError
+from app.utils.logger import logger # Import centralized logger
 from app.exceptions import (
     AppError, ValidationError, NotFoundError, DatabaseError, 
     ScraperError, AuthenticationError, AuthorizationError
 )
+
+# Create a bound logger for error handlers
+error_logger = logger.bind(name="api.error_handlers")
 
 def register_error_handlers(app):
     """Register error handlers with the Flask app."""
@@ -20,12 +24,12 @@ def register_error_handlers(app):
     
     @app.errorhandler(DatabaseError)
     def handle_database_error(error):
-        current_app.logger.error(f"Database error: {str(error)}")
+        error_logger.error(f"Database error: {str(error)}", exc_info=True)
         return jsonify(error.to_dict()), error.status_code
     
     @app.errorhandler(SQLAlchemyError)
     def handle_sqlalchemy_error(error):
-        current_app.logger.error(f"SQLAlchemy error: {str(error)}")
+        error_logger.error(f"SQLAlchemy error: {str(error)}", exc_info=True)
         return jsonify({
             "error": "database_error",
             "message": "Database error",
@@ -34,7 +38,7 @@ def register_error_handlers(app):
     
     @app.errorhandler(ScraperError)
     def handle_scraper_error(error):
-        current_app.logger.error(f"Scraper error: {str(error)}")
+        error_logger.error(f"Scraper error: {str(error)}", exc_info=True)
         return jsonify(error.to_dict()), error.status_code
     
     @app.errorhandler(AuthenticationError)
@@ -47,13 +51,13 @@ def register_error_handlers(app):
     
     @app.errorhandler(AppError)
     def handle_app_error(error):
-        current_app.logger.error(f"Application error: {str(error)}")
+        error_logger.error(f"Application error: {str(error)}", exc_info=True)
         return jsonify(error.to_dict()), error.status_code
     
     @app.errorhandler(Exception)
     def handle_generic_exception(error):
         """Handle unexpected exceptions."""
-        current_app.logger.error(f"Unhandled exception: {str(error)}")
+        error_logger.error(f"Unhandled exception: {str(error)}", exc_info=True)
         response = {
             "error": "server_error",
             "message": "An unexpected error occurred",

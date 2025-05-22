@@ -3,7 +3,7 @@ from sqlalchemy import func
 from app.models import db, Prospect, DataSource, ScraperStatus
 from app.exceptions import ValidationError, NotFoundError, DatabaseError
 from app.utils.logger import logger
-import datetime
+# import datetime # Unused
 
 data_sources_bp = Blueprint('data_sources', __name__)
 
@@ -44,9 +44,8 @@ def get_data_sources():
 
         sources_data = query.all()
         
-        result = []
-        for source, p_count, status_rec in sources_data:
-            result.append({
+        result = [
+            {
                 "id": source.id,
                 "name": source.name,
                 "url": source.url,
@@ -55,12 +54,14 @@ def get_data_sources():
                 "proposalCount": p_count if p_count is not None else 0,
                 "last_checked": status_rec.last_checked.isoformat() if status_rec and status_rec.last_checked else None,
                 "status": status_rec.status if status_rec else "unknown"
-            })
+            }
+            for source, p_count, status_rec in sources_data
+        ]
         
         return jsonify({"status": "success", "data": result})
     except Exception as e:
-        logger.error(f"Error in get_data_sources: {str(e)}", exc_info=True) # Use blueprint logger and add exc_info
-        # db.session.rollback() # Rollback is usually handled by a session teardown or error handler
+        logger.error(f"Error in get_data_sources: {str(e)}", exc_info=True)
+        # Ensure no rollback here as it's a read operation primarily
         return jsonify({"status": "error", "message": "An internal error occurred processing your request."}), 500
 
 
@@ -97,11 +98,11 @@ def update_data_source(source_id):
         session.commit()
         return jsonify({"status": "success", "message": "Data source updated", "data": source.to_dict()})
     except ValidationError as ve:
-        db.session.rollback()
+        # db.session.rollback() # Removed
         raise ve
     except Exception as e:
-        db.session.rollback()
-        current_app.logger.error(f"Error in update_data_source: {str(e)}")
+        # db.session.rollback() # Removed
+        logger.error(f"Error in update_data_source: {str(e)}", exc_info=True) 
         raise DatabaseError("Failed to update data source")
 
 
@@ -150,11 +151,11 @@ def create_data_source():
 
         return jsonify({"status": "success", "message": "Data source created", "data": new_source.to_dict()}), 201
     except ValidationError as ve:
-        db.session.rollback()
+        # db.session.rollback() # Removed
         raise ve
     except Exception as e:
-        db.session.rollback()
-        current_app.logger.error(f"Error creating data source: {e}", exc_info=True)
+        # db.session.rollback() # Removed
+        logger.error(f"Error creating data source: {e}", exc_info=True)
         raise DatabaseError("Could not create data source")
 
 
@@ -171,9 +172,9 @@ def delete_data_source(source_id):
         session.commit()
         return jsonify({"status": "success", "message": f"Data source {source_id} and related data deleted"})
     except NotFoundError as nfe:
-        db.session.rollback()
+        # db.session.rollback() # Removed
         raise nfe
     except Exception as e:
-        db.session.rollback()
-        current_app.logger.error(f"Error deleting data source {source_id}: {e}", exc_info=True)
+        # db.session.rollback() # Removed
+        logger.error(f"Error deleting data source {source_id}: {e}", exc_info=True)
         raise DatabaseError(f"Could not delete data source {source_id}") 

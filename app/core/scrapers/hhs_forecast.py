@@ -3,23 +3,23 @@
 # Standard library imports
 import os
 import traceback
-import sys
+# import sys # Unused
 import shutil
-import datetime
+import datetime # Used for datetime.datetime
 
 # Third-party imports
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 import pandas as pd
 import hashlib
-import traceback
-import re
-from datetime import datetime
+# import traceback # Redundant
+# import re # Unused
+from datetime import datetime # Used for type hinting and direct use
 import json
 
 # Local application imports
 from app.core.base_scraper import BaseScraper
 from app.models import Prospect, DataSource, db
-from app.database.crud import bulk_upsert_prospects
+# from app.database.crud import bulk_upsert_prospects # Unused
 from app.exceptions import ScraperError
 from app.utils.logger import logger
 from app.config import active_config # Import active_config
@@ -99,46 +99,24 @@ class HHSForecastScraper(BaseScraper):
             with self.page.expect_download(timeout=90000) as download_info:
                  export_button.click()
 
-            download = download_info.value
-            download_path = download.path() # Playwright saves to a temp location
+            _ = download_info.value # Access the download object
 
-            # --- Start modification for timestamped filename ---
-            original_filename = download.suggested_filename
-            if not original_filename:
-                self.logger.warning("Download suggested_filename is empty, using default 'hhs_download.xlsx'") # Assuming excel
-                original_filename = "hhs_download.xlsx"
+            # Wait a brief moment for the download event to be processed by the callback
+            self.page.wait_for_timeout(2000) # Adjust as needed
 
-            _, ext = os.path.splitext(original_filename)
-            if not ext:
-                ext = '.xlsx' # Default extension
-                self.logger.warning(f"Original filename '{original_filename}' had no extension, defaulting to '{ext}'")
-                
-            timestamp_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            # Use hardcoded identifier 'hhs'
-            final_filename = f"hhs_{timestamp_str}{ext}" 
-            final_path = os.path.join(self.download_path, final_filename)
-            self.logger.info(f"Original suggested filename: {original_filename}")
-            self.logger.info(f"Saving with standardized filename: {final_filename} to {final_path}")
-            # --- End modification ---
+            if not self._last_download_path or not os.path.exists(self._last_download_path):
+                self.logger.error(f"BaseScraper._last_download_path not set or invalid. Value: {self._last_download_path}")
+                # Fallback or detailed error logging
+                try:
+                    download_obj_for_debug = download_info.value
+                    temp_playwright_path = download_obj_for_debug.path()
+                    self.logger.warning(f"Playwright temp download path for debugging: {temp_playwright_path}")
+                except Exception as path_err:
+                    self.logger.error(f"Could not retrieve Playwright temp download path for debugging: {path_err}")
+                raise ScraperError("Download failed: File not found or path not set by BaseScraper._handle_download.")
 
-            # Ensure the target directory exists before moving
-            os.makedirs(self.download_path, exist_ok=True)
-
-            # Move the downloaded file to the target directory using the new final_path
-            try:
-                 shutil.move(download_path, final_path)
-                 self.logger.info(f"Download complete. Moved file to: {final_path}")
-            except Exception as move_err:
-                 self.logger.error(f"Error moving downloaded file from {download_path} to {final_path}: {move_err}")
-                 raise ScraperError(f"Failed to move downloaded file: {move_err}") from move_err
-
-            # Verify the file exists using the new final_path
-            if not os.path.exists(final_path) or os.path.getsize(final_path) == 0:
-                self.logger.error(f"Verification failed: File not found or empty at {final_path}")
-                raise ScraperError(f"Download verification failed: File missing or empty at {final_path}")
-
-            self.logger.info(f"Download verification successful. File saved at: {final_path}")
-            return final_path
+            self.logger.info(f"Download process completed. File saved at: {self._last_download_path}")
+            return self._last_download_path
             
         except PlaywrightTimeoutError as e:
             self.logger.error(f"Timeout error during HHS forecast download: {e}")
@@ -226,72 +204,56 @@ class HHSForecastScraper(BaseScraper):
             df.drop(columns=[col for col in cols_to_drop if col in df.columns], errors='ignore', inplace=True)
             # --- End: Logic adapted from hhs_transform.normalize_columns_hhs ---
 
-            # Standardize column names
-            df.columns = df.columns.str.strip().str.lower().str.replace(r'\\s+\\(.*?\\)', '', regex=True).str.replace(r'\\s+', '_', regex=True).str.replace(r'[^a-z0-9_]', '', regex=True)
-            df = df.loc[:, ~df.columns.duplicated()]
+            # Define the final column rename map.
+            final_column_rename_map = {
+                'native_id': 'native_id',
+                'agency': 'agency',
+                'title': 'title',
+                'description': 'description',
+                'naics': 'naics',
+                'contract_vehicle': 'contract_vehicle', # This will go to extra
+                'contract_type': 'contract_type',
+                'estimated_value': 'estimated_value',
+                'est_value_unit': 'est_value_unit',
+                'award_date': 'award_date',
+                'award_fiscal_year': 'award_fiscal_year',
+                'release_date': 'release_date',
+                'set_aside': 'set_aside',
+                'place_city': 'place_city',
+                'place_state': 'place_state',
+                'place_country': 'place_country',
+                # Columns like 'Contact Name', 'Contact Email', 'Contact Phone'
+                # will be handled by _process_and_load_data if they exist in df
+                # and are not in prospect_model_fields, so they don't need explicit map here
+                # unless renaming them.
+                # Assuming they are already named e.g., 'contact_name' from initial rename or direct from source.
+                # If their original names are 'Contact Name', they should be included in the initial rename_map.
+            }
+            
+            # Ensure all columns in final_column_rename_map exist in df.
+            for col_name in final_column_rename_map.keys():
+                if col_name not in df.columns:
+                    df[col_name] = pd.NA
 
-            prospect_model_fields = [col.name for col in Prospect.__table__.columns if col.name not in ['loaded_at', 'id', 'source_id']]
-            current_cols_normalized = df.columns.tolist()
-            unmapped_cols = [col for col in current_cols_normalized if col not in prospect_model_fields]
+            prospect_model_fields = [col.name for col in Prospect.__table__.columns if col.name != 'loaded_at']
+            # Original ID generation: native_id if available, else title, desc, agency
+            # Using native_id as primary, common logic in _process_and_load_data will use fields_for_id_hash
+            # if 'id' column isn't already populated. Here, we assume 'native_id' is the preferred unique key.
+            # If 'native_id' is consistently present and unique, this is fine.
+            # Otherwise, a composite key might be better.
+            # For now, let's use the more robust composite key as per original logic.
+            # The _process_and_load_data will generate 'id' if not present.
+            # We need to ensure the columns for the hash are correctly named.
+            # The original hash logic was:
+            #   if native_id_val: unique_string = f"{native_id_val}-{self.source_name}"
+            #   else: unique_string = f"{title_val}-{desc_val}-{agency_val}-{self.source_name}"
+            # This conditional logic is not directly supported by fields_for_id_hash.
+            # We will rely on a consistent set of fields for hashing.
+            # If native_id is present, it should be part of the hash.
+            fields_for_id_hash = ['native_id', 'title', 'description', 'agency']
 
-            if unmapped_cols:
-                self.logger.info(f"Found unmapped columns for 'extra' for HHS: {unmapped_cols}")
-                def row_to_extra_json(row):
-                    extra_dict = {}
-                    for col_name in unmapped_cols:
-                        val = row.get(col_name)
-                        if pd.isna(val):
-                            extra_dict[col_name] = None
-                        elif pd.api.types.is_datetime64_any_dtype(val) or isinstance(val, (datetime, pd.Timestamp)):
-                            extra_dict[col_name] = pd.to_datetime(val).isoformat()
-                        elif isinstance(val, (int, float, bool, str)):
-                            extra_dict[col_name] = val
-                        else:
-                            try: extra_dict[col_name] = str(val)
-                            except Exception: extra_dict[col_name] = "CONVERSION_ERROR"
-                    try:
-                        return json.dumps(extra_dict)
-                    except TypeError:
-                        # Fallback for any unexpected types that json.dumps can't handle
-                        self.logger.warning(f"Could not serialize extra_dict to JSON: {extra_dict}, falling back to string representation.")
-                        return str(extra_dict)
-                df['extra'] = df.apply(row_to_extra_json, axis=1)
-            else:
-                df['extra'] = None
 
-            for col in prospect_model_fields:
-                if col not in df.columns:
-                    df[col] = pd.NA
-
-            data_source_obj = db.session.query(DataSource).filter_by(name=self.source_name).first()
-            df['source_id'] = data_source_obj.id if data_source_obj else None
-
-            # --- ID Generation (adapted from hhs_transform.generate_id) ---
-            def generate_prospect_id(row: pd.Series) -> str:
-                # HHS transform uses native_id if available, else title, desc, agency
-                native_id_val = str(row.get('native_id', ''))
-                if native_id_val and native_id_val != 'nan' and native_id_val != 'None':
-                    unique_string = f"{native_id_val}-{self.source_name}"
-                else:
-                    title_val = str(row.get('title', ''))
-                    desc_val = str(row.get('description', ''))
-                    agency_val = str(row.get('agency', '')) # HHS transform uses agency in fallback
-                    unique_string = f"{title_val}-{desc_val}-{agency_val}-{self.source_name}"
-                return hashlib.md5(unique_string.encode('utf-8')).hexdigest()
-            df['id'] = df.apply(generate_prospect_id, axis=1)
-            # --- End: ID Generation ---
-
-            final_prospect_columns = [col.name for col in Prospect.__table__.columns if col.name != 'loaded_at']
-            df_to_insert = df[[col for col in final_prospect_columns if col in df.columns]]
-
-            df_to_insert.dropna(how='all', inplace=True)
-            if df_to_insert.empty:
-                self.logger.info("After HHS processing, no valid data rows to insert.")
-                return
-
-            self.logger.info(f"Attempting to insert/update {len(df_to_insert)} HHS records.")
-            bulk_upsert_prospects(df_to_insert)
-            self.logger.info(f"Successfully inserted/updated HHS records from {file_path}.")
+            return self._process_and_load_data(df, final_column_rename_map, prospect_model_fields, fields_for_id_hash)
 
         except FileNotFoundError:
             self.logger.error(f"HHS CSV file not found: {file_path}")
@@ -317,58 +279,3 @@ class HHSForecastScraper(BaseScraper):
             extract_func=self.download_forecast_document,
             process_func=self.process_func
         )
-
-def run_scraper(force=False):
-    """Run the HHS Forecast scraper."""
-    source_name = "HHS Forecast"
-    local_logger = logger
-    scraper = None
-    
-    try:
-        # Removed interval check logic
-        # if not force and download_tracker.should_download(source_name):
-        #     local_logger.info(f"Skipping scrape for {source_name} due to recent download")
-        #     return True
-
-        scraper = HHSForecastScraper(debug_mode=False)
-        local_logger.info(f"Running {source_name} scraper")
-        result = scraper.scrape() 
-        
-        if not result or not result.get("success", False):
-            error_msg = result.get("error", f"{source_name} scraper failed without specific error") if result else f"{source_name} scraper failed without specific error"
-            # Error logging should happen deeper, just raise
-            raise ScraperError(error_msg)
-        
-        # Removed: download_tracker.set_last_download_time(source_name)
-        # local_logger.info(f"Updated download tracker for {source_name}")
-        # update_scraper_status(source_name, "working", None) # Keep commented out
-        return True
-    except ImportError as e:
-        error_msg = f"Import error for {source_name}: {str(e)}"
-        local_logger.error(error_msg)
-        # handle_scraper_error(e, source_name, "Import error") # Already called?
-        raise
-    except ScraperError as e:
-        local_logger.error(f"ScraperError occurred for {source_name}: {str(e)}")
-        # Error should have been logged by handle_scraper_error already
-        raise
-    except Exception as e:
-        error_msg = f"Unexpected error running {source_name} scraper: {str(e)}"
-        handle_scraper_error(e, source_name, f"Unexpected error in run_scraper for {source_name}")
-        raise ScraperError(error_msg) from e
-    finally:
-        if scraper:
-            try:
-                local_logger.info(f"Cleaning up {source_name} scraper resources")
-                scraper.cleanup_browser()
-            except Exception as cleanup_error:
-                local_logger.error(f"Error during {source_name} scraper cleanup: {str(cleanup_error)}")
-
-if __name__ == "__main__":
-    try:
-        run_scraper(force=True)
-        print("HHS Forecast scraper finished successfully (DB operations skipped).")
-    except Exception as e:
-        print(f"HHS Forecast scraper failed: {e}")
-        # Print detailed traceback for direct execution errors
-        traceback.print_exc() 
