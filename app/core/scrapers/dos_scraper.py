@@ -10,14 +10,11 @@ import datetime # Used for datetime.datetime
 # Third-party imports
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 import pandas as pd
-import hashlib
 # import re # Unused
-import json
-from datetime import datetime # Used for type hinting and direct use
 
 # Local application imports
 from app.core.base_scraper import BaseScraper
-from app.models import Prospect, DataSource, db
+from app.models import Prospect
 # from app.database.crud import bulk_upsert_prospects # Unused
 from app.exceptions import ScraperError
 from app.utils.logger import logger
@@ -214,8 +211,10 @@ class DOSForecastScraper(BaseScraper):
             
             # Initialize Place columns if missing (default country USA)
             for col_place in ['place_city', 'place_state']:
-                if col_place not in df.columns: df[col_place] = pd.NA
-            if 'place_country' not in df.columns: df['place_country'] = 'USA'
+                if col_place not in df.columns:
+                    df[col_place] = pd.NA
+            if 'place_country' not in df.columns:
+                df['place_country'] = 'USA'
 
             cols_to_drop = ['estimated_value_raw1', 'estimated_value_raw2', 'award_date_raw', 'award_qtr_raw', 'award_fiscal_year_raw', 'release_date_raw']
             df.drop(columns=[col for col in cols_to_drop if col in df.columns], errors='ignore', inplace=True)

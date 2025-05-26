@@ -4,21 +4,17 @@
 import os
 import traceback
 # import sys # Unused
-import shutil
-import datetime # Added datetime import
 from urllib.parse import urljoin
 
 # Third-party imports
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 import pandas as pd
-import hashlib
 # import re # Unused
-import json # Added json
 from app.utils.parsing import parse_value_range, fiscal_quarter_to_date # Added parsing utils
 
 # Local application imports
 from app.core.base_scraper import BaseScraper
-from app.models import Prospect, DataSource, db # Added Prospect, DataSource, db
+from app.models import Prospect # Added Prospect, DataSource, db
 # from app.database.crud import bulk_upsert_prospects # Unused
 from app.exceptions import ScraperError
 from app.utils.logger import logger
@@ -113,7 +109,7 @@ class DocScraper(BaseScraper):
                 raise ScraperError("Could not find the DOC forecast download link locator")
 
             # Dispatch click event on the locator and wait for the download
-            self.logger.info(f"Dispatching click event on download link locator and waiting for download...")
+            self.logger.info("Dispatching click event on download link locator and waiting for download...")
             with self.page.expect_download(timeout=90000) as download_info:
                  # Use dispatch_event on the located element
                  download_locator.dispatch_event('click')

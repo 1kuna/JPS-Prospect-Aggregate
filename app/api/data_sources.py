@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify, current_app
+from flask import Blueprint, request, jsonify
 from sqlalchemy import func
 from app.models import db, Prospect, DataSource, ScraperStatus
 from app.exceptions import ValidationError, NotFoundError, DatabaseError

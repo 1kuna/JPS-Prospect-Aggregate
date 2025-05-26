@@ -5,21 +5,17 @@ import os
 # import sys # Unused
 import time
 # import shutil # Unused
-import datetime # Added datetime import
 
 # Third-party imports
 # import requests # Unused
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 import pandas as pd
-import hashlib
 import traceback # Added traceback
 # import re # Unused
-from datetime import datetime # Added datetime
-import json # Added json
 
 # Local application imports
 from app.core.base_scraper import BaseScraper
-from app.models import Prospect, DataSource, db # Added Prospect, DataSource, db
+from app.models import Prospect # Added Prospect, DataSource, db
 # from app.database.crud import bulk_upsert_prospects # Unused
 from app.config import active_config # Import active_config
 from app.exceptions import ScraperError

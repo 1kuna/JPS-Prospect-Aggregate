@@ -6,7 +6,6 @@ This module creates and configures the Flask application.
 
 from flask import Flask
 from flask_cors import CORS
-from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from app.config import active_config # Import active_config
 from app.database import db  # Import the db instance from database.py
@@ -23,22 +22,19 @@ def create_app(config_name='default'): # config_name is no longer used but kept 
     # Initialize extensions
     CORS(app, resources={r'/api/*': {'origins': '*'}}) # Configure origins properly for production
     db.init_app(app) # Initialize SQLAlchemy with the app
-
     # Initialize Flask-Migrate
-    migrate = Migrate(app, db)
+    Migrate(app, db)
 
     # Import models here to ensure they are registered with SQLAlchemy
     from app import models # noqa
 
     # Register blueprints
     from app.api.main import main_bp
-    from app.api.proposals import proposals_bp
     from app.api.data_sources import data_sources_bp
     from app.api.scrapers import scrapers_bp
     from app.api.prospects import prospects_bp # Import the new blueprint
 
     app.register_blueprint(main_bp, url_prefix='/api')
-    app.register_blueprint(proposals_bp, url_prefix='/api/proposals')
     app.register_blueprint(data_sources_bp, url_prefix='/api/data-sources')
     app.register_blueprint(scrapers_bp, url_prefix='/api/data-sources') # Scraper routes are under data-sources
     app.register_blueprint(prospects_bp) # Register the new blueprint (uses url_prefix from its definition)
