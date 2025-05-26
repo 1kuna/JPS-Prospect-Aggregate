@@ -6,18 +6,16 @@ import traceback # Keep one traceback
 
 # Third-party imports
 import pandas as pd # Add pandas
-from playwright.sync_api import TimeoutError as PlaywrightTimeoutError, sync_playwright
-from playwright_stealth import stealth_sync
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 # Local application imports
 from app.core.base_scraper import BaseScraper
-from app.models import Prospect, DataSource, db # Removed ScraperStatus
+from app.models import Prospect # Removed ScraperStatus
 from app.config import active_config # Import active_config
 from app.exceptions import ScraperError
 # from app.utils.file_utils import ensure_directory # Removed ensure_directory
 from app.utils.logger import logger
 from app.utils.scraper_utils import handle_scraper_error
-from app.database.crud import bulk_upsert_prospects # Add bulk_upsert_prospects
 # import hashlib # No longer needed here
 
 # Set up logging

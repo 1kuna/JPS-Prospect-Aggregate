@@ -4,21 +4,16 @@
 import os
 import traceback
 # import sys # Unused
-import shutil
-import datetime # Used for datetime.datetime
 
 # Third-party imports
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 import pandas as pd
-import hashlib
 # import traceback # Redundant
 # import re # Unused
-from datetime import datetime # Used for type hinting and direct use
-import json
 
 # Local application imports
 from app.core.base_scraper import BaseScraper
-from app.models import Prospect, DataSource, db
+from app.models import Prospect
 # from app.database.crud import bulk_upsert_prospects # Unused
 from app.exceptions import ScraperError
 from app.utils.logger import logger
@@ -51,11 +46,8 @@ class HHSForecastScraper(BaseScraper):
         """
         self.logger.info("Attempting to download HHS forecast document")
         
-        # Selectors (these might need adjustment based on actual page structure)
         view_all_selector = 'button[data-cy="viewAllBtn"]' 
-        export_button_selector = 'button:has-text("Export")' 
-        # Add a check for a table or data container to ensure data is loaded
-        data_container_selector = 'div.view-content' # Example: Adjust based on inspection
+        export_button_selector = 'button:has-text("Export")'
         
         try:
             # Navigate to the main forecast page
@@ -63,73 +55,30 @@ class HHSForecastScraper(BaseScraper):
             self.navigate_to_url()
             self.logger.info("Page loaded.")
 
-            # Wait specifically for the 'View All' button
-            self.logger.info(f"Waiting for '{view_all_selector}' button to be visible...")
-            try:
-                self.page.locator(view_all_selector).wait_for(state='visible', timeout=10000) # 10 seconds
-                self.logger.info(f"'{view_all_selector}' button is visible.")
-            except PlaywrightTimeoutError:
-                self.logger.error("Could not find 'View All' button within timeout.")
-                raise ScraperError("Could not find 'View All' button on the page after waiting")
+            # Use the new helper method to handle pre-click, main click, and download
+            return self._click_and_download(
+                download_trigger_selector=export_button_selector,
+                pre_click_selector=view_all_selector,
+                # Wait 10 seconds after clicking "View All" for the page to update
+                # and the Export button to become available/interactive.
+                pre_click_wait_ms=10000 
+            )
             
-            # Click 'View All'
-            self.logger.info(f"Locating and clicking '{view_all_selector}'")
-            self.page.locator(view_all_selector).click()
-            self.logger.info("Clicked 'View All'. Waiting for data container and Export button...")
-
-            # Wait for the data container to become visible after clicking 'View All'
-            try:
-                self.page.locator(data_container_selector).wait_for(state='visible', timeout=10000) # 10 seconds
-                self.logger.info("Data container found after clicking 'View All'.")
-            except PlaywrightTimeoutError:
-                self.logger.warning("Data container did not become visible within 10s after clicking 'View All'.")
-                # Continue, maybe the export button is still available
-
-            # Wait for the Export button to be visible and ready
-            export_button = self.page.locator(export_button_selector)
-            try:
-                export_button.wait_for(state='visible', timeout=10000) # Shortened to 10 seconds
-                self.logger.info("Export button is visible.")
-            except PlaywrightTimeoutError as e:
-                self.logger.error(f"Export button did not become visible/enabled within 10s: {e}")
-                raise ScraperError("Export button did not appear or become enabled after clicking 'View All'")
-
-            # Click the Export button and wait for the download
-            self.logger.info(f"Clicking Export button and waiting for download...")
-            with self.page.expect_download(timeout=90000) as download_info:
-                 export_button.click()
-
-            _ = download_info.value # Access the download object
-
-            # Wait a brief moment for the download event to be processed by the callback
-            self.page.wait_for_timeout(2000) # Adjust as needed
-
-            if not self._last_download_path or not os.path.exists(self._last_download_path):
-                self.logger.error(f"BaseScraper._last_download_path not set or invalid. Value: {self._last_download_path}")
-                # Fallback or detailed error logging
-                try:
-                    download_obj_for_debug = download_info.value
-                    temp_playwright_path = download_obj_for_debug.path()
-                    self.logger.warning(f"Playwright temp download path for debugging: {temp_playwright_path}")
-                except Exception as path_err:
-                    self.logger.error(f"Could not retrieve Playwright temp download path for debugging: {path_err}")
-                raise ScraperError("Download failed: File not found or path not set by BaseScraper._handle_download.")
-
-            self.logger.info(f"Download process completed. File saved at: {self._last_download_path}")
-            return self._last_download_path
-            
-        except PlaywrightTimeoutError as e:
-            self.logger.error(f"Timeout error during HHS forecast download: {e}")
-            handle_scraper_error(e, self.source_name, "Timeout during download process")
-            raise ScraperError(f"Timeout during HHS forecast download process: {str(e)}")
-        except Exception as e:
+        except PlaywrightTimeoutError as e: # This might catch timeouts from navigate_to_url
+            self.logger.error(f"Timeout error during HHS forecast download process: {e}")
+            handle_scraper_error(e, self.source_name, "Timeout during HHS download process")
+            raise ScraperError(f"Timeout during HHS forecast download process: {str(e)}") from e
+        except ScraperError as se: # Catch ScraperErrors raised by _click_and_download or elsewhere
+            self.logger.error(f"ScraperError during HHS forecast download: {se}")
+            handle_scraper_error(se, self.source_name, "HHS download operation")
+            raise # Re-raise the ScraperError
+        except Exception as e: # Catch any other general exceptions
             self.logger.error(f"General error during HHS forecast download: {e}")
             handle_scraper_error(e, self.source_name, "Error downloading HHS forecast document")
-            # Ensure the original exception type isn't lost if it's not a ScraperError already
-            if not isinstance(e, ScraperError):
+            if not isinstance(e, ScraperError): # Wrap if it's not already a ScraperError
                  raise ScraperError(f"Failed to download HHS forecast document: {str(e)}") from e
             else:
-                 raise # Re-raise the original ScraperError
+                 raise # Re-raise if it's already a ScraperError
     
     def process_func(self, file_path: str):
         """

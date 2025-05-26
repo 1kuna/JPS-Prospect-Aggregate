@@ -4,13 +4,70 @@ import pandas as pd
 from sqlalchemy import insert # Changed to core SQLAlchemy insert
 from sqlalchemy.exc import SQLAlchemyError
 import numpy as np
-import datetime
+import math
 
 # from .models import Prospect # Old import
 # from .session import get_db # Old import
 from app.models import db, Prospect # Changed back to Prospect
+from app.exceptions import ValidationError
 
 # Logging is now handled by app.utils.logger (Loguru)
+
+def paginate_sqlalchemy_query(query, page: int, per_page: int):
+    """
+    Paginates a SQLAlchemy query.
+
+    Args:
+        query: The SQLAlchemy query object.
+        page (int): The current page number (1-indexed).
+        per_page (int): The number of items per page.
+
+    Returns:
+        dict: A dictionary containing the paginated items and pagination details.
+    
+    Raises:
+        ValidationError: If page or per_page have invalid values.
+    """
+    if not isinstance(page, int) or page < 1:
+        raise ValidationError("Page number must be a positive integer greater than or equal to 1.")
+    if not isinstance(per_page, int) or per_page < 1:
+        raise ValidationError("Per_page must be a positive integer greater than or equal to 1.")
+    if per_page > 100: # Example max limit
+        raise ValidationError("Per_page cannot exceed 100.")
+
+    try:
+        total_items = query.count()
+    except SQLAlchemyError as e:
+        logging.error(f"Database error counting items for pagination: {e}", exc_info=True)
+        # Depending on desired behavior, could re-raise, or return an error state
+        raise # Re-raise to be handled by the caller or a global error handler
+
+    if total_items == 0:
+        total_pages = 0
+        items = []
+    else:
+        total_pages = math.ceil(total_items / per_page)
+        if page > total_pages and total_items > 0 : # If page is out of bounds but there are items
+            raise ValidationError(f"Page number {page} is out of bounds. Total pages: {total_pages}.")
+            
+        offset = (page - 1) * per_page
+        try:
+            items_query = query.offset(offset).limit(per_page)
+            items = items_query.all()
+        except SQLAlchemyError as e:
+            logging.error(f"Database error fetching paginated items: {e}", exc_info=True)
+            # Depending on desired behavior, could re-raise, or return an error state
+            raise # Re-raise
+
+    return {
+        "items": items,
+        "page": page,
+        "per_page": per_page,
+        "total_items": total_items,
+        "total_pages": total_pages,
+        "has_next": page < total_pages,
+        "has_prev": page > 1 and total_items > 0 # Ensure has_prev is false if no items
+    }
 
 def bulk_upsert_prospects(df_in: pd.DataFrame): # Renamed back
     """
@@ -92,56 +149,5 @@ def bulk_upsert_prospects(df_in: pd.DataFrame): # Renamed back
         logging.error(f"An unexpected error occurred during bulk upsert: {e}", exc_info=True)
         session.rollback()
 
-
-def get_prospects_paginated(page: int, per_page: int):
-    """
-    Retrieves prospects from the database with pagination.
-
-    Args:
-        page (int): The current page number (1-indexed).
-        per_page (int): The number of items per page.
-
-    Returns:
-        dict: A dictionary containing the paginated prospects and pagination details.
-              Returns None if an error occurs or if per_page is non-positive.
-    """
-    import math
-    # from app.models import Prospect, db # Already imported at the top
-
-    if page <= 0:
-        logging.error("Page number must be positive.")
-        return None # Or raise ValueError
-    if per_page <= 0:
-        logging.error("Per_page must be positive.")
-        return None # Or raise ValueError
-
-    try:
-        offset = (page - 1) * per_page
-        
-        items_query = Prospect.query.offset(offset).limit(per_page)
-        items = items_query.all()
-        
-        if not items and page > 1: # Only log if not the first page and no items
-            logging.info(f"No prospects found for page {page} with {per_page} items per page.")
-            # Still proceed to calculate total and total_pages
-
-        total = Prospect.query.count()
-        
-        if total == 0:
-            total_pages = 0
-        else:
-            total_pages = math.ceil(total / per_page) if per_page > 0 else 0
-
-        return {
-            "items": items,
-            "total": total,
-            "page": page,
-            "per_page": per_page,
-            "total_pages": total_pages,
-        }
-    except SQLAlchemyError as e:
-        logging.error(f"Database error during paginated prospect retrieval: {e}", exc_info=True)
-        return None
-    except Exception as e:
-        logging.error(f"An unexpected error occurred during paginated prospect retrieval: {e}", exc_info=True)
-        return None
+# The old get_prospects_paginated function has been removed.
+# Trailing comments and artifacts from previous attempts are also cleaned up.

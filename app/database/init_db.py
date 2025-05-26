@@ -1,7 +1,4 @@
-import os
-import sys
 import logging
-from pathlib import Path
 
 from app.database.session import engine
 from app.database import db # Changed import from Base to db

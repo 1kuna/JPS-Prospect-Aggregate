@@ -2,14 +2,11 @@
 Database utility functions.
 """
 
-import sys
-import os
 import datetime
 # import shutil # Removed as it was only used by rebuild_database
-import glob # Keep for cleanup_old_backups via clean_old_files
 from typing import Optional # Added for type hinting
 from app.utils.logger import logger
-from app.utils.file_utils import ensure_directory, clean_old_files
+from app.utils.file_utils import clean_old_files
 # from flask import current_app # Removed as it was only used by rebuild_database
 # from pathlib import Path # Removed as it was only used by rebuild_database
 

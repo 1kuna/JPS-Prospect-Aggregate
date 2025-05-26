@@ -1,5 +1,5 @@
 import datetime
-from app.models import db, DataSource # ScraperStatus will be handled by the utility
+from app.models import db, DataSource, ScraperStatus # ScraperStatus will be handled by the utility
 from app.exceptions import NotFoundError, ScraperError, DatabaseError
 from app.utils.logger import logger
 from app.utils.db_utils import update_scraper_status # Import the utility

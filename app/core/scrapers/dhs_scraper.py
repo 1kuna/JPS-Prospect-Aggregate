@@ -12,12 +12,10 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 import pandas as pd
 # import hashlib # No longer needed here
 # import re # Unused
-from datetime import datetime
 
 # Local application imports
 from app.core.base_scraper import BaseScraper
-from app.models import Prospect, DataSource, db
-from app.database.crud import bulk_upsert_prospects
+from app.models import Prospect
 from app.exceptions import ScraperError
 from app.utils.logger import logger
 from app.utils.parsing import parse_value_range, fiscal_quarter_to_date
@@ -63,51 +61,33 @@ class DHSForecastScraper(BaseScraper):
             self.page.wait_for_timeout(10000) # 10 seconds explicit wait
             self.logger.info("Wait finished.")
             
-            # Wait for the CSV button to be visible and ready
-            csv_button = self.page.locator(csv_button_selector)
-            self.logger.info(f"Waiting for '{csv_button_selector}' button to be visible...")
-            try:
-                csv_button.wait_for(state='visible', timeout=15000) # Increased timeout slightly
-                self.logger.info(f"'{csv_button_selector}' button is visible.")
-            except PlaywrightTimeoutError as e:
-                self.logger.error(f"CSV button did not become visible/enabled within 15s: {e}")
-                raise ScraperError("CSV download button did not appear or become enabled")
-
-            # Click the CSV button and wait for the download
-            self.logger.info(f"Clicking CSV button and waiting for download...")
-            with self.page.expect_download(timeout=90000) as download_info:
-                 csv_button.click()
-            _ = download_info.value # Access the download object
+            # Use the new helper method to click and download
+            # The helper will handle waiting for the selector, clicking, and managing the download.
+            # It also includes the _last_download_path check.
+            return self._click_and_download(
+                download_trigger_selector=csv_button_selector
+                # Default timeouts from helper: wait_for_trigger_timeout_ms=30000, download_timeout_ms=90000
+            )
             
-            # Wait a brief moment for the download event to be processed by the callback
-            self.page.wait_for_timeout(2000) # Adjust as needed
-
-            if not self._last_download_path or not os.path.exists(self._last_download_path):
-                self.logger.error(f"BaseScraper._last_download_path not set or invalid. Value: {self._last_download_path}")
-                # Fallback or detailed error logging
-                try:
-                    download_obj_for_debug = download_info.value
-                    temp_playwright_path = download_obj_for_debug.path()
-                    self.logger.warning(f"Playwright temp download path for debugging: {temp_playwright_path}")
-                except Exception as path_err:
-                    self.logger.error(f"Could not retrieve Playwright temp download path for debugging: {path_err}")
-                raise ScraperError("Download failed: File not found or path not set by BaseScraper._handle_download.")
-
-            self.logger.info(f"Download process completed. File saved at: {self._last_download_path}")
-            return self._last_download_path
-            
-        except PlaywrightTimeoutError as e:
-            self.logger.error(f"Timeout error during DHS forecast download initiation: {e}")
-            handle_scraper_error(e, self.source_name, "Timeout during download process initiation")
-            raise ScraperError(f"Timeout during DHS forecast download process initiation: {str(e)}")
-        except Exception as e:
+        except PlaywrightTimeoutError as e: # This might catch timeouts from navigate_to_url or the explicit wait
+            self.logger.error(f"Timeout error during DHS forecast download process: {e}")
+            handle_scraper_error(e, self.source_name, "Timeout during DHS download process")
+            raise ScraperError(f"Timeout during DHS forecast download process: {str(e)}") from e
+        except ScraperError as se: # Catch ScraperErrors raised by _click_and_download or elsewhere
+            self.logger.error(f"ScraperError during DHS forecast download: {se}")
+            # handle_scraper_error is not strictly needed here if ScraperError is already logged by helper/source
+            # For consistency, ensure handle_scraper_error is called if not already done by the source of error.
+            # The _click_and_download helper logs its errors but doesn't call handle_scraper_error.
+            # So, it's good to call it here.
+            handle_scraper_error(se, self.source_name, "DHS download operation")
+            raise # Re-raise the ScraperError
+        except Exception as e: # Catch any other general exceptions
             self.logger.error(f"General error during DHS forecast download: {e}")
             handle_scraper_error(e, self.source_name, "Error downloading DHS forecast document")
-            # Ensure the original exception type isn't lost if it's not a ScraperError already
-            if not isinstance(e, ScraperError):
+            if not isinstance(e, ScraperError): # Wrap if it's not already a ScraperError
                  raise ScraperError(f"Failed to download DHS forecast document: {str(e)}") from e
             else:
-                 raise # Re-raise the original ScraperError
+                 raise # Re-raise if it's already a ScraperError (though previous block should catch it)
     
     def process_func(self, file_path: str):
         """

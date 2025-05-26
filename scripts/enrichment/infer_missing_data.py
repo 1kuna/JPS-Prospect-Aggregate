@@ -1,8 +1,6 @@
 import sqlite3
 import logging
 from pathlib import Path
-import pandas as pd
-import os
 import sys
 import time 
 import re # Import regex module
@@ -203,7 +201,6 @@ def infer_missing_prospect_data():
                     batch_number = i // BATCH_SIZE + 1
                     logger.info(f"Processing batch {batch_number} for {inferred_col} (size: {len(batch)})")
                     
-                    batch_updates_made = 0 # Track updates in this batch for commit
                     for row in batch:
                         prospect_id = row['id']
                         logger.debug(f"Processing Prospect ID: {prospect_id} for field '{inferred_col}'")

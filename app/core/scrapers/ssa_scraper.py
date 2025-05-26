@@ -4,21 +4,16 @@
 import os
 import traceback
 # import sys # Unused
-import shutil
-import datetime # Used for datetime.datetime
 
 # Third-party imports
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 import pandas as pd
-import hashlib
 # import traceback # Redundant
 # import re # Unused
-from datetime import datetime # Used for type hinting and direct use
-import json
 
 # Local application imports
 from app.core.base_scraper import BaseScraper
-from app.database.models import Prospect, DataSource, db # Removed ScraperStatus
+from app.database.models import Prospect # Removed ScraperStatus
 # from app.database.crud import bulk_upsert_prospects # Unused
 from app.exceptions import ScraperError
 from app.utils.logger import logger
