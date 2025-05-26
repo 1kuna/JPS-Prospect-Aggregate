@@ -3,31 +3,25 @@
 # Standard library imports
 import os
 import traceback
-import sys
+# import sys # Unused
 import shutil
-import datetime
+# import datetime # Unused at top level, `from datetime import datetime` is used
 import json
-
-# --- Start temporary path adjustment for direct execution ---
-_project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
-if _project_root not in sys.path:
-    sys.path.insert(0, _project_root)
-# --- End temporary path adjustment ---
 
 # Third-party imports
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 import pandas as pd
 import hashlib
-import re
+# import re # Unused
 from datetime import datetime
 
 # Local application imports
 from app.core.base_scraper import BaseScraper
 from app.models import Prospect, DataSource, db
-from app.database.crud import bulk_upsert_prospects
+# from app.database.crud import bulk_upsert_prospects # Unused
 from app.exceptions import ScraperError
 from app.utils.logger import logger
-from app.config import DOJ_FORECAST_URL # Need to add this to config.py
+from app.config import active_config # Import active_config
 from app.utils.scraper_utils import handle_scraper_error
 from app.utils.parsing import parse_value_range, fiscal_quarter_to_date, split_place
 
@@ -41,7 +35,7 @@ class DOJForecastScraper(BaseScraper):
         """Initialize the DOJ Forecast scraper."""
         super().__init__(
             source_name="DOJ Forecast", # Updated source name
-            base_url=DOJ_FORECAST_URL, # Updated URL config variable
+            base_url=active_config.DOJ_FORECAST_URL, # Updated URL config variable
             debug_mode=debug_mode
         )
     
@@ -80,46 +74,25 @@ class DOJForecastScraper(BaseScraper):
             with self.page.expect_download(timeout=90000) as download_info:
                  download_link.click()
 
-            download = download_info.value
-            download_path = download.path() # Playwright saves to a temp location
-            
-            # --- Start modification for timestamped filename ---
-            original_filename = download.suggested_filename
-            if not original_filename:
-                self.logger.warning("Download suggested_filename is empty, using default 'doj_download.xlsx'")
-                original_filename = "doj_download.xlsx"
+            _ = download_info.value # Access the download object
 
-            _, ext = os.path.splitext(original_filename)
-            if not ext:
-                ext = '.xlsx' # Default extension
-                self.logger.warning(f"Original filename '{original_filename}' had no extension, defaulting to '{ext}'")
+            # Wait a brief moment for the download event to be processed by the callback
+            self.page.wait_for_timeout(2000) # Adjust as needed
 
-            timestamp_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            # Use hardcoded identifier 'doj'
-            final_filename = f"doj_{timestamp_str}{ext}" 
-            final_path = os.path.join(self.download_path, final_filename)
-            self.logger.info(f"Original suggested filename: {original_filename}")
-            self.logger.info(f"Saving with standardized filename: {final_filename} to {final_path}")
-            # --- End modification ---
+            if not self._last_download_path or not os.path.exists(self._last_download_path):
+                self.logger.error(f"BaseScraper._last_download_path not set or invalid. Value: {self._last_download_path}")
+                # Attempt to get the path from the download object if _last_download_path wasn't set
+                try:
+                    download = download_info.value # Get download object if needed for path
+                    temp_playwright_path = download.path()
+                    self.logger.warning(f"Playwright temp download path: {temp_playwright_path}")
+                    # This indicates an issue in _handle_download or event processing timing.
+                except Exception as path_err:
+                    self.logger.error(f"Could not retrieve Playwright download path: {path_err}")
+                raise ScraperError("Download failed: File not found or path not set by BaseScraper._handle_download.")
 
-            # Ensure the target directory exists before moving
-            os.makedirs(self.download_path, exist_ok=True)
-            
-            # Move the downloaded file to the target directory using the new final_path
-            try:
-                 shutil.move(download_path, final_path)
-                 self.logger.info(f"Download complete. Moved file to: {final_path}")
-            except Exception as move_err:
-                 self.logger.error(f"Error moving downloaded file from {download_path} to {final_path}: {move_err}")
-                 raise ScraperError(f"Failed to move downloaded file: {move_err}") from move_err
-
-            # Verify the file exists using the new final_path
-            if not os.path.exists(final_path) or os.path.getsize(final_path) == 0:
-                self.logger.error(f"Verification failed: File not found or empty at {final_path}")
-                raise ScraperError(f"Download verification failed: File missing or empty at {final_path}")
-
-            self.logger.info(f"Download verification successful. File saved at: {final_path}")
-            return final_path
+            self.logger.info(f"Download process completed. File saved at: {self._last_download_path}")
+            return self._last_download_path
             
         except PlaywrightTimeoutError as e:
             self.logger.error(f"Timeout error during DOJ forecast download: {e}")
@@ -222,62 +195,40 @@ class DOJForecastScraper(BaseScraper):
             df.drop(columns=[col for col in cols_to_drop if col in df.columns], errors='ignore', inplace=True)
             # --- End: Logic adapted from doj_transform.normalize_columns_doj ---
             
-            df.columns = df.columns.str.strip().str.lower().str.replace(r'\\s+\\(.*?\\)', '', regex=True).str.replace(r'\\s+', '_', regex=True).str.replace(r'[^a-z0-9_]', '', regex=True)
-            df = df.loc[:, ~df.columns.duplicated()]
-
-            prospect_model_fields = [col.name for col in Prospect.__table__.columns if col.name not in ['loaded_at', 'id', 'source_id']]
-            current_cols_normalized = df.columns.tolist()
-            unmapped_cols = [col for col in current_cols_normalized if col not in prospect_model_fields]
-
-            if unmapped_cols:
-                self.logger.info(f"Found unmapped columns for 'extra' for DOJ: {unmapped_cols}")
-                # DOJ transform script stringifies, does not use JSON for extra, adapt if Prospect.extra is JSON
-                # Assuming Prospect.extra is JSON, using similar robust JSON handling as DOC
-                def row_to_extra_json(row):
-                    extra_dict = {}
-                    for col_name in unmapped_cols:
-                        val = row.get(col_name)
-                        if pd.isna(val):
-                            extra_dict[col_name] = None
-                        elif isinstance(val, (datetime, pd.Timestamp)):
-                            extra_dict[col_name] = val.isoformat()
-                        elif isinstance(val, (int, float, bool, str)):
-                            extra_dict[col_name] = val
-                        else:
-                            try: extra_dict[col_name] = str(val)
-                            except Exception: extra_dict[col_name] = "CONVERSION_ERROR"
-                    try: return json.dumps(extra_dict) # Need import json
-                    except TypeError: return str(extra_dict)
-                df['extra'] = df.apply(row_to_extra_json, axis=1)
-            else:
-                df['extra'] = None # This should be None for DB if Prospect.extra is nullable JSON
+            # Define the final column rename map.
+            final_column_rename_map = {
+                'native_id': 'native_id',
+                'agency': 'agency',
+                'title': 'title',
+                'description': 'description',
+                'contract_type': 'contract_type',
+                'naics': 'naics',
+                'set_aside': 'set_aside',
+                'estimated_value': 'estimated_value',
+                'est_value_unit': 'est_value_unit',
+                'release_date': 'release_date',
+                'award_date': 'award_date',
+                'award_fiscal_year': 'award_fiscal_year',
+                'place_city': 'place_city',
+                'place_state': 'place_state',
+                'place_country': 'place_country',
+                # Raw fields that will go to 'extra'. Ensure they exist in df.
+                # If 'Country' was renamed to 'place_country' and also needs to be in extra,
+                # it needs a different key here or handle it before this map.
+                # For now, assuming direct fields are handled and 'extra' takes others.
+            }
             
-            for col in prospect_model_fields:
-                if col not in df.columns:
-                    df[col] = pd.NA
-            
-            data_source_obj = db.session.query(DataSource).filter_by(name=self.source_name).first()
-            df['source_id'] = data_source_obj.id if data_source_obj else None
-            
-            def generate_prospect_id(row: pd.Series) -> str:
-                naics_val = str(row.get('naics', ''))
-                title_val = str(row.get('title', ''))
-                desc_val = str(row.get('description', ''))
-                unique_string = f"{naics_val}-{title_val}-{desc_val}-{self.source_name}"
-                return hashlib.md5(unique_string.encode('utf-8')).hexdigest()
-            df['id'] = df.apply(generate_prospect_id, axis=1)
+            # Ensure all columns in final_column_rename_map exist in df.
+            for col_name in final_column_rename_map.keys():
+                if col_name not in df.columns:
+                    df[col_name] = pd.NA
 
-            final_prospect_columns = [col.name for col in Prospect.__table__.columns if col.name != 'loaded_at']
-            df_to_insert = df[[col for col in final_prospect_columns if col in df.columns]]
+            prospect_model_fields = [col.name for col in Prospect.__table__.columns if col.name != 'loaded_at']
+            # Original ID generation: unique_string = f"{naics_val}-{title_val}-{desc_val}-{self.source_name}"
+            # These correspond to 'naics', 'title', 'description' in the df after initial renaming.
+            fields_for_id_hash = ['naics', 'title', 'description']
 
-            df_to_insert.dropna(how='all', inplace=True)
-            if df_to_insert.empty:
-                self.logger.info("After DOJ processing, no valid data rows to insert.")
-                return
-
-            self.logger.info(f"Attempting to insert/update {len(df_to_insert)} DOJ records.")
-            bulk_upsert_prospects(df_to_insert)
-            self.logger.info(f"Successfully inserted/updated DOJ records from {file_path}.")
+            return self._process_and_load_data(df, final_column_rename_map, prospect_model_fields, fields_for_id_hash)
 
         except FileNotFoundError:
             self.logger.error(f"DOJ Excel file not found: {file_path}")
@@ -303,53 +254,3 @@ class DOJForecastScraper(BaseScraper):
             extract_func=self.download_forecast_document,
             process_func=self.process_func
         )
-
-def run_scraper(force=False):
-    """Run the DOJ Forecast scraper."""
-    source_name = "DOJ Forecast"
-    local_logger = logger
-    scraper = None
-    
-    try:
-        scraper = DOJForecastScraper(debug_mode=False)
-        local_logger.info(f"Running {source_name} scraper")
-        result = scraper.scrape() 
-        
-        if not result or not result.get("success", False):
-            error_msg = result.get("error", f"{source_name} scraper failed without specific error") if result else f"{source_name} scraper failed without specific error"
-            raise ScraperError(error_msg)
-        
-        return {"success": True, "file_path": result.get("file_path"), "message": f"{source_name} scraped successfully"}
-    
-    except ImportError as e:
-        error_msg = f"Import error for {source_name}: {str(e)}"
-        local_logger.error(error_msg)
-        handle_scraper_error(e, source_name, "Import error")
-        raise ScraperError(error_msg) from e
-    except ScraperError as e:
-        local_logger.error(f"ScraperError occurred for {source_name}: {str(e)}")
-        raise
-    except Exception as e:
-        error_msg = f"Unexpected error running {source_name} scraper: {str(e)}"
-        handle_scraper_error(e, source_name, f"Unexpected error in run_scraper for {source_name}")
-        raise ScraperError(error_msg) from e
-    finally:
-        if scraper:
-            try:
-                local_logger.info(f"Cleaning up {source_name} scraper resources")
-                scraper.cleanup_browser()
-            except Exception as cleanup_error:
-                local_logger.error(f"Error during {source_name} scraper cleanup: {str(cleanup_error)}")
-
-if __name__ == "__main__":
-    try:
-        result = run_scraper(force=True)
-        if result and result.get("success"):
-            print(f"DOJ Forecast scraper finished successfully. File at: {result.get('file_path', 'N/A')}")
-        else:
-             print(f"DOJ Forecast scraper failed. Check logs for details.")
-             # sys.exit(1) 
-    except Exception as e:
-        print(f"DOJ Forecast scraper failed: {e}")
-        traceback.print_exc()
-        # sys.exit(1) 

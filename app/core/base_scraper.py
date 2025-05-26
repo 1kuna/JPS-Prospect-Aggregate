@@ -8,16 +8,12 @@ and data processing.
 
 # Standard library imports
 import os
-import sys
-import time
 import datetime
 import traceback
-import glob
-import pathlib
 import re
-import logging
 from abc import ABC
-from typing import Optional, Any, Dict
+from typing import Optional #, Any, Dict # Any, Dict were not used
+import hashlib # Add hashlib import
 
 # Third-party imports
 import requests
@@ -26,9 +22,12 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 # Local application imports
 # from app.database.connection import get_db, session_scope # Removed dead import
-from app.models import DataSource, db # Added db for potential direct use
+from app.models import DataSource, db, Prospect # Added db for potential direct use, Prospect
+import pandas as pd # Add pandas import for type hinting
+import json # Add json import for 'extra' field serialization
+from app.database.crud import bulk_upsert_prospects # Import for loading data
 from app.exceptions import ScraperError
-from app.config import LOGS_DIR, RAW_DATA_DIR, LOG_FORMAT, LOG_FILE_MAX_BYTES, LOG_FILE_BACKUP_COUNT
+from app.config import active_config # Import active_config
 from app.utils.file_utils import clean_old_files, ensure_directory
 from app.utils.logger import logger
 
@@ -55,7 +54,7 @@ class BaseScraper(ABC):
         download_path (str): Path to download directory for this scraper
     """
     
-    def __init__(self, source_name, base_url, debug_mode=False):
+    def __init__(self, source_name, base_url, debug_mode=False, use_stealth=False):
         """
         Initialize the base scraper.
         
@@ -63,17 +62,20 @@ class BaseScraper(ABC):
             source_name (str): Name of the data source
             base_url (str): Base URL for the data source
             debug_mode (bool): Whether to run in debug mode
+            use_stealth (bool): Whether to apply playwright-stealth patches
         """
         self.source_name = source_name
         self.base_url = base_url
         self.debug_mode = debug_mode
+        self.use_stealth = use_stealth # Add use_stealth attribute
         self.playwright: Optional[Playwright] = None
         self.browser: Optional[Browser] = None
         self.context: Optional[BrowserContext] = None
         self.page: Optional[Page] = None
         # Use the specific directory for this scraper within RAW_DATA_DIR
-        self.download_path = os.path.join(RAW_DATA_DIR, source_name.lower().replace(' ', '_'))
+        self.download_path = os.path.join(active_config.RAW_DATA_DIR, source_name.lower().replace(' ', '_'))
         ensure_directory(self.download_path) # Ensure it exists
+        self._last_download_path: Optional[str] = None # Initialize _last_download_path
         self.logger = logger.bind(name=f"scraper.{source_name.lower().replace(' ', '_')}")
         self.logger.info(f"Initialized {source_name} scraper. Debug mode: {debug_mode}")
     
@@ -120,6 +122,17 @@ class BaseScraper(ABC):
             
             # Create a page
             self.page = self.context.new_page()
+
+            if self.use_stealth:
+                self.logger.info("Applying playwright-stealth patches...")
+                try:
+                    from playwright_stealth import stealth_sync
+                    stealth_sync(self.page)
+                    self.logger.info("Stealth patches applied.")
+                except ImportError:
+                    self.logger.warning("playwright-stealth not installed. Skipping stealth application.")
+                except Exception as e:
+                    self.logger.error(f"Error applying playwright-stealth: {e}")
             
             # Set default timeout
             self.page.set_default_timeout(60000)  # 60 seconds
@@ -140,21 +153,32 @@ class BaseScraper(ABC):
     
     def _handle_download(self, download: Download) -> None:
         """Callback function to handle downloads initiated by Playwright."""
-        suggested_filename = download.suggested_filename
-        # Ensure the target download directory for this scraper exists
-        download_dir = os.path.join(RAW_DATA_DIR, self.source_name.lower().replace(' ', '_')) # Use RAW_DATA_DIR
-        ensure_directory(download_dir)
-        # save_path = os.path.join(download_dir, suggested_filename) # Path calculation no longer needed here
-        self.logger.info(f"Download event triggered: {suggested_filename}")
-        # Removed the automatic save_as call. Scraper-specific methods will handle saving/moving.
-        self.logger.info(f"BaseScraper._handle_download: Letting scraper-specific method handle saving/moving of {suggested_filename}.")
-        # try:
-            # Save the file
-            # download.save_as(save_path) # REMOVED THIS LINE
+        try:
+            suggested_filename = download.suggested_filename
+            if not suggested_filename:
+                self.logger.warning(f"Download suggested_filename is empty. Using default.")
+                suggested_filename = f"{self.source_name.lower().replace(' ', '_')}_download.dat"
+
+            file_name_part, ext = os.path.splitext(suggested_filename)
+            if not ext:
+                self.logger.warning(f"Filename '{suggested_filename}' has no extension. Defaulting to '.dat'.")
+                ext = '.dat'
+
+            timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+            final_filename = f"{self.source_name.lower().replace(' ', '_')}_{timestamp_str}{ext}"
             
-            # self.logger.info(f"Downloaded file: {suggested_filename}")
-        # except Exception as e:
-        #     self.logger.error(f"Failed to handle download: {str(e)}")
+            # Ensure self.download_path (scraper's specific download dir) exists
+            ensure_directory(self.download_path) 
+            
+            final_save_path = os.path.join(self.download_path, final_filename)
+
+            download.save_as(final_save_path)
+            self.logger.info(f"Successfully saved download to: {final_save_path}")
+            self._last_download_path = final_save_path
+        except Exception as e:
+            self.logger.error(f"Error in _handle_download: {str(e)}")
+            self.logger.error(traceback.format_exc())
+            self._last_download_path = None # Ensure path is None on error
     
     def cleanup_browser(self):
         """
@@ -207,7 +231,7 @@ class BaseScraper(ABC):
         if file_pattern is None:
             file_pattern = f"{self.source_name.lower().replace(' ', '_')}*.csv"
         
-        download_dir = os.path.join(RAW_DATA_DIR, self.source_name.lower().replace(' ', '_'))
+        download_dir = os.path.join(active_config.RAW_DATA_DIR, self.source_name.lower().replace(' ', '_'))
         
         if not os.path.exists(download_dir):
             logger.warning(f"Download directory doesn't exist: {download_dir}")
@@ -237,14 +261,15 @@ class BaseScraper(ABC):
                 self.logger.info(f"Creating new data source: {self.source_name}")
                 data_source = DataSource(
                     name=self.source_name,
-                    url=self.base_url,
-                    last_scraped=datetime.datetime.now()
+                    url=self.base_url
+                    # last_scraped is intentionally not set here.
+                    # It will be set by ScraperService upon successful scrape.
                 )
                 session.add(data_source)
-                session.flush()
-            else:
-                # Update the last_scraped timestamp
-                data_source.last_scraped = datetime.datetime.now()
+                session.flush() # Flush to get the ID if needed, though not strictly necessary here.
+            # else:
+                # Do not update last_scraped here for existing records.
+                # This will be handled by ScraperService upon successful scrape.
             
             return data_source
         except Exception as e:
@@ -346,7 +371,132 @@ class BaseScraper(ABC):
         """
         # This method should be implemented by subclasses
         raise NotImplementedError("Subclasses must implement get_proposal_query")
-    
+
+    def _generate_prospect_id(self, data_row: pd.Series, fields_to_hash: list[str], source_name_override: str = None) -> str:
+        """
+        Generate a unique prospect ID based on specified fields and source name.
+
+        Args:
+            data_row (pd.Series): A row of data.
+            fields_to_hash (list[str]): List of column names from data_row to use for hashing.
+            source_name_override (str, optional): Override for self.source_name. Defaults to None.
+
+        Returns:
+            str: MD5 hash string.
+        """
+        unique_string_parts = []
+        for field in fields_to_hash:
+            value = data_row.get(field, '') # Get value or default to empty string
+            unique_string_parts.append(str(value) if pd.notna(value) and value is not None else '')
+
+        current_source_name = source_name_override if source_name_override else self.source_name
+        unique_string_parts.append(current_source_name)
+        
+        unique_string = "-".join(unique_string_parts)
+        return hashlib.md5(unique_string.encode('utf-8')).hexdigest()
+
+    def _process_and_load_data(self, df: pd.DataFrame, column_rename_map: dict, prospect_model_fields: list[str], fields_for_id_hash: list[str]):
+        """
+        Centralized method to process a DataFrame and load it into the Prospect table.
+        """
+        self.logger.info(f"Starting common data processing for {self.source_name}")
+
+        # 1. Rename Columns
+        df.rename(columns=column_rename_map, inplace=True)
+        self.logger.debug(f"Columns after rename: {df.columns.tolist()}")
+
+        # 2. Normalize Column Names
+        # Ensure this regex handles various cases robustly, including stripping leading/trailing underscores if any appear post-regex.
+        df.columns = (df.columns.str.strip()
+                      .str.lower()
+                      .str.replace(r'[\s\W]+', '_', regex=True) # Replace whitespace and non-alphanumeric with single underscore
+                      .str.replace(r'_+', '_', regex=True)      # Replace multiple underscores with single
+                      .str.replace(r'^_|_$', '', regex=True))   # Remove leading/trailing underscores
+        df = df.loc[:, ~df.columns.duplicated()] # Remove duplicate columns
+        self.logger.debug(f"Columns after normalization: {df.columns.tolist()}")
+
+        # 3. Handle 'extra' Column
+        # Define actual model fields (excluding 'extra' itself for this check)
+        # 'id' and 'loaded_at' are auto-generated or handled separately. 'source_id' is added by this func.
+        core_model_fields_for_extra_check = [f for f in prospect_model_fields if f not in ['extra', 'id', 'loaded_at', 'source_id']]
+        
+        unmapped_cols = [col for col in df.columns if col not in core_model_fields_for_extra_check]
+        
+        if unmapped_cols:
+            self.logger.info(f"Unmapped columns for '{self.source_name}' to be included in 'extra': {unmapped_cols}")
+            
+            def create_extra_json(row):
+                extra_dict = {}
+                for col_name in unmapped_cols:
+                    val = row.get(col_name)
+                    if pd.isna(val):
+                        extra_dict[col_name] = None
+                    elif isinstance(val, (datetime.datetime, datetime.date, pd.Timestamp)):
+                        extra_dict[col_name] = pd.to_datetime(val).isoformat()
+                    elif isinstance(val, (int, float, bool, str)):
+                        extra_dict[col_name] = val
+                    else:
+                        try:
+                            extra_dict[col_name] = str(val)
+                        except Exception:
+                            self.logger.warning(f"Could not convert value for extra field {col_name} to string. Type: {type(val)}")
+                            extra_dict[col_name] = "CONVERSION_ERROR"
+                try:
+                    return json.dumps(extra_dict)
+                except TypeError as e:
+                    self.logger.error(f"JSON serialization error for 'extra' data: {e}. Dict: {extra_dict}")
+                    return json.dumps({"serialization_error": str(e)}) # Store error in JSON
+            
+            df['extra'] = df.apply(create_extra_json, axis=1)
+        else:
+            df['extra'] = None # Initialize with None if no unmapped columns
+
+        # 4. Add source_id
+        # Assuming db.session is available and managed by the application context (e.g., in scrape_with_structure)
+        data_source_obj = db.session.query(DataSource).filter_by(name=self.source_name).first()
+        if data_source_obj:
+            df['source_id'] = data_source_obj.id
+        else:
+            self.logger.error(f"DataSource '{self.source_name}' not found. 'source_id' cannot be set.")
+            # Depending on strictness, could raise error or allow None if Prospect.source_id is nullable
+            df['source_id'] = None 
+
+        # 5. Generate id
+        df['id'] = df.apply(lambda row: self._generate_prospect_id(row, fields_for_id_hash), axis=1)
+
+        # 6. Ensure All Model Fields exist in DataFrame
+        for field in prospect_model_fields:
+            if field not in df.columns:
+                df[field] = pd.NA # Use pd.NA for consistency, converts to None for object types
+
+        # 7. Select Final Columns (ensure 'id' is included if not in prospect_model_fields list initially)
+        # prospect_model_fields should ideally contain all columns for the final table including 'id', 'source_id', 'extra'
+        # but excluding 'loaded_at'
+        final_columns_for_db = [col for col in prospect_model_fields if col in df.columns]
+        # Ensure 'id' is present if it was generated
+        if 'id' not in final_columns_for_db and 'id' in df.columns:
+             final_columns_for_db.append('id')
+        
+        df_to_insert = df[final_columns_for_db]
+
+        # 8. Data Cleaning: Drop rows that are entirely NA (after selecting final columns)
+        df_to_insert.dropna(how='all', inplace=True)
+
+        if df_to_insert.empty:
+            self.logger.info(f"After all processing, no valid data rows to insert for {self.source_name}.")
+            return 0 # No records processed
+
+        # 9. Load Data
+        self.logger.info(f"Attempting to insert/update {len(df_to_insert)} records for {self.source_name}.")
+        try:
+            bulk_upsert_prospects(df_to_insert)
+            self.logger.info(f"Successfully inserted/updated records for {self.source_name}.")
+            return len(df_to_insert)
+        except Exception as e:
+            self.logger.error(f"Error during bulk_upsert_prospects for {self.source_name}: {e}")
+            self.logger.error(traceback.format_exc())
+            raise ScraperError(f"Database loading failed for {self.source_name}: {e}") from e
+
     # -------------------------------------------------------------------------
     # Browser Interaction Methods
     # -------------------------------------------------------------------------
@@ -493,18 +643,19 @@ class BaseScraper(ABC):
                 self.logger.info("Running processing phase")
                 # Use db.session directly
                 # from app.database.connection import session_scope # Removed
-                from app.models import DataSource # db is already imported at the top
-                
-                # Flask-SQLAlchemy's db.session is typically managed by the app context,
-                # so a 'with' block for the session itself isn't usually needed here.
-                # Operations will be part of the current session.
-                session = db.session
-                data_source = self.get_or_create_data_source(session)
+                # from app.models import DataSource # db is already imported at the top 
+                # -> This import is at the top of the file.
+
+                # Flask-SQLAlchemy's db.session is typically managed by the app context.
+                # Get or create the data source - this ensures the source exists in DB.
+                # self.get_or_create_data_source uses db.session directly.
+                data_source = self.get_or_create_data_source(db.session) 
                 if not data_source:
+                    # This check is important to ensure data source exists before processing.
                     raise ScraperError(f"Could not find or create DataSource for {self.source_name}")
                 
-                # Pass session and data_source to process_func
-                processed_data = process_func(result["data"], session, data_source)
+                # Call process_func without session and data_source arguments
+                processed_data = process_func(result["data"]) 
                 result["data"] = processed_data
             
             result["success"] = True
@@ -534,4 +685,12 @@ class BaseScraper(ABC):
         Raises:
             NotImplementedError: If the method is not implemented by a subclass
         """
-        raise NotImplementedError("Subclasses must implement scrape method") 
+        raise NotImplementedError("Subclasses must implement scrape method")
+
+    def run(self):
+        """
+        Run the scraper.
+
+        This method is a simple wrapper around the scrape method.
+        """
+        return self.scrape()

@@ -24,7 +24,7 @@ def health_check():
         })
     except Exception as e:
         logger.error(f"Health check failed: {str(e)}")
-        # db.session.rollback() # Not strictly necessary for a read operation that failed
+        # No rollback needed for a read operation that failed
         return jsonify({
             'status': 'unhealthy',
             'timestamp': datetime.datetime.now().isoformat(),
@@ -87,8 +87,8 @@ def get_dashboard():
             }
         })
     except Exception as e:
-        current_app.logger.error(f"Error in get_dashboard: {str(e)}", exc_info=True)
-        db.session.rollback()
+        logger.error(f"Error in get_dashboard: {str(e)}", exc_info=True)
+        # db.session.rollback() # Removed
         return jsonify({"status": "error", "message": "An unexpected error occurred"}), 500
 
 # Add main/general routes here 

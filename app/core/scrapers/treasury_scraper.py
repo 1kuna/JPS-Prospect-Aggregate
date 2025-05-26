@@ -2,41 +2,33 @@
 
 # Standard library imports
 import os
-import sys
+# import sys # Unused
 import time
-import shutil
+# import shutil # Unused
 import datetime # Added datetime import
 
-# --- Start temporary path adjustment for direct execution ---
-# Calculate the path to the project root directory (JPS-Prospect-Aggregate)
-_project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
-# Add the project root to the Python path if it's not already there
-if _project_root not in sys.path:
-    sys.path.insert(0, _project_root)
-# --- End temporary path adjustment ---
-
 # Third-party imports
-import requests
+# import requests # Unused
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 import pandas as pd
 import hashlib
 import traceback # Added traceback
-import re # Added re
+# import re # Unused
 from datetime import datetime # Added datetime
 import json # Added json
 
 # Local application imports
 from app.core.base_scraper import BaseScraper
 from app.models import Prospect, DataSource, db # Added Prospect, DataSource, db
-from app.database.crud import bulk_upsert_prospects # Added bulk_upsert_prospects
-from app.config import LOGS_DIR, RAW_DATA_DIR, TREASURY_FORECAST_URL, PAGE_NAVIGATION_TIMEOUT # Use RAW_DATA_DIR
+# from app.database.crud import bulk_upsert_prospects # Unused
+from app.config import active_config # Import active_config
 from app.exceptions import ScraperError
-from app.utils.file_utils import ensure_directory, find_files # Added find_files
+from app.utils.file_utils import ensure_directory # find_files was unused
 from app.utils.logger import logger
 from app.utils.scraper_utils import (
-    check_url_accessibility,
-    download_file,
-    save_permanent_copy,
+    # check_url_accessibility, # Unused
+    # download_file, # Unused
+    # save_permanent_copy, # Unused
     handle_scraper_error
 )
 from app.utils.parsing import parse_value_range, fiscal_quarter_to_date, split_place # Added parsing utils
@@ -54,7 +46,7 @@ class TreasuryScraper(BaseScraper):
         """Initialize the Treasury scraper."""
         super().__init__(
             source_name="Treasury Forecast",
-            base_url=TREASURY_FORECAST_URL, # Use config URL
+            base_url=active_config.TREASURY_FORECAST_URL, # Use config URL
             debug_mode=debug_mode
         )
         # Ensure the specific download directory for this scraper exists
@@ -99,64 +91,29 @@ class TreasuryScraper(BaseScraper):
                     self.logger.error(f"Error during button click: {click_err}")
                     raise
 
-            download = download_info.value
+            _ = download_info.value # Access the download object
 
-            # --- Start modification for timestamped filename ---
-            original_filename = download.suggested_filename
-            if not original_filename:
-                # Treasury files are often CSV, but check content type if unsure
-                self.logger.warning("Download suggested_filename is empty, using default 'treasury_download.csv'")
-                original_filename = "treasury_download.csv"
+            # Wait a brief moment for the download event to be processed by the callback
+            self.page.wait_for_timeout(2000) # Adjust as needed
 
-            _, ext = os.path.splitext(original_filename)
-            if not ext:
-                ext = '.csv' # Default extension
-                self.logger.warning(f"Original filename '{original_filename}' had no extension, defaulting to '{ext}'")
-                
-            timestamp_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            # Use hardcoded identifier 'treasury'
-            final_filename = f"treasury_{timestamp_str}{ext}" 
-            final_path = os.path.join(self.download_path, final_filename)
-            self.logger.info(f"Original suggested filename: {original_filename}")
-            self.logger.info(f"Saving with standardized filename: {final_filename} to {final_path}")
-            # --- End modification ---
-
-            # The file is saved by the _handle_download callback in BaseScraper or manually below
-            self.logger.info(f"Download triggered. File expected at: {final_path}")
-
-            # Wait a moment for the file system to register the download completely
-            time.sleep(5)
-
-            # Verify the file exists and is not empty using the new final_path
-            if not os.path.exists(final_path) or os.path.getsize(final_path) == 0:
-                self.logger.error(f"Verification failed: File not found or empty at {final_path}")
-                # Attempt to save manually first
+            if not self._last_download_path or not os.path.exists(self._last_download_path):
+                self.logger.error(f"BaseScraper._last_download_path not set or invalid. Value: {self._last_download_path}")
+                # Fallback or detailed error logging
                 try:
-                    download.save_as(final_path)
-                    self.logger.warning(f"Manually saved file to {final_path}")
-                    if not os.path.exists(final_path) or os.path.getsize(final_path) == 0:
-                        raise ScraperError(f"Download failed even after manual save: File missing or empty at {final_path}")
-                except Exception as save_err:
-                    # If save_as failed, try moving from playwright temp path
-                    try:
-                        fallback_path = download.path()
-                        if fallback_path and os.path.exists(fallback_path):
-                            shutil.move(fallback_path, final_path)
-                            self.logger.warning(f"Manually moved file from {fallback_path} to {final_path}")
-                            if not os.path.exists(final_path) or os.path.getsize(final_path) == 0:
-                                raise ScraperError(f"Download failed after fallback move: File missing or empty at {final_path}")
-                        else:
-                            raise ScraperError(f"Download failed: File missing/empty at {final_path}, manual save failed ({save_err}), and Playwright temp path unavailable.")
-                    except Exception as move_err:
-                        raise ScraperError(f"Download failed: File missing/empty at {final_path}. Manual save failed: {save_err}. Fallback move failed: {move_err}")
+                    download_obj_for_debug = download_info.value
+                    temp_playwright_path = download_obj_for_debug.path()
+                    self.logger.warning(f"Playwright temp download path for debugging: {temp_playwright_path}")
+                except Exception as path_err:
+                    self.logger.error(f"Could not retrieve Playwright temp download path for debugging: {path_err}")
+                raise ScraperError("Download failed: File not found or path not set by BaseScraper._handle_download.")
 
-            self.logger.info(f"Download verification successful. File path: {final_path}")
-            return final_path
+            self.logger.info(f"Download process completed. File saved at: {self._last_download_path}")
+            return self._last_download_path
 
         except PlaywrightTimeoutError as e:
             self.logger.error(f"Timeout error during download process: {str(e)}")
             # Capture screenshot for debugging timeouts
-            screenshot_path = os.path.join(LOGS_DIR, f"treasury_timeout_error_{int(time.time())}.png")
+            screenshot_path = os.path.join(active_config.LOGS_DIR, f"treasury_timeout_error_{int(time.time())}.png")
             try:
                 self.page.screenshot(path=screenshot_path, full_page=True)
                 self.logger.info(f"Screenshot saved to {screenshot_path}")
@@ -282,66 +239,37 @@ class TreasuryScraper(BaseScraper):
             df.drop(columns=[col for col in cols_to_drop if col in df.columns], errors='ignore', inplace=True)
             # --- End: Logic adapted from treasury_transform.normalize_columns_treasury ---
 
-            # Standardize column names
-            df.columns = df.columns.str.strip().str.lower().str.replace(r'\\s+\\(.*?\\)', '', regex=True).str.replace(r'\\s+', '_', regex=True).str.replace(r'[^a-z0-9_]', '', regex=True)
-            df = df.loc[:, ~df.columns.duplicated()]
+            # Define the final column rename map.
+            final_column_rename_map = {
+                'native_id': 'native_id',
+                'agency': 'agency',
+                'title': 'title', # Mapped from 'PSC'
+                'description': 'description', # Initialized as None
+                'place_city': 'place_city',
+                'place_state': 'place_state',
+                'place_country': 'place_country',
+                'contract_type': 'contract_type',
+                'naics': 'naics',
+                'estimated_value': 'estimated_value',
+                'est_value_unit': 'est_value_unit',
+                'set_aside': 'set_aside',
+                'award_date': 'award_date',
+                'award_fiscal_year': 'award_fiscal_year',
+                'release_date': 'release_date',
+                # 'Type of Requirement' was in original source, if renamed to 'requirement_type',
+                # it will be handled by 'extra' if not in prospect_model_fields.
+            }
 
-            prospect_model_fields = [col.name for col in Prospect.__table__.columns if col.name not in ['loaded_at', 'id', 'source_id']]
-            current_cols_normalized = df.columns.tolist()
-            unmapped_cols = [col for col in current_cols_normalized if col not in prospect_model_fields]
+            # Ensure all columns in final_column_rename_map exist in df.
+            for col_name in final_column_rename_map.keys():
+                if col_name not in df.columns:
+                    df[col_name] = pd.NA
+            
+            prospect_model_fields = [col.name for col in Prospect.__table__.columns if col.name != 'loaded_at']
+            # Original ID generation: naics, title (as PSC), description (None), agency
+            fields_for_id_hash = ['naics', 'title', 'description', 'agency']
 
-            if unmapped_cols:
-                self.logger.info(f"Found unmapped columns for 'extra' for Treasury: {unmapped_cols}")
-                def row_to_extra_json(row):
-                    extra_dict = {}
-                    for col_name in unmapped_cols:
-                        val = row.get(col_name)
-                        if pd.isna(val):
-                            extra_dict[col_name] = None
-                        elif pd.api.types.is_datetime64_any_dtype(val) or isinstance(val, (datetime, pd.Timestamp)):
-                            extra_dict[col_name] = pd.to_datetime(val).isoformat()
-                        elif isinstance(val, (int, float, bool, str)):
-                            extra_dict[col_name] = val
-                        else:
-                            try: extra_dict[col_name] = str(val)
-                            except Exception: extra_dict[col_name] = "CONVERSION_ERROR"
-                    try: return json.dumps(extra_dict)
-                    except TypeError: return str(extra_dict)
-                df['extra'] = df.apply(row_to_extra_json, axis=1)
-            else:
-                df['extra'] = None
-
-            for col in prospect_model_fields:
-                if col not in df.columns:
-                    df[col] = pd.NA
-
-            data_source_obj = db.session.query(DataSource).filter_by(name=self.source_name).first()
-            df['source_id'] = data_source_obj.id if data_source_obj else None
-
-            # --- ID Generation (adapted from treasury_transform.generate_id) ---
-            # Transform used: naics, requirement_title (now Prospect.title), requirement_description (now Prospect.description)
-            # Adjusting to use Prospect.naics, Prospect.title, and Prospect.agency for consistency and uniqueness.
-            def generate_prospect_id(row: pd.Series) -> str:
-                naics_val = str(row.get('naics', ''))
-                title_val = str(row.get('title', '')) 
-                desc_val = str(row.get('description', '')) # Will be 'None' or empty string
-                agency_val = str(row.get('agency', '')) # Adding agency for better uniqueness
-                unique_string = f"{naics_val}-{title_val}-{desc_val}-{agency_val}-{self.source_name}"
-                return hashlib.md5(unique_string.encode('utf-8')).hexdigest()
-            df['id'] = df.apply(generate_prospect_id, axis=1)
-            # --- End: ID Generation ---
-
-            final_prospect_columns = [col.name for col in Prospect.__table__.columns if col.name != 'loaded_at']
-            df_to_insert = df[[col for col in final_prospect_columns if col in df.columns]]
-
-            df_to_insert.dropna(how='all', inplace=True)
-            if df_to_insert.empty:
-                self.logger.info("After Treasury processing, no valid data rows to insert.")
-                return
-
-            self.logger.info(f"Attempting to insert/update {len(df_to_insert)} Treasury records.")
-            bulk_upsert_prospects(df_to_insert)
-            self.logger.info(f"Successfully inserted/updated Treasury records from {file_path}.")
+            return self._process_and_load_data(df, final_column_rename_map, prospect_model_fields, fields_for_id_hash)
 
         except FileNotFoundError:
             self.logger.error(f"Treasury file not found: {file_path}")
@@ -360,98 +288,3 @@ class TreasuryScraper(BaseScraper):
 
 # Placeholder for check_last_download function if needed
 # def check_last_download(): ...
-
-def run_scraper(force=False):
-    """
-    Run the Treasury Forecast scraper.
-
-    Args:
-        force (bool): Whether to force the scraper to run even if it ran recently.
-
-    Returns:
-        str: Path to the downloaded file if successful, None otherwise.
-
-    Raises:
-        ScraperError: If an error occurs during scraping.
-    """
-    local_logger = logger
-    scraper = None  # Initialize scraper to None
-    scraper_success = False
-    downloaded_path = None
-    source_name = "Treasury Forecast" # Define default source name for logging - updated
-
-    try:
-        # Check if we should run based on last download time
-        # Removed interval check logic
-        # scrape_interval_hours = 24 # Example interval
-        # Use the default source_name here as scraper instance doesn't exist yet
-        # Removed interval check logic
-        # if not force and download_tracker.should_download(source_name, scrape_interval_hours):
-        #      local_logger.info(f"Skipping {source_name} scrape due to recent download.")
-             # update_scraper_status(source_name, "skipped", "Ran recently") # Optional: Update status
-        #      return None # Indicate skipped, not failed
-
-        # Create an instance of the scraper
-        scraper = TreasuryScraper(debug_mode=False)
-        source_name = scraper.source_name # Update source_name from instance
-
-        # Setup the browser before using the page object
-        scraper.setup_browser()
-
-        # Check URL accessibility, bypassing SSL verification for this specific site
-        if not check_url_accessibility(TREASURY_FORECAST_URL, verify_ssl=False):
-            error_msg = f"URL {TREASURY_FORECAST_URL} is not accessible"
-            handle_scraper_error(ScraperError(error_msg), source_name)
-            raise ScraperError(error_msg)
-
-        local_logger.info(f"Running {source_name} scraper")
-        downloaded_path = scraper.scrape() # scrape now returns the path or raises error
-
-        if downloaded_path:
-            local_logger.info(f"Scraping successful for {source_name}. File at: {downloaded_path}")
-            # update_scraper_status(source_name, "working", None) # Update status to working
-            scraper_success = True
-        else:
-            # This case should ideally be covered by exceptions in scrape()
-            local_logger.error(f"{source_name} scrape completed but returned no path.")
-            handle_scraper_error(ScraperError("Scraper returned no path"), source_name, "Scraper completed without file path")
-            # update_scraper_status(source_name, "failed", "Scraper returned no path")
-
-        return downloaded_path if scraper_success else None
-
-    except ScraperError as e:
-        # Use source_name which is set either by default or from scraper instance
-        local_logger.error(f"ScraperError in run_scraper for {source_name}: {e}")
-        # update_scraper_status(source_name, "failed", str(e)) # Update status to failed
-        raise # Re-raise the specific scraper error
-    except Exception as e:
-        # Use source_name which is set either by default or from scraper instance
-        error_msg = f"Unexpected error running {source_name} scraper: {str(e)}"
-        local_logger.error(error_msg, exc_info=True)
-        handle_scraper_error(e, source_name, "Unexpected error in run_scraper")
-        # update_scraper_status(source_name, "failed", error_msg)
-        raise ScraperError(error_msg) from e # Wrap in ScraperError
-    finally:
-        # Ensure cleanup happens even if errors occur
-        if scraper:
-            try:
-                local_logger.info(f"Cleaning up scraper resources for {source_name}")
-                scraper.cleanup_browser()
-            except Exception as cleanup_error:
-                local_logger.error(f"Error during scraper cleanup for {source_name}: {str(cleanup_error)}", exc_info=True)
-
-if __name__ == "__main__":
-    print("Running Treasury scraper directly...")
-    try:
-        # Example of running with force flag, adjust as needed
-        result_path = run_scraper(force=True)
-        if result_path:
-            print(f"Scraper finished successfully. Downloaded file: {result_path}")
-        else:
-            print("Scraper run did not result in a downloaded file (skipped or failed). Check logs.")
-    except ScraperError as e:
-        print(f"Scraper failed with error: {e}")
-    except Exception as e:
-        print(f"An unexpected error occurred: {e}")
-        import traceback
-        traceback.print_exc() 

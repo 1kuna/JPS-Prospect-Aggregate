@@ -3,19 +3,11 @@ import sys
 import logging
 from pathlib import Path
 
-# --- Start temporary path adjustment ---
-# Ensure the app directory is in the Python path for imports
-_project_root = Path(__file__).resolve().parents[2] # Assuming init_db.py is in app/database/
-if str(_project_root) not in sys.path:
-    sys.path.insert(0, str(_project_root))
-# --- End temporary path adjustment ---
-
 from app.database.session import engine
-from app.database.models import Base
+from app.database import db # Changed import from Base to db
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
+# Configure logging (now handled by app.utils.logger)
+logger = logging.getLogger(__name__) # Get standard logger instance
 
 def initialize_database():
     """Creates database tables based on the defined models."""
@@ -25,8 +17,8 @@ def initialize_database():
 
     try:
         logger.info(f"Attempting to create tables for engine: {engine.url}")
-        # Create all tables defined in models that inherit from Base
-        Base.metadata.create_all(bind=engine)
+        # Create all tables defined in models that inherit from db.Model
+        db.metadata.create_all(bind=engine) # Changed Base.metadata to db.metadata
         logger.info("Database tables checked/created successfully.")
     except Exception as e:
         logger.error(f"Error creating database tables: {e}", exc_info=True)

@@ -12,7 +12,7 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError, Page, Lo
 from app.exceptions import ScraperError
 from app.utils.logger import logger
 from app.utils.file_utils import ensure_directory
-from app.config import RAW_DATA_DIR as DOWNLOADS_DIR
+from app.config import active_config # Import active_config
 
 def check_url_accessibility(url: str, timeout: int = 10, verify_ssl: bool = True) -> bool:
     """
@@ -86,7 +86,7 @@ def save_permanent_copy(temp_path: str, source_name: str, file_type: str) -> str
     """
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"{source_name.lower().replace(' ', '_')}_{timestamp}.{file_type}"
-    permanent_path = os.path.join(DOWNLOADS_DIR, filename)
+    permanent_path = os.path.join(active_config.RAW_DATA_DIR, filename) # Use active_config.RAW_DATA_DIR
     
     ensure_directory(os.path.dirname(permanent_path))
     shutil.copy2(temp_path, permanent_path)
@@ -189,7 +189,5 @@ def handle_scraper_error(error: Exception, source_name: str, context: str = "") 
     logger.error(error_msg)
     logger.error(traceback.format_exc())
     
-    # Update scraper status in database
-    # --> Temporarily disable DB update during testing <--
-    # from app.utils.db_utils import update_scraper_status
-    # update_scraper_status(source_name, "error", error_msg) 
+    # Update scraper status in database (This is now handled by the ScraperService
+    # which calls app.utils.db_utils.update_scraper_status directly after catching an error)

@@ -3,39 +3,31 @@
 # Standard library imports
 import os
 import traceback
-import sys
+# import sys # Unused
 import shutil
-import datetime
-
-# --- Start temporary path adjustment for direct execution ---
-# Calculate the path to the project root directory (JPS-Prospect-Aggregate)
-_project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
-# Add the project root to the Python path if it's not already there
-if _project_root not in sys.path:
-    sys.path.insert(0, _project_root)
-# --- End temporary path adjustment ---
+import datetime # Used for datetime.datetime
 
 # Third-party imports
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 import pandas as pd
 import hashlib
-import traceback
-import re
-from datetime import datetime
+# import traceback # Redundant
+# import re # Unused
+from datetime import datetime # Used for type hinting and direct use
 import json
 
 # Local application imports
 from app.core.base_scraper import BaseScraper
-from app.database.models import Prospect, DataSource, ScraperStatus, db
-from app.database.crud import bulk_upsert_prospects
+from app.database.models import Prospect, DataSource, db # Removed ScraperStatus
+# from app.database.crud import bulk_upsert_prospects # Unused
 from app.exceptions import ScraperError
 from app.utils.logger import logger
-from app.utils.db_utils import update_scraper_status
-from app.config import SSA_CONTRACT_FORECAST_URL
+# from app.utils.db_utils import update_scraper_status # Unused
+from app.config import active_config # Import active_config
 from app.utils.scraper_utils import (
-    check_url_accessibility,
-    download_file,
-    save_permanent_copy,
+    # check_url_accessibility, # Unused
+    # download_file, # Unused
+    # save_permanent_copy, # Unused
     handle_scraper_error
 )
 from app.utils.parsing import parse_value_range, split_place
@@ -50,7 +42,7 @@ class SsaScraper(BaseScraper):
         """Initialize the SSA Forecast scraper."""
         super().__init__(
             source_name="SSA Forecast",
-            base_url=SSA_CONTRACT_FORECAST_URL,
+            base_url=active_config.SSA_CONTRACT_FORECAST_URL,
             debug_mode=debug_mode
         )
     
@@ -134,59 +126,24 @@ class SsaScraper(BaseScraper):
             with self.page.expect_download(timeout=60000) as download_info:
                  self.page.click(link_selector)
 
-            download = download_info.value
+            _ = download_info.value # Access the download object
 
-            # --- Start modification for timestamped filename ---
-            original_filename = download.suggested_filename
-            if not original_filename:
-                self.logger.warning("Download suggested_filename is empty, using default 'ssa_download.xlsx'")
-                original_filename = "ssa_download.xlsx"
+            # Wait a brief moment for the download event to be processed by the callback
+            self.page.wait_for_timeout(2000) # Adjust as needed
 
-            _, ext = os.path.splitext(original_filename)
-            if not ext:
-                ext = '.xlsx' # Default extension
-                self.logger.warning(f"Original filename '{original_filename}' had no extension, defaulting to '{ext}'")
-
-            timestamp_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            # Use hardcoded identifier 'ssa'
-            final_filename = f"ssa_{timestamp_str}{ext}"
-            final_path = os.path.join(self.download_path, final_filename)
-            self.logger.info(f"Original suggested filename: {original_filename}")
-            self.logger.info(f"Saving with standardized filename: {final_filename} to {final_path}")
-            # --- End modification ---
-
-            # The file is saved by the _handle_download callback in BaseScraper or manually below
-            self.logger.info(f"Download complete. File expected at: {final_path}")
-
-            # Verify the file exists (saved by _handle_download or manually) using the new final_path
-            if not os.path.exists(final_path) or os.path.getsize(final_path) == 0:
-                self.logger.error(f"Verification failed: File not found or empty at {final_path}")
-                # Attempt to save manually first
+            if not self._last_download_path or not os.path.exists(self._last_download_path):
+                self.logger.error(f"BaseScraper._last_download_path not set or invalid. Value: {self._last_download_path}")
+                # Fallback or detailed error logging
                 try:
-                    download.save_as(final_path)
-                    self.logger.warning(f"Manually saved file to {final_path}")
-                    if not os.path.exists(final_path) or os.path.getsize(final_path) == 0:
-                        raise ScraperError(f"Download failed even after manual save: File missing or empty at {final_path}")
-                except Exception as save_err:
-                    # If save_as failed, try moving from playwright temp path
-                    try:
-                        fallback_path = download.path()
-                        if fallback_path and os.path.exists(fallback_path):
-                            shutil.move(fallback_path, final_path)
-                            self.logger.warning(f"Manually moved file from {fallback_path} to {final_path}")
-                            if not os.path.exists(final_path) or os.path.getsize(final_path) == 0:
-                                raise ScraperError(f"Download failed after fallback move: File missing or empty at {final_path}")
-                        else:
-                            raise ScraperError(f"Download failed: File missing/empty at {final_path}, manual save failed ({save_err}), and Playwright temp path unavailable.")
-                    except Exception as move_err:
-                        raise ScraperError(f"Download failed: File missing/empty at {final_path}. Manual save failed: {save_err}. Fallback move failed: {move_err}")
+                    download_obj_for_debug = download_info.value 
+                    temp_playwright_path = download_obj_for_debug.path()
+                    self.logger.warning(f"Playwright temp download path for debugging: {temp_playwright_path}")
+                except Exception as path_err:
+                    self.logger.error(f"Could not retrieve Playwright temp download path for debugging: {path_err}")
+                raise ScraperError("Download failed: File not found or path not set by BaseScraper._handle_download.")
 
-            # Return the path within the scraper's download directory
-            return final_path
-            
-            # Removed old download_file and save_permanent_copy logic
-            # temp_path = download_file(self.page, f'a[href="{excel_link}"]')
-            # return save_permanent_copy(temp_path, self.source_name, 'xlsx')
+            self.logger.info(f"Download process completed. File saved at: {self._last_download_path}")
+            return self._last_download_path
             
         except PlaywrightTimeoutError as e:
             handle_scraper_error(e, self.source_name, "Timeout downloading forecast document")
@@ -269,69 +226,39 @@ class SsaScraper(BaseScraper):
             df.drop(columns=[col for col in cols_to_drop if col in df.columns], errors='ignore', inplace=True)
             # --- End: Logic adapted from ssa_transform.normalize_columns_ssa ---
 
-            # Standardize column names
-            df.columns = df.columns.str.strip().str.lower().str.replace(r'\\s+\\(.*?\\)', '', regex=True).str.replace(r'\\s+', '_', regex=True).str.replace(r'[^a-z0-9_]', '', regex=True)
-            df = df.loc[:, ~df.columns.duplicated()]
+            # Define the final column rename map.
+            final_column_rename_map = {
+                'native_id': 'native_id',
+                'agency': 'agency',
+                'description': 'description', # Mapped from 'DESCRIPTION'
+                'title': 'title', # Initialized from 'description'
+                'estimated_value': 'estimated_value',
+                'est_value_unit': 'est_value_unit',
+                'award_date': 'award_date',
+                'award_fiscal_year': 'award_fiscal_year',
+                'contract_type': 'contract_type',
+                'naics': 'naics',
+                'set_aside': 'set_aside',
+                'place_city': 'place_city',
+                'place_state': 'place_state',
+                'place_country': 'place_country',
+                'release_date': 'release_date', # Initialized as None
+                # 'REQUIREMENT TYPE' was in original source, if renamed to 'requirement_type',
+                # it will be handled by 'extra' if not in prospect_model_fields.
+                # No explicit mapping here means it should be picked by extra logic if present.
+            }
 
-            prospect_model_fields = [col.name for col in Prospect.__table__.columns if col.name not in ['loaded_at', 'id', 'source_id']]
-            current_cols_normalized = df.columns.tolist()
-            # Ensure 'requirement_type' from source (if exists after rename) is handled by extra if not in prospect_model_fields
-            # The original ssa_transform script includes 'requirement_type' in its explicit rename_map for source columns.
-            # If this normalized to 'requirement_type' and is not a Prospect field, it will be in unmapped_cols.
-            unmapped_cols = [col for col in current_cols_normalized if col not in prospect_model_fields]
+            # Ensure all columns in final_column_rename_map exist in df.
+            for col_name in final_column_rename_map.keys():
+                if col_name not in df.columns:
+                    df[col_name] = pd.NA
+            
+            prospect_model_fields = [col.name for col in Prospect.__table__.columns if col.name != 'loaded_at']
+            # Original ID generation: naics, description (as requirement_title), agency
+            fields_for_id_hash = ['naics', 'description', 'agency']
 
-            if unmapped_cols:
-                self.logger.info(f"Found unmapped columns for 'extra' for SSA: {unmapped_cols}")
-                def row_to_extra_json(row):
-                    extra_dict = {}
-                    for col_name in unmapped_cols:
-                        val = row.get(col_name)
-                        if pd.isna(val):
-                            extra_dict[col_name] = None
-                        elif pd.api.types.is_datetime64_any_dtype(val) or isinstance(val, (datetime, pd.Timestamp)):
-                            extra_dict[col_name] = pd.to_datetime(val).isoformat()
-                        elif isinstance(val, (int, float, bool, str)):
-                            extra_dict[col_name] = val
-                        else:
-                            try: extra_dict[col_name] = str(val)
-                            except Exception: extra_dict[col_name] = "CONVERSION_ERROR"
-                    try: return json.dumps(extra_dict)
-                    except TypeError: return str(extra_dict)
-                df['extra'] = df.apply(row_to_extra_json, axis=1)
-            else:
-                df['extra'] = None
 
-            for col in prospect_model_fields:
-                if col not in df.columns:
-                    df[col] = pd.NA
-
-            data_source_obj = db.session.query(DataSource).filter_by(name=self.source_name).first()
-            df['source_id'] = data_source_obj.id if data_source_obj else None
-
-            # --- ID Generation (adapted from ssa_transform.generate_id) ---
-            # Transform uses: naics, requirement_title (now mapped to description), requirement_description (not present after mapping)
-            # Adjusting to use Prospect.naics, Prospect.description, Prospect.agency for uniqueness and consistency.
-            def generate_prospect_id(row: pd.Series) -> str:
-                naics_val = str(row.get('naics', ''))
-                # title_val = str(row.get('title', '')) # Using description for title, as per current mapping
-                desc_val = str(row.get('description', ''))
-                agency_val = str(row.get('agency', '')) # Adding agency for better uniqueness
-                unique_string = f"{naics_val}-{desc_val}-{agency_val}-{self.source_name}" # Consistent with other fallback IDs
-                return hashlib.md5(unique_string.encode('utf-8')).hexdigest()
-            df['id'] = df.apply(generate_prospect_id, axis=1)
-            # --- End: ID Generation ---
-
-            final_prospect_columns = [col.name for col in Prospect.__table__.columns if col.name != 'loaded_at']
-            df_to_insert = df[[col for col in final_prospect_columns if col in df.columns]]
-
-            df_to_insert.dropna(how='all', inplace=True)
-            if df_to_insert.empty:
-                self.logger.info("After SSA processing, no valid data rows to insert.")
-                return
-
-            self.logger.info(f"Attempting to insert/update {len(df_to_insert)} SSA records.")
-            bulk_upsert_prospects(df_to_insert)
-            self.logger.info(f"Successfully inserted/updated SSA records from {file_path}.")
+            return self._process_and_load_data(df, final_column_rename_map, prospect_model_fields, fields_for_id_hash)
 
         except FileNotFoundError:
             self.logger.error(f"SSA Excel file not found: {file_path}")
@@ -361,81 +288,3 @@ class SsaScraper(BaseScraper):
             extract_func=self.download_forecast_document,
             process_func=self.process_func
         )
-
-def run_scraper(force=False):
-    """
-    Run the SSA Forecast scraper.
-    
-    Args:
-        force (bool): Whether to force scraping even if recently run
-        
-    Returns:
-        bool: True if scraping was successful
-        
-    Raises:
-        ScraperError: If an error occurs during scraping
-        ImportError: If required dependencies are not installed
-    """
-    scraper = None
-    source_name = "SSA Forecast"
-    
-    try:
-        # Check if we should run the scraper
-        # Removed interval check logic
-        # if not force and download_tracker.should_download(source_name):
-        #     logger.info(f"Skipping scrape for {source_name} due to recent download")
-        #     return True
-
-        # Create an instance of the scraper
-        scraper = SsaScraper(debug_mode=False)
-        
-        # Run the scraper
-        logger.info(f"Running {source_name} scraper")
-        success = scraper.scrape()
-        
-        # If scraper.scrape() returns False, it means an error occurred
-        if not success:
-            error_msg = "Scraper failed without specific error"
-            handle_scraper_error(ScraperError(error_msg), source_name)
-            raise ScraperError(error_msg)
-        
-        # Update the download tracker with the current time
-        # Removed: download_tracker.set_last_download_time(source_name)
-        # logger.info(f"Updated download tracker for {source_name}")
-        
-        # Update the ScraperStatus table to indicate success
-        # --> Temporarily skip this during direct script execution <---
-        # update_scraper_status(source_name, "working", None)
-            
-        return True
-    except ImportError as e:
-        error_msg = f"Import error: {str(e)}"
-        logger.error(error_msg)
-        logger.error("Playwright module not found. Please install it with 'pip install playwright'")
-        logger.error("Then run 'playwright install' to install the browsers")
-        handle_scraper_error(e, source_name, "Import error")
-        raise
-    except ScraperError as e:
-        handle_scraper_error(e, source_name)
-        raise
-    except Exception as e:
-        # Ensure error_msg is defined or handled appropriately
-        error_msg = f"Error running scraper: {str(e)}"
-        handle_scraper_error(e, source_name, "Error running scraper")
-        raise ScraperError(error_msg)
-    finally:
-        if scraper:
-            try:
-                logger.info("Cleaning up scraper resources")
-                scraper.cleanup_browser() # Correct method name
-            except Exception as cleanup_error:
-                logger.error(f"Error during scraper cleanup: {str(cleanup_error)}")
-
-if __name__ == "__main__":
-    # This block allows the script to be run directly for testing
-    source_name = "SSA Forecast" # Define source_name here
-    try:
-        run_scraper(force=True)
-        print(f"{source_name} scraper finished successfully (DB operations skipped).")
-    except Exception as e:
-        print(f"{source_name} scraper failed: {e}")
