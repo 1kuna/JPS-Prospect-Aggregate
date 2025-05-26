@@ -136,13 +136,7 @@ config_by_name: Dict[str, Any] = {
 # Get current configuration based on environment
 active_config = config_by_name[os.getenv('FLASK_ENV', 'default')]
 
-# Export all configuration variables for convenience
+# Export selected configuration variables
 __all__ = [
-    'active_config', 'BASE_DIR', 'LOGS_DIR', 'DATA_DIR', 'RAW_DATA_DIR',
-    'LOG_FORMAT', 'LOG_FILE_MAX_BYTES', 'LOG_FILE_BACKUP_COUNT', 'LOG_LEVEL',
-    'ACQUISITION_GATEWAY_URL', 'SSA_CONTRACT_FORECAST_URL', 'COMMERCE_FORECAST_URL', 'HHS_FORECAST_URL', 'DHS_FORECAST_URL', 'DOJ_FORECAST_URL', 'DOS_FORECAST_URL', 'TREASURY_FORECAST_URL', 'DOT_FORECAST_URL',
-    'DATABASE_URL', 'REDIS_URL',
-    'SCRAPE_INTERVAL_HOURS', 'HEALTH_CHECK_INTERVAL_MINUTES',
-    'CSV_ENCODINGS', 'FILE_FRESHNESS_SECONDS',
-    'PAGE_NAVIGATION_TIMEOUT', 'PAGE_ELEMENT_TIMEOUT', 'TABLE_LOAD_TIMEOUT', 'DOWNLOAD_TIMEOUT'
+    'active_config', 'BASE_DIR', 'LOGS_DIR', 'DATA_DIR', 'RAW_DATA_DIR'
 ] 

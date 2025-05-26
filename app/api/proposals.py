@@ -99,7 +99,7 @@ def get_proposals():
         raise ve # Re-raise validation errors from paginate_query
     except Exception as e: # General SQLAlchemyError or other unexpected errors
         logger.error(f"Database or unexpected error in get_proposals: {str(e)}", exc_info=True)
-        db.session.rollback() # Rollback in case of error
+        # db.session.rollback() # Removed
         raise # Re-raise to be handled by global error handlers
 
 

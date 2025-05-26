@@ -3,38 +3,32 @@
 # Standard library imports
 import os
 import traceback
-import sys
+# import sys # Unused
 import shutil
 import datetime # Added datetime import
 from urllib.parse import urljoin
-
-# --- Start temporary path adjustment for direct execution ---
-_project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
-if _project_root not in sys.path:
-    sys.path.insert(0, _project_root)
-# --- End temporary path adjustment ---
 
 # Third-party imports
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 import pandas as pd
 import hashlib
-import re # Added re
+# import re # Unused
 import json # Added json
 from app.utils.parsing import parse_value_range, fiscal_quarter_to_date # Added parsing utils
 
 # Local application imports
 from app.core.base_scraper import BaseScraper
 from app.models import Prospect, DataSource, db # Added Prospect, DataSource, db
-from app.database.crud import bulk_upsert_prospects # Added bulk_upsert_prospects
+# from app.database.crud import bulk_upsert_prospects # Unused
 from app.exceptions import ScraperError
 from app.utils.logger import logger
-from app.utils.db_utils import update_scraper_status, get_data_source_id_by_name
+# from app.utils.db_utils import update_scraper_status, get_data_source_id_by_name # Unused
 # We need to add COMMERCE_FORECAST_URL to config.py
-from app.config import COMMERCE_FORECAST_URL 
+from app.config import active_config # Import active_config
 from app.utils.scraper_utils import (
-    check_url_accessibility,
-    download_file,
-    save_permanent_copy,
+    # check_url_accessibility, # Unused
+    # download_file, # Unused
+    # save_permanent_copy, # Unused
     handle_scraper_error
 )
 
@@ -48,7 +42,7 @@ class DocScraper(BaseScraper):
         """Initialize the DOC Forecast scraper."""
         super().__init__(
             source_name="DOC Forecast",
-            base_url=COMMERCE_FORECAST_URL,
+            base_url=active_config.COMMERCE_FORECAST_URL,
             debug_mode=debug_mode
         )
     
@@ -124,53 +118,19 @@ class DocScraper(BaseScraper):
                  # Use dispatch_event on the located element
                  download_locator.dispatch_event('click')
 
-            download = download_info.value
+            _ = download_info.value # Access the download object to ensure the event is processed.
 
-            # --- Start modification for timestamped filename ---
-            original_filename = download.suggested_filename
-            if not original_filename:
-                self.logger.warning("Download suggested_filename is empty, using default 'doc_download.xlsx'") # Assuming excel
-                original_filename = "doc_download.xlsx"
+            # Wait a brief moment for the download event to be processed by the callback
+            self.page.wait_for_timeout(2000) # Adjust as needed
 
-            _, ext = os.path.splitext(original_filename)
-            if not ext:
-                ext = '.xlsx' # Default extension
-                self.logger.warning(f"Original filename '{original_filename}' had no extension, defaulting to '{ext}'")
+            if not self._last_download_path or not os.path.exists(self._last_download_path):
+                # This block can be further enhanced by trying to get the path from download_info.value if needed
+                # For now, strictly relying on _handle_download setting the path.
+                self.logger.error(f"BaseScraper._last_download_path not set or invalid. Value: {self._last_download_path}")
+                raise ScraperError("Download failed: File not found or path not set by BaseScraper._handle_download.")
 
-            timestamp_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            # Use hardcoded identifier 'doc'
-            final_filename = f"doc_{timestamp_str}{ext}" 
-            final_path = os.path.join(self.download_path, final_filename)
-            self.logger.info(f"Original suggested filename: {original_filename}")
-            self.logger.info(f"Saving with standardized filename: {final_filename} to {final_path}")
-            # --- End modification ---
-
-            # Use the new final_path for saving and verification
-            self.logger.info(f"Download complete. File expected at: {final_path}")
-
-            # Verify the file exists (saved by _handle_download or playwright) using the new path
-            if not os.path.exists(final_path) or os.path.getsize(final_path) == 0:
-                self.logger.error(f"Verification failed: File not found or empty at {final_path}")
-                # Attempt to save manually as fallback (using original playwright path)
-                try:
-                    # Save the download to the *new* final_path
-                    download.save_as(final_path)
-                    self.logger.warning(f"Manually saved file to {final_path}")
-                    if not os.path.exists(final_path) or os.path.getsize(final_path) == 0:
-                         raise ScraperError(f"Download failed even after manual save: File missing or empty at {final_path}")
-                except Exception as save_err:
-                    # Try moving if save_as fails (e.g., if BaseScraper saved it somewhere else)
-                    try:
-                        fallback_path = download.path() # Playwright's temporary path
-                        shutil.move(fallback_path, final_path)
-                        self.logger.warning(f"Manually moved file from {fallback_path} to {final_path}")
-                        if not os.path.exists(final_path) or os.path.getsize(final_path) == 0:
-                            raise ScraperError(f"Download failed after fallback move: File missing or empty at {final_path}")
-                    except Exception as move_err:
-                        raise ScraperError(f"Download failed: File missing/empty at {final_path}. Manual save failed: {save_err}. Fallback move failed: {move_err}")
-
-            self.logger.info(f"Download verification successful. File saved at: {final_path}")
-            return final_path
+            self.logger.info(f"Download process completed. File saved at: {self._last_download_path}")
+            return self._last_download_path
             
         except PlaywrightTimeoutError as e:
             handle_scraper_error(e, self.source_name, "Timeout downloading DOC forecast document")
@@ -253,69 +213,43 @@ class DocScraper(BaseScraper):
             df.drop(columns=[col for col in cols_to_drop if col in df.columns], errors='ignore', inplace=True)
             # --- End: Logic adapted from doc_transform.normalize_columns_doc ---
             
-            # Normalize column names (lowercase, snake_case)
-            df.columns = df.columns.str.strip().str.lower().str.replace(r'\\s+\\(.*?\\)', '', regex=True).str.replace(r'\\s+', '_', regex=True).str.replace(r'[^a-z0-9_]', '', regex=True)
-            df = df.loc[:, ~df.columns.duplicated()] # Remove duplicates
+            # Define the final column rename map.
+            # The keys are current column names in df, values are Prospect model field names.
+            # If names are already matching, they still need to be in the map.
+            final_column_rename_map = {
+                'native_id': 'native_id',
+                'agency': 'agency',
+                'title': 'title',
+                'description': 'description',
+                'naics': 'naics',
+                'place_city': 'place_city',
+                'place_state': 'place_state',
+                'place_country': 'place_country',
+                'estimated_value': 'estimated_value',
+                'est_value_unit': 'est_value_unit',
+                'release_date': 'release_date',
+                'award_date': 'award_date',
+                'award_fiscal_year': 'award_fiscal_year',
+                'set_aside': 'set_aside',
+                # Raw fields that will go to 'extra' if not explicitly mapped to a model field by _process_and_load_data
+                # Ensure these are actual column names in df at this point if they are intended for 'extra'
+                'action_award_type': 'action_award_type', 
+                'competition_strategy': 'competition_strategy',
+                'contract_vehicle': 'contract_vehicle'
+            }
 
-            prospect_model_fields = [col.name for col in Prospect.__table__.columns if col.name not in ['loaded_at', 'id', 'source_id']]
+            # Ensure all columns in final_column_rename_map exist in df, add them with NA if not.
+            # This is important because _process_and_load_data expects keys of final_column_rename_map to be in df.
+            for col_name in final_column_rename_map.keys():
+                if col_name not in df.columns:
+                    df[col_name] = pd.NA
             
-            # Handle 'extra' column with JSON serialization
-            current_cols_normalized = df.columns.tolist()
-            unmapped_cols = [col for col in current_cols_normalized if col not in prospect_model_fields]
+            prospect_model_fields = [col.name for col in Prospect.__table__.columns if col.name != 'loaded_at']
+            # Original ID generation was: unique_string = f"{naics_val}-{title_val}-{desc_val}-{self.source_name}"
+            # These correspond to 'naics', 'title', 'description' in the df after initial renaming.
+            fields_for_id_hash = ['naics', 'title', 'description']
 
-            if unmapped_cols:
-                self.logger.info(f"Found unmapped columns for 'extra' for DOC: {unmapped_cols}")
-                def row_to_extra_json(row):
-                    extra_dict = {}
-                    for col_name in unmapped_cols:
-                        val = row.get(col_name)
-                        if pd.isna(val):
-                            extra_dict[col_name] = None
-                        elif isinstance(val, (datetime, pd.Timestamp)):
-                            extra_dict[col_name] = val.isoformat()
-                        elif isinstance(val, (int, float, bool, str)):
-                            extra_dict[col_name] = val
-                        else:
-                            try:
-                                extra_dict[col_name] = str(val)
-                            except Exception:
-                                extra_dict[col_name] = "CONVERSION_ERROR"
-                    try:
-                        return json.dumps(extra_dict)
-                    except TypeError:
-                        return str(extra_dict) # Fallback
-                df['extra'] = df.apply(row_to_extra_json, axis=1)
-            else:
-                df['extra'] = None
-            
-            for col in prospect_model_fields:
-                if col not in df.columns:
-                    df[col] = pd.NA
-            
-            data_source_obj = db.session.query(DataSource).filter_by(name=self.source_name).first()
-            df['source_id'] = data_source_obj.id if data_source_obj else None
-            
-            # --- ID Generation (adapted from doc_transform.generate_id) ---
-            def generate_prospect_id(row: pd.Series) -> str:
-                naics_val = str(row.get('naics', ''))
-                title_val = str(row.get('title', ''))
-                desc_val = str(row.get('description', ''))
-                unique_string = f"{naics_val}-{title_val}-{desc_val}-{self.source_name}"
-                return hashlib.md5(unique_string.encode('utf-8')).hexdigest()
-            df['id'] = df.apply(generate_prospect_id, axis=1)
-            # --- End: ID Generation ---
-
-            final_prospect_columns = [col.name for col in Prospect.__table__.columns if col.name != 'loaded_at']
-            df_to_insert = df[[col for col in final_prospect_columns if col in df.columns]]
-
-            df_to_insert.dropna(how='all', inplace=True)
-            if df_to_insert.empty:
-                self.logger.info("After DOC processing, no valid data rows to insert.")
-                return
-
-            self.logger.info(f"Attempting to insert/update {len(df_to_insert)} DOC records.")
-            bulk_upsert_prospects(df_to_insert)
-            self.logger.info(f"Successfully inserted/updated DOC records from {file_path}.")
+            return self._process_and_load_data(df, final_column_rename_map, prospect_model_fields, fields_for_id_hash)
 
         except FileNotFoundError:
             self.logger.error(f"DOC Excel file not found: {file_path}")
@@ -345,86 +279,3 @@ class DocScraper(BaseScraper):
             extract_func=self.download_forecast_document,
             process_func=self.process_func # Add process_func
         )
-
-def run_scraper(force=False):
-    """
-    Run the Commerce Forecast scraper.
-    
-    Args:
-        force (bool): Whether to force scraping even if recently run
-        
-    Returns:
-        bool: True if scraping was successful
-        
-    Raises:
-        ScraperError: If an error occurs during scraping
-        ImportError: If required dependencies are not installed
-    """
-    source_name = "DOC Forecast"
-    local_logger = logger
-    scraper = None
-    
-    try:
-        # Check if we should run the scraper using the singleton instance
-        # Removed interval check logic
-        # if not force and download_tracker.should_download(source_name):
-        #     local_logger.info(f"Skipping scrape for {source_name} due to recent download")
-        #     return True
-
-        # Create an instance of the scraper
-        scraper = DocScraper(debug_mode=False)
-        
-        # Run the scraper
-        local_logger.info(f"Running {source_name} scraper")
-        # scrape_with_structure returns a dict, check 'success' key
-        result = scraper.scrape() 
-        
-        # Check the success key in the result dictionary
-        if not result or not result.get("success", False):
-            # Error should have been logged within scrape_with_structure or download_forecast_document
-            # Re-raise a generic error if needed, or rely on logged errors.
-            # Error details are in result['error'] if it exists
-            error_msg = result.get("error", "Scraper failed without specific error") if result else "Scraper failed without specific error"
-            # handle_scraper_error is likely called internally, avoid double logging/handling if possible
-            # handle_scraper_error(ScraperError(error_msg), source_name)
-            raise ScraperError(error_msg)
-        
-        # Update the download tracker with the current time
-        # Removed: download_tracker.set_last_download_time(source_name)
-        # local_logger.info(f"Updated download tracker for {source_name}")
-            
-        # Update the ScraperStatus table to indicate success (Currently Commented Out)
-        # update_scraper_status(source_name, "working", None)
-            
-        return True
-    except ImportError as e:
-        error_msg = f"Import error for {source_name}: {str(e)}"
-        local_logger.error(error_msg)
-        local_logger.error("Playwright module not found? Run 'pip install playwright' and 'playwright install'")
-        # handle_scraper_error(e, source_name, "Import error") # Already called? Check logic
-        raise # Re-raise import error
-    except ScraperError as e:
-        # Scraper specific errors (including those from download/navigation)
-        # Error should already be logged by handle_scraper_error called deeper
-        local_logger.error(f"ScraperError occurred for {source_name}: {str(e)}")
-        raise # Re-raise scraper error
-    except Exception as e:
-        # Catch-all for unexpected errors
-        error_msg = f"Unexpected error running {source_name} scraper: {str(e)}"
-        handle_scraper_error(e, source_name, f"Unexpected error in run_scraper for {source_name}")
-        raise ScraperError(error_msg) from e
-    finally:
-        if scraper:
-            try:
-                local_logger.info(f"Cleaning up {source_name} scraper resources")
-                scraper.cleanup_browser() # Correct method name
-            except Exception as cleanup_error:
-                local_logger.error(f"Error during {source_name} scraper cleanup: {str(cleanup_error)}")
-
-if __name__ == "__main__":
-    # This block allows the script to be run directly for testing
-    try:
-        run_scraper(force=True)
-        print("DOC Forecast scraper finished successfully (DB operations skipped).")
-    except Exception as e:
-        print(f"DOC Forecast scraper failed: {e}") 

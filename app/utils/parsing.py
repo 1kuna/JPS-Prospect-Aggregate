@@ -66,7 +66,6 @@ def parse_value_range(value_str):
     else:
         # Value string did not match any pattern and wasn't a simple float
         # Keep defaults: numeric_val = pd.NA, unit_str = value_str_orig
-        # logging.warning(f"Could not parse estimated value: {value_str_orig}") # Removed warning
         pass # Keep NA, original value
 
     return numeric_val, unit_str
