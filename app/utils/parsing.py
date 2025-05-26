@@ -75,7 +75,8 @@ def fiscal_quarter_to_date(qtr_str):
     Returns a tuple: (pd.Timestamp, fiscal_year).
     Returns (pd.NaT, pd.NA) on failure or TBD.
     """
-    if pd.isna(qtr_str): return pd.NaT, pd.NA # Return tuple
+    if pd.isna(qtr_str):
+        return pd.NaT, pd.NA # Return tuple
     qtr_str_orig = str(qtr_str).strip()
     qtr_str = qtr_str_orig.upper()
 
@@ -93,13 +94,18 @@ def fiscal_quarter_to_date(qtr_str):
         if quarter_part:
             quarter, current_year = int(quarter_part), datetime.now().year
             year = current_year
-            if year_part: year = 2000 + int(year_part) if int(year_part) < 100 else int(year_part)
+            if year_part:
+                year = 2000 + int(year_part) if int(year_part) < 100 else int(year_part)
             # Adjust month based on fiscal quarter start (Oct = Q1, Jan = Q2, Apr = Q3, Jul = Q4)
             # Target the *start* of the quarter
-            if quarter == 1: month, year_offset = 10, -1 # Q1 starts in previous calendar year
-            elif quarter == 2: month, year_offset = 1, 0
-            elif quarter == 3: month, year_offset = 4, 0
-            elif quarter == 4: month, year_offset = 7, 0
+            if quarter == 1:
+                month, year_offset = 10, -1 # Q1 starts in previous calendar year
+            elif quarter == 2:
+                month, year_offset = 1, 0
+            elif quarter == 3:
+                month, year_offset = 4, 0
+            elif quarter == 4:
+                month, year_offset = 7, 0
             else: # Should not happen due to regex
                  logging.warning(f"Invalid quarter number {quarter} parsed from '{qtr_str_orig}'")
                  return pd.NaT, pd.NA # Return tuple

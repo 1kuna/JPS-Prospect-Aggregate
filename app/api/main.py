@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify, current_app
+from flask import Blueprint, jsonify
 from sqlalchemy import func, desc
 from app.models import db, Prospect, DataSource, ScraperStatus # Added ScraperStatus
 from app.utils.logger import logger

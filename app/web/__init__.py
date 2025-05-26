@@ -1,7 +1,7 @@
 """Flask application factory for the dashboard."""
 
 import os
-from flask import Flask, send_from_directory, render_template_string, request
+from flask import Flask, send_from_directory
 from flask_cors import CORS
 from app.utils.logger import logger
 from app.api.errors import register_error_handlers
@@ -86,10 +86,3 @@ def register_blueprints(app):
     app.register_blueprint(data_sources)
     
     logger.info('Blueprints registered')
-
-def register_error_handlers(app):
-    """Register error handlers for the application."""
-    # Use the centralized error handlers from api.errors
-    from app.api.errors import register_error_handlers
-    register_error_handlers(app)
-    logger.info('Error handlers registered') 

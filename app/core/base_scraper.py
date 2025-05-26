@@ -22,7 +22,7 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 # Local application imports
 # from app.database.connection import get_db, session_scope # Removed dead import
-from app.models import DataSource, db, Prospect # Added db for potential direct use, Prospect
+from app.models import DataSource, db # Added db for potential direct use, Prospect
 import pandas as pd # Add pandas import for type hinting
 import json # Add json import for 'extra' field serialization
 from app.database.crud import bulk_upsert_prospects # Import for loading data
@@ -156,7 +156,7 @@ class BaseScraper(ABC):
         try:
             suggested_filename = download.suggested_filename
             if not suggested_filename:
-                self.logger.warning(f"Download suggested_filename is empty. Using default.")
+                self.logger.warning("Download suggested_filename is empty. Using default.")
                 suggested_filename = f"{self.source_name.lower().replace(' ', '_')}_download.dat"
 
             file_name_part, ext = os.path.splitext(suggested_filename)
@@ -500,34 +500,58 @@ class BaseScraper(ABC):
     # -------------------------------------------------------------------------
     # Browser Interaction Methods
     # -------------------------------------------------------------------------
-    
-    def check_url_accessibility(self, url=None):
+
+    def _click_and_download(self,
+                            download_trigger_selector: str,
+                            pre_click_selector: Optional[str] = None,
+                            pre_click_wait_ms: int = 0,
+                            wait_for_trigger_timeout_ms: int = 30000,
+                            download_timeout_ms: int = 90000,
+                            click_method: str = "click" # "click", "dispatch_event", "js_click"
+                            ) -> str:
         """
-        Check if a URL is accessible.
-        
-        Args:
-            url (str, optional): URL to check. If None, the base URL is used.
-        
-        Returns:
-            bool: True if the URL is accessible, False otherwise
+        Helper to handle common download patterns:
+        (Optionally) click a preparatory element, then click a download trigger.
+        Returns the path to the downloaded file.
         """
-        url = url or self.base_url
-        
+        if pre_click_selector:
+            self.logger.info(f"Attempting pre-click on selector: {pre_click_selector}")
+            pre_click_element = self.page.locator(pre_click_selector)
+            pre_click_element.wait_for(state='visible', timeout=wait_for_trigger_timeout_ms) # Use wait_for_trigger_timeout_ms for consistency
+            pre_click_element.click() # Standard click for pre-click
+            if pre_click_wait_ms > 0:
+                self.logger.info(f"Waiting for {pre_click_wait_ms}ms after pre-click.")
+                self.page.wait_for_timeout(pre_click_wait_ms)
+
+        self.logger.info(f"Locating download trigger: {download_trigger_selector}")
+        trigger_element = self.page.locator(download_trigger_selector)
         try:
-            self.logger.info(f"Checking accessibility of URL: {url}")
-            
-            # Send a HEAD request to check if the URL is accessible
-            response = requests.head(url, timeout=10)
-            
-            # Check if the response is successful
-            is_accessible = response.status_code < 400
-            
-            self.logger.info(f"URL {url} is {'accessible' if is_accessible else 'not accessible'} (status code: {response.status_code})")
-            
-            return is_accessible
-        except Exception as e:
-            self.logger.error(f"Error checking URL accessibility: {str(e)}")
-            return False
+            trigger_element.wait_for(state='visible', timeout=wait_for_trigger_timeout_ms)
+            self.logger.info(f"Download trigger '{download_trigger_selector}' is visible.")
+        except PlaywrightTimeoutError as e: # Ensure PlaywrightTimeoutError is imported
+            self.logger.error(f"Timeout waiting for download trigger '{download_trigger_selector}' to be visible.")
+            raise ScraperError(f"Download trigger '{download_trigger_selector}' not visible: {str(e)}") from e
+
+        self.logger.info(f"Attempting to {click_method} on download trigger and waiting for download...")
+        with self.page.expect_download(timeout=download_timeout_ms) as download_info:
+            if click_method == "dispatch_event":
+                trigger_element.dispatch_event('click')
+            elif click_method == "js_click":
+                # Ensure page.evaluate can find the selector if it's complex; might need refinement
+                self.page.evaluate(f"document.querySelector('{download_trigger_selector.replace("'", "\\'")}').click();")
+            else: # Default "click"
+                trigger_element.click()
+
+        _ = download_info.value # Access the download object
+
+        self.page.wait_for_timeout(2000) # Allow _handle_download to complete
+
+        if not self._last_download_path or not os.path.exists(self._last_download_path):
+            self.logger.error(f"Download failed: _last_download_path not set or invalid. Value: {self._last_download_path}")
+            raise ScraperError("Download failed: File not found or path not set by BaseScraper._handle_download.")
+
+        self.logger.info(f"Download process completed. File saved at: {self._last_download_path}")
+        return self._last_download_path
     
     def navigate_to_url(self, url=None, timeout=60000):
         """

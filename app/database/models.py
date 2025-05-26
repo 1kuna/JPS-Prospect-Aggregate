@@ -1,10 +1,7 @@
-import os
 from sqlalchemy import (Column, String, Text,
-                          Numeric, Date, TIMESTAMP, JSON, Index,
-                          ForeignKey, Float, Integer) # Keep create_engine for now, might be used by create_tables
+                          Numeric, Date, TIMESTAMP, JSON, ForeignKey, Float, Integer) # Keep create_engine for now, might be used by create_tables
 from sqlalchemy.orm import relationship # remove sessionmaker, declarative_base
 from sqlalchemy.sql import func
-import logging
 from app.database import db # Import db from flask_sqlalchemy instance
 
 # Logging is now handled by app.utils.logger (Loguru)

@@ -1,6 +1,6 @@
 import os
 import pathlib
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 from dotenv import load_dotenv
 
 # Environment variables loading

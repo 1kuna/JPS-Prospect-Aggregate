@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify, current_app
+from flask import Blueprint, jsonify
 from app.models import db, DataSource, ScraperStatus
 from app.exceptions import NotFoundError, ScraperError, DatabaseError
 from app.utils.logger import logger

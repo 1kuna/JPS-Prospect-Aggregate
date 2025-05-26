@@ -4,25 +4,20 @@
 import os
 # import sys # Unused
 import time
-import shutil
-import datetime # Added datetime import
 
 # Third-party imports
 # import requests # Unused
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 # from playwright.sync_api import sync_playwright # Unused
 import pandas as pd
-import hashlib
 import traceback # Added traceback
 # import re # Unused
-from datetime import datetime # Added datetime
-import json # Added json
 
 # Local application imports
 from app.core.base_scraper import BaseScraper
-from app.models import Prospect, DataSource, db # Added Prospect, DataSource, db
+from app.models import Prospect # Added Prospect, DataSource, db
 # from app.database.crud import bulk_upsert_prospects # Unused
-from app.config import active_config # Import active_config
+from app.config import active_config, LOGS_DIR # Import active_config
 from app.exceptions import ScraperError
 from app.utils.file_utils import ensure_directory # find_files was unused
 from app.utils.logger import logger
@@ -120,7 +115,6 @@ class DotScraper(BaseScraper):
                      # For now, just rely on the expect_download timeout.
                      pass # Placeholder, let expect_download handle the wait
 
-                download = download_info.value
                 _ = download_info.value # Access the download object
                 self.logger.info("Download detected on new page.")
             finally:

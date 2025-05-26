@@ -4,20 +4,16 @@
 import os
 import traceback
 # import sys # Unused
-import shutil
 # import datetime # Unused at top level, `from datetime import datetime` is used
-import json
 
 # Third-party imports
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 import pandas as pd
-import hashlib
 # import re # Unused
-from datetime import datetime
 
 # Local application imports
 from app.core.base_scraper import BaseScraper
-from app.models import Prospect, DataSource, db
+from app.models import Prospect
 # from app.database.crud import bulk_upsert_prospects # Unused
 from app.exceptions import ScraperError
 from app.utils.logger import logger
@@ -70,7 +66,7 @@ class DOJForecastScraper(BaseScraper):
                 raise ScraperError("Download link did not appear or become enabled")
 
             # Click the download link and wait for the download
-            self.logger.info(f"Clicking download link and waiting for download...")
+            self.logger.info("Clicking download link and waiting for download...")
             with self.page.expect_download(timeout=90000) as download_info:
                  download_link.click()
 
