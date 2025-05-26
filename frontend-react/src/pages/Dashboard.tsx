@@ -23,57 +23,78 @@ import {
 } from "@/components/ui/pagination";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-// Placeholder for prospect data type - replace with actual type if available
+// Updated Prospect interface based on backend model
 interface Prospect {
-  id: string;
-  name: string;
-  status: string;
-  source: string;
-  lastContacted: string;
+  id: string; // Primary key, string (UUID)
+  native_id: string | null; // From source system
+  title: string; // Main title/name of the prospect
+  description: string | null;
+  agency: string | null;
+  naics: string | null;
+  estimated_value: string | null; // Represented as string in to_dict
+  est_value_unit: string | null;
+  release_date: string | null; // ISO date string
+  award_date: string | null; // ISO date string
+  award_fiscal_year: number | null;
+  place_city: string | null;
+  place_state: string | null;
+  place_country: string | null;
+  contract_type: string | null;
+  set_aside: string | null;
+  loaded_at: string | null; // ISO datetime string
+  extra: Record<string, any> | null; // JSON object
+  source_id: number | null;
+  source_name: string | null; // Name of the data source
 }
 
 // Mock API call functions - replace with actual API calls
-const fetchProspectCount = async (): Promise<{ count: number }> => {
-  await new Promise(resolve => setTimeout(resolve, 300));
-  return { count: 583 }; // Example count
-};
+// const fetchProspectCount = async (): Promise<{ count: number }> => {
+//   await new Promise(resolve => setTimeout(resolve, 300));
+//   return { count: 583 }; // Example count
+// };
 
 const fetchProspects = async (page: number, limit: number): Promise<{ data: Prospect[], total: number, totalPages: number }> => {
-  await new Promise(resolve => setTimeout(resolve, 700));
-  const totalItems = 583; // Match count for consistency
-  const allProspects: Prospect[] = Array.from({ length: totalItems }, (_, i) => ({
-    id: `prospect-${i + 1}`,
-    name: `Prospect Name ${i + 1} with a longer name to test wrapping and to see how the cell handles overflow.`,
-    status: i % 4 === 0 ? 'New' : i % 4 === 1 ? 'Contacted' : i % 4 === 2 ? 'Qualified' : 'Closed Won',
-    source: `Source ${String.fromCharCode(65 + (i % 7))}`,
-    lastContacted: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-  }));
-  const start = (page - 1) * limit;
-  const end = start + limit;
-  return { data: allProspects.slice(start, end), total: totalItems, totalPages: Math.ceil(totalItems / limit) };
+  const response = await fetch(`/api/prospects?page=${page}&limit=${limit}`);
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ message: 'Failed to fetch prospects and parse error response' }));
+    throw new Error(errorData.error || `Network response was not ok: ${response.statusText}`);
+  }
+  const result: { data: Prospect[], total: number, totalPages: number, currentPage: number, perPage: number } = await response.json();
+  
+  // The backend response directly matches the required structure for data, total, and totalPages.
+  // We just need to ensure the `data` items conform to the `Prospect` interface.
+  // The `Prospect` interface has been updated to match the backend `to_dict()`
+  return {
+    data: result.data,
+    total: result.total,
+    totalPages: result.totalPages
+  };
 };
 
 const columnHelper = createColumnHelper<Prospect>();
 
 const columns = [
-  columnHelper.accessor('name', {
-    header: 'Name',
+  columnHelper.accessor('title', { // Changed from 'name' to 'title'
+    header: 'Title', // Changed from 'Name' to 'Title'
     cell: info => <div className="w-full truncate">{info.getValue()}</div>,
     size: 250,
   }),
-  columnHelper.accessor('status', {
-    header: 'Status',
-    cell: info => info.getValue(),
+  columnHelper.accessor('agency', { // Changed from 'status' to 'agency'
+    header: 'Agency', // Changed from 'Status'
+    cell: info => info.getValue() ?? 'N/A', // Handle null with 'N/A'
     size: 120,
   }),
-  columnHelper.accessor('source', {
+  columnHelper.accessor('source_name', { // Changed from 'source' to 'source_name'
     header: 'Source',
-    cell: info => info.getValue(),
+    cell: info => info.getValue() ?? 'N/A', // Handle null with 'N/A'
     size: 120,
   }),
-  columnHelper.accessor('lastContacted', {
-    header: 'Last Contacted',
-    cell: info => info.getValue(),
+  columnHelper.accessor('release_date', { // Changed from 'lastContacted' to 'release_date'
+    header: 'Release Date', // Changed from 'Last Contacted'
+    cell: info => {
+      const date = info.getValue();
+      return date ? new Date(date).toLocaleDateString() : 'N/A';
+    },
     size: 150,
   }),
 ];
@@ -82,10 +103,10 @@ export default function Dashboard() {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10); // Default items per page
 
-  const { data: countData, isLoading: isLoadingCount } = useQuery({
-    queryKey: ['prospectCount'],
-    queryFn: fetchProspectCount,
-  });
+  // const { data: countData, isLoading: isLoadingCount } = useQuery({
+  //   queryKey: ['prospectCount'],
+  //   queryFn: fetchProspectCount,
+  // });
 
   const { data: prospectsData, isLoading: isLoadingProspects, isFetching: isFetchingProspects } = useQuery({
     queryKey: ['prospects', currentPage, itemsPerPage],
@@ -343,10 +364,12 @@ export default function Dashboard() {
               <CardTitle className="text-base font-semibold text-black">Prospect Statistics</CardTitle> {/* Smaller title */} 
             </CardHeader>
             <CardContent className="pt-2 pb-4"> {/* Adjusted padding */}
-              {isLoadingCount ? (
+              {/* {isLoadingCount ? ( */}
+              {isLoadingProspects ? ( // Use isLoadingProspects as count will come from prospectsData
                 <p className="text-gray-600 animate-pulse text-sm">Loading...</p>
               ) : (
-                <p className="text-xl font-semibold text-blue-600">{countData?.count.toLocaleString()}</p> /* Smaller number */ 
+                // <p className="text-xl font-semibold text-blue-600">{countData?.count.toLocaleString()}</p> /* Smaller number */ 
+                <p className="text-xl font-semibold text-blue-600">{prospectsData?.total.toLocaleString()}</p>
               )}
             </CardContent>
           </Card>

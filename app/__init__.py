@@ -35,11 +35,13 @@ def create_app(config_name='default'): # config_name is no longer used but kept 
     from app.api.proposals import proposals_bp
     from app.api.data_sources import data_sources_bp
     from app.api.scrapers import scrapers_bp
+    from app.api.prospects import prospects_bp # Import the new blueprint
 
     app.register_blueprint(main_bp, url_prefix='/api')
     app.register_blueprint(proposals_bp, url_prefix='/api/proposals')
     app.register_blueprint(data_sources_bp, url_prefix='/api/data-sources')
     app.register_blueprint(scrapers_bp, url_prefix='/api/data-sources') # Scraper routes are under data-sources
+    app.register_blueprint(prospects_bp) # Register the new blueprint (uses url_prefix from its definition)
 
     # Register error handlers if defined in api.errors
     try:
