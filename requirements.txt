@@ -19,3 +19,4 @@ waitress==2.1.2
 Flask-SQLAlchemy
 python-dateutil
 Flask-Migrate
+playwright-stealth
