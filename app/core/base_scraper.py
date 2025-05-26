@@ -164,7 +164,7 @@ class BaseScraper(ABC):
                 self.logger.warning(f"Filename '{suggested_filename}' has no extension. Defaulting to '.dat'.")
                 ext = '.dat'
 
-            timestamp_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
             final_filename = f"{self.source_name.lower().replace(' ', '_')}_{timestamp_str}{ext}"
             
             # Ensure self.download_path (scraper's specific download dir) exists
