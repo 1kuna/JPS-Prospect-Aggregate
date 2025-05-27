@@ -22,6 +22,13 @@ import {
   PaginationPrevious,
 } from "@/components/ui/pagination";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 // Updated Prospect interface based on backend model
 interface Prospect {
@@ -101,18 +108,27 @@ const columns = [
   columnHelper.accessor((row) => row.extra?.agency || row.agency, {
     id: 'agency',
     header: 'Agency',
-    cell: info => info.getValue() ?? 'N/A',
+    cell: info => {
+      const value = info.getValue();
+      return <div className="w-full truncate" title={value || 'N/A'}>{value || 'N/A'}</div>;
+    },
     size: 200,
   }),
   columnHelper.accessor('naics', {
     header: 'NAICS',
-    cell: info => info.getValue() ?? 'N/A',
+    cell: info => {
+      const value = info.getValue();
+      return <div className="w-full truncate" title={value || 'N/A'}>{value || 'N/A'}</div>;
+    },
     size: 120,
   }),
   columnHelper.accessor((row) => row.extra?.acquisition_phase || row.contract_type, {
     id: 'status',
     header: 'Status',
-    cell: info => info.getValue() ?? 'N/A',
+    cell: info => {
+      const value = info.getValue();
+      return <div className="w-full truncate" title={value || 'N/A'}>{value || 'N/A'}</div>;
+    },
     size: 150,
   }),
 ];
@@ -121,6 +137,8 @@ export default function Dashboard() {
   console.log('Dashboard component loaded!');
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10); // Default items per page
+  const [selectedProspect, setSelectedProspect] = useState<Prospect | null>(null);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
 
   // const { data: countData, isLoading: isLoadingCount } = useQuery({
   //   queryKey: ['prospectCount'],
@@ -314,7 +332,7 @@ export default function Dashboard() {
                 <>
                   {/* Combined overflow container, height increased by 1rem */}
                   <div className="h-[464px] overflow-y-auto overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
-                    <Table className="min-w-full divide-y divide-gray-200">
+                    <Table className="min-w-full divide-y divide-gray-200 table-fixed">
                       {/* TableHeader with a softer, custom shadow */}
                       <TableHeader className="sticky top-0 z-10 bg-gray-50 shadow-[0_2px_8px_rgba(0,0,0,0.08)]">
                         {table.getHeaderGroups().map(headerGroup => (
@@ -340,13 +358,20 @@ export default function Dashboard() {
                         {table.getRowModel().rows.map((row, rowIndex) => (
                           <TableRow 
                             key={row.id} 
-                            className={`transition-colors duration-150 ease-in-out hover:bg-gray-100 ${rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'} data-[state=selected]:bg-blue-50 data-[state=selected]:hover:bg-blue-100`}
+                            className={`transition-colors duration-150 ease-in-out hover:bg-gray-100 cursor-pointer ${rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'} data-[state=selected]:bg-blue-50 data-[state=selected]:hover:bg-blue-100`}
+                            onClick={() => {
+                              setSelectedProspect(row.original);
+                              setIsDialogOpen(true);
+                            }}
                           >
                             {row.getVisibleCells().map(cell => (
                               <TableCell 
                                 key={cell.id} 
-                                className="px-6 py-4 whitespace-nowrap text-sm text-gray-800 align-top"
-                                style={{ width: cell.column.getSize() !== 0 ? cell.column.getSize() : undefined }}
+                                className="px-6 py-4 whitespace-nowrap text-sm text-gray-800 align-top overflow-hidden"
+                                style={{ 
+                                  width: cell.column.getSize() !== 0 ? cell.column.getSize() : undefined,
+                                  maxWidth: cell.column.getSize() !== 0 ? cell.column.getSize() : undefined
+                                }}
                               >
                                 {flexRender(cell.column.columnDef.cell, cell.getContext())}
                               </TableCell>
@@ -398,6 +423,151 @@ export default function Dashboard() {
           </Card>
         </div>
       </div>
+
+      {/* Prospect Details Dialog */}
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-2xl font-bold pr-8">
+              {selectedProspect?.title || 'Prospect Details'}
+            </DialogTitle>
+            <DialogDescription>
+              Full details for this prospect opportunity
+            </DialogDescription>
+          </DialogHeader>
+          
+          {selectedProspect && (
+            <div className="space-y-6 mt-6">
+              {/* Basic Information */}
+              <div>
+                <h3 className="text-lg font-semibold mb-3 text-gray-900">Basic Information</h3>
+                <div className="grid grid-cols-1 gap-4 bg-gray-50 p-4 rounded-lg">
+                  <div>
+                    <span className="font-medium text-gray-700">Title:</span>
+                    <p className="mt-1 text-gray-900">{selectedProspect.title || 'N/A'}</p>
+                  </div>
+                  {selectedProspect.description && (
+                    <div>
+                      <span className="font-medium text-gray-700">Description:</span>
+                      <p className="mt-1 text-gray-900 whitespace-pre-wrap">{selectedProspect.description}</p>
+                    </div>
+                  )}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <span className="font-medium text-gray-700">Agency:</span>
+                      <p className="mt-1 text-gray-900">{selectedProspect.agency || 'N/A'}</p>
+                    </div>
+                    <div>
+                      <span className="font-medium text-gray-700">NAICS:</span>
+                      <p className="mt-1 text-gray-900">{selectedProspect.naics || 'N/A'}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Financial Information */}
+              <div>
+                <h3 className="text-lg font-semibold mb-3 text-gray-900">Financial Information</h3>
+                <div className="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-lg">
+                  <div>
+                    <span className="font-medium text-gray-700">Estimated Value:</span>
+                    <p className="mt-1 text-gray-900">
+                      {selectedProspect.estimated_value || 'N/A'}
+                      {selectedProspect.est_value_unit && ` ${selectedProspect.est_value_unit}`}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="font-medium text-gray-700">Contract Type:</span>
+                    <p className="mt-1 text-gray-900">{selectedProspect.contract_type || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <span className="font-medium text-gray-700">Set Aside:</span>
+                    <p className="mt-1 text-gray-900">{selectedProspect.set_aside || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <span className="font-medium text-gray-700">Award Fiscal Year:</span>
+                    <p className="mt-1 text-gray-900">{selectedProspect.award_fiscal_year || 'N/A'}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Dates */}
+              <div>
+                <h3 className="text-lg font-semibold mb-3 text-gray-900">Important Dates</h3>
+                <div className="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-lg">
+                  <div>
+                    <span className="font-medium text-gray-700">Release Date:</span>
+                    <p className="mt-1 text-gray-900">
+                      {selectedProspect.release_date 
+                        ? new Date(selectedProspect.release_date).toLocaleDateString()
+                        : 'N/A'}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="font-medium text-gray-700">Award Date:</span>
+                    <p className="mt-1 text-gray-900">
+                      {selectedProspect.award_date 
+                        ? new Date(selectedProspect.award_date).toLocaleDateString()
+                        : 'N/A'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Location */}
+              <div>
+                <h3 className="text-lg font-semibold mb-3 text-gray-900">Location</h3>
+                <div className="bg-gray-50 p-4 rounded-lg">
+                  <p className="text-gray-900">
+                    {[selectedProspect.place_city, selectedProspect.place_state, selectedProspect.place_country]
+                      .filter(Boolean)
+                      .join(', ') || 'N/A'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Extra Information */}
+              {selectedProspect.extra && Object.keys(selectedProspect.extra).length > 0 && (
+                <div>
+                  <h3 className="text-lg font-semibold mb-3 text-gray-900">Additional Information</h3>
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <pre className="text-sm text-gray-900 whitespace-pre-wrap font-mono">
+                      {JSON.stringify(selectedProspect.extra, null, 2)}
+                    </pre>
+                  </div>
+                </div>
+              )}
+
+              {/* System Information */}
+              <div>
+                <h3 className="text-lg font-semibold mb-3 text-gray-900">System Information</h3>
+                <div className="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-lg">
+                  <div>
+                    <span className="font-medium text-gray-700">Source:</span>
+                    <p className="mt-1 text-gray-900">{selectedProspect.source_name || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <span className="font-medium text-gray-700">Native ID:</span>
+                    <p className="mt-1 text-gray-900 font-mono text-sm">{selectedProspect.native_id || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <span className="font-medium text-gray-700">Loaded At:</span>
+                    <p className="mt-1 text-gray-900">
+                      {selectedProspect.loaded_at 
+                        ? new Date(selectedProspect.loaded_at).toLocaleString()
+                        : 'N/A'}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="font-medium text-gray-700">ID:</span>
+                    <p className="mt-1 text-gray-900 font-mono text-sm">{selectedProspect.id}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </PageLayout>
   );
 } 
