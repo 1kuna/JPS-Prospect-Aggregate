@@ -39,6 +39,7 @@ export default function DataSources() {
     },
     {
       header: 'Actions',
+      accessorKey: 'actions', // Added required accessorKey
       cell: ({ row }: { row: DataSource }) => (
         <div>
           <Button 
@@ -52,14 +53,14 @@ export default function DataSources() {
             variant="destructive"
             size="sm"
             onClick={() => handleDelete(row.id)}
-            disabled={deleteMutation.isLoading && deleteMutation.variables === row.id}
+            disabled={deleteMutation.isPending && deleteMutation.variables === row.id}
           >
-            {deleteMutation.isLoading && deleteMutation.variables === row.id ? 'Deleting...' : 'Delete'}
+            {deleteMutation.isPending && deleteMutation.variables === row.id ? 'Deleting...' : 'Delete'}
           </Button>
         </div>
       ),
     },
-  ], [deleteMutation.isLoading, deleteMutation.variables, handleDelete]);
+  ], [deleteMutation.isPending, deleteMutation.variables, handleDelete]);
 
   const pageError = isError ? (error as Error) : null;
 

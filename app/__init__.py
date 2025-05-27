@@ -4,7 +4,7 @@ Application Factory Pattern for Flask app.
 This module creates and configures the Flask application.
 """
 
-from flask import Flask
+from flask import Flask, jsonify
 from flask_cors import CORS
 from flask_migrate import Migrate
 from app.config import active_config # Import active_config
@@ -33,7 +33,9 @@ def create_app(config_name='default'): # config_name is no longer used but kept 
     from app.api.data_sources import data_sources_bp
     from app.api.scrapers import scrapers_bp
     from app.api.prospects import prospects_bp # Import the new blueprint
+    from app.web.routes import main as web_main_bp # Import the web blueprint
 
+    app.register_blueprint(web_main_bp) # Register the web blueprint
     app.register_blueprint(main_bp, url_prefix='/api')
     app.register_blueprint(data_sources_bp, url_prefix='/api/data-sources')
     app.register_blueprint(scrapers_bp, url_prefix='/api/data-sources') # Scraper routes are under data-sources

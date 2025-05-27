@@ -4,7 +4,7 @@ import os
 from flask import Blueprint, current_app, send_from_directory
 
 # Create blueprints
-main = Blueprint('main', __name__)
+main = Blueprint('web_main', __name__)
 data_sources = Blueprint('data_sources', __name__, url_prefix='/data-sources')
 
 @main.route('/', defaults={'path': ''})
@@ -12,7 +12,7 @@ data_sources = Blueprint('data_sources', __name__, url_prefix='/data-sources')
 def index(path):
     """Serve the React SPA."""
     # Get the React build directory - fix the path to be relative to the project root
-    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../'))
+    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../'))
     react_build_dir = os.path.join(project_root, 'frontend-react', 'dist')
     
     current_app.logger.info(f"Serving React SPA from {react_build_dir} for path: {path}")

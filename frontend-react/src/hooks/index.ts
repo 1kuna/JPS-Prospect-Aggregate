@@ -13,12 +13,18 @@ export {
   useExecuteQuery,
 } from './api/useDatabase';
 export {
-  useDataSources,
+  useListDataSources,
+  useCreateDataSource,
+  useUpdateDataSource,
+  useDeleteDataSource,
 } from './api/useDataSources';
 
 export {
-  useProposals,
+  useInfiniteProposals,
   useProposalStatistics,
+  useCreateProposal,
+  useUpdateProposal,
+  useDeleteProposal,
 } from './api/useProposals';
 
 // Explicitly export from App-specific hooks

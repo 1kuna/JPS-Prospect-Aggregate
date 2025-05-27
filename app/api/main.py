@@ -9,6 +9,22 @@ main_bp = Blueprint('main', __name__)
 # Set up logging using the centralized utility
 logger = logger.bind(name="api.main")
 
+@main_bp.route('/', methods=['GET'])
+def api_info():
+    """API information endpoint."""
+    return jsonify({
+        'name': 'JPS Prospect Aggregate API',
+        'version': '1.0.0',
+        'description': 'API for managing government procurement prospects',
+        'endpoints': {
+            '/api/': 'This endpoint - API information',
+            '/api/health': 'Health check endpoint',
+            '/api/dashboard': 'Dashboard summary data',
+            '/api/prospects': 'Prospects data with pagination'
+        },
+        'status': 'operational'
+    })
+
 @main_bp.route('/health', methods=['GET'])
 def health_check():
     """API health check endpoint."""

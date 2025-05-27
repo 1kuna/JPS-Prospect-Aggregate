@@ -7,6 +7,7 @@ from app.utils.logger import logger
 
 prospects_bp = Blueprint('prospects_api', __name__, url_prefix='/api/prospects')
 
+@prospects_bp.route('', methods=['GET'])
 @prospects_bp.route('/', methods=['GET'])
 def get_prospects_route():
     logger.info("Received request for /api/prospects/")

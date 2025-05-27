@@ -44,6 +44,19 @@ class Prospect(db.Model): # Renamed back to Prospect
         return f"<Prospect(id='{self.id}', source_id='{self.source_id}', title='{self.title[:30] if self.title else ''}...')>" # Renamed from Prospect
 
     def to_dict(self):
+        import json
+        import math
+        
+        def clean_value(v):
+            """Clean NaN and infinity values from data."""
+            if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
+                return None
+            elif isinstance(v, dict):
+                return {k: clean_value(vv) for k, vv in v.items()}
+            elif isinstance(v, list):
+                return [clean_value(vv) for vv in v]
+            return v
+        
         return {
             "id": self.id,
             "native_id": self.native_id,
@@ -62,7 +75,7 @@ class Prospect(db.Model): # Renamed back to Prospect
             "contract_type": self.contract_type,
             "set_aside": self.set_aside,
             "loaded_at": self.loaded_at.isoformat() if self.loaded_at else None,
-            "extra": self.extra,
+            "extra": clean_value(self.extra) if self.extra else None,
             "source_id": self.source_id,
             "source_name": self.data_source.name if self.data_source else None,
             # Add inferred data if needed in the future

@@ -22,12 +22,12 @@ export enum ProposalStatus {
 }
 
 export interface ProposalStatistics {
-  total: number;
-  byStatus: Record<ProposalStatus, number>;
-  recentActivity: {
-    date: string;
-    count: number;
-  }[];
+  data: {
+    total: number;
+    approved: number;
+    pending: number;
+    rejected: number;
+  };
 }
 
 export interface ProposalFilters {

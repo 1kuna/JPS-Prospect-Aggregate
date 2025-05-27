@@ -1,6 +1,7 @@
 import { keepPreviousData, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
-const API_BASE_URL = '/api/database'; // Base URL for database operations
+// Remove unused API_BASE_URL variable
+// const API_BASE_URL = '/api/database'; // Base URL for database operations
 
 // --- Type Definitions (assuming these are representative) ---
 export interface DatabaseStatus {
@@ -107,93 +108,87 @@ async function executeQueryAPI({ query }: { query: string }): Promise<QueryResul
 
 // --- React Query Keys ---
 const dbQueryKeys = {
-  all: ['database'] as const,
-  status: () => [...dbQueryKeys.all, 'status'] as const,
-  backups: () => [...dbQueryKeys.all, 'backups'] as const,
+  all: () => ['database'] as const,
+  status: () => [...dbQueryKeys.all(), 'status'] as const,
+  backups: () => [...dbQueryKeys.all(), 'backups'] as const,
 };
 
 // --- React Query Hooks ---
 
 export const useDatabaseStatus = () => {
-  // No placeholderData needed for a single status object typically
-  return useQuery<DatabaseStatus, Error>(dbQueryKeys.status(), fetchDatabaseStatusAPI);
+  return useQuery({
+    queryKey: dbQueryKeys.status(),
+    queryFn: fetchDatabaseStatusAPI,
+  });
 };
 
 export const useDatabaseBackups = () => {
-  return useQuery<DatabaseBackup[], Error>(
-    dbQueryKeys.backups(), 
-    fetchDatabaseBackupsAPI,
-    { placeholderData: keepPreviousData } // Added placeholderData for better UX
-  );
+  return useQuery({
+    queryKey: dbQueryKeys.backups(),
+    queryFn: fetchDatabaseBackupsAPI,
+    placeholderData: keepPreviousData, // Added placeholderData for better UX
+  });
 };
 
 export const useRebuildDatabase = () => {
   const queryClient = useQueryClient();
-  return useMutation<void, Error, void>(
-    rebuildDatabaseAPI,
-    {
-      onSuccess: () => {
-        queryClient.invalidateQueries(dbQueryKeys.all()); // Invalidate all DB related queries
-      },
-    }
-  );
+  return useMutation({
+    mutationFn: rebuildDatabaseAPI,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: dbQueryKeys.all() }); // Invalidate all DB related queries
+    },
+  });
 };
 
 export const useInitializeDatabase = () => {
   const queryClient = useQueryClient();
-  return useMutation<void, Error, void>(
-    initializeDatabaseAPI,
-    {
-      onSuccess: () => {
-        queryClient.invalidateQueries(dbQueryKeys.all());
-      },
-    }
-  );
+  return useMutation({
+    mutationFn: initializeDatabaseAPI,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: dbQueryKeys.all() });
+    },
+  });
 };
 
 export const useResetDatabase = () => {
   const queryClient = useQueryClient();
-  return useMutation<void, Error, void>(
-    resetDatabaseAPI,
-    {
-      onSuccess: () => {
-        queryClient.invalidateQueries(dbQueryKeys.all());
-      },
-    }
-  );
+  return useMutation({
+    mutationFn: resetDatabaseAPI,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: dbQueryKeys.all() });
+    },
+  });
 };
 
 export const useCreateBackup = () => {
   const queryClient = useQueryClient();
-  return useMutation<DatabaseBackup, Error, void>(
-    createBackupAPI,
-    {
-      onSuccess: (newBackup) => {
-        queryClient.invalidateQueries(dbQueryKeys.backups());
-        // Optionally add the new backup to the cache immediately
-        // queryClient.setQueryData(dbQueryKeys.backups(), (oldData: DatabaseBackup[] | undefined) => 
-        //  [...(oldData || []), newBackup]
-        // );
-        queryClient.invalidateQueries(dbQueryKeys.status()); // Backup might affect status
-      },
-    }
-  );
+  return useMutation({
+    mutationFn: createBackupAPI,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: dbQueryKeys.backups() });
+      // Optionally add the new backup to the cache immediately
+      // queryClient.setQueryData(dbQueryKeys.backups(), (oldData: DatabaseBackup[] | undefined) => 
+      //  [...(oldData || []), newBackup]
+      // );
+      queryClient.invalidateQueries({ queryKey: dbQueryKeys.status() }); // Backup might affect status
+    },
+  });
 };
 
 export const useRestoreBackup = () => {
   const queryClient = useQueryClient();
-  return useMutation<void, Error, { backupId: string }>(
-    restoreBackupAPI,
-    {
-      onSuccess: () => {
-        queryClient.invalidateQueries(dbQueryKeys.all());
-      },
-    }
-  );
+  return useMutation({
+    mutationFn: restoreBackupAPI,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: dbQueryKeys.all() });
+    },
+  });
 };
 
 export const useExecuteQuery = () => {
   // No cache invalidation by default for arbitrary queries, 
   // but component might want to refetch specific data based on query type.
-  return useMutation<QueryResult, Error, { query: string }>(executeQueryAPI);
+  return useMutation({
+    mutationFn: executeQueryAPI,
+  });
 }; 

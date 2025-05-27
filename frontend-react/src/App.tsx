@@ -17,6 +17,7 @@ const PageSkeleton = () => <div className={styles.pageSkeleton}>Loading page...<
 const queryClient = new QueryClient();
 
 function App() {
+  console.log('App component loaded!');
   // Effect to toggle .dark class on <html> based on OS/browser preference
   useEffect(() => {
     // Ensure the .dark class is not present if we're forcing light mode

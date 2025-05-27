@@ -34,7 +34,7 @@ def create_app(config=None):
     register_error_handlers(app)
     
     # Path to the React build directory - fix the path to be relative to the project root
-    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     react_build_dir = os.path.join(project_root, 'frontend-react/dist')
     
     logger.info(f"React build directory: {react_build_dir}")
