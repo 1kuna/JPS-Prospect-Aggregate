@@ -21,12 +21,12 @@ from app.config import active_config # Import active_config
 from app.exceptions import ScraperError
 from app.utils.file_utils import ensure_directory # find_files was unused
 from app.utils.logger import logger
-from app.utils.scraper_utils import (
+# from app.utils.scraper_utils import ( # Removed handle_scraper_error
     # check_url_accessibility, # Unused
     # download_file, # Unused
     # save_permanent_copy, # Unused
-    handle_scraper_error
-)
+    # handle_scraper_error # Removed
+# )
 from app.utils.parsing import parse_value_range, fiscal_quarter_to_date, split_place # Added parsing utils
 
 # Set up logging
@@ -67,60 +67,39 @@ class TreasuryScraper(BaseScraper):
             self.page.wait_for_load_state('load', timeout=90000)
             self.logger.info("Page loaded. Waiting for download button.")
 
-            # Locate the download button using XPath
-            download_button_xpath = "//lightning-button/button[contains(text(), 'Download Opportunity Data')]"
-            download_button = self.page.locator(download_button_xpath)
+            # Define the selector for the download button
+            download_button_selector = "//lightning-button/button[contains(text(), 'Download Opportunity Data')]"
+            
+            # Use _click_and_download to handle the download
+            self.logger.info(f"Attempting download using selector '{download_button_selector}'.")
+            downloaded_file_path = self._click_and_download(
+                download_trigger_selector=download_button_selector,
+                click_method="click_then_js", # Handles standard click with JS fallback
+                wait_for_trigger_timeout_ms=60000,
+                download_timeout_ms=120000
+            )
+            
+            self.logger.info(f"Download process completed. File saved at: {downloaded_file_path}")
+            return downloaded_file_path
 
-            # Wait for the button to be visible
-            download_button.wait_for(state='visible', timeout=60000)
-            self.logger.info("Download button found and visible.")
-
-            self.logger.info("Clicking 'Download Opportunity Data' and waiting for download...")
-            with self.page.expect_download(timeout=120000) as download_info: # Increased download timeout
-                # Sometimes clicks need retries or alternative methods if obscured
+        except ScraperError: # Re-raise ScraperErrors directly
+            # These errors are already logged by _click_and_download.
+            # If a screenshot is needed specifically for Treasury on ScraperError,
+            # it would require adding a try-except around _click_and_download here.
+            # For now, relying on _click_and_download's logging.
+            raise
+        except Exception as e: # Catch any other general exceptions
+            self.logger.error(f"General error during {self.source_name} forecast download: {e}", exc_info=True)
+            # Capture screenshot for debugging general errors if page exists
+            if self.page and not self.page.is_closed():
+                screenshot_path = os.path.join(active_config.LOGS_DIR, f"treasury_general_error_{int(time.time())}.png")
                 try:
-                    download_button.click(timeout=15000)
-                except PlaywrightTimeoutError:
-                    self.logger.warning("Initial click timed out, trying JavaScript click.")
-                    self.page.evaluate(f"document.evaluate('{download_button_xpath}', document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue.click();")
-                except Exception as click_err:
-                    self.logger.error(f"Error during button click: {click_err}")
-                    raise
-
-            _ = download_info.value # Access the download object
-
-            # Wait a brief moment for the download event to be processed by the callback
-            self.page.wait_for_timeout(2000) # Adjust as needed
-
-            if not self._last_download_path or not os.path.exists(self._last_download_path):
-                self.logger.error(f"BaseScraper._last_download_path not set or invalid. Value: {self._last_download_path}")
-                # Fallback or detailed error logging
-                try:
-                    download_obj_for_debug = download_info.value
-                    temp_playwright_path = download_obj_for_debug.path()
-                    self.logger.warning(f"Playwright temp download path for debugging: {temp_playwright_path}")
-                except Exception as path_err:
-                    self.logger.error(f"Could not retrieve Playwright temp download path for debugging: {path_err}")
-                raise ScraperError("Download failed: File not found or path not set by BaseScraper._handle_download.")
-
-            self.logger.info(f"Download process completed. File saved at: {self._last_download_path}")
-            return self._last_download_path
-
-        except PlaywrightTimeoutError as e:
-            self.logger.error(f"Timeout error during download process: {str(e)}")
-            # Capture screenshot for debugging timeouts
-            screenshot_path = os.path.join(active_config.LOGS_DIR, f"treasury_timeout_error_{int(time.time())}.png")
-            try:
-                self.page.screenshot(path=screenshot_path, full_page=True)
-                self.logger.info(f"Screenshot saved to {screenshot_path}")
-            except Exception as ss_err:
-                self.logger.error(f"Failed to save screenshot: {ss_err}")
-            handle_scraper_error(e, self.source_name, "Timeout error during download")
-            raise ScraperError(f"Timeout error during download: {str(e)}")
-        except Exception as e:
-            self.logger.error(f"Unexpected error downloading data: {str(e)}")
-            handle_scraper_error(e, self.source_name, "Error downloading opportunity data")
-            raise ScraperError(f"Error downloading opportunity data: {str(e)}")
+                    self.page.screenshot(path=screenshot_path, full_page=True)
+                    self.logger.info(f"Screenshot saved to {screenshot_path}")
+                except Exception as ss_err:
+                    self.logger.error(f"Failed to save screenshot: {ss_err}")
+            # Wrap general exceptions in ScraperError before raising
+            raise ScraperError(f"Failed to download {self.source_name} forecast document: {str(e)}") from e
 
     def scrape(self):
         """

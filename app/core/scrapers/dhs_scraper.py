@@ -1,7 +1,6 @@
 """Department of Homeland Security Opportunity Forecast scraper."""
 
 # Standard library imports
-import os
 import traceback
 # import sys # Unused
 # import shutil # Unused
@@ -20,7 +19,7 @@ from app.exceptions import ScraperError
 from app.utils.logger import logger
 from app.utils.parsing import parse_value_range, fiscal_quarter_to_date
 from app.config import active_config # Import active_config
-from app.utils.scraper_utils import handle_scraper_error
+# from app.utils.scraper_utils import handle_scraper_error # Removed unused import
 
 # Set up logging using the centralized utility
 logger = logger.bind(name="scraper.dhs_forecast")
@@ -69,25 +68,12 @@ class DHSForecastScraper(BaseScraper):
                 # Default timeouts from helper: wait_for_trigger_timeout_ms=30000, download_timeout_ms=90000
             )
             
-        except PlaywrightTimeoutError as e: # This might catch timeouts from navigate_to_url or the explicit wait
-            self.logger.error(f"Timeout error during DHS forecast download process: {e}")
-            handle_scraper_error(e, self.source_name, "Timeout during DHS download process")
-            raise ScraperError(f"Timeout during DHS forecast download process: {str(e)}") from e
-        except ScraperError as se: # Catch ScraperErrors raised by _click_and_download or elsewhere
-            self.logger.error(f"ScraperError during DHS forecast download: {se}")
-            # handle_scraper_error is not strictly needed here if ScraperError is already logged by helper/source
-            # For consistency, ensure handle_scraper_error is called if not already done by the source of error.
-            # The _click_and_download helper logs its errors but doesn't call handle_scraper_error.
-            # So, it's good to call it here.
-            handle_scraper_error(se, self.source_name, "DHS download operation")
-            raise # Re-raise the ScraperError
-        except Exception as e: # Catch any other general exceptions
-            self.logger.error(f"General error during DHS forecast download: {e}")
-            handle_scraper_error(e, self.source_name, "Error downloading DHS forecast document")
-            if not isinstance(e, ScraperError): # Wrap if it's not already a ScraperError
-                 raise ScraperError(f"Failed to download DHS forecast document: {str(e)}") from e
-            else:
-                 raise # Re-raise if it's already a ScraperError (though previous block should catch it)
+        except ScraperError: # Re-raise ScraperErrors directly (already logged by _click_and_download or navigate_to_url)
+            raise
+        except Exception as e: # Catch any other exceptions
+            self.logger.error(f"General error during {self.source_name} forecast download: {e}", exc_info=True)
+            # Wrap general exceptions in ScraperError before raising
+            raise ScraperError(f"Failed to download {self.source_name} forecast document: {str(e)}") from e
     
     def process_func(self, file_path: str):
         """

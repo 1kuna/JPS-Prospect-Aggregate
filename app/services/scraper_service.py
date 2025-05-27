@@ -1,4 +1,4 @@
-import datetime
+from datetime import datetime # Changed import
 from app.models import db, DataSource, ScraperStatus # ScraperStatus will be handled by the utility
 from app.exceptions import NotFoundError, ScraperError, DatabaseError
 from app.utils.logger import logger
@@ -38,8 +38,8 @@ class ScraperService:
                 scraper_instance.run() # This should ideally return the result of process_func or raise error
                 
                 # If scrape is successful:
-                update_scraper_status(source_id=data_source.id, status='completed', details=f"Scrape completed successfully at {datetime.datetime.utcnow().isoformat()}.")
-                data_source.last_scraped = datetime.datetime.utcnow()
+                update_scraper_status(source_id=data_source.id, status='completed', details=f"Scrape completed successfully at {datetime.utcnow().isoformat()}.") # Use datetime directly
+                data_source.last_scraped = datetime.utcnow() # Use datetime directly
                 session.commit() # Commit update to data_source.last_scraped
                 
                 logger.info(f"Scrape for {data_source.name} completed successfully.")
@@ -59,14 +59,11 @@ class ScraperService:
             return {"status": "success", "message": result_message, "data_source_name": data_source.name, "scraper_status": final_status_str}
 
         except NotFoundError as nfe:
-            # db.session.rollback() # Typically handled by app error handlers or session teardown
             raise nfe # Re-raise to be caught by Flask error handlers
         except ScraperError as se:
-            # db.session.rollback()
             logger.error(f"Scraper service error for source ID {source_id}: {se}", exc_info=True)
             raise se
         except Exception as e:
-            # db.session.rollback()
             logger.error(f"Unexpected error in scraper service for source ID {source_id}: {e}", exc_info=True)
             if data_source: # Check if data_source object was fetched
                 error_detail = f"Pull process failed unexpectedly in service: {str(e)[:500]}"

@@ -21,11 +21,11 @@ from app.config import active_config, LOGS_DIR # Import active_config
 from app.exceptions import ScraperError
 from app.utils.file_utils import ensure_directory # find_files was unused
 from app.utils.logger import logger
-from app.utils.scraper_utils import (
+# from app.utils.scraper_utils import ( # Removed handle_scraper_error
     # check_url_accessibility, # Unused
     # download_file, # Unused
-    handle_scraper_error
-)
+    # handle_scraper_error # Removed
+# )
 from app.utils.parsing import parse_value_range, fiscal_quarter_to_date, split_place # Added parsing utils
 
 # Set up logging
@@ -143,8 +143,10 @@ class DotScraper(BaseScraper):
             self.logger.info(f"Download process completed. File saved at: {self._last_download_path}")
             return self._last_download_path
 
-        except PlaywrightTimeoutError as e:
-            self.logger.error(f"Timeout error during DOT CSV download process: {str(e)}")
+        except ScraperError: # Re-raise ScraperErrors directly (e.g., from _handle_download if it raises one)
+            raise
+        except PlaywrightTimeoutError as e: # Specific handling for Playwright timeouts
+            self.logger.error(f"Timeout error during {self.source_name} CSV download process: {str(e)}", exc_info=True)
             screenshot_path = os.path.join(LOGS_DIR, f"dot_timeout_error_{int(time.time())}.png")
             try:
                 if self.page and not self.page.is_closed():
@@ -154,12 +156,10 @@ class DotScraper(BaseScraper):
                     self.logger.warning("Could not take screenshot, page was closed or not available.")
             except Exception as ss_err:
                 self.logger.error(f"Failed to save screenshot: {ss_err}")
-            handle_scraper_error(e, self.source_name, "Timeout error during download")
-            raise ScraperError(f"Timeout error during download: {str(e)}")
-        except Exception as e:
-            self.logger.error(f"Unexpected error downloading DOT CSV data: {str(e)}", exc_info=True)
-            handle_scraper_error(e, self.source_name, "Error downloading DOT CSV data")
-            raise ScraperError(f"Error downloading DOT CSV data: {str(e)}")
+            raise ScraperError(f"Timeout error during {self.source_name} download: {str(e)}") from e
+        except Exception as e: # Catch any other general exceptions
+            self.logger.error(f"Unexpected error downloading {self.source_name} CSV data: {str(e)}", exc_info=True)
+            raise ScraperError(f"Error downloading {self.source_name} CSV data: {str(e)}") from e
 
     def scrape(self):
         """

@@ -2,7 +2,7 @@ from flask import Blueprint, jsonify
 from sqlalchemy import func, desc
 from app.models import db, Prospect, DataSource, ScraperStatus # Added ScraperStatus
 from app.utils.logger import logger
-import datetime
+from datetime import datetime, date # Changed import
 
 main_bp = Blueprint('main', __name__)
 
@@ -19,7 +19,7 @@ def health_check():
         
         return jsonify({
             'status': 'healthy',
-            'timestamp': datetime.datetime.now().isoformat(),
+            'timestamp': datetime.now().isoformat(), # Use datetime directly
             'database': 'connected'
         })
     except Exception as e:
@@ -27,7 +27,7 @@ def health_check():
         # No rollback needed for a read operation that failed
         return jsonify({
             'status': 'unhealthy',
-            'timestamp': datetime.datetime.now().isoformat(),
+            'timestamp': datetime.now().isoformat(), # Use datetime directly
             'database': 'disconnected', # More specific status
             'error': str(e)
         }), 500
@@ -51,7 +51,7 @@ def get_dashboard():
         ).group_by(Prospect.agency).order_by(desc('prospect_count')).limit(5).all()
         
         # Get upcoming prospects (using release_date)
-        today = datetime.date.today() # Use datetime.date.today() for date comparison
+        today = date.today() # Use date directly
         upcoming_prospects_data = session.query(Prospect).filter(
             Prospect.release_date >= today
         ).order_by(Prospect.release_date).limit(5).all()
@@ -88,7 +88,6 @@ def get_dashboard():
         })
     except Exception as e:
         logger.error(f"Error in get_dashboard: {str(e)}", exc_info=True)
-        # db.session.rollback() # Removed
         return jsonify({"status": "error", "message": "An unexpected error occurred"}), 500
 
 # Add main/general routes here 

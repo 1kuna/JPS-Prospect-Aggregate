@@ -21,12 +21,12 @@ from app.utils.logger import logger
 # from app.utils.db_utils import update_scraper_status, get_data_source_id_by_name # Unused
 # We need to add COMMERCE_FORECAST_URL to config.py
 from app.config import active_config # Import active_config
-from app.utils.scraper_utils import (
+# from app.utils.scraper_utils import ( # Removed handle_scraper_error
     # check_url_accessibility, # Unused
     # download_file, # Unused
     # save_permanent_copy, # Unused
-    handle_scraper_error
-)
+    # handle_scraper_error # Removed
+# )
 
 # Set up logging using the centralized utility
 logger = logger.bind(name="scraper.doc")
@@ -42,34 +42,38 @@ class DocScraper(BaseScraper):
             debug_mode=debug_mode
         )
     
-    def _find_download_link_locator(self):
+    def _find_download_link_locator(self) -> Optional[str]:
         """
-        Find the locator for the forecast file download link.
+        Find the selector string for the forecast file download link.
         
         Returns:
-            Locator: Playwright Locator object for the download link, or None.
+            Optional[str]: Selector string if the link is found, otherwise None.
         """
         link_text = "Current Procurement Forecasts"
         selector = f'a:has-text("{link_text}")'
         
-        self.logger.info(f"Searching for download link locator with text: '{link_text}'")
+        self.logger.info(f"Searching for download link with selector: '{selector}'")
         locator = self.page.locator(selector)
         
         if locator.count() > 0:
             try:
-                href = locator.first.get_attribute('href')
+                # It's good practice to take the first one if multiple are found,
+                # though for specific text, usually there's one.
+                first_link = locator.first 
+                href = first_link.get_attribute('href')
                 if href:
                     absolute_url = urljoin(self.page.url, href)
-                    self.logger.info(f"Found download link locator. Href: {href} (Absolute: {absolute_url})")
-                    # Optional: Add check if URL looks valid?
+                    self.logger.info(f"Found download link. Href: {href} (Absolute: {absolute_url}). Returning selector: '{selector}'")
                 else:
-                     self.logger.warning("Found download link locator, but it has no href.")
-                return locator.first
+                    self.logger.warning(f"Found download link with selector '{selector}', but it has no href.")
+                # Return the selector string itself, not the locator object
+                return selector 
             except Exception as e:
-                self.logger.error(f"Error getting href from locator: {e}")
-                return locator.first
+                self.logger.error(f"Error inspecting link with selector '{selector}': {e}")
+                # Still return the selector if the element exists, href check is for logging/confirmation
+                return selector
         
-        self.logger.error(f"Could not find locator for link with text: '{link_text}'")
+        self.logger.warning(f"Could not find download link with selector: '{selector}'")
         return None
     
     def _save_debug_info(self):
@@ -98,43 +102,35 @@ class DocScraper(BaseScraper):
         try:
             # Navigate to the main forecast page first to establish context/cookies if needed
             self.logger.info(f"Navigating to {self.base_url}")
-            self.navigate_to_url()
+            self.navigate_to_url() # This can raise ScraperError
             
-            # Find the locator for the download link
-            download_locator = self._find_download_link_locator()
+            # Find the selector string for the download link
+            download_link_selector = self._find_download_link_locator() # This can raise ScraperError
             
-            if not download_locator:
-                self.logger.error("Could not find the DOC download link locator")
-                self._save_debug_info()
-                raise ScraperError("Could not find the DOC forecast download link locator")
+            if not download_link_selector:
+                self.logger.error("Could not find the DOC download link selector.")
+                self._save_debug_info() # This can raise ScraperError
+                raise ScraperError("Could not find the DOC forecast download link selector on the page.")
 
-            # Dispatch click event on the locator and wait for the download
-            self.logger.info("Dispatching click event on download link locator and waiting for download...")
-            with self.page.expect_download(timeout=90000) as download_info:
-                 # Use dispatch_event on the located element
-                 download_locator.dispatch_event('click')
-
-            _ = download_info.value # Access the download object to ensure the event is processed.
-
-            # Wait a brief moment for the download event to be processed by the callback
-            self.page.wait_for_timeout(2000) # Adjust as needed
-
-            if not self._last_download_path or not os.path.exists(self._last_download_path):
-                # This block can be further enhanced by trying to get the path from download_info.value if needed
-                # For now, strictly relying on _handle_download setting the path.
-                self.logger.error(f"BaseScraper._last_download_path not set or invalid. Value: {self._last_download_path}")
-                raise ScraperError("Download failed: File not found or path not set by BaseScraper._handle_download.")
-
-            self.logger.info(f"Download process completed. File saved at: {self._last_download_path}")
-            return self._last_download_path
+            # Use _click_and_download with the found selector
+            self.logger.info(f"Attempting download using selector '{download_link_selector}' with dispatch_event.")
+            downloaded_file_path = self._click_and_download(
+                download_trigger_selector=download_link_selector,
+                click_method="dispatch_event", # As per original scraper logic
+                download_timeout_ms=90000      # Timeout for the download itself
+            )
             
-        except PlaywrightTimeoutError as e:
-            handle_scraper_error(e, self.source_name, "Timeout downloading DOC forecast document")
-            raise ScraperError(f"Timeout downloading DOC forecast document: {str(e)}")
-        except Exception as e:
-            # Ensure error is re-raised after handling
-            handle_scraper_error(e, self.source_name, "Error downloading DOC forecast document")
-            raise ScraperError(f"Failed to download DOC forecast document: {str(e)}")
+            self.logger.info(f"Download process completed. File saved at: {downloaded_file_path}")
+            return downloaded_file_path
+            
+        except ScraperError: # Re-raise ScraperErrors directly
+            # These errors are already logged by navigate_to_url, _find_download_link_locator, 
+            # _save_debug_info, or _click_and_download.
+            raise
+        except Exception as e: # Catch any other general exceptions
+            self.logger.error(f"General error during {self.source_name} forecast download: {e}", exc_info=True)
+            # Wrap general exceptions in ScraperError before raising
+            raise ScraperError(f"Failed to download {self.source_name} forecast document: {str(e)}") from e
     
     def process_func(self, file_path: str):
         """

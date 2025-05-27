@@ -1,5 +1,5 @@
 from sqlalchemy import (Column, String, Text,
-                          Numeric, Date, TIMESTAMP, JSON, ForeignKey, Float, Integer) # Keep create_engine for now, might be used by create_tables
+                          Numeric, Date, TIMESTAMP, JSON, ForeignKey, Float, Integer) 
 from sqlalchemy.orm import relationship # remove sessionmaker, declarative_base
 from sqlalchemy.sql import func
 from app.database import db # Import db from flask_sqlalchemy instance

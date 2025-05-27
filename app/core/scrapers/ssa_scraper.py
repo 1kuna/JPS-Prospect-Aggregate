@@ -8,7 +8,6 @@ import traceback
 # Third-party imports
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 import pandas as pd
-# import traceback # Redundant
 # import re # Unused
 
 # Local application imports
@@ -19,12 +18,12 @@ from app.exceptions import ScraperError
 from app.utils.logger import logger
 # from app.utils.db_utils import update_scraper_status # Unused
 from app.config import active_config # Import active_config
-from app.utils.scraper_utils import (
+# from app.utils.scraper_utils import ( # Removed handle_scraper_error
     # check_url_accessibility, # Unused
     # download_file, # Unused
     # save_permanent_copy, # Unused
-    handle_scraper_error
-)
+    # handle_scraper_error # Removed
+# )
 from app.utils.parsing import parse_value_range, split_place
 
 # Set up logging using the centralized utility
@@ -114,38 +113,29 @@ class SsaScraper(BaseScraper):
                 self._save_debug_info() # Save debug info if link not found
                 raise ScraperError("Could not find Excel download link on the page")
             
-            # Click the link and wait for the download
-            self.logger.info(f"Clicking link '{excel_link_href}' and waiting for download...")
-            # Use the specific link found
-            link_selector = f'a[href="{excel_link_href}"]'
-            with self.page.expect_download(timeout=60000) as download_info:
-                 self.page.click(link_selector)
-
-            _ = download_info.value # Access the download object
-
-            # Wait a brief moment for the download event to be processed by the callback
-            self.page.wait_for_timeout(2000) # Adjust as needed
-
-            if not self._last_download_path or not os.path.exists(self._last_download_path):
-                self.logger.error(f"BaseScraper._last_download_path not set or invalid. Value: {self._last_download_path}")
-                # Fallback or detailed error logging
-                try:
-                    download_obj_for_debug = download_info.value 
-                    temp_playwright_path = download_obj_for_debug.path()
-                    self.logger.warning(f"Playwright temp download path for debugging: {temp_playwright_path}")
-                except Exception as path_err:
-                    self.logger.error(f"Could not retrieve Playwright temp download path for debugging: {path_err}")
-                raise ScraperError("Download failed: File not found or path not set by BaseScraper._handle_download.")
-
-            self.logger.info(f"Download process completed. File saved at: {self._last_download_path}")
-            return self._last_download_path
+            # Use _click_and_download to handle the download
+            self.logger.info(f"Attempting to download file from link: {excel_link_href}")
             
-        except PlaywrightTimeoutError as e:
-            handle_scraper_error(e, self.source_name, "Timeout downloading forecast document")
-            raise ScraperError(f"Timeout downloading forecast document: {str(e)}")
+            downloaded_file_path = self._click_and_download(
+                download_trigger_selector=f'a[href="{excel_link_href}"]',
+                click_method="click", # Default click method
+                download_timeout_ms=60000 # Set appropriate timeout
+            )
+            
+            self.logger.info(f"Download process completed. File saved at: {downloaded_file_path}")
+            return downloaded_file_path
+            
+        except ScraperError as e:
+            # ScraperErrors from _find_excel_link, _save_debug_info, or _click_and_download
+            # are already logged appropriately by those methods or base classes.
+            # Re-raise to be handled by scrape_with_structure.
+            raise
         except Exception as e:
-            handle_scraper_error(e, self.source_name, "Error downloading forecast document")
-            raise ScraperError(f"Failed to download forecast document: {str(e)}")
+            # For any other unexpected errors during this specific download sequence
+            error_message = f"An unexpected error occurred in download_forecast_document for SSA: {str(e)}"
+            self.logger.error(error_message)
+            self.logger.error(traceback.format_exc())
+            raise ScraperError(error_message, error_type="download_error") from e
     
     def process_func(self, file_path: str):
         """

@@ -1,7 +1,6 @@
 """Acquisition Gateway scraper."""
 
 # Standard library imports
-import os
 import traceback # Keep one traceback
 
 # Third-party imports
@@ -15,7 +14,7 @@ from app.config import active_config # Import active_config
 from app.exceptions import ScraperError
 # from app.utils.file_utils import ensure_directory # Removed ensure_directory
 from app.utils.logger import logger
-from app.utils.scraper_utils import handle_scraper_error
+# from app.utils.scraper_utils import handle_scraper_error # Removed unused import
 # import hashlib # No longer needed here
 
 # Set up logging
@@ -45,89 +44,35 @@ class AcquisitionGatewayScraper(BaseScraper):
         Saves the file directly to the scraper's download directory.
         
         Returns:
-            str: Path to the downloaded file, or None if download failed
+            str: Path to the downloaded file.
+        
+        Raises:
+            ScraperError: If the download process fails.
         """
+        self.logger.info("Attempting to download CSV file using _click_and_download.")
         try:
-            # Wait for the page to load using 'load' state
-            self.logger.info("Waiting for page to load ('load')...")
-            self.page.wait_for_load_state('load', timeout=90000) # Changed to 'load', kept long timeout
+            # The navigate_to_forecast_page in setup_func handles initial page load.
+            # _click_and_download handles waiting for the selector and the download itself.
+            downloaded_file_path = self._click_and_download(
+                download_trigger_selector='button#export-0',
+                click_method="click_then_js",
+                wait_for_trigger_timeout_ms=60000, # Matches original explicit wait for button visibility
+                download_timeout_ms=120000 # Matches original download timeout
+            )
             
-            # Explicit wait after load
-            self.logger.info("Waiting 5 seconds after load for page to settle...") # Reduced wait back to 5s
-            self.page.wait_for_timeout(5000) # Reduced wait back to 5s
-            self.logger.info("Wait finished. Locating Export button.")
-            
-            # --- Debug Screenshot After Wait REMOVED ---
-            # debug_timestamp_after_wait = ...
-            # screenshot_path_after_wait = ...
-            # try:
-            # ...
-            # except ...
-            # --- End Debug Screenshot After Wait REMOVED ---
-            
-            # Find export button using ID
-            export_button_selector = 'button#export-0' 
-            export_button = self.page.locator(export_button_selector)
-            
-            # Wait for the button to be VISIBLE in the DOM
-            try:
-                export_button.wait_for(state='visible', timeout=60000) # Changed state back to 'visible'
-                self.logger.info("Export button is visible.")
-            except PlaywrightTimeoutError as wait_error:
-                self.logger.error(f"Timeout waiting for export button ({export_button_selector}) to be visible.") # Updated log message
-                # --- Debug Output REMOVED ---
-                # debug_timestamp = ...
-                # screenshot_path = ...
-                # html_path = ...
-                # try:
-                # ...
-                # except ...
-                # --- End Debug Output REMOVED ---
-                raise ScraperError(f"Timeout waiting for export button {export_button_selector} to become visible") from wait_error # Updated error message
-            
-            self.logger.info("Attempting to click Export CSV and waiting for download...")
-            
-            # Start waiting for the download BEFORE clicking
-            with self.page.expect_download(timeout=120000) as download_info: # Increased timeout
-                # Try standard click first, then JS click fallback
-                try:
-                    self.logger.info("Attempting standard click...")
-                    export_button.click(timeout=15000) # Shorter timeout for the click itself
-                    self.logger.info("Standard click successful.")
-                except PlaywrightTimeoutError:
-                    self.logger.warning("Standard click timed out or failed, trying JavaScript click.")
-                    # Evaluate JS to click the first matching element
-                    self.page.evaluate(f"document.querySelector('{export_button_selector}').click();")
-                    self.logger.info("JavaScript click executed.")
-                except Exception as click_err:
-                    self.logger.error(f"Error during button click attempt: {click_err}")
-                    raise # Re-raise other click errors
-            
-            _ = download_info.value # Access the download object
+            self.logger.info(f"CSV file download successful. Path: {downloaded_file_path}")
+            return downloaded_file_path
 
-            # Wait a brief moment for the download event to be processed by the callback
-            self.page.wait_for_timeout(2000) # Adjust as needed
-
-            if not self._last_download_path or not os.path.exists(self._last_download_path):
-                self.logger.error(f"BaseScraper._last_download_path not set or invalid. Value: {self._last_download_path}")
-                # Fallback or detailed error logging
-                try:
-                    download_obj_for_debug = download_info.value 
-                    temp_playwright_path = download_obj_for_debug.path()
-                    self.logger.warning(f"Playwright temp download path for debugging: {temp_playwright_path}")
-                except Exception as path_err:
-                    self.logger.error(f"Could not retrieve Playwright temp download path for debugging: {path_err}")
-                raise ScraperError("Download failed: File not found or path not set by BaseScraper._handle_download.")
-
-            self.logger.info(f"Download process completed. File saved at: {self._last_download_path}")
-            return self._last_download_path
-
-        except PlaywrightTimeoutError as e:
-            handle_scraper_error(e, self.source_name, "Timeout error during download initiation")
-            raise ScraperError(f"Timeout error during download initiation: {str(e)}")
+        except ScraperError as e: # Catch ScraperError from _click_and_download or other steps
+            # Logged already by _click_and_download or other base methods if it's a ScraperError
+            # Re-raise to be handled by scrape_with_structure
+            raise 
         except Exception as e:
-            handle_scraper_error(e, self.source_name, "Error downloading CSV")
-            raise ScraperError(f"Error downloading CSV: {str(e)}")
+            # For any other unexpected errors during this specific download sequence
+            error_message = f"An unexpected error occurred in download_csv_file: {str(e)}"
+            self.logger.error(error_message)
+            self.logger.error(traceback.format_exc())
+            raise ScraperError(error_message, error_type="download_error") from e
     
     def process_func(self, file_path: str):
         """

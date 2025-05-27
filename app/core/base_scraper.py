@@ -12,11 +12,10 @@ import datetime
 import traceback
 import re
 from abc import ABC
-from typing import Optional #, Any, Dict # Any, Dict were not used
+from typing import Optional, Union #, Any, Dict # Any, Dict were not used
 import hashlib # Add hashlib import
 
 # Third-party imports
-import requests
 from playwright.sync_api import sync_playwright, Browser, Page, Playwright, BrowserContext, Download
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
@@ -279,98 +278,6 @@ class BaseScraper(ABC):
     # -------------------------------------------------------------------------
     # Data Parsing Methods
     # -------------------------------------------------------------------------
-    
-    def parse_date(self, date_str):
-        """
-        Parse a date string into a datetime object.
-        
-        Args:
-            date_str (str): String representation of a date
-            
-        Returns:
-            datetime: Parsed datetime object
-            
-        Raises:
-            ScraperError: If the date string cannot be parsed
-        """
-        if not date_str or not isinstance(date_str, str):
-            return None
-            
-        date_str = date_str.strip()
-        if not date_str:
-            return None
-            
-        # Try common date formats
-        date_formats = [
-            "%m/%d/%Y",
-            "%Y-%m-%d",
-            "%B %d, %Y",
-            "%b %d, %Y",
-            "%d %B %Y",
-            "%d %b %Y",
-            "%m/%d/%y",
-            "%Y/%m/%d",
-            "%d-%m-%Y",
-            "%d/%m/%Y",
-        ]
-        
-        for fmt in date_formats:
-            try:
-                return datetime.datetime.strptime(date_str, fmt).date()
-            except ValueError:
-                continue
-                
-        # If none of the formats match, try parsing with dateutil
-        try:
-            from dateutil import parser
-            return parser.parse(date_str).date()
-        except Exception as e:
-            logger.warning(f"Failed to parse date: {date_str}, error: {str(e)}")
-            
-        # If all attempts fail
-        raise ScraperError(f"Could not parse date: {date_str}", error_type="parsing_error")
-    
-    def parse_value(self, value_str):
-        """
-        Parse a string into a numeric value.
-        
-        Args:
-            value_str (str): String to parse
-        
-        Returns:
-            float: Parsed value, or None if parsing fails
-        """
-        if not value_str or value_str.strip() == "":
-            return None
-        
-        # Remove extra whitespace
-        value_str = value_str.strip()
-        
-        # Remove currency symbols and commas
-        value_str = re.sub(r'[$,]', '', value_str)
-        
-        # Try to convert to float
-        try:
-            return float(value_str)
-        except ValueError:
-            self.logger.warning(f"Failed to parse value: {value_str}")
-            return None
-    
-    def get_proposal_query(self, session, proposal_data):
-        """
-        Get a query for a proposal based on its data.
-        
-        This method is used to check if a proposal already exists in the database.
-        
-        Args:
-            session: SQLAlchemy session
-            proposal_data (dict): Proposal data
-        
-        Returns:
-            Query: SQLAlchemy query for the proposal
-        """
-        # This method should be implemented by subclasses
-        raise NotImplementedError("Subclasses must implement get_proposal_query")
 
     def _generate_prospect_id(self, data_row: pd.Series, fields_to_hash: list[str], source_name_override: str = None) -> str:
         """
@@ -502,49 +409,111 @@ class BaseScraper(ABC):
     # -------------------------------------------------------------------------
 
     def _click_and_download(self,
-                            download_trigger_selector: str,
+                            download_trigger_selector: Union[str, list[str]],
                             pre_click_selector: Optional[str] = None,
                             pre_click_wait_ms: int = 0,
                             wait_for_trigger_timeout_ms: int = 30000,
                             download_timeout_ms: int = 90000,
-                            click_method: str = "click" # "click", "dispatch_event", "js_click"
+                            click_method: str = "click" # "click", "dispatch_event", "js_click", "click_then_js"
                             ) -> str:
         """
-        Helper to handle common download patterns:
-        (Optionally) click a preparatory element, then click a download trigger.
+        Helper to handle common download patterns.
+        (Optionally) clicks a preparatory element, then clicks a download trigger.
         Returns the path to the downloaded file.
+
+        Args:
+            download_trigger_selector (Union[str, list[str]]):
+                A CSS selector string or a list of CSS selector strings for the download trigger element.
+                If a list is provided, the method will try each selector in order until a visible element is found.
+            pre_click_selector (Optional[str]): Selector for an element to click before the download trigger.
+            pre_click_wait_ms (int): Milliseconds to wait after the pre-click.
+            wait_for_trigger_timeout_ms (int): Timeout in milliseconds for waiting for the trigger element to be visible.
+            download_timeout_ms (int): Timeout in milliseconds for the download to start.
+            click_method (str): Method to use for clicking the download trigger.
+                Options:
+                - "click": Standard Playwright click.
+                - "dispatch_event": Dispatches a 'click' event.
+                - "js_click": Executes a JavaScript click.
+                - "click_then_js": Tries standard click, if it times out (after 15s), falls back to JavaScript click.
+
+        Returns:
+            str: Path to the downloaded file.
+
+        Raises:
+            ScraperError: If no download trigger element is found or if the download fails.
         """
+        if not self.page:
+            raise ScraperError("Page object is not initialized. Call setup_browser first.")
+
         if pre_click_selector:
             self.logger.info(f"Attempting pre-click on selector: {pre_click_selector}")
-            pre_click_element = self.page.locator(pre_click_selector)
-            pre_click_element.wait_for(state='visible', timeout=wait_for_trigger_timeout_ms) # Use wait_for_trigger_timeout_ms for consistency
-            pre_click_element.click() # Standard click for pre-click
-            if pre_click_wait_ms > 0:
-                self.logger.info(f"Waiting for {pre_click_wait_ms}ms after pre-click.")
-                self.page.wait_for_timeout(pre_click_wait_ms)
+            try:
+                pre_click_element = self.page.locator(pre_click_selector)
+                pre_click_element.wait_for(state='visible', timeout=wait_for_trigger_timeout_ms)
+                pre_click_element.click()
+                if pre_click_wait_ms > 0:
+                    self.logger.info(f"Waiting for {pre_click_wait_ms}ms after pre-click.")
+                    self.page.wait_for_timeout(pre_click_wait_ms)
+            except PlaywrightTimeoutError as e:
+                self.logger.error(f"Timeout during pre-click on selector '{pre_click_selector}': {e}")
+                raise ScraperError(f"Pre-click element '{pre_click_selector}' not visible or clickable: {str(e)}") from e
 
-        self.logger.info(f"Locating download trigger: {download_trigger_selector}")
-        trigger_element = self.page.locator(download_trigger_selector)
-        try:
-            trigger_element.wait_for(state='visible', timeout=wait_for_trigger_timeout_ms)
-            self.logger.info(f"Download trigger '{download_trigger_selector}' is visible.")
-        except PlaywrightTimeoutError as e: # Ensure PlaywrightTimeoutError is imported
-            self.logger.error(f"Timeout waiting for download trigger '{download_trigger_selector}' to be visible.")
-            raise ScraperError(f"Download trigger '{download_trigger_selector}' not visible: {str(e)}") from e
+        trigger_element = None
+        active_selector = None
 
-        self.logger.info(f"Attempting to {click_method} on download trigger and waiting for download...")
+        selectors_to_try = [download_trigger_selector] if isinstance(download_trigger_selector, str) else download_trigger_selector
+
+        for selector in selectors_to_try:
+            self.logger.info(f"Locating download trigger with selector: {selector}")
+            current_element = self.page.locator(selector)
+            try:
+                current_element.wait_for(state='visible', timeout=wait_for_trigger_timeout_ms)
+                self.logger.info(f"Download trigger '{selector}' is visible.")
+                trigger_element = current_element
+                active_selector = selector # Store the selector that worked
+                break 
+            except PlaywrightTimeoutError:
+                self.logger.warning(f"Timeout waiting for download trigger '{selector}' to be visible. Trying next if available.")
+                continue
+
+        if not trigger_element or not active_selector:
+            self.logger.error(f"No visible download trigger found after trying all selectors: {selectors_to_try}")
+            raise ScraperError(f"No visible download trigger found. Selectors tried: {selectors_to_try}")
+
+        self.logger.info(f"Attempting to {click_method} on download trigger '{active_selector}' and waiting for download...")
+        
+        # The download_info must be defined before the with block if click_then_js is used,
+        # as the actual click might happen inside a try-except block.
+        # However, expect_download should wrap the action that triggers the download.
+
         with self.page.expect_download(timeout=download_timeout_ms) as download_info:
-            if click_method == "dispatch_event":
+            if click_method == "click_then_js":
+                try:
+                    self.logger.info(f"Attempting standard click for '{active_selector}' (15s timeout)...")
+                    trigger_element.click(timeout=15000) # 15-second timeout for standard click
+                    self.logger.info(f"Standard click for '{active_selector}' succeeded.")
+                except PlaywrightTimeoutError:
+                    self.logger.warning(f"Standard click for '{active_selector}' timed out. Falling back to JavaScript click.")
+                    # Ensure active_selector is properly escaped for JS if it contains special characters.
+                    # For querySelector, typical CSS selectors don't need complex escaping beyond quotes.
+                    js_selector = active_selector.replace("'", "\\'")
+                    self.page.evaluate(f"document.querySelector('{js_selector}').click();")
+                    self.logger.info(f"JavaScript click attempted for '{active_selector}'.")
+            elif click_method == "dispatch_event":
                 trigger_element.dispatch_event('click')
             elif click_method == "js_click":
-                # Ensure page.evaluate can find the selector if it's complex; might need refinement
-                self.page.evaluate(f"document.querySelector('{download_trigger_selector.replace("'", "\\'")}').click();")
+                js_selector = active_selector.replace("'", "\\'")
+                self.page.evaluate(f"document.querySelector('{js_selector}').click();")
             else: # Default "click"
                 trigger_element.click()
+        
+        # Accessing download_info.value registers the download with Playwright
+        # and waits for it to complete based on download_timeout_ms.
+        _ = download_info.value 
 
-        _ = download_info.value # Access the download object
-
-        self.page.wait_for_timeout(2000) # Allow _handle_download to complete
+        # Short wait to ensure _handle_download callback has time to process and set _last_download_path
+        # This might need adjustment or a more robust synchronization mechanism if issues persist.
+        self.page.wait_for_timeout(3000) # Increased timeout slightly
 
         if not self._last_download_path or not os.path.exists(self._last_download_path):
             self.logger.error(f"Download failed: _last_download_path not set or invalid. Value: {self._last_download_path}")

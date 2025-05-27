@@ -5,7 +5,7 @@ import os
 import traceback
 # import sys # Unused
 # import shutil # Unused
-import datetime # Used for datetime.datetime
+from datetime import datetime # Changed import
 
 # Third-party imports
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
@@ -19,7 +19,7 @@ from app.models import Prospect
 from app.exceptions import ScraperError
 from app.utils.logger import logger
 from app.config import active_config # Import active_config
-from app.utils.scraper_utils import handle_scraper_error
+# from app.utils.scraper_utils import handle_scraper_error # Removed unused import
 from app.utils.parsing import parse_value_range, fiscal_quarter_to_date
 
 # Set up logging using the centralized utility
@@ -60,7 +60,7 @@ class DOSForecastScraper(BaseScraper):
                 self.logger.warning(f"URL '{file_url}' has no extension, defaulting to '{ext}'. Consider checking Content-Type.")
 
             # Generate filename consistent with _handle_download convention
-            final_filename = f"{self.source_name.lower().replace(' ', '_')}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}{ext}"
+            final_filename = f"{self.source_name.lower().replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}{ext}" # Use datetime directly
             final_save_path = os.path.join(self.download_path, final_filename)
 
             # Ensure the target directory exists
@@ -106,24 +106,18 @@ class DOSForecastScraper(BaseScraper):
             self.logger.info(f"Direct download verification successful. File saved at: {self._last_download_path}")
             return self._last_download_path
 
-        except PlaywrightTimeoutError as e: 
-            self.logger.error(f"Timeout error during direct download: {e}")
-            handle_scraper_error(e, self.source_name, "Timeout during direct download process")
-            raise ScraperError(f"Timeout during direct download process: {str(e)}")
+        except ScraperError: # Re-raise ScraperErrors that might be explicitly raised above
+            raise
         except Exception as e:
-            # Ensure context is disposed even on error if it exists
-            if 'api_request_context' in locals() and api_request_context:
-                 try:
-                      api_request_context.dispose()
-                 except Exception as dispose_err:
-                      self.logger.error(f"Error disposing API request context during exception handling: {dispose_err}")
-            
-            self.logger.error(f"General error during direct download: {e}")
-            handle_scraper_error(e, self.source_name, "Error during direct download")
-            if not isinstance(e, ScraperError):
-                 raise ScraperError(f"Failed to download DOS forecast document directly: {str(e)}") from e
-            else:
-                 raise
+            self.logger.error(f"General error during {self.source_name} direct download: {e}", exc_info=True)
+            raise ScraperError(f"Failed to download {self.source_name} forecast document directly: {str(e)}") from e
+        finally:
+            if api_request_context:
+                try:
+                    api_request_context.dispose()
+                    self.logger.info("API request context disposed.")
+                except Exception as dispose_err:
+                    self.logger.error(f"Error disposing API request context: {dispose_err}")
     
     def process_func(self, file_path: str):
         """

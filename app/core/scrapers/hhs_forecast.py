@@ -1,14 +1,12 @@
 """Department of Health and Human Services Opportunity Forecast scraper."""
 
 # Standard library imports
-import os
 import traceback
 # import sys # Unused
 
 # Third-party imports
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 import pandas as pd
-# import traceback # Redundant
 # import re # Unused
 
 # Local application imports
@@ -18,7 +16,7 @@ from app.models import Prospect
 from app.exceptions import ScraperError
 from app.utils.logger import logger
 from app.config import active_config # Import active_config
-from app.utils.scraper_utils import handle_scraper_error
+# from app.utils.scraper_utils import handle_scraper_error # Removed unused import
 from app.utils.parsing import parse_value_range
 
 # Set up logging using the centralized utility
@@ -64,21 +62,12 @@ class HHSForecastScraper(BaseScraper):
                 pre_click_wait_ms=10000 
             )
             
-        except PlaywrightTimeoutError as e: # This might catch timeouts from navigate_to_url
-            self.logger.error(f"Timeout error during HHS forecast download process: {e}")
-            handle_scraper_error(e, self.source_name, "Timeout during HHS download process")
-            raise ScraperError(f"Timeout during HHS forecast download process: {str(e)}") from e
-        except ScraperError as se: # Catch ScraperErrors raised by _click_and_download or elsewhere
-            self.logger.error(f"ScraperError during HHS forecast download: {se}")
-            handle_scraper_error(se, self.source_name, "HHS download operation")
-            raise # Re-raise the ScraperError
-        except Exception as e: # Catch any other general exceptions
-            self.logger.error(f"General error during HHS forecast download: {e}")
-            handle_scraper_error(e, self.source_name, "Error downloading HHS forecast document")
-            if not isinstance(e, ScraperError): # Wrap if it's not already a ScraperError
-                 raise ScraperError(f"Failed to download HHS forecast document: {str(e)}") from e
-            else:
-                 raise # Re-raise if it's already a ScraperError
+        except ScraperError: # Re-raise ScraperErrors directly (already logged by _click_and_download or navigate_to_url)
+            raise
+        except Exception as e: # Catch any other exceptions
+            self.logger.error(f"General error during {self.source_name} forecast download: {e}", exc_info=True)
+            # Wrap general exceptions in ScraperError before raising
+            raise ScraperError(f"Failed to download {self.source_name} forecast document: {str(e)}") from e
     
     def process_func(self, file_path: str):
         """

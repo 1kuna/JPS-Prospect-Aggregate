@@ -1,7 +1,6 @@
 """Department of Justice Opportunity Forecast scraper."""
 
 # Standard library imports
-import os
 import traceback
 # import sys # Unused
 # import datetime # Unused at top level, `from datetime import datetime` is used
@@ -18,7 +17,7 @@ from app.models import Prospect
 from app.exceptions import ScraperError
 from app.utils.logger import logger
 from app.config import active_config # Import active_config
-from app.utils.scraper_utils import handle_scraper_error
+# from app.utils.scraper_utils import handle_scraper_error # Removed unused import
 from app.utils.parsing import parse_value_range, fiscal_quarter_to_date, split_place
 
 # Set up logging using the centralized utility
@@ -47,60 +46,33 @@ class DOJForecastScraper(BaseScraper):
         self.logger.info("Attempting to download DOJ forecast document")
         
         # Selector for the Excel download link
-        download_link_selector = 'a:has-text("Download the Excel File")' 
+        download_link_selector = 'a:has-text("Download the Excel File")'
         
         try:
             # Navigate to the main forecast page
             self.logger.info(f"Navigating to {self.base_url}")
-            self.navigate_to_url()
+            self.navigate_to_url() # This can raise ScraperError
             self.logger.info("Page loaded.")
             
-            # Wait for the download link to be visible and ready
-            download_link = self.page.locator(download_link_selector)
-            self.logger.info(f"Waiting for '{download_link_selector}' link to be visible...")
-            try:
-                download_link.wait_for(state='visible', timeout=20000) # Increased timeout slightly
-                self.logger.info(f"'{download_link_selector}' link is visible.")
-            except PlaywrightTimeoutError as e:
-                self.logger.error(f"Download link did not become visible/enabled within 20s: {e}")
-                raise ScraperError("Download link did not appear or become enabled")
-
-            # Click the download link and wait for the download
-            self.logger.info("Clicking download link and waiting for download...")
-            with self.page.expect_download(timeout=90000) as download_info:
-                 download_link.click()
-
-            _ = download_info.value # Access the download object
-
-            # Wait a brief moment for the download event to be processed by the callback
-            self.page.wait_for_timeout(2000) # Adjust as needed
-
-            if not self._last_download_path or not os.path.exists(self._last_download_path):
-                self.logger.error(f"BaseScraper._last_download_path not set or invalid. Value: {self._last_download_path}")
-                # Attempt to get the path from the download object if _last_download_path wasn't set
-                try:
-                    download = download_info.value # Get download object if needed for path
-                    temp_playwright_path = download.path()
-                    self.logger.warning(f"Playwright temp download path: {temp_playwright_path}")
-                    # This indicates an issue in _handle_download or event processing timing.
-                except Exception as path_err:
-                    self.logger.error(f"Could not retrieve Playwright download path: {path_err}")
-                raise ScraperError("Download failed: File not found or path not set by BaseScraper._handle_download.")
-
-            self.logger.info(f"Download process completed. File saved at: {self._last_download_path}")
-            return self._last_download_path
+            # Use _click_and_download to handle the download
+            self.logger.info(f"Attempting download using selector '{download_link_selector}'.")
+            downloaded_file_path = self._click_and_download(
+                download_trigger_selector=download_link_selector,
+                click_method="click", # Default click method is fine
+                wait_for_trigger_timeout_ms=20000,
+                download_timeout_ms=90000
+            )
             
-        except PlaywrightTimeoutError as e:
-            self.logger.error(f"Timeout error during DOJ forecast download: {e}")
-            handle_scraper_error(e, self.source_name, "Timeout during download process")
-            raise ScraperError(f"Timeout during DOJ forecast download process: {str(e)}")
-        except Exception as e:
-            self.logger.error(f"General error during DOJ forecast download: {e}")
-            handle_scraper_error(e, self.source_name, "Error downloading DOJ forecast document")
-            if not isinstance(e, ScraperError):
-                 raise ScraperError(f"Failed to download DOJ forecast document: {str(e)}") from e
-            else:
-                 raise
+            self.logger.info(f"Download process completed. File saved at: {downloaded_file_path}")
+            return downloaded_file_path
+            
+        except ScraperError: # Re-raise ScraperErrors directly
+            # These errors are already logged by navigate_to_url or _click_and_download.
+            raise
+        except Exception as e: # Catch any other general exceptions
+            self.logger.error(f"General error during {self.source_name} forecast download: {e}", exc_info=True)
+            # Wrap general exceptions in ScraperError before raising
+            raise ScraperError(f"Failed to download {self.source_name} forecast document: {str(e)}") from e
     
     def process_func(self, file_path: str):
         """
