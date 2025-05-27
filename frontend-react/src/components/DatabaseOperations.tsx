@@ -17,11 +17,11 @@ export function DatabaseOperations() {
   const { data: status, isLoading: statusLoading } = useDatabaseStatus();
   const { data: backups, isLoading: backupsLoading } = useDatabaseBackups();
   
-  const { mutate: rebuildDatabase, isLoading: isRebuilding } = useRebuildDatabase();
-  const { mutate: initializeDatabase, isLoading: isInitializing } = useInitializeDatabase();
-  const { mutate: resetDatabase, isLoading: isResetting } = useResetDatabase();
-  const { mutate: createBackup, isLoading: isBackingUp } = useCreateBackup();
-  const { mutate: restoreBackup, isLoading: isRestoring } = useRestoreBackup();
+  const { mutate: rebuildDatabase, isPending: isRebuilding } = useRebuildDatabase();
+  const { mutate: initializeDatabase, isPending: isInitializing } = useInitializeDatabase();
+  const { mutate: resetDatabase, isPending: isResetting } = useResetDatabase();
+  const { mutate: createBackup, isPending: isBackingUp } = useCreateBackup();
+  const { mutate: restoreBackup, isPending: isRestoring } = useRestoreBackup();
 
   const handleRebuild = () => {
     rebuildDatabase();

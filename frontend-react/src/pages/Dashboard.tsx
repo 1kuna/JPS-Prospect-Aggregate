@@ -54,52 +54,71 @@ interface Prospect {
 // };
 
 const fetchProspects = async (page: number, limit: number): Promise<{ data: Prospect[], total: number, totalPages: number }> => {
-  const response = await fetch(`/api/prospects?page=${page}&limit=${limit}`);
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({ message: 'Failed to fetch prospects and parse error response' }));
-    throw new Error(errorData.error || `Network response was not ok: ${response.statusText}`);
-  }
-  const result: { data: Prospect[], total: number, totalPages: number, currentPage: number, perPage: number } = await response.json();
+  console.log('Fetching prospects from:', `/api/prospects?page=${page}&limit=${limit}`);
   
-  // The backend response directly matches the required structure for data, total, and totalPages.
-  // We just need to ensure the `data` items conform to the `Prospect` interface.
-  // The `Prospect` interface has been updated to match the backend `to_dict()`
-  return {
-    data: result.data,
-    total: result.total,
-    totalPages: result.totalPages
-  };
+  try {
+    const response = await fetch(`/api/prospects?page=${page}&limit=${limit}`);
+    console.log('Response status:', response.status);
+    console.log('Response headers:', response.headers);
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ message: 'Failed to fetch prospects and parse error response' }));
+      console.error('Error response:', errorData);
+      throw new Error(errorData.error || `Network response was not ok: ${response.statusText}`);
+    }
+    
+    const result: { prospects: Prospect[], pagination: { total_items: number, total_pages: number, page: number, per_page: number } } = await response.json();
+    
+    // Debug logging
+    console.log('API Response:', result);
+    console.log('Prospects count:', result.prospects?.length);
+    console.log('First prospect:', result.prospects?.[0]);
+    
+    // Map the backend response structure to what the frontend expects
+    return {
+      data: result.prospects,
+      total: result.pagination.total_items,
+      totalPages: result.pagination.total_pages
+    };
+  } catch (error) {
+    console.error('Fetch error:', error);
+    throw error;
+  }
 };
 
 const columnHelper = createColumnHelper<Prospect>();
 
 const columns = [
-  columnHelper.accessor('title', { // Changed from 'name' to 'title'
-    header: 'Title', // Changed from 'Name' to 'Title'
-    cell: info => <div className="w-full truncate">{info.getValue()}</div>,
-    size: 250,
-  }),
-  columnHelper.accessor('agency', { // Changed from 'status' to 'agency'
-    header: 'Agency', // Changed from 'Status'
-    cell: info => info.getValue() ?? 'N/A', // Handle null with 'N/A'
-    size: 120,
-  }),
-  columnHelper.accessor('source_name', { // Changed from 'source' to 'source_name'
-    header: 'Source',
-    cell: info => info.getValue() ?? 'N/A', // Handle null with 'N/A'
-    size: 120,
-  }),
-  columnHelper.accessor('release_date', { // Changed from 'lastContacted' to 'release_date'
-    header: 'Release Date', // Changed from 'Last Contacted'
+  columnHelper.accessor((row) => row.extra?.summary || row.title, {
+    id: 'title',
+    header: 'Title',
     cell: info => {
-      const date = info.getValue();
-      return date ? new Date(date).toLocaleDateString() : 'N/A';
+      const value = info.getValue();
+      return <div className="w-full truncate" title={value || 'No Title'}>{value || 'No Title'}</div>;
     },
+    size: 350,
+  }),
+  columnHelper.accessor((row) => row.extra?.agency || row.agency, {
+    id: 'agency',
+    header: 'Agency',
+    cell: info => info.getValue() ?? 'N/A',
+    size: 200,
+  }),
+  columnHelper.accessor('naics', {
+    header: 'NAICS',
+    cell: info => info.getValue() ?? 'N/A',
+    size: 120,
+  }),
+  columnHelper.accessor((row) => row.extra?.acquisition_phase || row.contract_type, {
+    id: 'status',
+    header: 'Status',
+    cell: info => info.getValue() ?? 'N/A',
     size: 150,
   }),
 ];
 
 export default function Dashboard() {
+  console.log('Dashboard component loaded!');
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10); // Default items per page
 
@@ -108,11 +127,15 @@ export default function Dashboard() {
   //   queryFn: fetchProspectCount,
   // });
 
+  console.log('About to call useQuery with:', { currentPage, itemsPerPage });
+  
   const { data: prospectsData, isLoading: isLoadingProspects, isFetching: isFetchingProspects } = useQuery({
     queryKey: ['prospects', currentPage, itemsPerPage],
     queryFn: () => fetchProspects(currentPage, itemsPerPage),
     placeholderData: keepPreviousData,
   });
+  
+  console.log('useQuery result:', { prospectsData, isLoadingProspects, isFetchingProspects });
 
   const table = useReactTable({
     data: prospectsData?.data || [],

@@ -19,6 +19,10 @@ export default function Proposals() {
     error
   } = useInfiniteProposals(filters);
 
+  // Log proposals data in Proposals.tsx
+  console.log('[Proposals.tsx] proposals data from useInfiniteProposals:', proposals);
+  console.log('[Proposals.tsx] isLoading:', isLoading, 'isError:', isError, 'error:', error);
+
   const { data: statisticsData, isLoading: isLoadingStats } = useProposalStatistics();
 
   const handleLoadMore = () => {
@@ -48,6 +52,7 @@ export default function Proposals() {
     },
     {
       header: 'Actions',
+      accessorKey: 'actions', // Added required accessorKey
       cell: ({ row }: { row: Proposal }) => (
         <div>
           <Button
@@ -75,7 +80,7 @@ export default function Proposals() {
     >
       <>
         <DataTable
-          data={proposals?.pages.flatMap(page => page.data) ?? []}
+          data={proposals ?? []}
           columns={columns}
           isLoading={isLoading}
         />

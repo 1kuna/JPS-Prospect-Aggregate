@@ -10,7 +10,7 @@ export default function DirectDatabaseAccess() {
   const [results, setResults] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   
-  const { mutate: executeQuery, isLoading } = useExecuteQuery();
+  const { mutate: executeQuery, isPending: isLoading } = useExecuteQuery();
 
   const handleExecute = () => {
     if (!query.trim()) {
