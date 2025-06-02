@@ -123,6 +123,34 @@ def fiscal_quarter_to_date(qtr_str):
     logging.warning(f"Could not parse fiscal quarter: {qtr_str_orig}") # Log original string
     return pd.NaT, pd.NA # Return tuple on regex failure or other parse issues
 
+def normalize_naics_code(naics_str):
+    """Normalizes NAICS codes to consistent format without decimals or descriptions."""
+    if pd.isna(naics_str):
+        return pd.NA
+    
+    naics_str = str(naics_str).strip()
+    
+    # Handle empty string
+    if not naics_str:
+        return pd.NA
+    
+    # Remove any decimal point and trailing zeros (e.g., "237310.0" -> "237310")
+    if '.' in naics_str:
+        naics_str = naics_str.split('.')[0]
+    
+    # Extract numeric code if description is included (e.g., "541519 - Other Computer Related Services" -> "541519")
+    # Look for pattern of digits followed by space and dash
+    match = re.match(r'^(\d+)(?:\s*-.*)?$', naics_str)
+    if match:
+        naics_str = match.group(1)
+    
+    # Verify it's a valid NAICS code (should be numeric and typically 2-6 digits)
+    if naics_str.isdigit() and 2 <= len(naics_str) <= 6:
+        return naics_str
+    else:
+        logging.warning(f"Invalid NAICS code format: {naics_str}")
+        return pd.NA
+
 def split_place(place_str):
     """Splits a place string into City and State, handling common variations."""
     if pd.isna(place_str):
