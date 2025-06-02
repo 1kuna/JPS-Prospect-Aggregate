@@ -1,286 +1,188 @@
 """Social Security Administration Opportunity Forecast scraper."""
 
-# Standard library imports
 import os
-import traceback
-# import sys # Unused
+# import traceback # No longer directly used
+from typing import Optional, List 
 
-# Third-party imports
-from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 import pandas as pd
-# import traceback # Redundant
-# import re # Unused
+# from playwright.sync_api import TimeoutError as PlaywrightTimeoutError # Handled by mixins
+from playwright.sync_api import ElementHandle # Used in _find_excel_link
 
-# Local application imports
-from app.core.base_scraper import BaseScraper
-from app.database.models import Prospect # Removed ScraperStatus
-# from app.database.crud import bulk_upsert_prospects # Unused
+from app.core.specialized_scrapers import PageInteractionScraper
+# from app.models import Prospect # Data model, not directly used by scraper logic itself
+from app.config import active_config 
 from app.exceptions import ScraperError
-from app.utils.logger import logger
-# from app.utils.db_utils import update_scraper_status # Unused
-from app.config import active_config # Import active_config
-from app.utils.scraper_utils import (
-    # check_url_accessibility, # Unused
-    # download_file, # Unused
-    # save_permanent_copy, # Unused
-    handle_scraper_error
-)
-from app.utils.parsing import parse_value_range, split_place
+# Logger instance is self.logger from BaseScraper
+from app.core.scrapers.configs.ssa_config import SSAConfig
 
-# Set up logging using the centralized utility
-logger = logger.bind(name="scraper.ssa")
 
-class SsaScraper(BaseScraper):
+class SsaScraper(PageInteractionScraper):
     """Scraper for the Social Security Administration (SSA) Forecast site."""
     
-    def __init__(self, debug_mode=False):
+    def __init__(self, config: SSAConfig, debug_mode: bool = False):
         """Initialize the SSA Forecast scraper."""
-        super().__init__(
-            source_name="Social Security Administration",
-            base_url=active_config.SSA_CONTRACT_FORECAST_URL,
-            debug_mode=debug_mode
-        )
-    
-    def _find_excel_link(self):
-        """
-        Find the Excel file link on the page.
-        
-        Returns:
-            str: URL of the Excel file, or None if not found
-        """
-        # Try different selectors to find the Excel link
-        selectors = [
-            'a[href$=".xlsx"]',
-            'a[href$=".xls"]',
-            'a:has-text("Excel")',
-            'a:has-text("Forecast")'
-        ]
-        
-        self.logger.info("Searching for Excel link...")
-        # Prioritize the specific link text observed
-        selectors.insert(0, 'a:has-text("FY25 SSA Contract Forecast")') 
+        if config.base_url is None:
+            config.base_url = active_config.SSA_CONTRACT_FORECAST_URL
+            # self.logger is not available yet, use module logger or print for this rare case
+            # Using print as logger might not be configured if this is very early.
+            print(f"Warning: SSAConfig.base_url was None, set from active_config: {config.base_url}")
+            
+        super().__init__(config=config, debug_mode=debug_mode)
 
-        for selector in selectors:
-            self.logger.info(f"Trying selector: {selector}")
-            links = self.page.query_selector_all(selector)
-            if links:
-                self.logger.info(f"Found {len(links)} links with selector {selector}")
-                for link in links:
-                    href = link.get_attribute('href')
-                    if href and ('.xls' in href.lower() or 'forecast' in href.lower()):
-                        self.logger.info(f"Found Excel link: {href}")
-                        return href
-        return None
-    
-    def _save_debug_info(self):
-        """Save debug information when Excel link is not found."""
-        # Save a screenshot for debugging
-        screenshot_path = os.path.join(os.path.abspath(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), 'data', 'downloads', 'page_screenshot.png')
-        self.page.screenshot(path=screenshot_path)
-        self.logger.info(f"Saved screenshot to {screenshot_path}")
-        
-        # Save page content for debugging
-        html_path = os.path.join(os.path.abspath(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), 'data', 'downloads', 'page_content.html')
-        with open(html_path, 'w', encoding='utf-8') as f:
-            f.write(self.page.content())
-        self.logger.info(f"Saved page content to {html_path}")
-    
-    def download_forecast_document(self):
+    def _find_excel_link(self) -> Optional[str]:
         """
-        Download the forecast document from the SSA website.
-        Saves the file directly to the scraper's download directory.
+        Find the Excel file link on the page using configured selectors.
+        Returns: URL of the Excel file, or None if not found.
+        """
+        self.logger.info("Searching for Excel download link...")
+        
+        if not self.page:
+            self.logger.error("Page object is not available in _find_excel_link.")
+            return None 
 
-        Returns:
-            str: Path to the downloaded file, or None if download failed
-        """
-        self.logger.info("Downloading forecast document")
-        
-        try:
-            # Navigate to the forecast page
-            self.logger.info(f"Navigating to {self.base_url}")
+        for selector in self.config.excel_link_selectors:
+            self.logger.debug(f"Trying selector for Excel link: {selector}")
             try:
-                # Assuming navigate_to_url sets up self.page correctly
-                self.navigate_to_url() 
+                links: List[ElementHandle] = self.page.query_selector_all(selector)
+                if links:
+                    self.logger.debug(f"Found {len(links)} links with selector '{selector}'. Checking hrefs.")
+                    for link_element in links:
+                        href = link_element.get_attribute('href')
+                        if href and ('.xls' in href.lower() or 'forecast' in href.lower() or '.xlsx' in href.lower()):
+                            absolute_href = self.page.urljoin(href) 
+                            self.logger.info(f"Found Excel link: {absolute_href} (from original href: {href})")
+                            return absolute_href
             except Exception as e:
-                self.logger.error(f"Error navigating to forecast page: {str(e)}")
-                self.logger.error(traceback.format_exc())
-                raise # Re-raise the navigation error
-            
-            # Find the Excel link
-            excel_link_href = self._find_excel_link()
-            
-            if not excel_link_href:
-                self.logger.error("Could not find Excel link on the page")
-                self._save_debug_info() # Save debug info if link not found
-                raise ScraperError("Could not find Excel download link on the page")
-            
-            # Click the link and wait for the download
-            self.logger.info(f"Clicking link '{excel_link_href}' and waiting for download...")
-            # Use the specific link found
-            link_selector = f'a[href="{excel_link_href}"]'
-            with self.page.expect_download(timeout=60000) as download_info:
-                 self.page.click(link_selector)
+                self.logger.warning(f"Error while querying selector '{selector}' or getting attribute: {e}", exc_info=True)
+                continue 
+        
+        self.logger.warning("Could not find any Excel download link using configured selectors.")
+        return None
 
-            _ = download_info.value # Access the download object
+    def _setup_method(self) -> None:
+        """Navigates to the base URL of the scraper."""
+        self.logger.info(f"Executing SSA setup: Navigating to base URL: {self.config.base_url}")
+        if not self.config.base_url:
+            self._handle_and_raise_scraper_error(ValueError("Base URL is not configured."), "SSA setup navigation")
+        self.navigate_to_url(self.config.base_url) 
 
-            # Wait a brief moment for the download event to be processed by the callback
-            self.page.wait_for_timeout(2000) # Adjust as needed
-
-            if not self._last_download_path or not os.path.exists(self._last_download_path):
-                self.logger.error(f"BaseScraper._last_download_path not set or invalid. Value: {self._last_download_path}")
-                # Fallback or detailed error logging
-                try:
-                    download_obj_for_debug = download_info.value 
-                    temp_playwright_path = download_obj_for_debug.path()
-                    self.logger.warning(f"Playwright temp download path for debugging: {temp_playwright_path}")
-                except Exception as path_err:
-                    self.logger.error(f"Could not retrieve Playwright temp download path for debugging: {path_err}")
-                raise ScraperError("Download failed: File not found or path not set by BaseScraper._handle_download.")
-
-            self.logger.info(f"Download process completed. File saved at: {self._last_download_path}")
-            return self._last_download_path
-            
-        except PlaywrightTimeoutError as e:
-            handle_scraper_error(e, self.source_name, "Timeout downloading forecast document")
-            raise ScraperError(f"Timeout downloading forecast document: {str(e)}")
-        except Exception as e:
-            handle_scraper_error(e, self.source_name, "Error downloading forecast document")
-            raise ScraperError(f"Failed to download forecast document: {str(e)}")
-    
-    def process_func(self, file_path: str):
+    def _extract_method(self) -> Optional[str]:
         """
-        Process the downloaded Excel file (.xlsm), transform data to Prospect objects,
-        and insert into the database using logic adapted from ssa_transform.py.
+        Finds the Excel link and downloads the file.
+        Returns: Path to the downloaded file, or None if download failed.
         """
-        self.logger.info(f"Processing downloaded Excel file: {file_path}")
+        self.logger.info("Starting Excel document download process for SSA.")
+        excel_link_href = self._find_excel_link()
+
+        if not excel_link_href:
+            if self.page and self.config.screenshot_on_error: self._save_error_screenshot("ssa_excel_link_not_found")
+            if self.page and self.config.save_html_on_error: self._save_error_html("ssa_excel_link_not_found")
+            self._handle_and_raise_scraper_error(ScraperError("Excel download link not found on page."), "SSA finding Excel link")
+            # The above line raises, so return None is for logical completeness but won't be hit.
+            return None 
+
+        self.logger.info(f"Attempting direct download from resolved link: {excel_link_href}")
         try:
-            # SSA transform: reads 'Sheet1', header is row 5 (index 4), engine='openpyxl' for .xlsm
-            df = pd.read_excel(file_path, sheet_name='Sheet1', header=4, engine='openpyxl')
-            df.dropna(how='all', inplace=True) # Pre-processing from transform script
-            self.logger.info(f"Loaded {len(df)} rows from {file_path} after initial dropna.")
+            downloaded_path = self.download_file_directly(url=excel_link_href)
+            return downloaded_path
+        except ScraperError as e:
+            self.logger.error(f"ScraperError during direct download for SSA: {e}", exc_info=True)
+            raise 
+        except Exception as e: 
+            self.logger.error(f"Unexpected error during direct download attempt for SSA: {e}", exc_info=True)
+            self._handle_and_raise_scraper_error(e, "SSA direct download unexpected error")
+        return None
 
-            if df.empty:
-                self.logger.info("Downloaded file is empty. Nothing to process.")
-                return
 
-            # --- Start: Logic adapted from ssa_transform.normalize_columns_ssa ---
-            rename_map = {
-                'APP #': 'native_id',
-                'SITE Type': 'agency', # Mapped to Prospect.agency (was 'office' in transform)
-                'DESCRIPTION': 'description', # Mapped to Prospect.description (was 'requirement_title' in transform)
-                # 'REQUIREMENT TYPE': 'requirement_type', # This will go to extra
-                'EST COST PER FY': 'estimated_value_raw',
-                'PLANNED AWARD DATE': 'award_date_raw',
-                'CONTRACT TYPE': 'contract_type',
-                'NAICS': 'naics',
-                'TYPE OF COMPETITION': 'set_aside',
-                'PLACE OF PERFORMANCE': 'place_raw'
-            }
-            # Rename only columns that exist in the input DataFrame
-            rename_map_existing = {k: v for k, v in rename_map.items() if k in df.columns}
-            df.rename(columns=rename_map_existing, inplace=True)
+    def _custom_ssa_transforms(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Applies SSA-specific transformations to the DataFrame.
+        Called by DataProcessingMixin.transform_dataframe *after* raw_column_rename_map.
+        The column names here are those resulting from raw_column_rename_map.
+        """
+        self.logger.info("Applying SSA custom transformations...")
 
-            # Place of Performance Parsing
-            if 'place_raw' in df.columns:
-                split_places_data = df['place_raw'].apply(split_place)
-                df['place_city'] = split_places_data.apply(lambda x: x[0])
-                df['place_state'] = split_places_data.apply(lambda x: x[1])
-                df['place_country'] = 'USA'  # Assume USA
-            else:
-                df['place_city'], df['place_state'], df['place_country'] = pd.NA, pd.NA, 'USA'
+        # Target names based on what db_column_rename_map expects as input
+        # Example: if raw_column_rename_map was {'DESCRIPTION': 'description_intermediate_custom'}
+        # then here you'd use 'description_intermediate_custom'.
+        # The config uses 'description_raw', 'agency_raw' etc. from raw_column_rename_map.
+        # And 'title_final', 'description_final' etc. for db_column_rename_map.
+        # This function needs to bridge that gap if necessary, or config needs to be precise.
 
-            # Estimated Value Parsing
-            if 'estimated_value_raw' in df.columns:
-                parsed_values = df['estimated_value_raw'].apply(parse_value_range)
-                df['estimated_value'] = parsed_values.apply(lambda x: x[0])
-                # Add " (Per FY)" to unit as per transform script logic if unit is present
-                df['est_value_unit'] = parsed_values.apply(lambda x: x[1])
-                unit_mask = df['est_value_unit'].notna()
-                df.loc[unit_mask, 'est_value_unit'] = df.loc[unit_mask, 'est_value_unit'].astype(str) + ' (Per FY)'
-                df['est_value_unit'].fillna('Per FY', inplace=True) # Default if no unit parsed
-            else:
-                df['estimated_value'], df['est_value_unit'] = pd.NA, pd.NA
+        # For SSA, config is:
+        # raw_map: {'DESCRIPTION': 'description_raw', ...}
+        # db_map:  {'description_final': 'description', 'title_final': 'title', ...}
+        # So, this function should create 'title_final', 'description_final', etc.
 
-            # Award Date and Fiscal Year Parsing
-            if 'award_date_raw' in df.columns:
-                df['award_date'] = pd.to_datetime(df['award_date_raw'], errors='coerce').dt.date
-                df['award_fiscal_year'] = pd.to_datetime(df['award_date_raw'], errors='coerce').dt.year.astype('Int64')
-            else:
-                df['award_date'] = None
-                df['award_fiscal_year'] = pd.NA
+        if 'description_raw' in df.columns:
+            df['title_final'] = df['description_raw']
+            df['description_final'] = df['description_raw'] # Keep original desc as well
+            self.logger.debug("Created 'title_final' and 'description_final' from 'description_raw'.")
+        else:
+            df['title_final'] = None
+            df['description_final'] = None
+            self.logger.warning("'description_raw' not found to create 'title_final'/'description_final'.")
+        
+        df['release_date_final'] = None 
+        self.logger.debug("Initialized 'release_date_final' to None.")
 
-            # Initialize missing Prospect fields
-            df['title'] = df.get('description', pd.NA) # Using description as title for SSA as per initial thought, or set to NA
-                                                      # The original transform maps 'DESCRIPTION' source to 'requirement_title'.
-                                                      # If 'title' is a distinct concept, it might be empty for SSA.
-                                                      # For now, let's use description for title. If a dedicated title field appears, adjust.
-            df['release_date'] = None # SSA transform has solicitation_date = pd.NaT
-
-            # Drop raw/intermediate columns
-            cols_to_drop = ['place_raw', 'estimated_value_raw', 'award_date_raw']
-            df.drop(columns=[col for col in cols_to_drop if col in df.columns], errors='ignore', inplace=True)
-            # --- End: Logic adapted from ssa_transform.normalize_columns_ssa ---
-
-            # Define the final column rename map.
-            final_column_rename_map = {
-                'native_id': 'native_id',
-                'agency': 'agency',
-                'description': 'description', # Mapped from 'DESCRIPTION'
-                'title': 'title', # Initialized from 'description'
-                'estimated_value': 'estimated_value',
-                'est_value_unit': 'est_value_unit',
-                'award_date': 'award_date',
-                'award_fiscal_year': 'award_fiscal_year',
-                'contract_type': 'contract_type',
-                'naics': 'naics',
-                'set_aside': 'set_aside',
-                'place_city': 'place_city',
-                'place_state': 'place_state',
-                'place_country': 'place_country',
-                'release_date': 'release_date', # Initialized as None
-                # 'REQUIREMENT TYPE' was in original source, if renamed to 'requirement_type',
-                # it will be handled by 'extra' if not in prospect_model_fields.
-                # No explicit mapping here means it should be picked by extra logic if present.
-            }
-
-            # Ensure all columns in final_column_rename_map exist in df.
-            for col_name in final_column_rename_map.keys():
-                if col_name not in df.columns:
-                    df[col_name] = pd.NA
+        # Value parsing in transform_dataframe (DataProcessingMixin) creates 'estimated_value' and 'est_value_unit'.
+        # We need to create 'est_value_unit_final' based on 'est_value_unit'.
+        if 'est_value_unit' in df.columns:
+            df['est_value_unit_final'] = df['est_value_unit'].apply(
+                lambda x: f"{x} (Per FY)" if pd.notna(x) and x else "Per FY"
+            )
+            self.logger.debug("Adjusted 'est_value_unit' to 'est_value_unit_final'.")
+        else:
+            df['est_value_unit_final'] = "Per FY"
+            self.logger.warning("'est_value_unit' column not found. Defaulting 'est_value_unit_final' to 'Per FY'.")
             
-            prospect_model_fields = [col.name for col in Prospect.__table__.columns if col.name != 'loaded_at']
-            # Original ID generation: naics, description (as requirement_title), agency
-            # Include native_id, title, and location to ensure uniqueness
-            fields_for_id_hash = ['native_id', 'naics', 'title', 'description', 'agency', 'place_city', 'place_state']
+        return df
 
+    def _process_method(self, file_path: Optional[str]) -> Optional[int]:
+        """
+        Processes the downloaded Excel file using DataProcessingMixin methods.
+        """
+        self.logger.info(f"Starting SSA processing for file: {file_path}")
+        if not file_path or not os.path.exists(file_path):
+            self.logger.error(f"File path '{file_path}' is invalid or file does not exist. Skipping.")
+            return 0
 
-            return self._process_and_load_data(df, final_column_rename_map, prospect_model_fields, fields_for_id_hash)
+        try:
+            df = self.read_file_to_dataframe(
+                file_path, 
+                file_type_hint=self.config.file_type_hint,
+                read_options=self.config.read_options
+            )
+            if df.empty:
+                self.logger.info("DataFrame is empty after reading. Nothing to process for SSA.")
+                return 0
 
-        except FileNotFoundError:
-            self.logger.error(f"SSA Excel file not found: {file_path}")
-            raise ScraperError(f"Processing failed: SSA Excel file not found: {file_path}")
-        except pd.errors.EmptyDataError:
-            self.logger.error(f"No data or empty SSA Excel file: {file_path}")
-            return
-        except KeyError as e:
-            self.logger.error(f"Missing expected column during SSA Excel processing: {e}.")
-            self.logger.error(traceback.format_exc())
-            raise ScraperError(f"Processing failed due to missing column: {e}")
-        except Exception as e:
-            self.logger.error(f"Error processing SSA file {file_path}: {str(e)}")
-            self.logger.error(traceback.format_exc())
-            raise ScraperError(f"Error processing SSA file {file_path}: {str(e)}")
+            # DataProcessingMixin.transform_dataframe will call _custom_ssa_transforms
+            df = self.transform_dataframe(df, config_params=self.config.data_processing_rules)
+            if df.empty:
+                self.logger.info("DataFrame is empty after transformations. Nothing to load for SSA.")
+                return 0
+            
+            loaded_count = self.prepare_and_load_data(df, config_params=self.config.data_processing_rules)
+            
+            self.logger.info(f"SSA processing completed. Loaded {loaded_count} prospects.")
+            return loaded_count
+
+        except ScraperError as e: 
+            self.logger.error(f"ScraperError during SSA processing of {file_path}: {e}", exc_info=True)
+            raise
+        except Exception as e: 
+            self.logger.error(f"Unexpected error processing SSA file {file_path}: {e}", exc_info=True)
+            self._handle_and_raise_scraper_error(e, f"processing SSA file {file_path}")
+        return 0 
 
     def scrape(self):
-        """
-        Run the scraper to download the forecast document.
-        
-        Returns:
-            bool: True if scraping was successful, False otherwise
-        """
-        # Use the structured scrape method from the base class - only extract
+        """Orchestrates the scraping process for SSA."""
+        self.logger.info(f"Starting scrape for {self.config.source_name} using SsaScraper logic.")
         return self.scrape_with_structure(
-            # No setup_func needed if navigation happens in extract
-            extract_func=self.download_forecast_document,
-            process_func=self.process_func
+            setup_func=self._setup_method,
+            extract_func=self._extract_method,
+            process_func=self._process_method
         )
+```

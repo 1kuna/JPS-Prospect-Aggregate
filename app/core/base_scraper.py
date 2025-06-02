@@ -28,6 +28,8 @@ import json # Add json import for 'extra' field serialization
 from app.database.crud import bulk_upsert_prospects # Import for loading data
 from app.exceptions import ScraperError
 from app.config import active_config # Import active_config
+# Import BaseScraperConfig
+from app.core.configs.base_config import BaseScraperConfig
 from app.utils.file_utils import clean_old_files, ensure_directory
 from app.utils.logger import logger
 
@@ -43,41 +45,50 @@ class BaseScraper(ABC):
     and data processing.
     
     Attributes:
-        source_name (str): Name of the data source
-        base_url (str): Base URL for the data source
-        debug_mode (bool): Whether to run in debug mode
-        logger: Logger instance for this scraper
-        playwright (Playwright): Playwright instance
-        browser (Browser): Browser instance
-        context (BrowserContext): Browser context
-        page (Page): Browser page
-        download_path (str): Path to download directory for this scraper
+        config (BaseScraperConfig): Configuration object for the scraper.
+        source_name (str): Name of the data source (derived from config).
+        base_url (Optional[str]): Base URL for the data source (derived from config).
+        debug_mode (bool): Whether to run in debug mode (derived from config, though typically set at runtime).
+        logger: Logger instance for this scraper.
+        playwright (Playwright): Playwright instance.
+        browser (Browser): Browser instance.
+        context (BrowserContext): Browser context.
+        page (Page): Browser page.
+        download_path (str): Path to download directory for this scraper.
     """
     
-    def __init__(self, source_name, base_url, debug_mode=False, use_stealth=False):
+    def __init__(self, config: BaseScraperConfig, debug_mode: Optional[bool] = None):
         """
         Initialize the base scraper.
         
         Args:
-            source_name (str): Name of the data source
-            base_url (str): Base URL for the data source
-            debug_mode (bool): Whether to run in debug mode
-            use_stealth (bool): Whether to apply playwright-stealth patches
+            config (BaseScraperConfig): The configuration object for this scraper.
+            debug_mode (Optional[bool]): Runtime override for debug mode. If None, uses config's setting (or a default).
         """
-        self.source_name = source_name
-        self.base_url = base_url
-        self.debug_mode = debug_mode
-        self.use_stealth = use_stealth # Add use_stealth attribute
+        self.config = config
+        self.source_name = self.config.source_name
+        self.base_url = self.config.base_url # Can be None
+        
+        # Debug mode can be set by runtime parameter, falling back to a default if not in config.
+        # Assuming BaseScraperConfig might not have debug_mode, or it's a runtime concern.
+        # For now, let's assume debug_mode is primarily a runtime flag passed to the scraper instance.
+        self.debug_mode = debug_mode if debug_mode is not None else False
+        
         self.playwright: Optional[Playwright] = None
         self.browser: Optional[Browser] = None
         self.context: Optional[BrowserContext] = None
         self.page: Optional[Page] = None
-        # Use the specific directory for this scraper within RAW_DATA_DIR
-        self.download_path = os.path.join(active_config.RAW_DATA_DIR, source_name.lower().replace(' ', '_'))
+        
+        # Use a shortened, filesystem-safe version of the source name for paths/logging keys
+        self.source_name_short = self.config.source_name.lower().replace(' ', '_').replace('.', '_')
+        
+        self.download_path = os.path.join(active_config.RAW_DATA_DIR, self.source_name_short)
         ensure_directory(self.download_path) # Ensure it exists
         self._last_download_path: Optional[str] = None # Initialize _last_download_path
-        self.logger = logger.bind(name=f"scraper.{source_name.lower().replace(' ', '_')}")
-        self.logger.info(f"Initialized {source_name} scraper. Debug mode: {debug_mode}")
+        
+        # Logger setup using the potentially modified source_name_short
+        self.logger = logger.bind(name=f"scraper.{self.source_name_short}")
+        self.logger.info(f"Initialized {self.config.source_name} scraper. Debug mode: {self.debug_mode}. Base URL: {self.base_url}")
     
     # -------------------------------------------------------------------------
     # Logging and Setup Methods
@@ -86,12 +97,14 @@ class BaseScraper(ABC):
     def setup_logging(self):
         """
         Set up logging for this scraper.
+        NOTE: Logger is now initialized in __init__. This method can be kept for compatibility
+              or removed if __init__ handles all necessary logger setup.
         """
-        # Use the centralized Loguru logger with scraper-specific context
-        self.logger = logger.bind(name=f"scraper.{self.source_name.lower().replace(' ', '_')}")
-        self.logger.info(f"Initialized {self.source_name} scraper")
-        if self.debug_mode:
-            self.logger.debug("Debug mode enabled")
+        # self.logger = logger.bind(name=f"scraper.{self.source_name_short}")
+        # self.logger.info(f"Logger re-bound for {self.config.source_name} scraper via setup_logging.")
+        if self.debug_mode: # self.debug_mode is already set in __init__
+            self.logger.debug(f"Debug mode confirmed enabled for {self.config.source_name}.")
+        pass # Logger is set in __init__
     
     def setup_browser(self):
         """
@@ -163,19 +176,20 @@ class BaseScraper(ABC):
             # Create a page
             self.page = self.context.new_page()
 
-            if self.use_stealth:
-                self.logger.info("Applying playwright-stealth patches...")
+            if self.config.use_stealth: # Use config for stealth
+                self.logger.info("Applying playwright-stealth patches as per config...")
                 try:
                     from playwright_stealth import stealth_sync
                     stealth_sync(self.page)
                     self.logger.info("Stealth patches applied.")
                 except ImportError:
-                    self.logger.warning("playwright-stealth not installed. Skipping stealth application.")
+                    self.logger.warning("playwright-stealth not installed. Skipping stealth application despite config.")
                 except Exception as e:
                     self.logger.error(f"Error applying playwright-stealth: {e}")
             
-            # Set default timeout
-            self.page.set_default_timeout(60000)  # 60 seconds
+            # Set default timeout from config
+            self.page.set_default_timeout(self.config.navigation_timeout_ms) 
+            self.logger.info(f"Default page timeout set to {self.config.navigation_timeout_ms}ms from config.")
             
             # Set up download behavior
             self.page.on("download", self._handle_download)
@@ -192,33 +206,46 @@ class BaseScraper(ABC):
             raise ScraperError(error_msg)
     
     def _handle_download(self, download: Download) -> None:
-        """Callback function to handle downloads initiated by Playwright."""
-        try:
-            suggested_filename = download.suggested_filename
-            if not suggested_filename:
-                self.logger.warning("Download suggested_filename is empty. Using default.")
-                suggested_filename = f"{self.source_name.lower().replace(' ', '_')}_download.dat"
+        """
+        Callback function to handle downloads initiated by Playwright.
+        NOTE: The core logic of this method is intended to be moved to DownloadMixin.
+        This method in BaseScraper will likely be removed or become a simple wrapper/placeholder.
+        """
+        # try:
+        #     suggested_filename = download.suggested_filename
+        #     if not suggested_filename:
+        #         self.logger.warning("Download suggested_filename is empty. Using default.")
+        #         suggested_filename = f"{self.source_name.lower().replace(' ', '_')}_download.dat"
 
-            file_name_part, ext = os.path.splitext(suggested_filename)
-            if not ext:
-                self.logger.warning(f"Filename '{suggested_filename}' has no extension. Defaulting to '.dat'.")
-                ext = '.dat'
+        #     file_name_part, ext = os.path.splitext(suggested_filename)
+        #     if not ext:
+        #         self.logger.warning(f"Filename '{suggested_filename}' has no extension. Defaulting to '.dat'.")
+        #         ext = '.dat'
 
-            timestamp_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            final_filename = f"{self.source_name.lower().replace(' ', '_')}_{timestamp_str}{ext}"
+        #     timestamp_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        #     final_filename = f"{self.source_name.lower().replace(' ', '_')}_{timestamp_str}{ext}"
             
-            # Ensure self.download_path (scraper's specific download dir) exists
-            ensure_directory(self.download_path) 
+        #     # Ensure self.download_path (scraper's specific download dir) exists
+        #     ensure_directory(self.download_path) 
             
-            final_save_path = os.path.join(self.download_path, final_filename)
+        #     final_save_path = os.path.join(self.download_path, final_filename)
 
-            download.save_as(final_save_path)
-            self.logger.info(f"Successfully saved download to: {final_save_path}")
-            self._last_download_path = final_save_path
-        except Exception as e:
-            self.logger.error(f"Error in _handle_download: {str(e)}")
-            self.logger.error(traceback.format_exc())
-            self._last_download_path = None # Ensure path is None on error
+        #     download.save_as(final_save_path)
+        #     self.logger.info(f"Successfully saved download to: {final_save_path}")
+        #     self._last_download_path = final_save_path
+        # except Exception as e:
+        #     self.logger.error(f"Error in _handle_download: {str(e)}")
+        #     self.logger.error(traceback.format_exc())
+        #     self._last_download_path = None # Ensure path is None on error
+        self.logger.info("BaseScraper._handle_download called. Logic to be moved to DownloadMixin.")
+        # Example of how it might call a mixin method if this class inherited from it:
+        # if hasattr(super(), '_handle_download_event'): # Check if mixin method exists
+        #     self._last_download_path = super()._handle_download_event(download)
+        # else:
+        #     self.logger.warning("DownloadMixin._handle_download_event not found.")
+        #     # Fallback or raise error
+        #     self._last_download_path = None
+        pass # Placeholder
     
     def cleanup_browser(self):
         """
@@ -269,12 +296,11 @@ class BaseScraper(ABC):
         """
         # Use default pattern if not specified
         if file_pattern is None:
-            file_pattern = f"{self.source_name.lower().replace(' ', '_')}*.csv"
+            file_pattern = f"{self.source_name_short}*.csv" # Use source_name_short
         
-        download_dir = os.path.join(active_config.RAW_DATA_DIR, self.source_name.lower().replace(' ', '_'))
-        
-        if not os.path.exists(download_dir):
-            logger.warning(f"Download directory doesn't exist: {download_dir}")
+        # download_dir is self.download_path, which already uses source_name_short
+        if not os.path.exists(self.download_path):
+            logger.warning(f"Download directory doesn't exist: {self.download_path}")
             return 0
         
         # Keep the 2 most recent files
@@ -412,14 +438,13 @@ class BaseScraper(ABC):
         # This method should be implemented by subclasses
         raise NotImplementedError("Subclasses must implement get_proposal_query")
 
-    def _generate_prospect_id(self, data_row: pd.Series, fields_to_hash: list[str], source_name_override: str = None) -> str:
+    def _generate_prospect_id(self, data_row: pd.Series, fields_to_hash: list[str]) -> str:
         """
-        Generate a unique prospect ID based on specified fields and source name.
+        Generate a unique prospect ID based on specified fields and source name (from config).
 
         Args:
             data_row (pd.Series): A row of data.
             fields_to_hash (list[str]): List of column names from data_row to use for hashing.
-            source_name_override (str, optional): Override for self.source_name. Defaults to None.
 
         Returns:
             str: MD5 hash string.
@@ -429,8 +454,8 @@ class BaseScraper(ABC):
             value = data_row.get(field, '') # Get value or default to empty string
             unique_string_parts.append(str(value) if pd.notna(value) and value is not None else '')
 
-        current_source_name = source_name_override if source_name_override else self.source_name
-        unique_string_parts.append(current_source_name)
+        # Always use the source_name from the config for consistency in ID generation
+        unique_string_parts.append(self.config.source_name) 
         
         unique_string = "-".join(unique_string_parts)
         return hashlib.md5(unique_string.encode('utf-8')).hexdigest()
@@ -438,104 +463,115 @@ class BaseScraper(ABC):
     def _process_and_load_data(self, df: pd.DataFrame, column_rename_map: dict, prospect_model_fields: list[str], fields_for_id_hash: list[str]):
         """
         Centralized method to process a DataFrame and load it into the Prospect table.
+        NOTE: The core logic of this method is intended to be moved to DataProcessingMixin.
+        This method in BaseScraper will likely be removed or become a simple wrapper/placeholder.
         """
-        self.logger.info(f"Starting common data processing for {self.source_name}")
+        # self.logger.info(f"Starting common data processing for {self.source_name}")
 
-        # 1. Rename Columns
-        df.rename(columns=column_rename_map, inplace=True)
-        self.logger.debug(f"Columns after rename: {df.columns.tolist()}")
+        # # 1. Rename Columns
+        # df.rename(columns=column_rename_map, inplace=True)
+        # self.logger.debug(f"Columns after rename: {df.columns.tolist()}")
 
-        # 2. Normalize Column Names
-        # Ensure this regex handles various cases robustly, including stripping leading/trailing underscores if any appear post-regex.
-        df.columns = (df.columns.str.strip()
-                      .str.lower()
-                      .str.replace(r'[\s\W]+', '_', regex=True) # Replace whitespace and non-alphanumeric with single underscore
-                      .str.replace(r'_+', '_', regex=True)      # Replace multiple underscores with single
-                      .str.replace(r'^_|_$', '', regex=True))   # Remove leading/trailing underscores
-        df = df.loc[:, ~df.columns.duplicated()] # Remove duplicate columns
-        self.logger.debug(f"Columns after normalization: {df.columns.tolist()}")
+        # # 2. Normalize Column Names
+        # # Ensure this regex handles various cases robustly, including stripping leading/trailing underscores if any appear post-regex.
+        # df.columns = (df.columns.str.strip()
+        #               .str.lower()
+        #               .str.replace(r'[\s\W]+', '_', regex=True) # Replace whitespace and non-alphanumeric with single underscore
+        #               .str.replace(r'_+', '_', regex=True)      # Replace multiple underscores with single
+        #               .str.replace(r'^_|_$', '', regex=True))   # Remove leading/trailing underscores
+        # df = df.loc[:, ~df.columns.duplicated()] # Remove duplicate columns
+        # self.logger.debug(f"Columns after normalization: {df.columns.tolist()}")
 
-        # 3. Handle 'extra' Column
-        # Define actual model fields (excluding 'extra' itself for this check)
-        # 'id' and 'loaded_at' are auto-generated or handled separately. 'source_id' is added by this func.
-        core_model_fields_for_extra_check = [f for f in prospect_model_fields if f not in ['extra', 'id', 'loaded_at', 'source_id']]
+        # # 3. Handle 'extra' Column
+        # # Define actual model fields (excluding 'extra' itself for this check)
+        # # 'id' and 'loaded_at' are auto-generated or handled separately. 'source_id' is added by this func.
+        # core_model_fields_for_extra_check = [f for f in prospect_model_fields if f not in ['extra', 'id', 'loaded_at', 'source_id']]
         
-        unmapped_cols = [col for col in df.columns if col not in core_model_fields_for_extra_check]
+        # unmapped_cols = [col for col in df.columns if col not in core_model_fields_for_extra_check]
         
-        if unmapped_cols:
-            self.logger.info(f"Unmapped columns for '{self.source_name}' to be included in 'extra': {unmapped_cols}")
+        # if unmapped_cols:
+        #     self.logger.info(f"Unmapped columns for '{self.source_name}' to be included in 'extra': {unmapped_cols}")
             
-            def create_extra_json(row):
-                extra_dict = {}
-                for col_name in unmapped_cols:
-                    val = row.get(col_name)
-                    if pd.isna(val):
-                        extra_dict[col_name] = None
-                    elif isinstance(val, (datetime.datetime, datetime.date, pd.Timestamp)):
-                        extra_dict[col_name] = pd.to_datetime(val).isoformat()
-                    elif isinstance(val, (int, float, bool, str)):
-                        extra_dict[col_name] = val
-                    else:
-                        try:
-                            extra_dict[col_name] = str(val)
-                        except Exception:
-                            self.logger.warning(f"Could not convert value for extra field {col_name} to string. Type: {type(val)}")
-                            extra_dict[col_name] = "CONVERSION_ERROR"
-                try:
-                    return json.dumps(extra_dict)
-                except TypeError as e:
-                    self.logger.error(f"JSON serialization error for 'extra' data: {e}. Dict: {extra_dict}")
-                    return json.dumps({"serialization_error": str(e)}) # Store error in JSON
+        #     def create_extra_json(row):
+        #         extra_dict = {}
+        #         for col_name in unmapped_cols:
+        #             val = row.get(col_name)
+        #             if pd.isna(val):
+        #                 extra_dict[col_name] = None
+        #             elif isinstance(val, (datetime.datetime, datetime.date, pd.Timestamp)):
+        #                 extra_dict[col_name] = pd.to_datetime(val).isoformat()
+        #             elif isinstance(val, (int, float, bool, str)):
+        #                 extra_dict[col_name] = val
+        #             else:
+        #                 try:
+        #                     extra_dict[col_name] = str(val)
+        #                 except Exception:
+        #                     self.logger.warning(f"Could not convert value for extra field {col_name} to string. Type: {type(val)}")
+        #                     extra_dict[col_name] = "CONVERSION_ERROR"
+        #         try:
+        #             return json.dumps(extra_dict)
+        #         except TypeError as e:
+        #             self.logger.error(f"JSON serialization error for 'extra' data: {e}. Dict: {extra_dict}")
+        #             return json.dumps({"serialization_error": str(e)}) # Store error in JSON
             
-            df.loc[:, 'extra'] = df.apply(create_extra_json, axis=1)
-        else:
-            df.loc[:, 'extra'] = None # Initialize with None if no unmapped columns
+        #     df.loc[:, 'extra'] = df.apply(create_extra_json, axis=1)
+        # else:
+        #     df.loc[:, 'extra'] = None # Initialize with None if no unmapped columns
 
-        # 4. Add source_id
-        # Assuming db.session is available and managed by the application context (e.g., in scrape_with_structure)
-        data_source_obj = db.session.query(DataSource).filter_by(name=self.source_name).first()
-        if data_source_obj:
-            df.loc[:, 'source_id'] = data_source_obj.id
-        else:
-            self.logger.error(f"DataSource '{self.source_name}' not found. 'source_id' cannot be set.")
-            # Depending on strictness, could raise error or allow None if Prospect.source_id is nullable
-            df.loc[:, 'source_id'] = None 
+        # # 4. Add source_id
+        # # Assuming db.session is available and managed by the application context (e.g., in scrape_with_structure)
+        # data_source_obj = db.session.query(DataSource).filter_by(name=self.source_name).first()
+        # if data_source_obj:
+        #     df.loc[:, 'source_id'] = data_source_obj.id
+        # else:
+        #     self.logger.error(f"DataSource '{self.source_name}' not found. 'source_id' cannot be set.")
+        #     # Depending on strictness, could raise error or allow None if Prospect.source_id is nullable
+        #     df.loc[:, 'source_id'] = None 
 
-        # 5. Generate id
-        df.loc[:, 'id'] = df.apply(lambda row: self._generate_prospect_id(row, fields_for_id_hash), axis=1)
+        # # 5. Generate id
+        # df.loc[:, 'id'] = df.apply(lambda row: self._generate_prospect_id(row, fields_for_id_hash), axis=1)
 
-        # 6. Ensure All Model Fields exist in DataFrame
-        for field in prospect_model_fields:
-            if field not in df.columns:
-                df.loc[:, field] = pd.NA # Use pd.NA for consistency, converts to None for object types
+        # # 6. Ensure All Model Fields exist in DataFrame
+        # for field in prospect_model_fields:
+        #     if field not in df.columns:
+        #         df.loc[:, field] = pd.NA # Use pd.NA for consistency, converts to None for object types
 
-        # 7. Select Final Columns (ensure 'id' is included if not in prospect_model_fields list initially)
-        # prospect_model_fields should ideally contain all columns for the final table including 'id', 'source_id', 'extra'
-        # but excluding 'loaded_at'
-        final_columns_for_db = [col for col in prospect_model_fields if col in df.columns]
-        # Ensure 'id' is present if it was generated
-        if 'id' not in final_columns_for_db and 'id' in df.columns:
-             final_columns_for_db.append('id')
+        # # 7. Select Final Columns (ensure 'id' is included if not in prospect_model_fields list initially)
+        # # prospect_model_fields should ideally contain all columns for the final table including 'id', 'source_id', 'extra'
+        # # but excluding 'loaded_at'
+        # final_columns_for_db = [col for col in prospect_model_fields if col in df.columns]
+        # # Ensure 'id' is present if it was generated
+        # if 'id' not in final_columns_for_db and 'id' in df.columns:
+        #      final_columns_for_db.append('id')
         
-        df_to_insert = df[final_columns_for_db].copy()
+        # df_to_insert = df[final_columns_for_db].copy()
 
-        # 8. Data Cleaning: Drop rows that are entirely NA (after selecting final columns)
-        df_to_insert = df_to_insert.dropna(how='all')
+        # # 8. Data Cleaning: Drop rows that are entirely NA (after selecting final columns)
+        # df_to_insert = df_to_insert.dropna(how='all')
 
-        if df_to_insert.empty:
-            self.logger.info(f"After all processing, no valid data rows to insert for {self.source_name}.")
-            return 0 # No records processed
+        # if df_to_insert.empty:
+        #     self.logger.info(f"After all processing, no valid data rows to insert for {self.source_name}.")
+        #     return 0 # No records processed
 
-        # 9. Load Data
-        self.logger.info(f"Attempting to insert/update {len(df_to_insert)} records for {self.source_name}.")
-        try:
-            bulk_upsert_prospects(df_to_insert)
-            self.logger.info(f"Successfully inserted/updated records for {self.source_name}.")
-            return len(df_to_insert)
-        except Exception as e:
-            self.logger.error(f"Error during bulk_upsert_prospects for {self.source_name}: {e}")
-            self.logger.error(traceback.format_exc())
-            raise ScraperError(f"Database loading failed for {self.source_name}: {e}") from e
+        # # 9. Load Data
+        # self.logger.info(f"Attempting to insert/update {len(df_to_insert)} records for {self.source_name}.")
+        # try:
+        #     bulk_upsert_prospects(df_to_insert)
+        #     self.logger.info(f"Successfully inserted/updated records for {self.source_name}.")
+        #     return len(df_to_insert)
+        # except Exception as e:
+        #     self.logger.error(f"Error during bulk_upsert_prospects for {self.source_name}: {e}")
+        #     self.logger.error(traceback.format_exc())
+        #     raise ScraperError(f"Database loading failed for {self.source_name}: {e}") from e
+        self.logger.info("BaseScraper._process_and_load_data called. Logic to be moved to DataProcessingMixin.")
+        # Example of how it might call a mixin method:
+        # if hasattr(super(), '_process_and_load_data'): # Check if mixin method exists
+        #     return super()._process_and_load_data(df, column_rename_map, prospect_model_fields, fields_for_id_hash)
+        # else:
+        #     self.logger.warning("DataProcessingMixin._process_and_load_data not found.")
+        #     return 0
+        pass # Placeholder
+        return 0 # Placeholder return
 
     # -------------------------------------------------------------------------
     # Browser Interaction Methods
@@ -578,17 +614,21 @@ class BaseScraper(ABC):
                 trigger_element.dispatch_event('click')
             elif click_method == "js_click":
                 # Ensure page.evaluate can find the selector if it's complex; might need refinement
-                self.page.evaluate(f"document.querySelector('{download_trigger_selector.replace("'", "\\'")}').click();")
+                self.page.evaluate(f"document.querySelector('{download_trigger_selector.replace("'", "\\'")}').click();") # Make sure querySelector is robust
             else: # Default "click"
                 trigger_element.click()
 
-        _ = download_info.value # Access the download object
+        download_event_obj = download_info.value # Access the download object
 
-        self.page.wait_for_timeout(2000) # Allow _handle_download to complete
+        # Use default_wait_after_download_ms from config
+        self.page.wait_for_timeout(self.config.default_wait_after_download_ms) 
 
-        if not self._last_download_path or not os.path.exists(self._last_download_path):
-            self.logger.error(f"Download failed: _last_download_path not set or invalid. Value: {self._last_download_path}")
-            raise ScraperError("Download failed: File not found or path not set by BaseScraper._handle_download.")
+        if not self._last_download_path or not os.path.exists(self.last_download_path):
+            self.logger.warning(f"Download check: _last_download_path ('{self._last_download_path}') not set or invalid after click. This might indicate an issue with _handle_download or event timing if it wasn't called via a mixin that sets it directly.")
+            # If _handle_download is now a placeholder, this check might always fail unless a mixin updates _last_download_path.
+            # For now, we assume _handle_download (even as placeholder) or a mixin would set _last_download_path.
+            # If it is not set, it's an error condition.
+            raise ScraperError(f"Download failed for '{download_trigger_selector}': File path not established by download handler.")
 
         self.logger.info(f"Download process completed. File saved at: {self._last_download_path}")
         return self._last_download_path
@@ -607,55 +647,95 @@ class BaseScraper(ABC):
         Raises:
             ScraperError: If navigation fails
         """
-        url = url or self.base_url
+        target_url = url or self.base_url # Use self.base_url which is from config
+        if not target_url:
+            self.logger.error("Navigation failed: No URL provided and base_url is not set in config.")
+            raise ScraperError("No URL available for navigation.")
+
+        effective_timeout = timeout if timeout is not None else self.config.navigation_timeout_ms
         
         try:
-            self.logger.info(f"Navigating to URL: {url}")
+            self.logger.info(f"Navigating to URL: {target_url} with timeout {effective_timeout}ms")
             
             if not self.page:
                 raise ScraperError("Page object is not initialized. Call setup_browser first.")
 
-            # Navigate to the URL
-            response = self.page.goto(url, timeout=timeout, wait_until='domcontentloaded')
+            response = self.page.goto(target_url, timeout=effective_timeout, wait_until='domcontentloaded')
             
-            # Check if navigation response is generally okay (ignore strict 404 for now if content loaded)
-            # We will rely on subsequent element waits to confirm page validity
             if response and not response.ok:
-                self.logger.warning(f"Navigation to {url} resulted in status {response.status}. URL: {response.url}")
-                # Consider raising an error or returning False depending on desired strictness
+                self.logger.warning(f"Navigation to {target_url} resulted in status {response.status}. URL: {response.url}")
             
-            # Optional: Wait for a specific load state if needed after goto, but goto usually handles it.
-            # try:
-            #     self.page.wait_for_load_state("load", timeout=timeout) 
-            # except PlaywrightTimeoutError:
-            #     self.logger.warning(f"wait_for_load_state('load') timed out for {url}, proceeding anyway.")
+            self.handle_popups() # Assumes self.handle_popups exists
             
-            # Handle any popups (if implemented in subclass)
-            self.handle_popups()
-            
-            self.logger.info(f"Navigation attempted for URL: {url}. Subsequent checks will verify content.")
-            
-            return True # Indicate navigation attempt was made
+            self.logger.info(f"Navigation to {target_url} attempt completed.")
+            return True
         except PlaywrightTimeoutError as e:
-            error_msg = f"Timeout navigating to URL: {url}: {str(e)}"
-            self.logger.error(error_msg)
-            self.logger.error(traceback.format_exc())
+            error_msg = f"Timeout navigating to URL: {target_url} after {effective_timeout}ms: {str(e)}"
+            self.logger.error(error_msg, exc_info=True)
+            if self.config.screenshot_on_error and self.page:
+                self._save_error_screenshot("navigation_timeout")
+            if self.config.save_html_on_error and self.page:
+                self._save_error_html("navigation_timeout")
             raise ScraperError(error_msg) from e
         except Exception as e:
-            error_msg = f"Error navigating to URL {url}: {str(e)}"
-            self.logger.error(error_msg)
-            self.logger.error(traceback.format_exc())
+            error_msg = f"Error navigating to URL {target_url}: {str(e)}"
+            self.logger.error(error_msg, exc_info=True)
+            if self.config.screenshot_on_error and self.page:
+                self._save_error_screenshot("navigation_error")
+            if self.config.save_html_on_error and self.page:
+                self._save_error_html("navigation_error")
             raise ScraperError(error_msg) from e
     
     def handle_popups(self):
         """
         Handle common popups that might appear on a page.
-        
-        This method should be overridden by subclasses to handle
-        site-specific popups.
+        This method should be overridden by subclasses to handle site-specific popups.
         """
-        # This is a placeholder method that can be overridden by subclasses
+        self.logger.debug("Base handle_popups called. No default popup handling implemented.")
         pass
+
+    def _save_error_screenshot(self, prefix: str = "error"):
+        """Saves a screenshot of the current page state."""
+        if not self.page or not hasattr(self, 'source_name_short'):
+            self.logger.warning("Cannot save error screenshot: Page or source_name_short not available.")
+            return
+        try:
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"{prefix}_{self.source_name_short}_{timestamp}.png"
+            path = os.path.join(active_config.ERROR_SCREENSHOTS_DIR, filename)
+            ensure_directory(active_config.ERROR_SCREENSHOTS_DIR)
+            self.page.screenshot(path=path, full_page=True)
+            self.logger.info(f"Error screenshot saved to: {path}")
+        except Exception as e:
+            self.logger.error(f"Failed to save error screenshot: {e}", exc_info=True)
+
+    def _save_error_html(self, prefix: str = "error"):
+        """Saves the HTML content of the current page state."""
+        if not self.page or not hasattr(self, 'source_name_short'):
+            self.logger.warning("Cannot save error HTML: Page or source_name_short not available.")
+            return
+        try:
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"{prefix}_{self.source_name_short}_{timestamp}.html"
+            path = os.path.join(active_config.ERROR_HTML_DIR, filename)
+            ensure_directory(active_config.ERROR_HTML_DIR)
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(self.page.content())
+            self.logger.info(f"Error HTML saved to: {path}")
+        except Exception as e:
+            self.logger.error(f"Failed to save error HTML: {e}", exc_info=True)
+
+    def _handle_and_raise_scraper_error(self, error: Exception, operation_description: str) -> None:
+        """
+        Logs an error and raises a ScraperError, standardizing error reporting.
+        Screenshot/HTML saving should be handled by the caller if page-specific.
+        """
+        # The logger is already bound with scraper name, so the context is there.
+        # exc_info=True will include the stack trace of the original error.
+        detailed_error_message = f"Error during '{operation_description}': {error}"
+        self.logger.error(detailed_error_message, exc_info=True)
+        # Raise a new ScraperError, chaining the original exception for full context.
+        raise ScraperError(f"Operation failed: '{operation_description}'. Original error: {type(error).__name__} - {error}") from error
     
     # -------------------------------------------------------------------------
     # Main Scraping Methods
@@ -727,9 +807,14 @@ class BaseScraper(ABC):
             
         except Exception as e:
             error_msg = f"Error during structured scraping: {str(e)}"
-            self.logger.error(error_msg)
-            self.logger.error(traceback.format_exc())
+            self.logger.error(error_msg, exc_info=True) # Ensure stack trace is logged
+            # self.logger.error(traceback.format_exc()) # Already covered by exc_info=True
             result["error"] = error_msg
+            # Save screenshot/HTML on error if configured and page is available
+            if self.config.screenshot_on_error and self.page and not self.page.is_closed():
+                self._save_error_screenshot("scrape_structure_exception")
+            if self.config.save_html_on_error and self.page and not self.page.is_closed():
+                self._save_error_html("scrape_structure_exception")
             
         finally:
             # Clean up browser resources

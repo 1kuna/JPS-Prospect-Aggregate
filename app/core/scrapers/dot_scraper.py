@@ -1,408 +1,272 @@
 """Department of Transportation (DOT) Forecast scraper."""
 
-# Standard library imports
 import os
-# import sys # Unused
-import time
+# import traceback # No longer directly used
+import time # For custom navigation delays
+import shutil # For fallback file copy
+from typing import Optional
 
-# Third-party imports
-# import requests # Unused
-from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
-# from playwright.sync_api import sync_playwright # Unused
 import pandas as pd
-import traceback # Added traceback
-# import re # Unused
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
-# Local application imports
-from app.core.base_scraper import BaseScraper
-from app.models import Prospect # Added Prospect, DataSource, db
-# from app.database.crud import bulk_upsert_prospects # Unused
-from app.config import active_config, LOGS_DIR # Import active_config
+from app.core.specialized_scrapers import PageInteractionScraper
+from app.config import active_config
 from app.exceptions import ScraperError
-from app.utils.file_utils import ensure_directory # find_files was unused
-from app.utils.logger import logger
-from app.utils.scraper_utils import (
-    # check_url_accessibility, # Unused
-    # download_file, # Unused
-    handle_scraper_error
-)
-from app.utils.parsing import parse_value_range, fiscal_quarter_to_date, split_place # Added parsing utils
+from app.core.scrapers.configs.dot_config import DOTConfig
+from app.utils.parsing import fiscal_quarter_to_date, parse_value_range, split_place # Used by mixin/custom
 
-# Set up logging
-logger = logger.bind(name="scraper.dot_forecast")
-
-class DotScraper(BaseScraper):
+class DotScraper(PageInteractionScraper):
     """Scraper for the DOT Forecast site."""
 
-    def __init__(self, debug_mode=False):
-        """Initialize the DOT scraper."""
-        super().__init__(
-            source_name="Department of Transportation",
-            base_url=active_config.DOT_FORECAST_URL,
-            debug_mode=debug_mode,
-            use_stealth=True
-        )
-        ensure_directory(self.download_path)
+    def __init__(self, config: DOTConfig, debug_mode: bool = False):
+        if config.base_url is None:
+            config.base_url = active_config.DOT_FORECAST_URL
+            print(f"Warning: DOTConfig.base_url was None, set from active_config: {config.base_url}")
+        super().__init__(config=config, debug_mode=debug_mode)
 
-    def navigate_to_forecast_page(self):
-        """Navigate to the forecast page with retry logic for HTTP/2 protocol errors."""
-        self.logger.info(f"Navigating to {self.base_url} (using wait_until='load')")
-        
+    def _setup_method(self) -> None:
+        """Navigates to the DOT forecast page using custom retry logic and clicks 'Apply'."""
+        self.logger.info(f"Navigating to {self.config.base_url} with custom retry logic (DOT).")
         if not self.page:
-            raise ScraperError("Page object is not initialized. Call setup_browser first.")
+            self._handle_and_raise_scraper_error(ScraperError("Page not initialized before navigation."), "DOT custom navigation setup")
         
-        # Add a small delay before navigation to ensure browser is ready
-        time.sleep(2)
-        
-        # Try multiple approaches to handle HTTP/2 protocol errors and timeouts
-        attempts = [
-            {'wait_until': 'load', 'timeout': 120000},
-            {'wait_until': 'domcontentloaded', 'timeout': 90000}, 
-            {'wait_until': 'networkidle', 'timeout': 60000},
-            {'wait_until': 'commit', 'timeout': 45000}
-        ]
-        
-        for i, params in enumerate(attempts, 1):
+        time.sleep(2) # Initial 2s delay from original scraper
+
+        for i, params in enumerate(self.config.navigation_retry_attempts, 1):
+            operation_desc = f"DOT custom navigation attempt {i}/{len(self.config.navigation_retry_attempts)} to {self.config.base_url} with params {params}"
             try:
-                self.logger.info(f"Navigation attempt {i}/{len(attempts)} with {params}")
+                self.logger.info(f"Starting {operation_desc}")
+                delay_before_s = params.get('delay_before_next_s', 0)
+                if i > 1 and delay_before_s > 0:
+                    self.logger.info(f"Waiting {delay_before_s}s before attempt {i}...")
+                    time.sleep(delay_before_s)
                 
-                # Add extra delay for subsequent attempts
-                if i > 1:
-                    delay_time = i * 5
-                    self.logger.info(f"Waiting {delay_time} seconds before attempt {i}...")
-                    time.sleep(delay_time)
-                
-                response = self.page.goto(self.base_url, **params)
+                current_nav_timeout = params.get('timeout', self.config.navigation_timeout_ms)
+                # navigate_to_url is from NavigationMixin, but we are doing custom goto here
+                response = self.page.goto(
+                    self.config.base_url, 
+                    wait_until=params['wait_until'], 
+                    timeout=current_nav_timeout
+                )
                 
                 if response and not response.ok:
-                    self.logger.warning(f"Navigation resulted in status {response.status}. URL: {response.url}")
-                    if i == len(attempts):  # Last attempt
-                        raise ScraperError(f"Navigation failed with status {response.status}")
-                    continue
+                    self.logger.warning(f"Navigation attempt {i} resulted in status {response.status}. URL: {response.url}")
+                    if i == len(self.config.navigation_retry_attempts):
+                        self._handle_and_raise_scraper_error(ScraperError(f"Navigation failed with status {response.status} after all attempts."), operation_desc)
+                    continue # Try next attempt configuration
                 
-                self.logger.info(f"Successfully navigated to {self.base_url} on attempt {i}")
-                return True
+                self.logger.info(f"Successfully navigated on attempt {i}. Page URL: {self.page.url}")
+                
+                # Ensure page is stable after goto before further actions
+                self.wait_for_load_state('load', timeout_ms=current_nav_timeout) 
+                
+                self.logger.info(f"Clicking 'Apply' button: {self.config.apply_button_selector}")
+                self.click_element(self.config.apply_button_selector, timeout_ms=self.config.interaction_timeout_ms) 
+                
+                self.logger.info(f"Waiting {self.config.wait_after_apply_ms}ms after 'Apply' click.")
+                self.wait_for_timeout(self.config.wait_after_apply_ms)
+                return # Successful setup
                 
             except PlaywrightTimeoutError as e:
                 self.logger.warning(f"Attempt {i} timed out: {str(e)}")
-                if i == len(attempts):
-                    error_msg = f"All navigation attempts timed out for DOT URL: {self.base_url}"
-                    self.logger.error(error_msg)
-                    raise ScraperError(error_msg) from e
-                # Add progressive delay for timeout retries
-                retry_delay = i * 10
-                self.logger.info(f"Waiting {retry_delay} seconds before timeout retry...")
-                time.sleep(retry_delay)
+                if i == len(self.config.navigation_retry_attempts):
+                    self._handle_and_raise_scraper_error(e, f"DOT custom navigation (all attempts timed out for {self.config.base_url})")
+                
+                retry_delay_s = params.get('retry_delay_on_timeout_s', 0)
+                if retry_delay_s > 0:
+                     self.logger.info(f"Waiting {retry_delay_s}s before timeout retry...")
+                     time.sleep(retry_delay_s)
                 continue
-                
-            except Exception as e:
-                error_str = str(e)
-                if "ERR_HTTP2_PROTOCOL_ERROR" in error_str:
-                    self.logger.warning(f"HTTP/2 protocol error on attempt {i}: {error_str}")
-                    if i == len(attempts):
-                        error_msg = f"HTTP/2 protocol error persists after all attempts for DOT URL: {self.base_url}"
-                        self.logger.error(error_msg)
-                        raise ScraperError(error_msg) from e
-                    # Add delay before retry
-                    self.logger.info(f"Waiting {i * 3} seconds before retry...")
-                    time.sleep(i * 3)
-                    continue
-                elif "ERR_TIMED_OUT" in error_str:
-                    self.logger.warning(f"Network timeout error on attempt {i}: {error_str}")
-                    if i == len(attempts):
-                        error_msg = f"Network timeout error persists after all attempts for DOT URL: {self.base_url}"
-                        self.logger.error(error_msg)
-                        raise ScraperError(error_msg) from e
-                    # Add progressive delay for network timeout retries
-                    timeout_delay = i * 15
-                    self.logger.info(f"Waiting {timeout_delay} seconds before timeout retry...")
-                    time.sleep(timeout_delay)
-                    continue
-                else:
-                    error_msg = f"Unexpected error navigating to DOT URL {self.base_url}: {error_str}"
-                    self.logger.error(error_msg, exc_info=True)
-                    raise ScraperError(error_msg) from e
-
-    def download_dot_csv(self):
-        """
-        Download the CSV file from the DOT Forecast site.
-
-        Returns:
-            str: Path to the downloaded file, or None if download failed
-        """
-        try:
-            # Wait for the page to load
-            self.logger.info("Waiting for page 'load' state...")
-            self.page.wait_for_load_state('load', timeout=90000)
-            self.logger.info("Page loaded.")
-
-            # Click the 'Apply' button
-            apply_button_selector = "button:has-text('Apply')"
-            apply_button = self.page.locator(apply_button_selector)
-            apply_button.wait_for(state='visible', timeout=30000)
-            self.logger.info("Clicking 'Apply' button...")
-            apply_button.click()
-
-            # Explicit wait after clicking Apply
-            self.logger.info("Waiting 10 seconds after clicking Apply...")
-            time.sleep(10)
-            self.logger.info("Wait finished. Proceeding to download.")
-
-            # Locate the 'Download CSV' button/link
-            # It might be a link styled as a button
-            download_link_selector = "a:has-text('Download CSV')"
-            download_link = self.page.locator(download_link_selector)
-            download_link.wait_for(state='visible', timeout=60000)
-            self.logger.info("'Download CSV' link found.")
-
-            self.logger.info("Clicking 'Download CSV' and waiting for new page and download...")
-
-            # Expect a new page/tab to open and the download to start there
-            with self.context.expect_page(timeout=60000) as new_page_info:
-                download_link.click() # Click the link that opens the new tab
-
-            new_page = new_page_info.value
-            self.logger.info(f"New page opened with URL: {new_page.url}")
-
-            # Set up download handler for the new page
-            new_page.on("download", self._handle_download)
-            
-            # Wait for the download to start on the new page
-            # Increased timeout to handle potential server-side preparation
-            download_obj = None
-            try:
-                with new_page.expect_download(timeout=120000) as download_info:
-                     self.logger.info("Waiting for download to initiate on the new page...")
-                     # Sometimes an action on the new page might be needed, but often just waiting is enough
-                     # If the download doesn't start, add a small wait or interaction here.
-                     # For now, just rely on the expect_download timeout.
-                     pass # Placeholder, let expect_download handle the wait
-
-                download_obj = download_info.value # Access the download object
-                self.logger.info("Download detected on new page.")
-                
-                # Manually handle the download since the event handler might not be triggered
-                if not self._last_download_path:
-                    self.logger.info("Manual download handling since automatic handler didn't trigger...")
-                    self._handle_download(download_obj)
+            except Exception as e: # Catch other errors like protocol errors
+                error_str = str(e).upper()
+                # Simplified error checking from original scraper
+                if "ERR_HTTP2_PROTOCOL_ERROR" in error_str or "ERR_TIMED_OUT" in error_str or "NS_ERROR_NETTIMEOUT" in error_str:
+                    self.logger.warning(f"Network/Protocol error on attempt {i}: {error_str}")
+                    if i == len(self.config.navigation_retry_attempts):
+                        self._handle_and_raise_scraper_error(e, f"DOT custom navigation ({error_str} after all attempts for {self.config.base_url})")
                     
-            finally:
-                 # Ensure the new page is closed even if download fails
-                 if new_page and not new_page.is_closed():
-                     self.logger.info("Closing the download initiation page.")
-                     new_page.close()
+                    # Use a progressive delay based on attempt number for these errors
+                    delay = params.get('delay_before_next_s', 5) * i 
+                    self.logger.info(f"Waiting {delay}s before retrying due to {error_str}...")
+                    time.sleep(delay)
+                    continue
+                else: # Other unexpected errors
+                    self._handle_and_raise_scraper_error(e, f"DOT custom navigation (unexpected error: {self.config.base_url})")
+        
+        # Should not be reached if all attempts fail, as errors are raised.
+        self.logger.error("All navigation attempts failed for DOT scraper setup.")
+        raise ScraperError("Exhausted all navigation retry attempts for DOT scraper.")
 
-            # Wait a brief moment for the download event to be processed by the callback
-            self.page.wait_for_timeout(2000) # Brief wait for file system operations
 
-            if not self._last_download_path or not os.path.exists(self._last_download_path):
-                self.logger.error(f"BaseScraper._last_download_path not set or invalid. Value: {self._last_download_path}")
-                # Fallback: Try to save from the download object directly
-                if download_obj:
-                    try:
-                        temp_playwright_path = download_obj.path()
-                        self.logger.info(f"Attempting to copy from Playwright temp path: {temp_playwright_path}")
-                        
-                        # Generate our own filename
-                        timestamp_str = time.strftime("%Y%m%d_%H%M%S")
-                        final_filename = f"department_of_transportation_{timestamp_str}.csv"
-                        final_save_path = os.path.join(self.download_path, final_filename)
-                        
-                        # Copy the file manually
-                        import shutil
-                        shutil.copy2(temp_playwright_path, final_save_path)
-                        self._last_download_path = final_save_path
-                        self.logger.info(f"Successfully copied download to: {final_save_path}")
-                        
-                    except Exception as copy_err:
-                        self.logger.error(f"Failed to copy download manually: {copy_err}")
-                        raise ScraperError("Download failed: File not found or path not set by BaseScraper._handle_download.")
-                else:
-                    raise ScraperError("Download failed: File not found or path not set by BaseScraper._handle_download.")
+    def _extract_method(self) -> Optional[str]:
+        """Downloads the CSV file after navigating to a new page."""
+        self.logger.info(f"Starting DOT CSV download. Waiting for link: {self.config.download_csv_link_selector}")
+        
+        self.wait_for_selector(
+            self.config.download_csv_link_selector, 
+            timeout_ms=self.config.interaction_timeout_ms, 
+            state='visible'
+        )
+        self.logger.info("Download CSV link is visible.")
 
-            self.logger.info(f"Download process completed. File saved at: {self._last_download_path}")
-            return self._last_download_path
+        self._last_download_path = None # Reset before download attempt
+        downloaded_file_path: Optional[str] = None
+        new_page = None # Ensure new_page is defined for finally block
 
-        except PlaywrightTimeoutError as e:
-            self.logger.error(f"Timeout error during DOT CSV download process: {str(e)}")
-            screenshot_path = os.path.join(LOGS_DIR, f"dot_timeout_error_{int(time.time())}.png")
-            try:
-                if self.page and not self.page.is_closed():
-                    self.page.screenshot(path=screenshot_path, full_page=True)
-                    self.logger.info(f"Screenshot saved to {screenshot_path}")
-                else:
-                    self.logger.warning("Could not take screenshot, page was closed or not available.")
-            except Exception as ss_err:
-                self.logger.error(f"Failed to save screenshot: {ss_err}")
-            handle_scraper_error(e, self.source_name, "Timeout error during download")
-            raise ScraperError(f"Timeout error during download: {str(e)}")
-        except Exception as e:
-            self.logger.error(f"Unexpected error downloading DOT CSV data: {str(e)}", exc_info=True)
-            handle_scraper_error(e, self.source_name, "Error downloading DOT CSV data")
-            raise ScraperError(f"Error downloading DOT CSV data: {str(e)}")
+        operation_desc = f"DOT CSV download via new page from selector '{self.config.download_csv_link_selector}'"
+        try:
+            # This is similar to DownloadMixin.download_with_new_tab but more specific to DOT's flow
+            with self.context.expect_page(timeout=self.config.new_page_download_expect_timeout_ms) as new_page_info:
+                self.click_element(self.config.download_csv_link_selector, timeout_ms=self.config.interaction_timeout_ms)
+            
+            new_page = new_page_info.value
+            self.logger.info(f"New page opened for download, URL (may be temporary): {new_page.url}")
+
+            # Register the download handler from DownloadMixin for the new page
+            new_page.on("download", self._handle_download_event)
+            
+            with new_page.expect_download(timeout=self.config.new_page_download_initiation_wait_ms) as download_info_new_page:
+                self.logger.info("Waiting for download to initiate on new page...")
+                # Original scraper had no specific action here, just waited. Add a small explicit wait.
+                new_page.wait_for_timeout(self.config.new_page_initial_load_wait_ms) 
+            
+            download_event_data = download_info_new_page.value
+            # _handle_download_event should have been triggered and set self._last_download_path
+            
+            self.wait_for_timeout(self.config.default_wait_after_download_ms) # Allow event processing
+
+            if self._last_download_path and os.path.exists(self._last_download_path):
+                downloaded_file_path = self._last_download_path
+                self.logger.info(f"Download successfully handled by event. File at: {downloaded_file_path}")
+            else:
+                # Fallback: Manually save if _handle_download_event didn't set the path or failed silently
+                self.logger.warning("_last_download_path not set by event or file missing. Attempting manual save from Playwright temp path.")
+                temp_playwright_path = download_event_data.path()
+                if not temp_playwright_path or not os.path.exists(temp_playwright_path):
+                     self._handle_and_raise_scraper_error(ScraperError("Playwright temporary download path is invalid."), operation_desc + " - fallback save")
+
+                suggested_filename = download_event_data.suggested_filename or f"{self.source_name_short}_download.csv"
+                _, ext = os.path.splitext(suggested_filename)
+                ext = ext if ext else '.csv' # Ensure extension
+                
+                final_filename = f"{self.source_name_short}_{time.strftime('%Y%m%d_%H%M%S')}{ext}"
+                final_save_path = os.path.join(self.download_path, final_filename)
+                ensure_directory(self.download_path)
+                
+                shutil.copy2(temp_playwright_path, final_save_path)
+                self.logger.info(f"Manually copied download from '{temp_playwright_path}' to '{final_save_path}'.")
+                self._last_download_path = final_save_path
+                downloaded_file_path = final_save_path
+            
+            if not downloaded_file_path or not os.path.exists(downloaded_file_path):
+                 self._handle_and_raise_scraper_error(ScraperError("Download path not resolved or file does not exist after all attempts."), operation_desc)
+
+            return downloaded_file_path
+
+        except Exception as e: # Catch any error, including PlaywrightTimeoutError from expect_page/expect_download
+            self.logger.error(f"Error during {operation_desc}: {e}", exc_info=True)
+            if self.config.screenshot_on_error and self.page: self._save_error_screenshot("dot_extract_error_main_page")
+            if self.config.save_html_on_error and self.page: self._save_error_html("dot_extract_error_main_page")
+            if new_page and not new_page.is_closed() and self.config.screenshot_on_error : 
+                try: # Try to get debug info from new_page if it exists
+                    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                    np_ss_path = os.path.join(active_config.ERROR_SCREENSHOTS_DIR, f"dot_extract_error_newpage_{timestamp}.png")
+                    new_page.screenshot(path=np_ss_path)
+                    self.logger.info(f"Saved screenshot of new_page to {np_ss_path}")
+                except Exception as np_err: self.logger.error(f"Failed to get screenshot from new_page: {np_err}")
+            self._handle_and_raise_scraper_error(e, operation_desc)
+        finally:
+            if new_page and not new_page.is_closed():
+                new_page.close()
+                self.logger.info("Closed the new page used for download.")
+        return None # Should be unreachable
+
+    def _custom_dot_transforms(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Applies DOT-specific transformations."""
+        self.logger.info("Applying custom DOT transformations...")
+
+        # Complex Award Date Parsing (handle multiple formats, then flexible fallback)
+        # Column 'award_date_raw_custom' is from raw_column_rename_map
+        award_date_col = "award_date_raw_custom"
+        df['award_date_final'] = None
+        df['award_fiscal_year_final'] = pd.NA
+
+        if award_date_col in df.columns:
+            date_formats_to_try = ['%m/%d/%Y', '%Y-%m-%d', '%m-%d-%Y', '%d/%m/%Y'] # From original scraper
+            for fmt in date_formats_to_try:
+                try:
+                    parsed_dates = pd.to_datetime(df[award_date_col], format=fmt, errors='coerce')
+                    # Fill only where current 'award_date_final' is still NaT but parsed_dates is not
+                    fill_mask = df['award_date_final'].isna() & parsed_dates.notna()
+                    if fill_mask.any():
+                        df.loc[fill_mask, 'award_date_final'] = parsed_dates[fill_mask]
+                except Exception: # Catch errors during a specific format attempt
+                    continue 
+            
+            # Fallback for any remaining NaNs using infer_datetime_format
+            fallback_mask = df['award_date_final'].isna() & df[award_date_col].notna()
+            if fallback_mask.any():
+                df.loc[fallback_mask, 'award_date_final'] = pd.to_datetime(
+                    df.loc[fallback_mask, award_date_col], 
+                    errors='coerce', 
+                    infer_datetime_format=True 
+                )
+            
+            # Extract date and fiscal year
+            valid_dates_mask = df['award_date_final'].notna()
+            if valid_dates_mask.any():
+                df.loc[valid_dates_mask, 'award_fiscal_year_final'] = pd.to_datetime(df.loc[valid_dates_mask, 'award_date_final']).dt.year
+                df.loc[valid_dates_mask, 'award_date_final'] = pd.to_datetime(df.loc[valid_dates_mask, 'award_date_final']).dt.date
+            
+            df['award_fiscal_year_final'] = df['award_fiscal_year_final'].astype('Int64')
+            self.logger.debug("Processed 'award_date_final' and 'award_fiscal_year_final' with custom logic.")
+        else:
+            self.logger.warning(f"'{award_date_col}' not found for custom award date parsing.")
+
+        # Contract Type Fallback
+        # Expects 'contract_type_raw' (from raw_rename if 'Contract Type' exists) and 'action_award_type_extra'
+        if 'contract_type_raw' in df.columns and df['contract_type_raw'].notna().any():
+            df['contract_type_final'] = df['contract_type_raw']
+            self.logger.debug("Used 'contract_type_raw' for 'contract_type_final'.")
+        elif 'action_award_type_extra' in df.columns:
+            df['contract_type_final'] = df['action_award_type_extra']
+            self.logger.info("Used 'action_award_type_extra' as fallback for 'contract_type_final'.")
+        else:
+            df['contract_type_final'] = None
+            self.logger.warning("No source for 'contract_type_final'.")
+            
+        return df
+
+    def _process_method(self, file_path: Optional[str]) -> Optional[int]:
+        """Processes the downloaded CSV file."""
+        self.logger.info(f"Starting DOT processing for file: {file_path}")
+        if not file_path or not os.path.exists(file_path):
+            self.logger.error(f"File path '{file_path}' is invalid. Cannot process.")
+            return 0
+        try:
+            df = self.read_file_to_dataframe(
+                file_path, 
+                file_type_hint=self.config.file_type_hint,
+                read_options=self.config.read_options # e.g., {"on_bad_lines": "skip", "header": 0}
+            )
+            if df.empty: self.logger.info("DataFrame empty after reading."); return 0
+            
+            df = self.transform_dataframe(df, config_params=self.config.data_processing_rules)
+            if df.empty: self.logger.info("DataFrame empty after transforms."); return 0
+            
+            loaded_count = self.prepare_and_load_data(df, config_params=self.config.data_processing_rules)
+            self.logger.info(f"DOT processing completed. Loaded {loaded_count} prospects.")
+            return loaded_count
+        except ScraperError as e: self.logger.error(f"ScraperError: {e}", exc_info=True); raise
+        except Exception as e: self._handle_and_raise_scraper_error(e, f"processing DOT file {file_path}")
+        return 0
 
     def scrape(self):
-        """
-        Run the scraper to navigate, apply filter, and download the file.
-        """
-        # Use the structured scrape method from the base class
+        """Orchestrates the scraping process for DOT."""
+        self.logger.info(f"Starting scrape for {self.config.source_name} using DotScraper logic.")
         return self.scrape_with_structure(
-            setup_func=self.navigate_to_forecast_page, # Setup navigates to the page
-            extract_func=self.download_dot_csv,       # Extract downloads the CSV
-            process_func=self.process_func           # Process handles the data
+            setup_func=self._setup_method,
+            extract_func=self._extract_method,
+            process_func=self._process_method
         )
-
-    def process_func(self, file_path: str):
-        """
-        Process the downloaded CSV file, transform data to Prospect objects, 
-        and insert into the database using logic adapted from dot_transform.py.
-        """
-        self.logger.info(f"Processing downloaded CSV file: {file_path}")
-        try:
-            df = pd.read_csv(file_path, header=0, on_bad_lines='skip')
-            df.dropna(how='all', inplace=True) # Pre-processing from transform script
-            self.logger.info(f"Loaded {len(df)} rows from {file_path} after initial dropna.")
-
-            if df.empty:
-                self.logger.info("Downloaded file is empty. Nothing to process.")
-                return
-
-            # --- Start: Logic adapted from dot_transform.normalize_columns_dot ---
-            rename_map = {
-                'Sequence Number': 'native_id',
-                'Procurement Office': 'agency', # To Prospect.agency
-                'Project Title': 'title',
-                'Description': 'description',
-                'Estimated Value': 'estimated_value_raw',
-                'NAICS': 'naics',
-                'Competition Type': 'set_aside',
-                'RFP Quarter': 'solicitation_qtr_raw',
-                'Anticipated Award Date': 'award_date_raw',
-                'Place of Performance': 'place_raw',
-                # For 'extra'
-                'Action/Award Type': 'action_award_type',
-                'Contract Vehicle': 'contract_vehicle'
-            }
-            rename_map_existing = {k: v for k, v in rename_map.items() if k in df.columns}
-            df.rename(columns=rename_map_existing, inplace=True)
-
-            # Place of Performance
-            if 'place_raw' in df.columns:
-                split_places_data = df['place_raw'].apply(split_place)
-                df['place_city'] = split_places_data.apply(lambda x: x[0])
-                df['place_state'] = split_places_data.apply(lambda x: x[1])
-                df['place_country'] = 'USA' # Default from transform
-            else:
-                df['place_city'], df['place_state'], df['place_country'] = pd.NA, pd.NA, 'USA'
-
-            # Estimated Value
-            if 'estimated_value_raw' in df.columns:
-                parsed_values = df['estimated_value_raw'].apply(parse_value_range)
-                df['estimated_value'] = parsed_values.apply(lambda x: x[0])
-                df['est_value_unit'] = parsed_values.apply(lambda x: x[1])
-            else:
-                df['estimated_value'], df['est_value_unit'] = pd.NA, pd.NA
-
-            # Solicitation Date (Prospect.release_date) from RFP Quarter
-            if 'solicitation_qtr_raw' in df.columns:
-                # fiscal_quarter_to_date returns (timestamp, fiscal_year)
-                parsed_sol_info = df['solicitation_qtr_raw'].apply(fiscal_quarter_to_date)
-                df['release_date'] = parsed_sol_info.apply(lambda x: x[0].date() if pd.notna(x[0]) else None)
-                # df['solicitation_fiscal_year'] = parsed_sol_info.apply(lambda x: x[1]) # Not in Prospect model
-            else:
-                df['release_date'] = None
-
-            # Award Date and Fiscal Year
-            if 'award_date_raw' in df.columns:
-                # Try multiple date formats to avoid pandas warning
-                date_formats = ['%m/%d/%Y', '%Y-%m-%d', '%m-%d-%Y', '%d/%m/%Y']
-                df['award_date'] = None
-                df['award_fiscal_year'] = pd.NA
-                
-                for fmt in date_formats:
-                    try:
-                        parsed_dates = pd.to_datetime(df['award_date_raw'], format=fmt, errors='coerce')
-                        valid_mask = parsed_dates.notna()
-                        if valid_mask.any():
-                            df.loc[valid_mask, 'award_date'] = parsed_dates[valid_mask].dt.date
-                            df.loc[valid_mask, 'award_fiscal_year'] = parsed_dates[valid_mask].dt.year.astype('Int64')
-                            break
-                    except:
-                        continue
-                
-                # Fallback to flexible parsing if no format worked
-                if df['award_date'].isna().all():
-                    with pd.option_context('mode.chained_assignment', None):
-                        parsed_dates = pd.to_datetime(df['award_date_raw'], errors='coerce', infer_datetime_format=True)
-                        valid_mask = parsed_dates.notna()
-                        if valid_mask.any():
-                            df.loc[valid_mask, 'award_date'] = parsed_dates[valid_mask].dt.date
-                            df.loc[valid_mask, 'award_fiscal_year'] = parsed_dates[valid_mask].dt.year.astype('Int64')
-            else:
-                df['award_date'] = None
-                df['award_fiscal_year'] = pd.NA
-            
-            if 'award_fiscal_year' in df.columns:
-                 df['award_fiscal_year'] = df['award_fiscal_year'].astype('Int64')
-
-            # Contract Type (Missing from direct mapping in transform, but Prospect has it)
-            # Check if 'action_award_type' or 'contract_vehicle' can serve as contract_type or if it needs to be NA
-            if 'action_award_type' in df.columns and 'contract_type' not in df.columns:
-                 self.logger.info("Using 'action_award_type' for 'contract_type' for DOT as fallback.")
-                 df['contract_type'] = df['action_award_type']
-            elif 'contract_type' not in df.columns:
-                 df['contract_type'] = pd.NA
-
-            cols_to_drop = ['place_raw', 'estimated_value_raw', 'solicitation_qtr_raw', 'award_date_raw']
-            df.drop(columns=[col for col in cols_to_drop if col in df.columns], errors='ignore', inplace=True)
-            # --- End: Logic adapted from dot_transform.normalize_columns_dot ---
-            
-            # Define the final column rename map.
-            final_column_rename_map = {
-                'native_id': 'native_id',
-                'agency': 'agency',
-                'title': 'title',
-                'description': 'description',
-                'naics': 'naics',
-                'set_aside': 'set_aside',
-                'release_date': 'release_date',
-                'award_date': 'award_date',
-                'award_fiscal_year': 'award_fiscal_year',
-                'place_city': 'place_city',
-                'place_state': 'place_state',
-                'place_country': 'place_country',
-                'estimated_value': 'estimated_value',
-                'est_value_unit': 'est_value_unit',
-                'contract_type': 'contract_type',
-                # Fields intended for 'extra' should have their current names in df as keys
-                'action_award_type': 'action_award_type', 
-                'contract_vehicle': 'contract_vehicle'
-            }
-
-            # Ensure all columns in final_column_rename_map exist in df.
-            for col_name in final_column_rename_map.keys():
-                if col_name not in df.columns:
-                    df[col_name] = pd.NA
-            
-            prospect_model_fields = [col.name for col in Prospect.__table__.columns if col.name != 'loaded_at']
-            # Original ID generation: unique_string = f"{naics_val}-{title_val}-{desc_val}-{self.source_name}"
-            # These correspond to 'naics', 'title', 'description' in the df after initial renaming.
-            # Include native_id and location to ensure uniqueness
-            fields_for_id_hash = ['native_id', 'naics', 'title', 'description', 'place_city', 'place_state']
-
-            return self._process_and_load_data(df, final_column_rename_map, prospect_model_fields, fields_for_id_hash)
-
-        except FileNotFoundError:
-            self.logger.error(f"DOT CSV file not found: {file_path}")
-            raise ScraperError(f"Processing failed: DOT CSV file not found: {file_path}")
-        except pd.errors.EmptyDataError:
-            self.logger.error(f"No data or empty DOT CSV file: {file_path}")
-            return
-        except KeyError as e:
-            self.logger.error(f"Missing expected column during DOT CSV processing: {e}.")
-            self.logger.error(traceback.format_exc())
-            raise ScraperError(f"Processing failed due to missing column: {e}")
-        except Exception as e:
-            self.logger.error(f"Error processing DOT file {file_path}: {str(e)}")
-            self.logger.error(traceback.format_exc())
-            raise ScraperError(f"Error processing DOT file {file_path}: {str(e)}")
+```
