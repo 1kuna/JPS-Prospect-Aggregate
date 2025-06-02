@@ -1,6 +1,7 @@
 import datetime
 from datetime import timezone
-from app.models import db, DataSource, ScraperStatus
+from app.models import db # For db instance
+from app.database.models import DataSource, ScraperStatus # For models
 from app.exceptions import NotFoundError, ScraperError, DatabaseError
 from app.utils.logger import logger
 from app.utils.db_utils import update_scraper_status
@@ -41,9 +42,9 @@ class ScraperService:
                 raise ScraperError(f"No scraper configured for scraper_key: '{data_source.scraper_key}' for data source: {data_source.name}")
 
             # Initialize scraper with appropriate debug mode
-            # DOT scraper needs special handling due to website blocking
-            debug_mode = data_source.scraper_key == 'dot'  # Enable debug mode for DOT scraper
-            scraper_instance = ScraperClass(debug_mode=debug_mode)
+            # All scrapers run by the service should be headless (debug_mode=False)
+            # Stealth and specific launch args are handled in BaseScraper/individual scrapers.
+            scraper_instance = ScraperClass(debug_mode=False)
             
             # Update status to 'working' before starting
             update_scraper_status(source_id=data_source.id, status='working', details="Scrape process initiated.")

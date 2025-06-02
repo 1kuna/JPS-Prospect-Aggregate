@@ -7,25 +7,10 @@ from datetime import timezone
 # import shutil # Removed as it was only used by rebuild_database
 from typing import Optional # Added for type hinting
 from app.utils.logger import logger
-from app.utils.file_utils import clean_old_files
 # from flask import current_app # Removed as it was only used by rebuild_database
 # from pathlib import Path # Removed as it was only used by rebuild_database
 
 # Set up logging using the centralized utility
-
-def cleanup_old_backups(backup_dir, max_backups=5):
-    """
-    Clean up old database backups, keeping only the most recent ones.
-    
-    Args:
-        backup_dir (str): Directory containing the backups
-        max_backups (int): Maximum number of backups to keep
-    """
-    # Use the centralized clean_old_files function
-    pattern = "proposals_backup_*.db"
-    deleted = clean_old_files(backup_dir, pattern, max_backups)
-    logger.info(f"Cleaned up {deleted} old database backup(s), keeping {max_backups} most recent")
-    return deleted
 
 # Ensure datetime is imported if not already at the top of the file
 # import datetime # This should be at the top of the file
@@ -41,7 +26,8 @@ def update_scraper_status(source_id: int, status: str, details: Optional[str] = 
         status (str): Status to set (e.g., 'working', 'completed', 'failed').
         details (Optional[str]): Additional details or error message.
     """
-    from app.models import db, DataSource, ScraperStatus # Import db from app.models
+    from app.models import db # For db instance
+    from app.database.models import DataSource, ScraperStatus # For models
     # Ensure datetime is available (already imported at the top)
 
     logger.info(f"Updating scraper status for source ID {source_id} to '{status}'. Details: {details}")
@@ -83,18 +69,3 @@ def update_scraper_status(source_id: int, status: str, details: Optional[str] = 
             session.rollback()
         except Exception as rb_exc:
             logger.error(f"Failed to rollback session during status update error: {rb_exc}", exc_info=True)
-
-def get_data_source_id_by_name(source_name: str) -> int | None:
-    """Fetches the ID of a data source by its name."""
-    from app.models import db, DataSource
-    session = db.session
-    try:
-        data_source = session.query(DataSource.id).filter(DataSource.name == source_name).scalar()
-        if data_source:
-            return data_source # scalar() directly returns the ID
-        else:
-            logger.warning(f"Data source not found with name: {source_name}")
-            return None
-    except Exception as e:
-        logger.error(f"Error fetching data source ID for {source_name}: {str(e)}", exc_info=True)
-        return None 

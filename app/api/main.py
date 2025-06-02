@@ -1,6 +1,7 @@
 from flask import Blueprint, jsonify
 from sqlalchemy import func, desc
-from app.models import db, Prospect, DataSource, ScraperStatus # Added ScraperStatus
+from app.models import db # For db instance
+from app.database.models import Prospect, DataSource, ScraperStatus # For models
 from app.utils.logger import logger
 import datetime
 

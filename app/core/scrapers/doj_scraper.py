@@ -3,21 +3,17 @@
 # Standard library imports
 import os
 import traceback
-# import sys # Unused
-# import datetime # Unused at top level, `from datetime import datetime` is used
 
 # Third-party imports
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 import pandas as pd
-# import re # Unused
 
 # Local application imports
 from app.core.base_scraper import BaseScraper
-from app.models import Prospect
-# from app.database.crud import bulk_upsert_prospects # Unused
+from app.database.models import Prospect # Changed import
 from app.exceptions import ScraperError
 from app.utils.logger import logger
-from app.config import active_config # Import active_config
+from app.config import current_config # Import current_config
 from app.utils.scraper_utils import handle_scraper_error
 from app.utils.parsing import parse_value_range, fiscal_quarter_to_date, split_place
 
@@ -31,7 +27,7 @@ class DOJForecastScraper(BaseScraper):
         """Initialize the DOJ Forecast scraper."""
         super().__init__(
             source_name="Department of Justice", # Match database name
-            base_url=active_config.DOJ_FORECAST_URL, # Updated URL config variable
+            base_url=current_config.DOJ_FORECAST_URL, # Updated URL config variable
             debug_mode=debug_mode
         )
     

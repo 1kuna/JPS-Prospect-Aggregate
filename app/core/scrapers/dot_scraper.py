@@ -2,28 +2,21 @@
 
 # Standard library imports
 import os
-# import sys # Unused
 import time
 
 # Third-party imports
-# import requests # Unused
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
-# from playwright.sync_api import sync_playwright # Unused
 import pandas as pd
 import traceback # Added traceback
-# import re # Unused
 
 # Local application imports
 from app.core.base_scraper import BaseScraper
-from app.models import Prospect # Added Prospect, DataSource, db
-# from app.database.crud import bulk_upsert_prospects # Unused
-from app.config import active_config, LOGS_DIR # Import active_config
+from app.database.models import Prospect # Changed import
+from app.config import current_config # Import current_config
 from app.exceptions import ScraperError
 from app.utils.file_utils import ensure_directory # find_files was unused
 from app.utils.logger import logger
 from app.utils.scraper_utils import (
-    # check_url_accessibility, # Unused
-    # download_file, # Unused
     handle_scraper_error
 )
 from app.utils.parsing import parse_value_range, fiscal_quarter_to_date, split_place # Added parsing utils
@@ -38,7 +31,7 @@ class DotScraper(BaseScraper):
         """Initialize the DOT scraper."""
         super().__init__(
             source_name="Department of Transportation",
-            base_url=active_config.DOT_FORECAST_URL,
+            base_url=current_config.DOT_FORECAST_URL,
             debug_mode=debug_mode,
             use_stealth=True
         )
@@ -225,7 +218,7 @@ class DotScraper(BaseScraper):
 
         except PlaywrightTimeoutError as e:
             self.logger.error(f"Timeout error during DOT CSV download process: {str(e)}")
-            screenshot_path = os.path.join(LOGS_DIR, f"dot_timeout_error_{int(time.time())}.png")
+            screenshot_path = os.path.join(current_config.LOGS_DIR, f"dot_timeout_error_{int(time.time())}.png")
             try:
                 if self.page and not self.page.is_closed():
                     self.page.screenshot(path=screenshot_path, full_page=True)

@@ -1,9 +1,9 @@
 from flask import Blueprint, jsonify
-from app.models import db, DataSource, ScraperStatus
+from app.models import db # For db instance
+from app.database.models import DataSource, ScraperStatus # For models
 from app.exceptions import NotFoundError, ScraperError, DatabaseError
 from app.utils.logger import logger
 from app.services.scraper_service import ScraperService
-import threading
 import time
 
 scrapers_bp = Blueprint('scrapers', __name__)

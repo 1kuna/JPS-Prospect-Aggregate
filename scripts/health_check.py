@@ -2,9 +2,10 @@ import time
 import datetime
 
 # from app.database.connection import session_scope # Removed
-from app.models import db, DataSource, ScraperStatus # Added db
+from app.models import db # For db instance
+from app.database.models import DataSource, ScraperStatus # For models
 from app import create_app # Added for app context
-from app.config import active_config # Import active_config
+from app.config import current_config # Import current_config
 from app.utils.logger import logger, cleanup_logs
 from app.core.scrapers.acquisition_gateway import AcquisitionGatewayScraper
 from app.core.scrapers.ssa_scraper import SsaScraper
@@ -148,7 +149,7 @@ def check_all_scrapers():
     
     # Clean up old log files, keeping only the last 3
     try:
-        cleanup_results = cleanup_logs(active_config.LOGS_DIR, keep_count=3) # Use active_config.LOGS_DIR
+        cleanup_results = cleanup_logs(current_config.LOGS_DIR, keep_count=3) # Use current_config.LOGS_DIR
         for log_type, count in cleanup_results.items():
             if count > 0:
                 logger.info(f"Cleaned up {count} old {log_type} log files")

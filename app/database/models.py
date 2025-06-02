@@ -1,5 +1,5 @@
 from sqlalchemy import (Column, String, Text,
-                          Numeric, Date, TIMESTAMP, JSON, ForeignKey, Float, Integer) # Keep create_engine for now, might be used by create_tables
+                          Numeric, Date, TIMESTAMP, JSON, ForeignKey, Integer) # Removed Float
 from sqlalchemy.orm import relationship # remove sessionmaker, declarative_base
 from sqlalchemy.sql import func
 from app.database import db # Import db from flask_sqlalchemy instance
@@ -32,19 +32,18 @@ class Prospect(db.Model): # Renamed back to Prospect
     source_id = Column(Integer, ForeignKey('data_sources.id'), nullable=True, index=True)
     data_source = relationship("DataSource", back_populates="prospects") # Renamed back
 
-    # Relationship to InferredProposalData (one-to-one)
-    inferred_data = relationship(
-        "InferredProspectData", # Renamed back
-        back_populates="prospect", # Renamed back
-        uselist=False,
-        cascade="all, delete-orphan"
-    )
+    # Relationship to InferredProposalData (one-to-one) - REMOVED
+    # inferred_data = relationship(
+    #     "InferredProspectData", # Renamed back
+    #     back_populates="prospect", # Renamed back
+    #     uselist=False,
+    #     cascade="all, delete-orphan"
+    # )
 
     def __repr__(self):
         return f"<Prospect(id='{self.id}', source_id='{self.source_id}', title='{self.title[:30] if self.title else ''}...')>" # Renamed from Prospect
 
     def to_dict(self):
-        import json
         import math
         
         def clean_value(v):
@@ -82,32 +81,7 @@ class Prospect(db.Model): # Renamed back to Prospect
             # "inferred_data": self.inferred_data.to_dict() if self.inferred_data else None
         }
 
-class InferredProspectData(db.Model): # Renamed back
-    __tablename__ = 'inferred_prospect_data' # Renamed back
-
-    prospect_id = Column(String, ForeignKey('prospects.id'), primary_key=True) # Renamed back
-    inferred_requirement_title = Column(Text, nullable=True)
-    inferred_requirement_description = Column(Text, nullable=True)
-    inferred_naics = Column(String, nullable=True)
-    inferred_estimated_value = Column(Float, nullable=True)
-    inferred_est_value_unit = Column(String, nullable=True)
-    inferred_solicitation_date = Column(Text, nullable=True)
-    inferred_award_date = Column(Text, nullable=True)
-    inferred_place_city = Column(Text, nullable=True)
-    inferred_place_state = Column(Text, nullable=True)
-    inferred_place_country = Column(Text, nullable=True)
-    inferred_contract_type = Column(Text, nullable=True)
-    inferred_set_aside = Column(Text, nullable=True)
-    inferred_at = Column(TIMESTAMP(timezone=False), server_default=func.now(), onupdate=func.now())
-    inferred_by_model = Column(String, nullable=True)
-
-    # Define the relationship back to Proposal
-    prospect = relationship("Prospect", back_populates="inferred_data") # Renamed back
-
-    def __repr__(self):
-        return f"<InferredProspectData(prospect_id='{self.prospect_id}')>" # Renamed from InferredProspectData
-
-# The relationship on Proposal model for inferred_data is already defined above.
+# Removed InferredProspectData class and its definition
 
 class DataSource(db.Model): # Changed from Base to db.Model
     __tablename__ = 'data_sources'

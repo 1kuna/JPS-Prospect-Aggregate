@@ -22,13 +22,14 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 # Local application imports
 # from app.database.connection import get_db, session_scope # Removed dead import
-from app.models import DataSource, db # Added db for potential direct use, Prospect
+from app.models import db # For db instance
+from app.database.models import DataSource # For models
 import pandas as pd # Add pandas import for type hinting
 import json # Add json import for 'extra' field serialization
 from app.database.crud import bulk_upsert_prospects # Import for loading data
 from app.exceptions import ScraperError
-from app.config import active_config # Import active_config
-from app.utils.file_utils import clean_old_files, ensure_directory
+from app.config import current_config # Import current_config
+from app.utils.file_utils import ensure_directory, clean_files_by_pattern
 from app.utils.logger import logger
 
 # Directory creation is now centralized in config.py, no need to create them here
@@ -73,7 +74,7 @@ class BaseScraper(ABC):
         self.context: Optional[BrowserContext] = None
         self.page: Optional[Page] = None
         # Use the specific directory for this scraper within RAW_DATA_DIR
-        self.download_path = os.path.join(active_config.RAW_DATA_DIR, source_name.lower().replace(' ', '_'))
+        self.download_path = os.path.join(current_config.RAW_DATA_DIR, source_name.lower().replace(' ', '_'))
         ensure_directory(self.download_path) # Ensure it exists
         self._last_download_path: Optional[str] = None # Initialize _last_download_path
         self.logger = logger.bind(name=f"scraper.{source_name.lower().replace(' ', '_')}")
@@ -271,15 +272,15 @@ class BaseScraper(ABC):
         if file_pattern is None:
             file_pattern = f"{self.source_name.lower().replace(' ', '_')}*.csv"
         
-        download_dir = os.path.join(active_config.RAW_DATA_DIR, self.source_name.lower().replace(' ', '_'))
+        download_dir = os.path.join(current_config.RAW_DATA_DIR, self.source_name.lower().replace(' ', '_'))
         
         if not os.path.exists(download_dir):
             logger.warning(f"Download directory doesn't exist: {download_dir}")
             return 0
         
         # Keep the 2 most recent files
-        deleted = clean_old_files(download_dir, file_pattern, keep_count=2)
-        logger.info(f"Cleaned up {deleted} old download files for {self.source_name}")
+        deleted = clean_files_by_pattern(download_dir, file_pattern, keep_count=2, logger=self.logger)
+        self.logger.info(f"Cleaned up {deleted} old download files for {self.source_name}")
         return deleted
     
     def get_or_create_data_source(self, session):
@@ -578,7 +579,11 @@ class BaseScraper(ABC):
                 trigger_element.dispatch_event('click')
             elif click_method == "js_click":
                 # Ensure page.evaluate can find the selector if it's complex; might need refinement
-                self.page.evaluate(f"document.querySelector('{download_trigger_selector.replace("'", "\\'")}').click();")
+                # Re-evaluate this line due to SyntaxError: f-string: unmatched '('
+                # Breaking it down to isolate the f-string construction
+                js_selector_safe = download_trigger_selector.replace("'", "\\'")
+                js_command = f"document.querySelector('{js_selector_safe}').click();"
+                self.page.evaluate(js_command)
             else: # Default "click"
                 trigger_element.click()
 
@@ -655,7 +660,6 @@ class BaseScraper(ABC):
         site-specific popups.
         """
         # This is a placeholder method that can be overridden by subclasses
-        pass
     
     # -------------------------------------------------------------------------
     # Main Scraping Methods

@@ -1,26 +1,15 @@
 """
 Models Package
 
-This package consolidates all SQLAlchemy models for the application.
-It imports the `db` instance from `app.database` and all model classes
-from `app.database.models`.
+This package previously consolidated SQLAlchemy models for the application
+by re-exporting them from app.database.models.
 
-This allows other parts of the application to import models from a single
-location, e.g., `from app.models import db, Prospect, DataSource`.
+Models should now be imported directly from app.database.models.
+This __init__.py now primarily re-exports the 'db' instance from app.database.
 """
 
 from app.database import db
-from app.database.models import (
-    Prospect,
-    InferredProspectData,
-    DataSource,
-    ScraperStatus
-)
 
 __all__ = [
-    "db",
-    "Prospect",
-    "InferredProspectData",
-    "DataSource",
-    "ScraperStatus"
+    "db"
 ] 

@@ -10,7 +10,6 @@ from app import create_app
 from app.database import db
 from app.database.models import Prospect
 from app.utils.logger import logger
-from sqlalchemy import or_
 
 def fix_prospect_titles():
     """
@@ -32,7 +31,7 @@ def fix_prospect_titles():
             agency_fixed_count = 0
             
             for prospect in all_prospects:
-                updated = False
+                # updated = False # Unused variable
                 
                 # Fix title from extra.summary
                 if prospect.extra and isinstance(prospect.extra, dict):
@@ -40,14 +39,14 @@ def fix_prospect_titles():
                     # Check if summary is a valid string (not nan, not None, not empty)
                     if summary and isinstance(summary, str) and summary.strip():
                         prospect.title = summary
-                        updated = True
+                        # updated = True # Unused variable
                         fixed_count += 1
                     
                     # Also fix agency if it's null
                     agency = prospect.extra.get('agency')
                     if prospect.agency is None and agency and isinstance(agency, str) and agency.strip():
                         prospect.agency = agency
-                        updated = True
+                        # updated = True # Unused variable
                         agency_fixed_count += 1
                 
                 # Commit every 100 records to avoid memory issues

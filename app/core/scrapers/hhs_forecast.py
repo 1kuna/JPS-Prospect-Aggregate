@@ -1,23 +1,18 @@
 """Department of Health and Human Services Opportunity Forecast scraper."""
 
 # Standard library imports
-import os
 import traceback
-# import sys # Unused
 
 # Third-party imports
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 import pandas as pd
-# import traceback # Redundant
-# import re # Unused
 
 # Local application imports
 from app.core.base_scraper import BaseScraper
-from app.models import Prospect
-# from app.database.crud import bulk_upsert_prospects # Unused
+from app.database.models import Prospect # Changed import
 from app.exceptions import ScraperError
 from app.utils.logger import logger
-from app.config import active_config # Import active_config
+from app.config import current_config # Import current_config
 from app.utils.scraper_utils import handle_scraper_error
 from app.utils.parsing import parse_value_range
 
@@ -31,7 +26,7 @@ class HHSForecastScraper(BaseScraper):
         """Initialize the HHS Forecast scraper."""
         super().__init__(
             source_name="Health and Human Services",
-            base_url=active_config.HHS_FORECAST_URL,
+            base_url=current_config.HHS_FORECAST_URL,
             debug_mode=debug_mode
         )
     

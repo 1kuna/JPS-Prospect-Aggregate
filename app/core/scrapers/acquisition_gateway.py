@@ -10,13 +10,11 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 # Local application imports
 from app.core.base_scraper import BaseScraper
-from app.models import Prospect # Removed ScraperStatus
-from app.config import active_config # Import active_config
+from app.database.models import Prospect # Changed import
+from app.config import current_config # Import current_config
 from app.exceptions import ScraperError
-# from app.utils.file_utils import ensure_directory # Removed ensure_directory
 from app.utils.logger import logger
 from app.utils.scraper_utils import handle_scraper_error
-# import hashlib # No longer needed here
 
 # Set up logging
 logger = logger.bind(name="scraper.acquisition_gateway")
@@ -30,7 +28,7 @@ class AcquisitionGatewayScraper(BaseScraper):
         """Initialize the Acquisition Gateway scraper."""
         super().__init__(
             source_name="Acquisition Gateway",
-            base_url=active_config.ACQUISITION_GATEWAY_URL,
+            base_url=current_config.ACQUISITION_GATEWAY_URL,
             debug_mode=debug_mode,
             use_stealth=True # Enable stealth mode for this scraper
         )
@@ -57,14 +55,6 @@ class AcquisitionGatewayScraper(BaseScraper):
             self.page.wait_for_timeout(5000) # Reduced wait back to 5s
             self.logger.info("Wait finished. Locating Export button.")
             
-            # --- Debug Screenshot After Wait REMOVED ---
-            # debug_timestamp_after_wait = ...
-            # screenshot_path_after_wait = ...
-            # try:
-            # ...
-            # except ...
-            # --- End Debug Screenshot After Wait REMOVED ---
-            
             # Find export button using ID
             export_button_selector = 'button#export-0' 
             export_button = self.page.locator(export_button_selector)
@@ -75,14 +65,6 @@ class AcquisitionGatewayScraper(BaseScraper):
                 self.logger.info("Export button is visible.")
             except PlaywrightTimeoutError as wait_error:
                 self.logger.error(f"Timeout waiting for export button ({export_button_selector}) to be visible.") # Updated log message
-                # --- Debug Output REMOVED ---
-                # debug_timestamp = ...
-                # screenshot_path = ...
-                # html_path = ...
-                # try:
-                # ...
-                # except ...
-                # --- End Debug Output REMOVED ---
                 raise ScraperError(f"Timeout waiting for export button {export_button_selector} to become visible") from wait_error # Updated error message
             
             self.logger.info("Attempting to click Export CSV and waiting for download...")
@@ -241,5 +223,3 @@ class AcquisitionGatewayScraper(BaseScraper):
             extract_func=self.download_csv_file,
             process_func=self.process_func # Add process_func
         )
-
-# Removed check_last_download function as it's obsolete.

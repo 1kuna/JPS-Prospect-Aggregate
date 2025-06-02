@@ -1,25 +1,19 @@
 """Department of Homeland Security Opportunity Forecast scraper."""
 
 # Standard library imports
-import os
 import traceback
-# import sys # Unused
-# import shutil # Unused
-# import datetime # Unused at top level, `from datetime import datetime` is used
 
 # Third-party imports
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 import pandas as pd
-# import hashlib # No longer needed here
-# import re # Unused
 
 # Local application imports
 from app.core.base_scraper import BaseScraper
-from app.models import Prospect
+from app.database.models import Prospect # Changed import
 from app.exceptions import ScraperError
 from app.utils.logger import logger
 from app.utils.parsing import parse_value_range, fiscal_quarter_to_date
-from app.config import active_config # Import active_config
+from app.config import current_config # Import current_config
 from app.utils.scraper_utils import handle_scraper_error
 
 # Set up logging using the centralized utility
@@ -32,7 +26,7 @@ class DHSForecastScraper(BaseScraper):
         """Initialize the DHS Forecast scraper."""
         super().__init__(
             source_name="Department of Homeland Security",
-            base_url=active_config.DHS_FORECAST_URL,
+            base_url=current_config.DHS_FORECAST_URL,
             debug_mode=debug_mode
         )
     

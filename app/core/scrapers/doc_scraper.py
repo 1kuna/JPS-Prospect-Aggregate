@@ -3,28 +3,21 @@
 # Standard library imports
 import os
 import traceback
-# import sys # Unused
 from urllib.parse import urljoin
 
 # Third-party imports
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 import pandas as pd
-# import re # Unused
 from app.utils.parsing import parse_value_range, fiscal_quarter_to_date # Added parsing utils
 
 # Local application imports
 from app.core.base_scraper import BaseScraper
-from app.models import Prospect # Added Prospect, DataSource, db
-# from app.database.crud import bulk_upsert_prospects # Unused
+from app.database.models import Prospect # Changed import
 from app.exceptions import ScraperError
 from app.utils.logger import logger
-# from app.utils.db_utils import update_scraper_status, get_data_source_id_by_name # Unused
 # We need to add COMMERCE_FORECAST_URL to config.py
-from app.config import active_config # Import active_config
+from app.config import current_config # Import current_config
 from app.utils.scraper_utils import (
-    # check_url_accessibility, # Unused
-    # download_file, # Unused
-    # save_permanent_copy, # Unused
     handle_scraper_error
 )
 
@@ -38,7 +31,7 @@ class DocScraper(BaseScraper):
         """Initialize the DOC Forecast scraper."""
         super().__init__(
             source_name="Department of Commerce",
-            base_url=active_config.COMMERCE_FORECAST_URL,
+            base_url=current_config.COMMERCE_FORECAST_URL,
             debug_mode=debug_mode
         )
     

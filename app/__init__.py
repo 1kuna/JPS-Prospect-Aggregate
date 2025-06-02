@@ -4,20 +4,20 @@ Application Factory Pattern for Flask app.
 This module creates and configures the Flask application.
 """
 
-from flask import Flask, jsonify
+from flask import Flask
 from flask_cors import CORS
 from flask_migrate import Migrate
-from app.config import active_config # Import active_config
+from app.config import current_config # Import current_config
 from app.database import db  # Import the db instance from database.py
 # Logging is configured automatically on import of app.utils.logger
 
 # Setup logging as early as possible
 # Logging is configured automatically on import of app.utils.logger
 
-def create_app(config_name='default'): # config_name is no longer used but kept for compatibility
+def create_app(): # config_name is no longer used but kept for compatibility
     """Create and configure an instance of the Flask application."""
     app = Flask(__name__)
-    app.config.from_object(active_config) # Use active_config directly
+    app.config.from_object(current_config) # Use current_config directly
 
     # Initialize extensions
     CORS(app, resources={r'/api/*': {'origins': '*'}}) # Configure origins properly for production
@@ -25,8 +25,9 @@ def create_app(config_name='default'): # config_name is no longer used but kept 
     # Initialize Flask-Migrate
     Migrate(app, db)
 
-    # Import models here to ensure they are registered with SQLAlchemy
-    from app import models # noqa
+    # Models are registered with SQLAlchemy when their modules are imported,
+    # typically via other modules that use them or through db instance.
+    # The direct 'from app import models' is no longer necessary here.
 
     # Register blueprints
     from app.api.main import main_bp

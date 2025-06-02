@@ -3,7 +3,6 @@ Pytest configuration and shared fixtures.
 """
 
 import pytest
-from flask import Flask
 from app import create_app
 from app.database import db as _db
 # TestConfig is now sourced from active_config in create_app when FLASK_ENV='testing'

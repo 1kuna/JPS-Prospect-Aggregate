@@ -3,22 +3,18 @@
 # Standard library imports
 import os
 import traceback
-# import sys # Unused
-# import shutil # Unused
 import datetime # Used for datetime.datetime
 
 # Third-party imports
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 import pandas as pd
-# import re # Unused
 
 # Local application imports
 from app.core.base_scraper import BaseScraper
-from app.models import Prospect
-# from app.database.crud import bulk_upsert_prospects # Unused
+from app.database.models import Prospect # Changed import
 from app.exceptions import ScraperError
 from app.utils.logger import logger
-from app.config import active_config # Import active_config
+from app.config import current_config # Import current_config
 from app.utils.scraper_utils import handle_scraper_error
 from app.utils.parsing import parse_value_range, fiscal_quarter_to_date
 
@@ -32,7 +28,7 @@ class DOSForecastScraper(BaseScraper):
         """Initialize the DOS Forecast scraper."""
         super().__init__(
             source_name="Department of State", # Match database name
-            base_url=active_config.DOS_FORECAST_URL, # Updated URL config variable
+            base_url=current_config.DOS_FORECAST_URL, # Updated URL config variable
             debug_mode=debug_mode
         )
     
@@ -132,8 +128,22 @@ class DOSForecastScraper(BaseScraper):
         """
         self.logger.info(f"Processing downloaded Excel file: {file_path}")
         try:
-            # DOS transform: sheet 'FY25-Procurement-Forecast', header index 0
-            df = pd.read_excel(file_path, sheet_name='FY25-Procurement-Forecast', header=0)
+            # DOS files can sometimes be HTML tables disguised as .xlsx
+            try:
+                self.logger.info(f"Attempting to read {file_path} as Excel (engine openpyxl)...")
+                df = pd.read_excel(file_path, sheet_name='FY25-Procurement-Forecast', header=0, engine='openpyxl')
+            except ValueError as e:
+                self.logger.warning(f"Failed to read as Excel ({e}), attempting to read as HTML table...")
+                try:
+                    dfs = pd.read_html(file_path, header=0)
+                    if not dfs:
+                        raise ValueError("No tables found in HTML file.")
+                    df = dfs[0] # Assume the first table is the correct one
+                    self.logger.info("Successfully read as HTML table.")
+                except Exception as html_err:
+                    self.logger.error(f"Failed to read as HTML after Excel attempt failed: {html_err}")
+                    raise html_err # Re-raise the error from HTML parsing attempt
+
             df.dropna(how='all', inplace=True) # Pre-processing from transform script
             self.logger.info(f"Loaded {len(df)} rows from {file_path} after initial dropna.")
 

@@ -6,6 +6,7 @@ import os
 import sys
 from loguru import logger
 from pathlib import Path
+from typing import Union # For type hinting Path objects
 
 # Define log directory - should match current config
 project_root = Path(__file__).parent.parent.parent.absolute()
@@ -56,8 +57,10 @@ def configure_logging():
         format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}"
     )
 
+# _clean_old_files_generic removed, functionality now in file_utils.clean_files_by_pattern
+
 # Clean up old log files
-def cleanup_logs(logs_dir=None, keep_count=3):
+def cleanup_logs(logs_dir_override=None, keep_count=3):
     """
     Clean up old log files, keeping only the most recent ones.
     
@@ -68,10 +71,9 @@ def cleanup_logs(logs_dir=None, keep_count=3):
     Returns:
         Dictionary with log types as keys and number of deleted files as values
     """
-    from app.utils.file_utils import clean_old_files
+    from app.utils.file_utils import clean_files_by_pattern # Import the new function
     
-    if logs_dir is None:
-        logs_dir = LOGS_DIR
+    current_logs_dir = logs_dir_override if logs_dir_override is not None else LOGS_DIR
     
     results = {}
     
@@ -83,7 +85,7 @@ def cleanup_logs(logs_dir=None, keep_count=3):
     }
     
     for log_type, pattern in patterns.items():
-        deleted = clean_old_files(logs_dir, pattern, keep_count)
+        deleted = clean_files_by_pattern(current_logs_dir, pattern, keep_count, logger=logger) # Pass logger
         results[log_type] = deleted
     
     return results

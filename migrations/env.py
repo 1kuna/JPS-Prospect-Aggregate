@@ -1,6 +1,5 @@
 import logging
 from logging.config import fileConfig
-import os
 
 from flask import current_app
 
@@ -43,7 +42,7 @@ except AttributeError:
     target_metadata = None
 
 # Standard callback to prevent empty migrations
-def process_revision_directives(context, revision, directives):
+def process_revision_directives(context, directives): # Removed revision
     if getattr(config.cmd_opts, 'autogenerate', False):
         script = directives[0]
         if script.upgrade_ops.is_empty():

@@ -1,6 +1,6 @@
 import os
 import pathlib
-from typing import List, Dict, Any
+from typing import List, Dict, Type # Changed Any to Type
 from dotenv import load_dotenv
 
 # Environment variables loading
@@ -16,46 +16,6 @@ TEMP_DIR = os.path.join(BASE_DIR, 'temp')
 # Ensure directories exist (directly, without using file_utils to avoid circular imports)
 for directory in [LOGS_DIR, DATA_DIR, RAW_DATA_DIR, TEMP_DIR]:
     os.makedirs(directory, exist_ok=True)
-
-# Define all configuration variables at the module level
-# Logging configuration
-LOG_FORMAT = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-LOG_FILE_MAX_BYTES = int(os.getenv("LOG_FILE_MAX_BYTES", 5 * 1024 * 1024))  # 5MB
-LOG_FILE_BACKUP_COUNT = int(os.getenv("LOG_FILE_BACKUP_COUNT", 3))  # Keep only 3 log files
-LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
-
-# Scraper URLs
-ACQUISITION_GATEWAY_URL = "https://acquisitiongateway.gov/forecast"
-SSA_CONTRACT_FORECAST_URL = "https://www.ssa.gov/osdbu/contract-forecast-intro.html"
-COMMERCE_FORECAST_URL = "https://www.commerce.gov/oam/industry/procurement-forecasts"
-HHS_FORECAST_URL = "https://osdbu.hhs.gov/industry/opportunity-forecast"
-DHS_FORECAST_URL = "https://apfs-cloud.dhs.gov/forecast/"
-DOJ_FORECAST_URL = "https://www.justice.gov/jmd/doj-forecast-contracting-opportunities"
-DOS_FORECAST_URL = "https://www.state.gov/procurement-forecast"
-TREASURY_FORECAST_URL = "https://osdbu.forecast.treasury.gov/"
-DOT_FORECAST_URL = "https://www.transportation.gov/osdbu/procurement-assistance/summary-forecast"
-
-# Database configuration
-# Use an absolute path for the SQLite database
-DEFAULT_DB_PATH = os.path.join(BASE_DIR, 'jps.db')
-DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{DEFAULT_DB_PATH}")
-
-# Redis configuration
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-
-# Scheduler configuration
-SCRAPE_INTERVAL_HOURS = int(os.getenv("SCRAPE_INTERVAL_HOURS", 24))
-HEALTH_CHECK_INTERVAL_MINUTES = int(os.getenv("HEALTH_CHECK_INTERVAL_MINUTES", 10))
-
-# File processing
-CSV_ENCODINGS = ['utf-8', 'latin-1', 'cp1252']
-FILE_FRESHNESS_SECONDS = int(os.getenv("FILE_FRESHNESS_SECONDS", 86400))   # 24 hours
-
-# Playwright timeouts (in milliseconds)
-PAGE_NAVIGATION_TIMEOUT = int(os.getenv("PAGE_NAVIGATION_TIMEOUT", 60000))  # 60 seconds
-PAGE_ELEMENT_TIMEOUT = int(os.getenv("PAGE_ELEMENT_TIMEOUT", 30000))     # 30 seconds
-TABLE_LOAD_TIMEOUT = int(os.getenv("TABLE_LOAD_TIMEOUT", 60000))       # 60 seconds
-DOWNLOAD_TIMEOUT = int(os.getenv("DOWNLOAD_TIMEOUT", 60000))         # 60 seconds
 
 # Application configuration
 class Config:
@@ -73,42 +33,42 @@ class Config:
     RAW_DATA_DIR: str = RAW_DATA_DIR
     TEMP_DIR: str = TEMP_DIR
     
-    # Playwright timeouts (in milliseconds)
-    PAGE_NAVIGATION_TIMEOUT: int = PAGE_NAVIGATION_TIMEOUT
-    PAGE_ELEMENT_TIMEOUT: int = PAGE_ELEMENT_TIMEOUT
-    TABLE_LOAD_TIMEOUT: int = TABLE_LOAD_TIMEOUT
-    DOWNLOAD_TIMEOUT: int = DOWNLOAD_TIMEOUT
-
-    # File processing
-    CSV_ENCODINGS: List[str] = CSV_ENCODINGS
-    FILE_FRESHNESS_SECONDS: int = FILE_FRESHNESS_SECONDS
+    # Logging configuration
+    LOG_FORMAT: str = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    LOG_FILE_MAX_BYTES: int = int(os.getenv("LOG_FILE_MAX_BYTES", 5 * 1024 * 1024))
+    LOG_FILE_BACKUP_COUNT: int = int(os.getenv("LOG_FILE_BACKUP_COUNT", 3))
+    LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
 
     # Scraper URLs
-    ACQUISITION_GATEWAY_URL: str = ACQUISITION_GATEWAY_URL
-    SSA_CONTRACT_FORECAST_URL: str = SSA_CONTRACT_FORECAST_URL
-    COMMERCE_FORECAST_URL: str = COMMERCE_FORECAST_URL
-    HHS_FORECAST_URL: str = HHS_FORECAST_URL
-    DHS_FORECAST_URL: str = DHS_FORECAST_URL
-    DOJ_FORECAST_URL: str = DOJ_FORECAST_URL
-    DOS_FORECAST_URL: str = DOS_FORECAST_URL
-    TREASURY_FORECAST_URL: str = TREASURY_FORECAST_URL
-    DOT_FORECAST_URL: str = DOT_FORECAST_URL
-
-    # Logging configuration
-    LOG_LEVEL: str = LOG_LEVEL
-    LOG_FORMAT: str = LOG_FORMAT
-    LOG_FILE_MAX_BYTES: int = LOG_FILE_MAX_BYTES
-    LOG_FILE_BACKUP_COUNT: int = LOG_FILE_BACKUP_COUNT
+    ACQUISITION_GATEWAY_URL: str = os.getenv("ACQUISITION_GATEWAY_URL", "https://acquisitiongateway.gov/forecast")
+    SSA_CONTRACT_FORECAST_URL: str = os.getenv("SSA_CONTRACT_FORECAST_URL", "https://www.ssa.gov/osdbu/contract-forecast-intro.html")
+    COMMERCE_FORECAST_URL: str = os.getenv("COMMERCE_FORECAST_URL", "https://www.commerce.gov/oam/industry/procurement-forecasts")
+    HHS_FORECAST_URL: str = os.getenv("HHS_FORECAST_URL", "https://osdbu.hhs.gov/industry/opportunity-forecast")
+    DHS_FORECAST_URL: str = os.getenv("DHS_FORECAST_URL", "https://apfs-cloud.dhs.gov/forecast/")
+    DOJ_FORECAST_URL: str = os.getenv("DOJ_FORECAST_URL", "https://www.justice.gov/jmd/doj-forecast-contracting-opportunities")
+    DOS_FORECAST_URL: str = os.getenv("DOS_FORECAST_URL", "https://www.state.gov/procurement-forecast")
+    TREASURY_FORECAST_URL: str = os.getenv("TREASURY_FORECAST_URL", "https://osdbu.forecast.treasury.gov/")
+    DOT_FORECAST_URL: str = os.getenv("DOT_FORECAST_URL", "https://www.transportation.gov/osdbu/procurement-assistance/summary-forecast")
 
     # Database configuration
-    SQLALCHEMY_DATABASE_URI: str = DATABASE_URL
+    SQLALCHEMY_DATABASE_URI: str = os.getenv("DATABASE_URL", f"sqlite:///{os.path.join(BASE_DIR, 'jps.db')}")
+
+    # Redis configuration
+    REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
     # Scheduler configuration
-    SCRAPE_INTERVAL_HOURS: int = SCRAPE_INTERVAL_HOURS
-    HEALTH_CHECK_INTERVAL_MINUTES: int = HEALTH_CHECK_INTERVAL_MINUTES
-    
-    # Redis configuration
-    REDIS_URL: str = REDIS_URL
+    SCRAPE_INTERVAL_HOURS: int = int(os.getenv("SCRAPE_INTERVAL_HOURS", 24))
+    HEALTH_CHECK_INTERVAL_MINUTES: int = int(os.getenv("HEALTH_CHECK_INTERVAL_MINUTES", 10))
+
+    # File processing
+    CSV_ENCODINGS: List[str] = ['utf-8', 'latin-1', 'cp1252']
+    FILE_FRESHNESS_SECONDS: int = int(os.getenv("FILE_FRESHNESS_SECONDS", 86400))
+
+    # Playwright timeouts (in milliseconds)
+    PAGE_NAVIGATION_TIMEOUT: int = int(os.getenv("PAGE_NAVIGATION_TIMEOUT", 60000))
+    PAGE_ELEMENT_TIMEOUT: int = int(os.getenv("PAGE_ELEMENT_TIMEOUT", 30000))
+    TABLE_LOAD_TIMEOUT: int = int(os.getenv("TABLE_LOAD_TIMEOUT", 60000))
+    DOWNLOAD_TIMEOUT: int = int(os.getenv("DOWNLOAD_TIMEOUT", 60000))
 
 
 class DevelopmentConfig(Config):
@@ -120,7 +80,7 @@ class DevelopmentConfig(Config):
 class ProductionConfig(Config):
     """Production configuration."""
     DEBUG: bool = False
-    LOG_LEVEL: str = "INFO"
+    # LOG_LEVEL: str = "INFO" # Inherits from Config, which defaults to "INFO"
     # In production, you might want to use a more robust database
 
 
@@ -132,18 +92,33 @@ class TestingConfig(Config):
     SQLALCHEMY_DATABASE_URI: str = "sqlite:///:memory:"
 
 
-# Configuration dictionary
-config_by_name: Dict[str, Any] = {
-    'development': DevelopmentConfig,
-    'production': ProductionConfig,
-    'testing': TestingConfig,
-    'default': DevelopmentConfig
-}
+def get_config() -> Config:
+    """
+    Factory function to get the appropriate configuration instance 
+    based on the FLASK_ENV environment variable.
+    """
+    env = os.getenv('FLASK_ENV', 'development')
+    # Using Type for class references, Dict[str, Type[Config]]
+    config_classes: Dict[str, Type[Config]] = { 
+        'development': DevelopmentConfig,
+        'production': ProductionConfig,
+        'testing': TestingConfig,
+        'default': DevelopmentConfig  # Fallback to development
+    }
+    config_class = config_classes.get(env, DevelopmentConfig) # .get for safety
+    return config_class()
 
-# Get current configuration based on environment
-active_config = config_by_name[os.getenv('FLASK_ENV', 'default')]
+
+# Instantiate the current configuration
+current_config = get_config()
+
 
 # Export selected configuration variables
 __all__ = [
-    'active_config', 'BASE_DIR', 'LOGS_DIR', 'DATA_DIR', 'RAW_DATA_DIR'
+    'current_config', 
+    'get_config', 
+    'Config', 
+    'DevelopmentConfig', 
+    'ProductionConfig', 
+    'TestingConfig'
 ] 

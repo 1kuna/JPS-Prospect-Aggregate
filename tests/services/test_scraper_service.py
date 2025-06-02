@@ -1,9 +1,8 @@
 import pytest
-from unittest.mock import patch, MagicMock, call
-import datetime
+from unittest.mock import patch, MagicMock
 
 from app.services.scraper_service import ScraperService
-from app.models import DataSource, ScraperStatus
+from app.database.models import DataSource, ScraperStatus # Changed import
 from app.exceptions import NotFoundError, ScraperError, DatabaseError
 
 @pytest.fixture(autouse=True)

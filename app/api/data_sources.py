@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify
 from sqlalchemy import func
-from app.models import db, Prospect, DataSource, ScraperStatus
+from app.models import db # For db instance
+from app.database.models import Prospect, DataSource, ScraperStatus # For models
 from app.exceptions import ValidationError, NotFoundError, DatabaseError
 from app.utils.logger import logger
 # import datetime # Unused
