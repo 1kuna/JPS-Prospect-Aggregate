@@ -1,237 +1,143 @@
 """Department of Health and Human Services Opportunity Forecast scraper."""
 
-# Standard library imports
 import os
-import traceback
-# import sys # Unused
+# import traceback # No longer directly used
+from typing import Optional
 
-# Third-party imports
-from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 import pandas as pd
-# import traceback # Redundant
-# import re # Unused
+# from playwright.sync_api import TimeoutError as PlaywrightTimeoutError # Handled by mixins
 
-# Local application imports
-from app.core.base_scraper import BaseScraper
-from app.models import Prospect
-# from app.database.crud import bulk_upsert_prospects # Unused
+from app.core.specialized_scrapers import PageInteractionScraper
+from app.config import active_config
 from app.exceptions import ScraperError
-from app.utils.logger import logger
-from app.config import active_config # Import active_config
-from app.utils.scraper_utils import handle_scraper_error
-from app.utils.parsing import parse_value_range
+from app.core.scrapers.configs.hhs_config import HHSConfig
 
-# Set up logging using the centralized utility
-logger = logger.bind(name="scraper.hhs_forecast")
-
-class HHSForecastScraper(BaseScraper):
+class HHSForecastScraper(PageInteractionScraper):
     """Scraper for the HHS Opportunity Forecast site."""
-    
-    def __init__(self, debug_mode=False):
-        """Initialize the HHS Forecast scraper."""
-        super().__init__(
-            source_name="Health and Human Services",
-            base_url=active_config.HHS_FORECAST_URL,
-            debug_mode=debug_mode
-        )
-    
-    def download_forecast_document(self):
-        """
-        Download the forecast document from the HHS website.
-        Requires clicking 'View All' then 'Export'.
-        Saves the file directly to the scraper's download directory.
 
-        Returns:
-            str: Path to the downloaded file, or None if download failed
-        """
-        self.logger.info("Attempting to download HHS forecast document")
+    def __init__(self, config: HHSConfig, debug_mode: bool = False):
+        if config.base_url is None:
+            config.base_url = active_config.HHS_FORECAST_URL
+            # self.logger not available yet
+            print(f"Warning: HHSConfig.base_url was None, set from active_config: {config.base_url}")
+        super().__init__(config=config, debug_mode=debug_mode)
+
+    def _setup_method(self) -> None:
+        """Navigates to the base URL and clicks the 'View All' button."""
+        self.logger.info(f"Executing HHS setup: Navigating to base URL: {self.config.base_url}")
+        if not self.config.base_url:
+            self._handle_and_raise_scraper_error(ValueError("Base URL not configured."), "HHS setup navigation")
         
-        view_all_selector = 'button[data-cy="viewAllBtn"]' 
-        export_button_selector = 'button:has-text("Export")'
+        self.navigate_to_url(self.config.base_url)
+        # Wait for page to be generally ready before clicking "View All"
+        self.wait_for_load_state('domcontentloaded', timeout_ms=self.config.navigation_timeout_ms)
+
+        self.logger.info(f"Clicking 'View All' button: {self.config.view_all_button_selector}")
+        self.click_element(self.config.view_all_button_selector, timeout_ms=self.config.interaction_timeout_ms)
         
+        self.logger.info(f"Waiting {self.config.pre_export_click_wait_ms}ms for page to update after 'View All' click.")
+        self.wait_for_timeout(self.config.pre_export_click_wait_ms)
+        # Potentially add a wait_for_selector for the export button to be ready if needed,
+        # but download_file_via_click also has a wait for the selector.
+
+    def _extract_method(self) -> Optional[str]:
+        """Downloads the forecast CSV by clicking the export button."""
+        self.logger.info(f"Attempting to download by clicking export button: {self.config.export_button_selector}")
         try:
-            # Navigate to the main forecast page
-            self.logger.info(f"Navigating to {self.base_url}")
-            self.navigate_to_url()
-            self.logger.info("Page loaded.")
+            # download_file_via_click from DownloadMixin will handle expect_download and calling _handle_download_event
+            # It also uses click_element from NavigationMixin which can handle JS fallback if needed,
+            # though HHSConfig doesn't specify js_click_fallback=True for this button.
+            downloaded_file_path = self.download_file_via_click(
+                click_selector=self.config.export_button_selector,
+                # No pre_click_selector here as it's handled in _setup_method
+                # expect_download_timeout can be set in config if default is not enough
+            )
+            return downloaded_file_path
+        except ScraperError as e:
+            self.logger.error(f"ScraperError during HHS download: {e}", exc_info=True)
+            # Error saving (screenshot/HTML) should have been handled by download_file_via_click's internal call to click_element
+            raise # Re-raise to be caught by scrape_with_structure
+        except Exception as e:
+            self.logger.error(f"Unexpected error during HHS download: {e}", exc_info=True)
+            if self.config.screenshot_on_error and self.page: self._save_error_screenshot("hhs_extract_error")
+            if self.config.save_html_on_error and self.page: self._save_error_html("hhs_extract_error")
+            self._handle_and_raise_scraper_error(e, "HHS file extraction")
+        return None
 
-            # Use the new helper method to handle pre-click, main click, and download
-            return self._click_and_download(
-                download_trigger_selector=export_button_selector,
-                pre_click_selector=view_all_selector,
-                # Wait 10 seconds after clicking "View All" for the page to update
-                # and the Export button to become available/interactive.
-                pre_click_wait_ms=10000 
+
+    def _custom_hhs_transforms(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Applies HHS-specific transformations. Called by DataProcessingMixin.transform_dataframe
+        *after* raw_column_rename_map.
+        """
+        self.logger.info("Applying custom HHS transformations...")
+
+        # Add row_index for unique ID generation (HHS data noted to have duplicates)
+        df.reset_index(drop=True, inplace=True) # Ensure clean index
+        df['row_index'] = df.index
+        self.logger.debug("Added 'row_index'.")
+
+        # Standardize 'place_country'
+        # raw_column_rename_map maps source 'Place of Performance Country' to 'place_country_raw'.
+        # This transform creates 'place_country_final' which db_column_rename_map maps to 'place_country'.
+        if 'place_country_raw' in df.columns:
+            df['place_country_final'] = df['place_country_raw'].fillna('USA')
+            self.logger.debug("Processed 'place_country_raw' into 'place_country_final', defaulting NA to USA.")
+        else:
+            df['place_country_final'] = 'USA'
+            self.logger.debug("Column 'place_country_raw' not found. Initialized 'place_country_final' to 'USA'.")
+            
+        return df
+
+    def _process_method(self, file_path: Optional[str]) -> Optional[int]:
+        """Processes the downloaded CSV file."""
+        self.logger.info(f"Starting HHS processing for file: {file_path}")
+        if not file_path or not os.path.exists(file_path):
+            self.logger.error(f"File path '{file_path}' is invalid. Cannot process.")
+            return 0
+
+        try:
+            df = self.read_file_to_dataframe(
+                file_path, 
+                file_type_hint=self.config.file_type_hint,
+                read_options=self.config.read_options # e.g., {'on_bad_lines': 'skip'}
             )
             
-        except PlaywrightTimeoutError as e: # This might catch timeouts from navigate_to_url
-            self.logger.error(f"Timeout error during HHS forecast download process: {e}")
-            handle_scraper_error(e, self.source_name, "Timeout during HHS download process")
-            raise ScraperError(f"Timeout during HHS forecast download process: {str(e)}") from e
-        except ScraperError as se: # Catch ScraperErrors raised by _click_and_download or elsewhere
-            self.logger.error(f"ScraperError during HHS forecast download: {se}")
-            handle_scraper_error(se, self.source_name, "HHS download operation")
-            raise # Re-raise the ScraperError
-        except Exception as e: # Catch any other general exceptions
-            self.logger.error(f"General error during HHS forecast download: {e}")
-            handle_scraper_error(e, self.source_name, "Error downloading HHS forecast document")
-            if not isinstance(e, ScraperError): # Wrap if it's not already a ScraperError
-                 raise ScraperError(f"Failed to download HHS forecast document: {str(e)}") from e
-            else:
-                 raise # Re-raise if it's already a ScraperError
-    
-    def process_func(self, file_path: str):
-        """
-        Process the downloaded CSV file, transform data to Prospect objects,
-        and insert into the database using logic adapted from hhs_transform.py.
-        """
-        self.logger.info(f"Processing downloaded CSV file: {file_path}")
-        try:
-            df = pd.read_csv(file_path, header=0, on_bad_lines='skip')
-            df.dropna(how='all', inplace=True) # Pre-processing from transform script
-            self.logger.info(f"Loaded {len(df)} rows from {file_path} after initial dropna.")
+            # Initial dropna(how='all') is now part of DataProcessingMixin.transform_dataframe,
+            # controlled by config_params.dropna_how_all (defaulting to True).
+            # So, no need to call it explicitly here if that default is used.
+            # df.dropna(how='all', inplace=True) # This was in old scraper, now handled by mixin.
 
+            if df.empty: # Check after read, before transform call.
+                self.logger.info("DataFrame is empty after reading. Nothing to process for HHS.")
+                return 0
+            
+            # transform_dataframe applies raw_rename, then custom_transforms, then declarative parsing
+            df = self.transform_dataframe(df, config_params=self.config.data_processing_rules)
             if df.empty:
-                self.logger.info("Downloaded file is empty. Nothing to process.")
-                return
-
-            # --- Start: Logic adapted from hhs_transform.normalize_columns_hhs ---
-            rename_map = {
-                # Raw HHS Name: Prospect Model Field Name (or intermediate)
-                'Procurement Number': 'native_id',
-                'Operating Division': 'agency', # Maps to Prospect.agency
-                'Requirement Title': 'title',
-                'Requirement Description': 'description',
-                'NAICS Code': 'naics',
-                'Contract Vehicle': 'contract_vehicle', # To extra
-                'Contract Type': 'contract_type',
-                'Estimated Contract Value': 'estimated_value_raw',
-                'Anticipated Award Date': 'award_date_raw',
-                'Anticipated Solicitation Release Date': 'release_date_raw',
-                'Small Business Set-Aside': 'set_aside',
-                'Place of Performance City': 'place_city',
-                'Place of Performance State': 'place_state',
-                'Place of Performance Country': 'place_country'
-                # 'Contact Name', 'Contact Email', 'Contact Phone' -> To extra
-            }
+                self.logger.info("DataFrame is empty after transformations. Nothing to load for HHS.")
+                return 0
             
-            # Rename only columns that exist
-            rename_map_existing = {k: v for k, v in rename_map.items() if k in df.columns}
-            df.rename(columns=rename_map_existing, inplace=True)
-
-            # Date Parsing
-            if 'award_date_raw' in df.columns:
-                df['award_date'] = pd.to_datetime(df['award_date_raw'], errors='coerce').dt.date
-                df['award_fiscal_year'] = pd.to_datetime(df['award_date_raw'], errors='coerce').dt.year.astype('Int64')
-            else:
-                df['award_date'] = None
-                df['award_fiscal_year'] = pd.NA
-
-            if 'release_date_raw' in df.columns:
-                df['release_date'] = pd.to_datetime(df['release_date_raw'], errors='coerce').dt.date
-            else:
-                df['release_date'] = None
-
-            # Estimated Value Parsing
-            if 'estimated_value_raw' in df.columns:
-                parsed_values = df['estimated_value_raw'].apply(parse_value_range)
-                df['estimated_value'] = parsed_values.apply(lambda x: x[0])
-                df['est_value_unit'] = parsed_values.apply(lambda x: x[1])
-            else:
-                df['estimated_value'] = pd.NA
-                df['est_value_unit'] = pd.NA
-
-            # Default place_country if not present (HHS transform assumes USA)
-            if 'place_country' not in df.columns:
-                 df['place_country'] = 'USA'
-            elif 'place_country' in df.columns: # Ensure consistent handling of empty/NaN
-                 df['place_country'] = df['place_country'].fillna('USA')
-
-
-            # Drop raw/intermediate columns
-            cols_to_drop = ['award_date_raw', 'release_date_raw', 'estimated_value_raw']
-            df.drop(columns=[col for col in cols_to_drop if col in df.columns], errors='ignore', inplace=True)
-            # --- End: Logic adapted from hhs_transform.normalize_columns_hhs ---
-
-            # Define the final column rename map.
-            final_column_rename_map = {
-                'native_id': 'native_id',
-                'agency': 'agency',
-                'title': 'title',
-                'description': 'description',
-                'naics': 'naics',
-                'contract_vehicle': 'contract_vehicle', # This will go to extra
-                'contract_type': 'contract_type',
-                'estimated_value': 'estimated_value',
-                'est_value_unit': 'est_value_unit',
-                'award_date': 'award_date',
-                'award_fiscal_year': 'award_fiscal_year',
-                'release_date': 'release_date',
-                'set_aside': 'set_aside',
-                'place_city': 'place_city',
-                'place_state': 'place_state',
-                'place_country': 'place_country',
-                'row_index': 'row_index', # Include row_index for uniqueness
-                # Columns like 'Contact Name', 'Contact Email', 'Contact Phone'
-                # will be handled by _process_and_load_data if they exist in df
-                # and are not in prospect_model_fields, so they don't need explicit map here
-                # unless renaming them.
-                # Assuming they are already named e.g., 'contact_name' from initial rename or direct from source.
-                # If their original names are 'Contact Name', they should be included in the initial rename_map.
-            }
+            loaded_count = self.prepare_and_load_data(df, config_params=self.config.data_processing_rules)
             
-            # Ensure all columns in final_column_rename_map exist in df.
-            for col_name in final_column_rename_map.keys():
-                if col_name not in df.columns:
-                    df[col_name] = pd.NA
+            self.logger.info(f"HHS processing completed. Loaded {loaded_count} prospects.")
+            return loaded_count
 
-            prospect_model_fields = [col.name for col in Prospect.__table__.columns if col.name != 'loaded_at']
-            # Original ID generation: native_id if available, else title, desc, agency
-            # Using native_id as primary, common logic in _process_and_load_data will use fields_for_id_hash
-            # if 'id' column isn't already populated. Here, we assume 'native_id' is the preferred unique key.
-            # If 'native_id' is consistently present and unique, this is fine.
-            # Otherwise, a composite key might be better.
-            # For now, let's use the more robust composite key as per original logic.
-            # The _process_and_load_data will generate 'id' if not present.
-            # We need to ensure the columns for the hash are correctly named.
-            # The original hash logic was:
-            #   if native_id_val: unique_string = f"{native_id_val}-{self.source_name}"
-            #   else: unique_string = f"{title_val}-{desc_val}-{agency_val}-{self.source_name}"
-            # This conditional logic is not directly supported by fields_for_id_hash.
-            # We will rely on a consistent set of fields for hashing.
-            # If native_id is present, it should be part of the hash.
-            # HHS data contains true duplicates, so we need to add row index for uniqueness
-            # First, add a unique row identifier to distinguish true duplicates
-            df.reset_index(drop=False, inplace=True)
-            df['row_index'] = df.index
-            
-            # Include comprehensive fields plus row index to ensure uniqueness
-            fields_for_id_hash = ['native_id', 'naics', 'title', 'description', 'agency', 'place_city', 'place_state', 'contract_type', 'set_aside', 'estimated_value', 'award_date', 'release_date', 'row_index']
-
-
-            return self._process_and_load_data(df, final_column_rename_map, prospect_model_fields, fields_for_id_hash)
-
-        except FileNotFoundError:
-            self.logger.error(f"HHS CSV file not found: {file_path}")
-            raise ScraperError(f"Processing failed: HHS CSV file not found: {file_path}")
-        except pd.errors.EmptyDataError:
-            self.logger.error(f"No data or empty HHS CSV file: {file_path}")
-            return
-        except KeyError as e:
-            self.logger.error(f"Missing expected column during HHS CSV processing: {e}.")
-            self.logger.error(traceback.format_exc())
-            raise ScraperError(f"Processing failed due to missing column: {e}")
+        except ScraperError as e:
+            self.logger.error(f"ScraperError during HHS processing of {file_path}: {e}", exc_info=True)
+            raise
         except Exception as e:
-            self.logger.error(f"Error processing HHS file {file_path}: {str(e)}")
-            self.logger.error(traceback.format_exc())
-            raise ScraperError(f"Error processing HHS file {file_path}: {str(e)}")
+            self.logger.error(f"Unexpected error processing HHS file {file_path}: {e}", exc_info=True)
+            self._handle_and_raise_scraper_error(e, f"processing HHS file {file_path}")
+        return 0
+
 
     def scrape(self):
-        """
-        Run the scraper to download the forecast document.
-        Returns a result dict from scrape_with_structure.
-        """
+        """Orchestrates the scraping process for HHS."""
+        self.logger.info(f"Starting scrape for {self.config.source_name} using HHSForecastScraper logic.")
         return self.scrape_with_structure(
-            extract_func=self.download_forecast_document,
-            process_func=self.process_func
+            setup_func=self._setup_method,
+            extract_func=self._extract_method,
+            process_func=self._process_method
         )
+```
