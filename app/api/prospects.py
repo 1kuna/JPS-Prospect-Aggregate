@@ -18,14 +18,17 @@ def get_prospects_route():
         if page <= 0:
             logger.error(f"Invalid page number: {page}. Must be > 0.")
             return jsonify({"error": "Page number must be positive"}), 400
-        # Input validation for page and limit is now handled by paginate_sqlalchemy_query
-        # We can remove the explicit checks here if we let paginate_sqlalchemy_query raise ValidationError
         
         sort_by = request.args.get('sort_by', 'id', type=str)
         sort_order = request.args.get('sort_order', 'desc', type=str)
         search_term = request.args.get('search', '', type=str)
         
-        logger.debug(f"Requesting prospects with page={page}, limit={limit}, sort_by={sort_by}, sort_order={sort_order}, search='{search_term}'")
+        # New filtering parameters
+        naics_filter = request.args.get('naics', '', type=str)
+        keywords_filter = request.args.get('keywords', '', type=str)
+        agency_filter = request.args.get('agency', '', type=str)
+        
+        logger.debug(f"Requesting prospects with page={page}, limit={limit}, sort_by={sort_by}, sort_order={sort_order}, search='{search_term}', naics='{naics_filter}', keywords='{keywords_filter}', agency='{agency_filter}'")
         
         # Construct the base query
         base_query = Prospect.query
@@ -38,6 +41,22 @@ def get_prospects_route():
                 (Prospect.agency.ilike(f'%{search_term}%'))
             )
             base_query = base_query.filter(search_filter)
+            
+        # Apply NAICS filter
+        if naics_filter:
+            base_query = base_query.filter(Prospect.naics.ilike(f'%{naics_filter}%'))
+            
+        # Apply keywords filter (search in title and description)
+        if keywords_filter:
+            keywords_search_filter = (
+                (Prospect.title.ilike(f'%{keywords_filter}%')) |
+                (Prospect.description.ilike(f'%{keywords_filter}%'))
+            )
+            base_query = base_query.filter(keywords_search_filter)
+            
+        # Apply agency filter
+        if agency_filter:
+            base_query = base_query.filter(Prospect.agency.ilike(f'%{agency_filter}%'))
         
         # Apply sorting
         sort_column = getattr(Prospect, sort_by, Prospect.id) # Default to Prospect.id if sort_by is invalid
