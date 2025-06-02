@@ -1,9 +1,9 @@
 import datetime
-from app.models import db, DataSource, ScraperStatus # ScraperStatus will be handled by the utility
+from app.models import db, DataSource, ScraperStatus
 from app.exceptions import NotFoundError, ScraperError, DatabaseError
 from app.utils.logger import logger
-from app.utils.db_utils import update_scraper_status # Import the utility
-from app.core.scrapers import SCRAPERS # Import the central SCRAPERS registry
+from app.utils.db_utils import update_scraper_status
+from app.core.scrapers import SCRAPERS
 
 # Set up logging using the centralized utility
 logger = logger.bind(name="services.scraper_service")
@@ -11,7 +11,22 @@ logger = logger.bind(name="services.scraper_service")
 class ScraperService:
     @staticmethod
     def trigger_scrape(source_id: int):
+        # Import Flask's current_app here to avoid circular imports
+        from flask import current_app
+        
+        # Ensure we have an application context
+        if current_app is None:
+            from app import create_app
+            app = create_app()
+            with app.app_context():
+                return ScraperService._execute_scrape(source_id)
+        else:
+            return ScraperService._execute_scrape(source_id)
+    
+    @staticmethod
+    def _execute_scrape(source_id: int):
         session = db.session
+        data_source = None
         try:
             data_source = session.query(DataSource).filter_by(id=source_id).first()
             if not data_source:

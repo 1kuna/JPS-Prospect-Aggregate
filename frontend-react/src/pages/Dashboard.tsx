@@ -96,7 +96,17 @@ const fetchProspects = async (page: number, limit: number): Promise<{ data: Pros
 const columnHelper = createColumnHelper<Prospect>();
 
 const columns = [
-  columnHelper.accessor((row) => row.extra?.summary || row.title, {
+  columnHelper.accessor((row) => {
+    // Try multiple sources for title
+    if (row.title) return row.title;
+    if (row.extra?.summary && typeof row.extra.summary === 'string') return row.extra.summary;
+    // Fallback: construct from agency and native_id
+    if (row.native_id) {
+      const agency = row.extra?.agency || row.agency || 'Unknown Agency';
+      return `${agency} - ${row.native_id}`;
+    }
+    return 'No Title';
+  }, {
     id: 'title',
     header: 'Title',
     cell: info => {
@@ -429,7 +439,19 @@ export default function Dashboard() {
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-2xl font-bold pr-8">
-              {selectedProspect?.title || 'Prospect Details'}
+              {(() => {
+                if (!selectedProspect) return 'Prospect Details';
+                // Use the same logic as the table column
+                if (selectedProspect.title) return selectedProspect.title;
+                if (selectedProspect.extra?.summary && typeof selectedProspect.extra.summary === 'string') {
+                  return selectedProspect.extra.summary;
+                }
+                if (selectedProspect.native_id) {
+                  const agency = selectedProspect.extra?.agency || selectedProspect.agency || 'Unknown Agency';
+                  return `${agency} - ${selectedProspect.native_id}`;
+                }
+                return 'Prospect Details';
+              })()}
             </DialogTitle>
             <DialogDescription>
               Full details for this prospect opportunity
@@ -444,7 +466,17 @@ export default function Dashboard() {
                 <div className="grid grid-cols-1 gap-4 bg-gray-50 p-4 rounded-lg">
                   <div>
                     <span className="font-medium text-gray-700">Title:</span>
-                    <p className="mt-1 text-gray-900">{selectedProspect.title || 'N/A'}</p>
+                    <p className="mt-1 text-gray-900">{(() => {
+                      if (selectedProspect.title) return selectedProspect.title;
+                      if (selectedProspect.extra?.summary && typeof selectedProspect.extra.summary === 'string') {
+                        return selectedProspect.extra.summary;
+                      }
+                      if (selectedProspect.native_id) {
+                        const agency = selectedProspect.extra?.agency || selectedProspect.agency || 'Unknown Agency';
+                        return `${agency} - ${selectedProspect.native_id}`;
+                      }
+                      return 'N/A';
+                    })()}</p>
                   </div>
                   {selectedProspect.description && (
                     <div>
