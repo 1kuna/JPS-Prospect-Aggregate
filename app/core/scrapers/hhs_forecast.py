@@ -30,7 +30,7 @@ class HHSForecastScraper(BaseScraper):
     def __init__(self, debug_mode=False):
         """Initialize the HHS Forecast scraper."""
         super().__init__(
-            source_name="HHS Forecast",
+            source_name="Health and Human Services",
             base_url=active_config.HHS_FORECAST_URL,
             debug_mode=debug_mode
         )
@@ -171,6 +171,7 @@ class HHSForecastScraper(BaseScraper):
                 'place_city': 'place_city',
                 'place_state': 'place_state',
                 'place_country': 'place_country',
+                'row_index': 'row_index', # Include row_index for uniqueness
                 # Columns like 'Contact Name', 'Contact Email', 'Contact Phone'
                 # will be handled by _process_and_load_data if they exist in df
                 # and are not in prospect_model_fields, so they don't need explicit map here
@@ -199,7 +200,13 @@ class HHSForecastScraper(BaseScraper):
             # This conditional logic is not directly supported by fields_for_id_hash.
             # We will rely on a consistent set of fields for hashing.
             # If native_id is present, it should be part of the hash.
-            fields_for_id_hash = ['native_id', 'title', 'description', 'agency']
+            # HHS data contains true duplicates, so we need to add row index for uniqueness
+            # First, add a unique row identifier to distinguish true duplicates
+            df.reset_index(drop=False, inplace=True)
+            df['row_index'] = df.index
+            
+            # Include comprehensive fields plus row index to ensure uniqueness
+            fields_for_id_hash = ['native_id', 'naics', 'title', 'description', 'agency', 'place_city', 'place_state', 'contract_type', 'set_aside', 'estimated_value', 'award_date', 'release_date', 'row_index']
 
 
             return self._process_and_load_data(df, final_column_rename_map, prospect_model_fields, fields_for_id_hash)

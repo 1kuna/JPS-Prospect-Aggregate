@@ -41,7 +41,7 @@ class TreasuryScraper(BaseScraper):
     def __init__(self, debug_mode=False):
         """Initialize the Treasury scraper."""
         super().__init__(
-            source_name="Treasury Forecast",
+            source_name="Department of Treasury",
             base_url=active_config.TREASURY_FORECAST_URL, # Use config URL
             debug_mode=debug_mode
         )
@@ -252,6 +252,7 @@ class TreasuryScraper(BaseScraper):
                 'award_date': 'award_date',
                 'award_fiscal_year': 'award_fiscal_year',
                 'release_date': 'release_date',
+                'row_index': 'row_index', # Include row_index for uniqueness
                 # 'Type of Requirement' was in original source, if renamed to 'requirement_type',
                 # it will be handled by 'extra' if not in prospect_model_fields.
             }
@@ -262,8 +263,14 @@ class TreasuryScraper(BaseScraper):
                     df[col_name] = pd.NA
             
             prospect_model_fields = [col.name for col in Prospect.__table__.columns if col.name != 'loaded_at']
+            # Treasury data may contain duplicates (especially with description=None), so add row index for uniqueness
+            # First, add a unique row identifier to distinguish true duplicates
+            df.reset_index(drop=False, inplace=True)
+            df['row_index'] = df.index
+            
             # Original ID generation: naics, title (as PSC), description (None), agency
-            fields_for_id_hash = ['naics', 'title', 'description', 'agency']
+            # Include native_id, location, and row index to ensure uniqueness
+            fields_for_id_hash = ['native_id', 'naics', 'title', 'description', 'agency', 'place_city', 'place_state', 'row_index']
 
             return self._process_and_load_data(df, final_column_rename_map, prospect_model_fields, fields_for_id_hash)
 

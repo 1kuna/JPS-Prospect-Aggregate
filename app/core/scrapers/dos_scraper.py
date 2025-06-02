@@ -31,7 +31,7 @@ class DOSForecastScraper(BaseScraper):
     def __init__(self, debug_mode=False):
         """Initialize the DOS Forecast scraper."""
         super().__init__(
-            source_name="DOS Forecast", # Updated source name
+            source_name="Department of State", # Match database name
             base_url=active_config.DOS_FORECAST_URL, # Updated URL config variable
             debug_mode=debug_mode
         )
@@ -237,6 +237,7 @@ class DOSForecastScraper(BaseScraper):
                 'release_date': 'release_date',
                 'estimated_value': 'estimated_value',
                 'est_value_unit': 'est_value_unit',
+                'row_index': 'row_index', # Include row_index for uniqueness
                 # Any other columns that are direct mappings or already processed to final names
             }
 
@@ -248,7 +249,13 @@ class DOSForecastScraper(BaseScraper):
             prospect_model_fields = [col.name for col in Prospect.__table__.columns if col.name != 'loaded_at']
             # Original ID generation: unique_string = f"{naics_val}-{title_val}-{desc_val}-{self.source_name}"
             # These correspond to 'naics', 'title', 'description' in the df after initial renaming.
-            fields_for_id_hash = ['naics', 'title', 'description']
+            # DOS data may contain duplicates, so add row index for uniqueness
+            # First, add a unique row identifier to distinguish true duplicates
+            df.reset_index(drop=False, inplace=True)
+            df['row_index'] = df.index
+            
+            # Include native_id, location, dates, and row index to ensure uniqueness  
+            fields_for_id_hash = ['native_id', 'naics', 'title', 'description', 'place_city', 'place_state', 'release_date', 'award_date', 'row_index']
 
             return self._process_and_load_data(df, final_column_rename_map, prospect_model_fields, fields_for_id_hash)
 

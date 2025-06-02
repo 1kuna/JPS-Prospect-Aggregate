@@ -66,6 +66,13 @@ class Config:
     HOST: str = os.getenv("HOST", "0.0.0.0")
     PORT: int = int(os.getenv("PORT", 5001))
     
+    # Directory paths
+    BASE_DIR: str = BASE_DIR
+    LOGS_DIR: str = LOGS_DIR
+    DATA_DIR: str = DATA_DIR
+    RAW_DATA_DIR: str = RAW_DATA_DIR
+    TEMP_DIR: str = TEMP_DIR
+    
     # Playwright timeouts (in milliseconds)
     PAGE_NAVIGATION_TIMEOUT: int = PAGE_NAVIGATION_TIMEOUT
     PAGE_ELEMENT_TIMEOUT: int = PAGE_ELEMENT_TIMEOUT

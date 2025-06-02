@@ -3,6 +3,7 @@ Database utility functions.
 """
 
 import datetime
+from datetime import timezone
 # import shutil # Removed as it was only used by rebuild_database
 from typing import Optional # Added for type hinting
 from app.utils.logger import logger
@@ -56,7 +57,7 @@ def update_scraper_status(source_id: int, status: str, details: Optional[str] = 
         # Find the most recent status record to update, or create a new one
         status_record = session.query(ScraperStatus).filter_by(source_id=source_id).order_by(ScraperStatus.last_checked.desc()).first()
         
-        current_time = datetime.datetime.utcnow()
+        current_time = datetime.datetime.now(timezone.utc)
 
         if not status_record:
             status_record = ScraperStatus(

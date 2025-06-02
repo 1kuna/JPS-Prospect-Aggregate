@@ -153,18 +153,26 @@ class AcquisitionGatewayScraper(BaseScraper):
                 df['Estimated Solicitation Date'] = pd.to_datetime(df['Estimated Solicitation Date'], errors='coerce').dt.date
             
             if 'Ultimate Completion Date' in df.columns: # This is for 'award_date_raw'
-                df['Ultimate Completion Date'] = pd.to_datetime(df['Ultimate Completion Date'], errors='coerce').dt.date
-
+                # First convert to datetime for fiscal year extraction
+                df['Ultimate Completion Date_dt'] = pd.to_datetime(df['Ultimate Completion Date'], errors='coerce')
+                
             # Fiscal Year Parsing/Extraction - simplified as common logic will handle this if column exists
             if 'Estimated Award FY' in df.columns:
                 df['Estimated Award FY'] = pd.to_numeric(df['Estimated Award FY'], errors='coerce')
                 # Fallback for NA fiscal years if award_date (from Ultimate Completion Date) is present
-                if 'Ultimate Completion Date' in df.columns:
-                    fallback_mask = df['Estimated Award FY'].isna() & df['Ultimate Completion Date'].notna()
-                    df.loc[fallback_mask, 'Estimated Award FY'] = df.loc[fallback_mask, 'Ultimate Completion Date'].dt.year
-            elif 'Ultimate Completion Date' in df.columns and df['Ultimate Completion Date'].notna().any():
+                if 'Ultimate Completion Date_dt' in df.columns:
+                    fallback_mask = df['Estimated Award FY'].isna() & df['Ultimate Completion Date_dt'].notna()
+                    df.loc[fallback_mask, 'Estimated Award FY'] = df['Ultimate Completion Date_dt'].loc[fallback_mask].dt.year
+            elif 'Ultimate Completion Date' in df.columns:
                 self.logger.warning("'Estimated Award FY' not in source, extracting year from 'Ultimate Completion Date' as fallback for award_fiscal_year.")
-                df['Estimated Award FY'] = df['Ultimate Completion Date'].dt.year # Create the column
+                if 'Ultimate Completion Date_dt' not in df.columns:
+                    df['Ultimate Completion Date_dt'] = pd.to_datetime(df['Ultimate Completion Date'], errors='coerce')
+                df['Estimated Award FY'] = df['Ultimate Completion Date_dt'].dt.year # Create the column
+                
+            # Now convert Ultimate Completion Date to date format after fiscal year extraction
+            if 'Ultimate Completion Date_dt' in df.columns:
+                df['Ultimate Completion Date'] = df['Ultimate Completion Date_dt'].dt.date
+                df.drop('Ultimate Completion Date_dt', axis=1, inplace=True)
             
             # Ensure 'Estimated Award FY' is Int64 if it exists
             if 'Estimated Award FY' in df.columns:
@@ -199,7 +207,8 @@ class AcquisitionGatewayScraper(BaseScraper):
             # and how _process_and_load_data handles missing fields later.
 
             prospect_model_fields = [col.name for col in Prospect.__table__.columns if col.name != 'loaded_at']
-            fields_for_id_hash = ['naics', 'title', 'description'] # After renaming
+            # Include native_id in hash to ensure uniqueness
+            fields_for_id_hash = ['native_id', 'naics', 'title', 'description'] # After renaming
 
             return self._process_and_load_data(df, column_rename_map, prospect_model_fields, fields_for_id_hash)
 

@@ -51,7 +51,7 @@ def get_data_sources():
                 "url": source.url,
                 "description": source.description,
                 "last_scraped": source.last_scraped.isoformat() if source.last_scraped else None,
-                "proposalCount": p_count if p_count is not None else 0,
+                "prospectCount": p_count if p_count is not None else 0,
                 "last_checked": status_rec.last_checked.isoformat() if status_rec and status_rec.last_checked else None,
                 "status": status_rec.status if status_rec else "unknown"
             }

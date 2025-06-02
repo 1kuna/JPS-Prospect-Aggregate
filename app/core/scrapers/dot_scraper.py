@@ -37,32 +37,61 @@ class DotScraper(BaseScraper):
     def __init__(self, debug_mode=False):
         """Initialize the DOT scraper."""
         super().__init__(
-            source_name="DOT Forecast", # Changed source name
+            source_name="Department of Transportation",
             base_url=active_config.DOT_FORECAST_URL,
             debug_mode=debug_mode
         )
         ensure_directory(self.download_path)
 
     def navigate_to_forecast_page(self):
-        """Navigate to the forecast page, overriding wait_until state."""
+        """Navigate to the forecast page with retry logic for HTTP/2 protocol errors."""
         self.logger.info(f"Navigating to {self.base_url} (using wait_until='load')")
-        try:
-            if not self.page:
-                raise ScraperError("Page object is not initialized. Call setup_browser first.")
-            # Override the default wait_until state specifically for this scraper
-            response = self.page.goto(self.base_url, timeout=90000, wait_until='load') # Use 90s timeout and 'load' state
-            if response and not response.ok:
-                 self.logger.warning(f"Navigation to {self.base_url} resulted in status {response.status}. URL: {response.url}")
-                 # Potentially raise error here if needed
-            return True
-        except PlaywrightTimeoutError as e:
-            error_msg = f"Timeout navigating to DOT URL: {self.base_url}: {str(e)}"
-            self.logger.error(error_msg)
-            raise ScraperError(error_msg) from e
-        except Exception as e:
-            error_msg = f"Error navigating to DOT URL {self.base_url}: {str(e)}"
-            self.logger.error(error_msg, exc_info=True)
-            raise ScraperError(error_msg) from e
+        
+        if not self.page:
+            raise ScraperError("Page object is not initialized. Call setup_browser first.")
+        
+        # Try multiple approaches to handle HTTP/2 protocol errors
+        attempts = [
+            {'wait_until': 'load', 'timeout': 90000},
+            {'wait_until': 'domcontentloaded', 'timeout': 60000},
+            {'wait_until': 'networkidle', 'timeout': 45000}
+        ]
+        
+        for i, params in enumerate(attempts, 1):
+            try:
+                self.logger.info(f"Navigation attempt {i}/{len(attempts)} with {params}")
+                response = self.page.goto(self.base_url, **params)
+                
+                if response and not response.ok:
+                    self.logger.warning(f"Navigation resulted in status {response.status}. URL: {response.url}")
+                    if i == len(attempts):  # Last attempt
+                        raise ScraperError(f"Navigation failed with status {response.status}")
+                    continue
+                
+                self.logger.info(f"Successfully navigated to {self.base_url} on attempt {i}")
+                return True
+                
+            except PlaywrightTimeoutError as e:
+                self.logger.warning(f"Attempt {i} timed out: {str(e)}")
+                if i == len(attempts):
+                    error_msg = f"All navigation attempts timed out for DOT URL: {self.base_url}"
+                    self.logger.error(error_msg)
+                    raise ScraperError(error_msg) from e
+                continue
+                
+            except Exception as e:
+                error_str = str(e)
+                if "ERR_HTTP2_PROTOCOL_ERROR" in error_str:
+                    self.logger.warning(f"HTTP/2 protocol error on attempt {i}: {error_str}")
+                    if i == len(attempts):
+                        error_msg = f"HTTP/2 protocol error persists after all attempts for DOT URL: {self.base_url}"
+                        self.logger.error(error_msg)
+                        raise ScraperError(error_msg) from e
+                    continue
+                else:
+                    error_msg = f"Unexpected error navigating to DOT URL {self.base_url}: {error_str}"
+                    self.logger.error(error_msg, exc_info=True)
+                    raise ScraperError(error_msg) from e
 
     def download_dot_csv(self):
         """
@@ -285,7 +314,8 @@ class DotScraper(BaseScraper):
             prospect_model_fields = [col.name for col in Prospect.__table__.columns if col.name != 'loaded_at']
             # Original ID generation: unique_string = f"{naics_val}-{title_val}-{desc_val}-{self.source_name}"
             # These correspond to 'naics', 'title', 'description' in the df after initial renaming.
-            fields_for_id_hash = ['naics', 'title', 'description']
+            # Include native_id and location to ensure uniqueness
+            fields_for_id_hash = ['native_id', 'naics', 'title', 'description', 'place_city', 'place_state']
 
             return self._process_and_load_data(df, final_column_rename_map, prospect_model_fields, fields_for_id_hash)
 

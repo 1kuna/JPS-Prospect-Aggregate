@@ -164,7 +164,7 @@ class BaseScraper(ABC):
                 self.logger.warning(f"Filename '{suggested_filename}' has no extension. Defaulting to '.dat'.")
                 ext = '.dat'
 
-            timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+            timestamp_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
             final_filename = f"{self.source_name.lower().replace(' ', '_')}_{timestamp_str}{ext}"
             
             # Ensure self.download_path (scraper's specific download dir) exists
@@ -447,27 +447,27 @@ class BaseScraper(ABC):
                     self.logger.error(f"JSON serialization error for 'extra' data: {e}. Dict: {extra_dict}")
                     return json.dumps({"serialization_error": str(e)}) # Store error in JSON
             
-            df['extra'] = df.apply(create_extra_json, axis=1)
+            df.loc[:, 'extra'] = df.apply(create_extra_json, axis=1)
         else:
-            df['extra'] = None # Initialize with None if no unmapped columns
+            df.loc[:, 'extra'] = None # Initialize with None if no unmapped columns
 
         # 4. Add source_id
         # Assuming db.session is available and managed by the application context (e.g., in scrape_with_structure)
         data_source_obj = db.session.query(DataSource).filter_by(name=self.source_name).first()
         if data_source_obj:
-            df['source_id'] = data_source_obj.id
+            df.loc[:, 'source_id'] = data_source_obj.id
         else:
             self.logger.error(f"DataSource '{self.source_name}' not found. 'source_id' cannot be set.")
             # Depending on strictness, could raise error or allow None if Prospect.source_id is nullable
-            df['source_id'] = None 
+            df.loc[:, 'source_id'] = None 
 
         # 5. Generate id
-        df['id'] = df.apply(lambda row: self._generate_prospect_id(row, fields_for_id_hash), axis=1)
+        df.loc[:, 'id'] = df.apply(lambda row: self._generate_prospect_id(row, fields_for_id_hash), axis=1)
 
         # 6. Ensure All Model Fields exist in DataFrame
         for field in prospect_model_fields:
             if field not in df.columns:
-                df[field] = pd.NA # Use pd.NA for consistency, converts to None for object types
+                df.loc[:, field] = pd.NA # Use pd.NA for consistency, converts to None for object types
 
         # 7. Select Final Columns (ensure 'id' is included if not in prospect_model_fields list initially)
         # prospect_model_fields should ideally contain all columns for the final table including 'id', 'source_id', 'extra'
@@ -477,10 +477,10 @@ class BaseScraper(ABC):
         if 'id' not in final_columns_for_db and 'id' in df.columns:
              final_columns_for_db.append('id')
         
-        df_to_insert = df[final_columns_for_db]
+        df_to_insert = df[final_columns_for_db].copy()
 
         # 8. Data Cleaning: Drop rows that are entirely NA (after selecting final columns)
-        df_to_insert.dropna(how='all', inplace=True)
+        df_to_insert = df_to_insert.dropna(how='all')
 
         if df_to_insert.empty:
             self.logger.info(f"After all processing, no valid data rows to insert for {self.source_name}.")

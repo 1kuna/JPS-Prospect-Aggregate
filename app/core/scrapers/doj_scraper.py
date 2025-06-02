@@ -30,7 +30,7 @@ class DOJForecastScraper(BaseScraper):
     def __init__(self, debug_mode=False):
         """Initialize the DOJ Forecast scraper."""
         super().__init__(
-            source_name="DOJ Forecast", # Updated source name
+            source_name="Department of Justice", # Match database name
             base_url=active_config.DOJ_FORECAST_URL, # Updated URL config variable
             debug_mode=debug_mode
         )
@@ -222,7 +222,8 @@ class DOJForecastScraper(BaseScraper):
             prospect_model_fields = [col.name for col in Prospect.__table__.columns if col.name != 'loaded_at']
             # Original ID generation: unique_string = f"{naics_val}-{title_val}-{desc_val}-{self.source_name}"
             # These correspond to 'naics', 'title', 'description' in the df after initial renaming.
-            fields_for_id_hash = ['naics', 'title', 'description']
+            # Include location fields to ensure uniqueness for multi-location prospects
+            fields_for_id_hash = ['native_id', 'naics', 'title', 'description', 'place_city', 'place_state']
 
             return self._process_and_load_data(df, final_column_rename_map, prospect_model_fields, fields_for_id_hash)
 
