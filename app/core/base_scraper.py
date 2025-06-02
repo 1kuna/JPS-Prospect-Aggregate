@@ -109,16 +109,56 @@ class BaseScraper(ABC):
             # Initialize Playwright
             self.playwright = sync_playwright().start()
             
-            # Launch browser (chromium by default)
+            # Launch browser (chromium by default) with additional args to handle HTTP/2 issues
+            launch_args = []
+            if hasattr(self, 'source_name') and 'Transportation' in self.source_name:
+                # Add specific args for DOT scraper to handle HTTP/2 protocol errors and timeouts
+                launch_args.extend([
+                    '--disable-http2',
+                    '--disable-features=VizDisplayCompositor',
+                    '--no-sandbox',
+                    '--disable-dev-shm-usage',
+                    '--disable-web-security',
+                    '--disable-blink-features=AutomationControlled',
+                    '--disable-extensions',
+                    '--disable-default-apps',
+                    '--disable-sync',
+                    '--disable-translate',
+                    '--mute-audio',
+                    '--no-first-run',
+                    '--disable-background-timer-throttling',
+                    '--disable-renderer-backgrounding',
+                    '--disable-backgrounding-occluded-windows',
+                    '--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                ])
+            
             self.browser = self.playwright.chromium.launch(
-                headless=not self.debug_mode
+                headless=not self.debug_mode,
+                args=launch_args if launch_args else None
             )
             
-            # Create a browser context
-            self.context = self.browser.new_context(
-                viewport={"width": 1920, "height": 1080},
-                accept_downloads=True
-            )
+            # Create a browser context with enhanced settings for HTTP/2 issues
+            context_options = {
+                "viewport": {"width": 1920, "height": 1080},
+                "accept_downloads": True,
+                "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            }
+            
+            if hasattr(self, 'source_name') and 'Transportation' in self.source_name:
+                # Add specific settings for DOT scraper
+                context_options.update({
+                    "extra_http_headers": {
+                        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+                        "Accept-Language": "en-US,en;q=0.5",
+                        "Accept-Encoding": "gzip, deflate",
+                        "DNT": "1",
+                        "Connection": "keep-alive",
+                        "Upgrade-Insecure-Requests": "1"
+                    },
+                    "ignore_https_errors": True
+                })
+            
+            self.context = self.browser.new_context(**context_options)
             
             # Create a page
             self.page = self.context.new_page()

@@ -2,7 +2,7 @@ import logging
 import pandas as pd
 # from sqlalchemy.orm import Session # No longer needed directly
 from sqlalchemy import insert # Changed to core SQLAlchemy insert
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 import numpy as np
 import math
 
@@ -94,9 +94,10 @@ def bulk_upsert_prospects(df_in: pd.DataFrame): # Renamed back
                 df[col] = df[col].apply(lambda x: x.date() if pd.notna(x) else None)
                 logging.debug(f"Converted column '{col}' to Python date objects.")
             else:
-                logging.warning(f"Column '{col}' exists but is not datetime type ({df[col].dtype}). Attempting conversion.")
+                logging.debug(f"Column '{col}' is not datetime type ({df[col].dtype}). Attempting conversion.")
                 try:
                     df[col] = pd.to_datetime(df[col], errors='coerce').dt.date
+                    logging.debug(f"Successfully converted column '{col}' to date objects.")
                 except Exception as e:
                     logging.error(f"Failed to convert column '{col}' to date: {e}")
                     # Decide how to handle: skip column, fill with None, or raise error
@@ -104,7 +105,9 @@ def bulk_upsert_prospects(df_in: pd.DataFrame): # Renamed back
     # --- End Date Conversion ---
 
     try:
-        df = df.fillna(value=np.nan).replace([np.nan], [None])
+        # Fix FutureWarning about downcasting on fillna
+        with pd.option_context('future.no_silent_downcasting', True):
+            df = df.fillna(value=np.nan).replace([np.nan], [None])
         df = df.infer_objects(copy=False)
         logging.debug("DataFrame NaN/null values replaced with None using fillna/replace.")
     except ImportError:
@@ -119,6 +122,24 @@ def bulk_upsert_prospects(df_in: pd.DataFrame): # Renamed back
     if not data_to_insert:
         logging.warning("Converted data to insert is empty.")
         return
+
+    # Remove duplicates within the data_to_insert itself
+    seen_ids = set()
+    unique_data_to_insert = []
+    duplicates_count = 0
+    
+    for record in data_to_insert:
+        record_id = record.get('id')
+        if record_id and record_id not in seen_ids:
+            seen_ids.add(record_id)
+            unique_data_to_insert.append(record)
+        elif record_id:
+            duplicates_count += 1
+    
+    if duplicates_count > 0:
+        logging.warning(f"Removed {duplicates_count} duplicate records within the same batch")
+    
+    data_to_insert = unique_data_to_insert
 
     session = db.session # Use Flask-SQLAlchemy session directly
 
@@ -145,12 +166,33 @@ def bulk_upsert_prospects(df_in: pd.DataFrame): # Renamed back
         total_inserted = 0
         for i in range(0, len(data_to_insert), batch_size):
             batch_data = data_to_insert[i:i + batch_size]
-            session.bulk_insert_mappings(Prospect, batch_data)
-            total_inserted += len(batch_data)
-            logging.info(f"Inserted batch {i//batch_size + 1}: {len(batch_data)} records")
+            try:
+                session.bulk_insert_mappings(Prospect, batch_data)
+                total_inserted += len(batch_data)
+                logging.info(f"Inserted batch {i//batch_size + 1}: {len(batch_data)} records")
+            except IntegrityError as ie:
+                logging.error(f"IntegrityError in batch {i//batch_size + 1}: {ie}")
+                # Try inserting records one by one to identify the problematic record
+                session.rollback()
+                successful_inserts = 0
+                for record in batch_data:
+                    try:
+                        new_prospect = Prospect(**record)
+                        session.add(new_prospect)
+                        session.commit()
+                        successful_inserts += 1
+                    except IntegrityError:
+                        session.rollback()
+                        logging.debug(f"Skipping duplicate record with ID: {record.get('id', 'unknown')}")
+                        continue
+                total_inserted += successful_inserts
+                logging.info(f"Inserted {successful_inserts}/{len(batch_data)} records individually from batch {i//batch_size + 1}")
         
-        session.commit()
-        logging.info(f"Successfully upserted {total_inserted} records into prospects table.")
+        if total_inserted > 0:
+            session.commit()
+            logging.info(f"Successfully upserted {total_inserted} records into prospects table.")
+        else:
+            logging.warning("No records were inserted.")
 
     except SQLAlchemyError as e:
         logging.error(f"Database error during bulk upsert: {e}", exc_info=True)
