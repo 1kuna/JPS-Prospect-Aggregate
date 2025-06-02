@@ -1,6 +1,5 @@
 import os
 import pathlib
-from typing import List, Dict, Any
 from dotenv import load_dotenv
 
 # Environment variables loading
@@ -133,7 +132,7 @@ class TestingConfig(Config):
 
 
 # Configuration dictionary
-config_by_name: Dict[str, Any] = {
+config_by_name: dict[str, any] = {
     'development': DevelopmentConfig,
     'production': ProductionConfig,
     'testing': TestingConfig,
@@ -142,8 +141,3 @@ config_by_name: Dict[str, Any] = {
 
 # Get current configuration based on environment
 active_config = config_by_name[os.getenv('FLASK_ENV', 'default')]
-
-# Export selected configuration variables
-__all__ = [
-    'active_config', 'BASE_DIR', 'LOGS_DIR', 'DATA_DIR', 'RAW_DATA_DIR'
-] 

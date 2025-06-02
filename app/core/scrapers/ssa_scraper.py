@@ -3,28 +3,18 @@
 # Standard library imports
 import os
 import traceback
-# import sys # Unused
 
 # Third-party imports
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 import pandas as pd
-# import traceback # Redundant
-# import re # Unused
 
 # Local application imports
 from app.core.base_scraper import BaseScraper
 from app.database.models import Prospect # Removed ScraperStatus
-# from app.database.crud import bulk_upsert_prospects # Unused
 from app.exceptions import ScraperError
 from app.utils.logger import logger
-# from app.utils.db_utils import update_scraper_status # Unused
 from app.config import active_config # Import active_config
-from app.utils.scraper_utils import (
-    # check_url_accessibility, # Unused
-    # download_file, # Unused
-    # save_permanent_copy, # Unused
-    handle_scraper_error
-)
+from app.utils.scraper_utils import handle_scraper_error
 from app.utils.parsing import parse_value_range, split_place
 
 # Set up logging using the centralized utility

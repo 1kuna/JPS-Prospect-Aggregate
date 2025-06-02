@@ -1,7 +1,7 @@
 from flask import Blueprint, jsonify, request
 from sqlalchemy import desc, asc # Added for sorting
 from app.database.crud import paginate_sqlalchemy_query
-from app.models import Prospect, db # Added db for session access in new route
+from app.models import Prospect # Added db for session access in new route
 from app.exceptions import ValidationError, NotFoundError # Added NotFoundError
 from app.utils.logger import logger
 
@@ -82,7 +82,6 @@ def get_prospects_route():
 def get_prospect_by_id_route(prospect_id: str):
     logger.info(f"Received request for /api/prospects/{prospect_id}")
     try:
-        # session = db.session # Not strictly necessary if using .get() on the Model itself with Flask-SQLAlchemy
         prospect = Prospect.query.get(prospect_id) # Use .get() for primary key lookup
         
         if not prospect:

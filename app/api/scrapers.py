@@ -3,7 +3,6 @@ from app.models import db, DataSource, ScraperStatus
 from app.exceptions import NotFoundError, ScraperError, DatabaseError
 from app.utils.logger import logger
 from app.services.scraper_service import ScraperService
-import threading
 import time
 
 scrapers_bp = Blueprint('scrapers', __name__)

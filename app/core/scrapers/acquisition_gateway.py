@@ -2,7 +2,6 @@
 
 # Standard library imports
 import os
-import traceback # Keep one traceback
 
 # Third-party imports
 import pandas as pd # Add pandas
@@ -13,10 +12,8 @@ from app.core.base_scraper import BaseScraper
 from app.models import Prospect # Removed ScraperStatus
 from app.config import active_config # Import active_config
 from app.exceptions import ScraperError
-# from app.utils.file_utils import ensure_directory # Removed ensure_directory
 from app.utils.logger import logger
 from app.utils.scraper_utils import handle_scraper_error
-# import hashlib # No longer needed here
 
 # Set up logging
 logger = logger.bind(name="scraper.acquisition_gateway")
@@ -57,16 +54,8 @@ class AcquisitionGatewayScraper(BaseScraper):
             self.page.wait_for_timeout(5000) # Reduced wait back to 5s
             self.logger.info("Wait finished. Locating Export button.")
             
-            # --- Debug Screenshot After Wait REMOVED ---
-            # debug_timestamp_after_wait = ...
-            # screenshot_path_after_wait = ...
-            # try:
-            # ...
-            # except ...
-            # --- End Debug Screenshot After Wait REMOVED ---
-            
             # Find export button using ID
-            export_button_selector = 'button#export-0' 
+            export_button_selector = 'button#export-0'
             export_button = self.page.locator(export_button_selector)
             
             # Wait for the button to be VISIBLE in the DOM
@@ -75,14 +64,6 @@ class AcquisitionGatewayScraper(BaseScraper):
                 self.logger.info("Export button is visible.")
             except PlaywrightTimeoutError as wait_error:
                 self.logger.error(f"Timeout waiting for export button ({export_button_selector}) to be visible.") # Updated log message
-                # --- Debug Output REMOVED ---
-                # debug_timestamp = ...
-                # screenshot_path = ...
-                # html_path = ...
-                # try:
-                # ...
-                # except ...
-                # --- End Debug Output REMOVED ---
                 raise ScraperError(f"Timeout waiting for export button {export_button_selector} to become visible") from wait_error # Updated error message
             
             self.logger.info("Attempting to click Export CSV and waiting for download...")

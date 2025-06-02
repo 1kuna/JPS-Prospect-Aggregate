@@ -2,38 +2,25 @@
 
 # Standard library imports
 import os
-# import sys # Unused
 import time
-# import shutil # Unused
 
 # Third-party imports
-# import requests # Unused
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 import pandas as pd
 import traceback # Added traceback
-# import re # Unused
 
 # Local application imports
 from app.core.base_scraper import BaseScraper
 from app.models import Prospect # Added Prospect, DataSource, db
-# from app.database.crud import bulk_upsert_prospects # Unused
 from app.config import active_config # Import active_config
 from app.exceptions import ScraperError
 from app.utils.file_utils import ensure_directory # find_files was unused
 from app.utils.logger import logger
-from app.utils.scraper_utils import (
-    # check_url_accessibility, # Unused
-    # download_file, # Unused
-    # save_permanent_copy, # Unused
-    handle_scraper_error
-)
+from app.utils.scraper_utils import handle_scraper_error
 from app.utils.parsing import parse_value_range, fiscal_quarter_to_date, split_place # Added parsing utils
 
 # Set up logging
 logger = logger.bind(name="scraper.treasury_forecast")
-
-# Placeholder for URL check function if needed, similar to acquisition_gateway
-# def check_url_accessibility(url=None): ...
 
 class TreasuryScraper(BaseScraper):
     """Scraper for the Treasury Forecast site."""
@@ -288,6 +275,3 @@ class TreasuryScraper(BaseScraper):
             self.logger.error(f"Error processing Treasury file {file_path}: {str(e)}")
             self.logger.error(traceback.format_exc())
             raise ScraperError(f"Error processing Treasury file {file_path}: {str(e)}")
-
-# Placeholder for check_last_download function if needed
-# def check_last_download(): ...

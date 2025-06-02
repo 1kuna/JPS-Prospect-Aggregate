@@ -2,30 +2,20 @@
 
 # Standard library imports
 import os
-# import sys # Unused
 import time
 
 # Third-party imports
-# import requests # Unused
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
-# from playwright.sync_api import sync_playwright # Unused
 import pandas as pd
-import traceback # Added traceback
-# import re # Unused
 
 # Local application imports
 from app.core.base_scraper import BaseScraper
 from app.models import Prospect # Added Prospect, DataSource, db
-# from app.database.crud import bulk_upsert_prospects # Unused
 from app.config import active_config, LOGS_DIR # Import active_config
 from app.exceptions import ScraperError
 from app.utils.file_utils import ensure_directory # find_files was unused
 from app.utils.logger import logger
-from app.utils.scraper_utils import (
-    # check_url_accessibility, # Unused
-    # download_file, # Unused
-    handle_scraper_error
-)
+from app.utils.scraper_utils import handle_scraper_error
 from app.utils.parsing import parse_value_range, fiscal_quarter_to_date, split_place # Added parsing utils
 
 # Set up logging
@@ -257,7 +247,6 @@ class DotScraper(BaseScraper):
                 # fiscal_quarter_to_date returns (timestamp, fiscal_year)
                 parsed_sol_info = df['solicitation_qtr_raw'].apply(fiscal_quarter_to_date)
                 df['release_date'] = parsed_sol_info.apply(lambda x: x[0].date() if pd.notna(x[0]) else None)
-                # df['solicitation_fiscal_year'] = parsed_sol_info.apply(lambda x: x[1]) # Not in Prospect model
             else:
                 df['release_date'] = None
 

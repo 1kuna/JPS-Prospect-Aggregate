@@ -1,17 +1,11 @@
 """Department of Homeland Security Opportunity Forecast scraper."""
 
 # Standard library imports
-import os
 import traceback
-# import sys # Unused
-# import shutil # Unused
-# import datetime # Unused at top level, `from datetime import datetime` is used
 
 # Third-party imports
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 import pandas as pd
-# import hashlib # No longer needed here
-# import re # Unused
 
 # Local application imports
 from app.core.base_scraper import BaseScraper
@@ -159,8 +153,6 @@ class DHSForecastScraper(BaseScraper):
             
             # Columns that were raw and have been parsed can be dropped if desired,
             # or let _process_and_load_data handle them via 'extra' if they are not in final rename map.
-            # For clarity, we might drop them here if they are truly intermediate.
-            # df.drop(columns=['release_date_raw', 'award_date_raw', 'estimated_value_raw'], errors='ignore', inplace=True)
             # However, if we want them in 'extra', we should keep them and ensure they are not in the final_rename_map's values.
 
             # --- Define mappings for _process_and_load_data ---

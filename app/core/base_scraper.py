@@ -16,12 +16,10 @@ from typing import Optional #, Any, Dict # Any, Dict were not used
 import hashlib # Add hashlib import
 
 # Third-party imports
-import requests
 from playwright.sync_api import sync_playwright, Browser, Page, Playwright, BrowserContext, Download
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 # Local application imports
-# from app.database.connection import get_db, session_scope # Removed dead import
 from app.models import DataSource, db # Added db for potential direct use, Prospect
 import pandas as pd # Add pandas import for type hinting
 import json # Add json import for 'extra' field serialization
@@ -80,18 +78,8 @@ class BaseScraper(ABC):
         self.logger.info(f"Initialized {source_name} scraper. Debug mode: {debug_mode}")
     
     # -------------------------------------------------------------------------
-    # Logging and Setup Methods
+    # Browser Setup Methods
     # -------------------------------------------------------------------------
-    
-    def setup_logging(self):
-        """
-        Set up logging for this scraper.
-        """
-        # Use the centralized Loguru logger with scraper-specific context
-        self.logger = logger.bind(name=f"scraper.{self.source_name.lower().replace(' ', '_')}")
-        self.logger.info(f"Initialized {self.source_name} scraper")
-        if self.debug_mode:
-            self.logger.debug("Debug mode enabled")
     
     def setup_browser(self):
         """
@@ -267,9 +255,6 @@ class BaseScraper(ABC):
                 )
                 session.add(data_source)
                 session.flush() # Flush to get the ID if needed, though not strictly necessary here.
-            # else:
-                # Do not update last_scraped here for existing records.
-                # This will be handled by ScraperService upon successful scrape.
             
             return data_source
         except Exception as e:
@@ -367,14 +352,9 @@ class BaseScraper(ABC):
             proposal_data (dict): Proposal data
         
         Returns:
-            Query: SQLAlchemy query for the proposal
+    def _generate_prospect_id_series(self, data_row: pd.Series, fields_to_hash: list[str], source_name_override: str = None) -> str:
         """
-        # This method should be implemented by subclasses
-        raise NotImplementedError("Subclasses must implement get_proposal_query")
-
-    def _generate_prospect_id(self, data_row: pd.Series, fields_to_hash: list[str], source_name_override: str = None) -> str:
-        """
-        Generate a unique prospect ID based on specified fields and source name.
+        Generate a unique prospect ID based on specified fields and source name for a pd.Series (row).
 
         Args:
             data_row (pd.Series): A row of data.
@@ -395,18 +375,15 @@ class BaseScraper(ABC):
         unique_string = "-".join(unique_string_parts)
         return hashlib.md5(unique_string.encode('utf-8')).hexdigest()
 
-    def _process_and_load_data(self, df: pd.DataFrame, column_rename_map: dict, prospect_model_fields: list[str], fields_for_id_hash: list[str]):
-        """
-        Centralized method to process a DataFrame and load it into the Prospect table.
-        """
-        self.logger.info(f"Starting common data processing for {self.source_name}")
-
-        # 1. Rename Columns
+    # --- Start of new helper methods for _process_and_load_data ---
+    def _rename_df_columns(self, df: pd.DataFrame, column_rename_map: dict) -> pd.DataFrame:
+        """Renames columns in the DataFrame."""
         df.rename(columns=column_rename_map, inplace=True)
         self.logger.debug(f"Columns after rename: {df.columns.tolist()}")
+        return df
 
-        # 2. Normalize Column Names
-        # Ensure this regex handles various cases robustly, including stripping leading/trailing underscores if any appear post-regex.
+    def _normalize_df_column_names(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Normalizes column names (lower, strip, replace special chars)."""
         df.columns = (df.columns.str.strip()
                       .str.lower()
                       .str.replace(r'[\s\W]+', '_', regex=True) # Replace whitespace and non-alphanumeric with single underscore
@@ -414,12 +391,11 @@ class BaseScraper(ABC):
                       .str.replace(r'^_|_$', '', regex=True))   # Remove leading/trailing underscores
         df = df.loc[:, ~df.columns.duplicated()] # Remove duplicate columns
         self.logger.debug(f"Columns after normalization: {df.columns.tolist()}")
+        return df
 
-        # 3. Handle 'extra' Column
-        # Define actual model fields (excluding 'extra' itself for this check)
-        # 'id' and 'loaded_at' are auto-generated or handled separately. 'source_id' is added by this func.
+    def _add_extra_column_to_df(self, df: pd.DataFrame, prospect_model_fields: list[str]) -> pd.DataFrame:
+        """Handles unmapped columns by adding them to an 'extra' JSON column."""
         core_model_fields_for_extra_check = [f for f in prospect_model_fields if f not in ['extra', 'id', 'loaded_at', 'source_id']]
-        
         unmapped_cols = [col for col in df.columns if col not in core_model_fields_for_extra_check]
         
         if unmapped_cols:
@@ -450,26 +426,32 @@ class BaseScraper(ABC):
             df.loc[:, 'extra'] = df.apply(create_extra_json, axis=1)
         else:
             df.loc[:, 'extra'] = None # Initialize with None if no unmapped columns
+        return df
 
-        # 4. Add source_id
-        # Assuming db.session is available and managed by the application context (e.g., in scrape_with_structure)
+    def _add_source_id_to_df(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Adds the scraper's source_id to the DataFrame."""
         data_source_obj = db.session.query(DataSource).filter_by(name=self.source_name).first()
         if data_source_obj:
             df.loc[:, 'source_id'] = data_source_obj.id
         else:
             self.logger.error(f"DataSource '{self.source_name}' not found. 'source_id' cannot be set.")
-            # Depending on strictness, could raise error or allow None if Prospect.source_id is nullable
             df.loc[:, 'source_id'] = None 
+        return df
 
-        # 5. Generate id
-        df.loc[:, 'id'] = df.apply(lambda row: self._generate_prospect_id(row, fields_for_id_hash), axis=1)
+    def _generate_prospect_ids_for_df(self, df: pd.DataFrame, fields_for_id_hash: list[str]) -> pd.DataFrame:
+        """Generates unique 'id' for each row in the DataFrame."""
+        df.loc[:, 'id'] = df.apply(lambda row: self._generate_prospect_id_series(row, fields_for_id_hash), axis=1)
+        return df
 
-        # 6. Ensure All Model Fields exist in DataFrame
+    def _ensure_all_model_fields_in_df(self, df: pd.DataFrame, prospect_model_fields: list[str]) -> pd.DataFrame:
+        """Ensures all fields defined in prospect_model_fields exist in the DataFrame, adding NA if not."""
         for field in prospect_model_fields:
             if field not in df.columns:
                 df.loc[:, field] = pd.NA # Use pd.NA for consistency, converts to None for object types
+        return df
 
-        # 7. Select Final Columns (ensure 'id' is included if not in prospect_model_fields list initially)
+    def _clean_and_prepare_df_for_db(self, df: pd.DataFrame, prospect_model_fields: list[str]) -> pd.DataFrame:
+        """Selects final columns and drops fully NA rows."""
         # prospect_model_fields should ideally contain all columns for the final table including 'id', 'source_id', 'extra'
         # but excluding 'loaded_at'
         final_columns_for_db = [col for col in prospect_model_fields if col in df.columns]
@@ -479,14 +461,16 @@ class BaseScraper(ABC):
         
         df_to_insert = df[final_columns_for_db].copy()
 
-        # 8. Data Cleaning: Drop rows that are entirely NA (after selecting final columns)
+        # Data Cleaning: Drop rows that are entirely NA (after selecting final columns)
         df_to_insert = df_to_insert.dropna(how='all')
+        return df_to_insert
 
+    def _load_df_to_db(self, df_to_insert: pd.DataFrame) -> int:
+        """Loads the processed DataFrame into the database."""
         if df_to_insert.empty:
             self.logger.info(f"After all processing, no valid data rows to insert for {self.source_name}.")
             return 0 # No records processed
 
-        # 9. Load Data
         self.logger.info(f"Attempting to insert/update {len(df_to_insert)} records for {self.source_name}.")
         try:
             bulk_upsert_prospects(df_to_insert)
@@ -496,6 +480,23 @@ class BaseScraper(ABC):
             self.logger.error(f"Error during bulk_upsert_prospects for {self.source_name}: {e}")
             self.logger.error(traceback.format_exc())
             raise ScraperError(f"Database loading failed for {self.source_name}: {e}") from e
+    # --- End of new helper methods ---
+
+    def _process_and_load_data(self, df: pd.DataFrame, column_rename_map: dict, prospect_model_fields: list[str], fields_for_id_hash: list[str]):
+        """
+        Centralized method to process a DataFrame and load it into the Prospect table.
+        """
+        self.logger.info(f"Starting common data processing for {self.source_name}")
+
+        df = self._rename_df_columns(df, column_rename_map)
+        df = self._normalize_df_column_names(df)
+        df = self._add_extra_column_to_df(df, prospect_model_fields)
+        df = self._add_source_id_to_df(df)
+        df = self._generate_prospect_ids_for_df(df, fields_for_id_hash)
+        df = self._ensure_all_model_fields_in_df(df, prospect_model_fields)
+        df_to_insert = self._clean_and_prepare_df_for_db(df, prospect_model_fields)
+        
+        return self._load_df_to_db(df_to_insert)
 
     # -------------------------------------------------------------------------
     # Browser Interaction Methods
@@ -584,12 +585,6 @@ class BaseScraper(ABC):
                 self.logger.warning(f"Navigation to {url} resulted in status {response.status}. URL: {response.url}")
                 # Consider raising an error or returning False depending on desired strictness
             
-            # Optional: Wait for a specific load state if needed after goto, but goto usually handles it.
-            # try:
-            #     self.page.wait_for_load_state("load", timeout=timeout) 
-            # except PlaywrightTimeoutError:
-            #     self.logger.warning(f"wait_for_load_state('load') timed out for {url}, proceeding anyway.")
-            
             # Handle any popups (if implemented in subclass)
             self.handle_popups()
             
@@ -666,8 +661,6 @@ class BaseScraper(ABC):
             if process_func and result["data"]:
                 self.logger.info("Running processing phase")
                 # Use db.session directly
-                # from app.database.connection import session_scope # Removed
-                # from app.models import DataSource # db is already imported at the top 
                 # -> This import is at the top of the file.
 
                 # Flask-SQLAlchemy's db.session is typically managed by the app context.

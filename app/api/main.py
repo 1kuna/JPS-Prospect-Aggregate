@@ -104,7 +104,4 @@ def get_dashboard():
         })
     except Exception as e:
         logger.error(f"Error in get_dashboard: {str(e)}", exc_info=True)
-        # db.session.rollback() # Removed
         return jsonify({"status": "error", "message": "An unexpected error occurred"}), 500
-
-# Add main/general routes here 

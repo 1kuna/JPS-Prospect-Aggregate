@@ -4,12 +4,9 @@ Database utility functions.
 
 import datetime
 from datetime import timezone
-# import shutil # Removed as it was only used by rebuild_database
 from typing import Optional # Added for type hinting
 from app.utils.logger import logger
 from app.utils.file_utils import clean_old_files
-# from flask import current_app # Removed as it was only used by rebuild_database
-# from pathlib import Path # Removed as it was only used by rebuild_database
 
 # Set up logging using the centralized utility
 
@@ -26,9 +23,6 @@ def cleanup_old_backups(backup_dir, max_backups=5):
     deleted = clean_old_files(backup_dir, pattern, max_backups)
     logger.info(f"Cleaned up {deleted} old database backup(s), keeping {max_backups} most recent")
     return deleted
-
-# Ensure datetime is imported if not already at the top of the file
-# import datetime # This should be at the top of the file
 
 # The rebuild_database function has been removed as it's unused.
 
