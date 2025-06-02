@@ -39,7 +39,8 @@ class DotScraper(BaseScraper):
         super().__init__(
             source_name="Department of Transportation",
             base_url=active_config.DOT_FORECAST_URL,
-            debug_mode=debug_mode
+            debug_mode=debug_mode,
+            use_stealth=True
         )
         ensure_directory(self.download_path)
 
@@ -50,16 +51,27 @@ class DotScraper(BaseScraper):
         if not self.page:
             raise ScraperError("Page object is not initialized. Call setup_browser first.")
         
-        # Try multiple approaches to handle HTTP/2 protocol errors
+        # Add a small delay before navigation to ensure browser is ready
+        time.sleep(2)
+        
+        # Try multiple approaches to handle HTTP/2 protocol errors and timeouts
         attempts = [
-            {'wait_until': 'load', 'timeout': 90000},
-            {'wait_until': 'domcontentloaded', 'timeout': 60000},
-            {'wait_until': 'networkidle', 'timeout': 45000}
+            {'wait_until': 'load', 'timeout': 120000},
+            {'wait_until': 'domcontentloaded', 'timeout': 90000}, 
+            {'wait_until': 'networkidle', 'timeout': 60000},
+            {'wait_until': 'commit', 'timeout': 45000}
         ]
         
         for i, params in enumerate(attempts, 1):
             try:
                 self.logger.info(f"Navigation attempt {i}/{len(attempts)} with {params}")
+                
+                # Add extra delay for subsequent attempts
+                if i > 1:
+                    delay_time = i * 5
+                    self.logger.info(f"Waiting {delay_time} seconds before attempt {i}...")
+                    time.sleep(delay_time)
+                
                 response = self.page.goto(self.base_url, **params)
                 
                 if response and not response.ok:
@@ -77,6 +89,10 @@ class DotScraper(BaseScraper):
                     error_msg = f"All navigation attempts timed out for DOT URL: {self.base_url}"
                     self.logger.error(error_msg)
                     raise ScraperError(error_msg) from e
+                # Add progressive delay for timeout retries
+                retry_delay = i * 10
+                self.logger.info(f"Waiting {retry_delay} seconds before timeout retry...")
+                time.sleep(retry_delay)
                 continue
                 
             except Exception as e:
@@ -87,6 +103,20 @@ class DotScraper(BaseScraper):
                         error_msg = f"HTTP/2 protocol error persists after all attempts for DOT URL: {self.base_url}"
                         self.logger.error(error_msg)
                         raise ScraperError(error_msg) from e
+                    # Add delay before retry
+                    self.logger.info(f"Waiting {i * 3} seconds before retry...")
+                    time.sleep(i * 3)
+                    continue
+                elif "ERR_TIMED_OUT" in error_str:
+                    self.logger.warning(f"Network timeout error on attempt {i}: {error_str}")
+                    if i == len(attempts):
+                        error_msg = f"Network timeout error persists after all attempts for DOT URL: {self.base_url}"
+                        self.logger.error(error_msg)
+                        raise ScraperError(error_msg) from e
+                    # Add progressive delay for network timeout retries
+                    timeout_delay = i * 15
+                    self.logger.info(f"Waiting {timeout_delay} seconds before timeout retry...")
+                    time.sleep(timeout_delay)
                     continue
                 else:
                     error_msg = f"Unexpected error navigating to DOT URL {self.base_url}: {error_str}"
@@ -134,8 +164,12 @@ class DotScraper(BaseScraper):
             new_page = new_page_info.value
             self.logger.info(f"New page opened with URL: {new_page.url}")
 
+            # Set up download handler for the new page
+            new_page.on("download", self._handle_download)
+            
             # Wait for the download to start on the new page
             # Increased timeout to handle potential server-side preparation
+            download_obj = None
             try:
                 with new_page.expect_download(timeout=120000) as download_info:
                      self.logger.info("Waiting for download to initiate on the new page...")
@@ -144,8 +178,14 @@ class DotScraper(BaseScraper):
                      # For now, just rely on the expect_download timeout.
                      pass # Placeholder, let expect_download handle the wait
 
-                _ = download_info.value # Access the download object
+                download_obj = download_info.value # Access the download object
                 self.logger.info("Download detected on new page.")
+                
+                # Manually handle the download since the event handler might not be triggered
+                if not self._last_download_path:
+                    self.logger.info("Manual download handling since automatic handler didn't trigger...")
+                    self._handle_download(download_obj)
+                    
             finally:
                  # Ensure the new page is closed even if download fails
                  if new_page and not new_page.is_closed():
@@ -153,21 +193,32 @@ class DotScraper(BaseScraper):
                      new_page.close()
 
             # Wait a brief moment for the download event to be processed by the callback
-            # This wait needs to be on the original page context if _handle_download is attached there.
-            # If _handle_download is attached to new_page's events, this is fine.
-            # Assuming BaseScraper's _handle_download is robust enough or attached to the context handling downloads.
-            self.page.wait_for_timeout(5000) # Increased wait time for file system operations
+            self.page.wait_for_timeout(2000) # Brief wait for file system operations
 
             if not self._last_download_path or not os.path.exists(self._last_download_path):
                 self.logger.error(f"BaseScraper._last_download_path not set or invalid. Value: {self._last_download_path}")
-                # Fallback or detailed error logging if needed
-                try:
-                    download_obj_for_debug = download_info.value # Re-access if needed for debug
-                    temp_playwright_path = download_obj_for_debug.path()
-                    self.logger.warning(f"Playwright temp download path for debugging: {temp_playwright_path}")
-                except Exception as path_err:
-                    self.logger.error(f"Could not retrieve Playwright temp download path for debugging: {path_err}")
-                raise ScraperError("Download failed: File not found or path not set by BaseScraper._handle_download.")
+                # Fallback: Try to save from the download object directly
+                if download_obj:
+                    try:
+                        temp_playwright_path = download_obj.path()
+                        self.logger.info(f"Attempting to copy from Playwright temp path: {temp_playwright_path}")
+                        
+                        # Generate our own filename
+                        timestamp_str = time.strftime("%Y%m%d_%H%M%S")
+                        final_filename = f"department_of_transportation_{timestamp_str}.csv"
+                        final_save_path = os.path.join(self.download_path, final_filename)
+                        
+                        # Copy the file manually
+                        import shutil
+                        shutil.copy2(temp_playwright_path, final_save_path)
+                        self._last_download_path = final_save_path
+                        self.logger.info(f"Successfully copied download to: {final_save_path}")
+                        
+                    except Exception as copy_err:
+                        self.logger.error(f"Failed to copy download manually: {copy_err}")
+                        raise ScraperError("Download failed: File not found or path not set by BaseScraper._handle_download.")
+                else:
+                    raise ScraperError("Download failed: File not found or path not set by BaseScraper._handle_download.")
 
             self.logger.info(f"Download process completed. File saved at: {self._last_download_path}")
             return self._last_download_path
@@ -263,8 +314,30 @@ class DotScraper(BaseScraper):
 
             # Award Date and Fiscal Year
             if 'award_date_raw' in df.columns:
-                df['award_date'] = pd.to_datetime(df['award_date_raw'], errors='coerce').dt.date
-                df['award_fiscal_year'] = pd.to_datetime(df['award_date_raw'], errors='coerce').dt.year.astype('Int64') # Get year from original raw string
+                # Try multiple date formats to avoid pandas warning
+                date_formats = ['%m/%d/%Y', '%Y-%m-%d', '%m-%d-%Y', '%d/%m/%Y']
+                df['award_date'] = None
+                df['award_fiscal_year'] = pd.NA
+                
+                for fmt in date_formats:
+                    try:
+                        parsed_dates = pd.to_datetime(df['award_date_raw'], format=fmt, errors='coerce')
+                        valid_mask = parsed_dates.notna()
+                        if valid_mask.any():
+                            df.loc[valid_mask, 'award_date'] = parsed_dates[valid_mask].dt.date
+                            df.loc[valid_mask, 'award_fiscal_year'] = parsed_dates[valid_mask].dt.year.astype('Int64')
+                            break
+                    except:
+                        continue
+                
+                # Fallback to flexible parsing if no format worked
+                if df['award_date'].isna().all():
+                    with pd.option_context('mode.chained_assignment', None):
+                        parsed_dates = pd.to_datetime(df['award_date_raw'], errors='coerce', infer_datetime_format=True)
+                        valid_mask = parsed_dates.notna()
+                        if valid_mask.any():
+                            df.loc[valid_mask, 'award_date'] = parsed_dates[valid_mask].dt.date
+                            df.loc[valid_mask, 'award_fiscal_year'] = parsed_dates[valid_mask].dt.year.astype('Int64')
             else:
                 df['award_date'] = None
                 df['award_fiscal_year'] = pd.NA

@@ -40,7 +40,10 @@ class ScraperService:
             if not ScraperClass:
                 raise ScraperError(f"No scraper configured for scraper_key: '{data_source.scraper_key}' for data source: {data_source.name}")
 
-            scraper_instance = ScraperClass()
+            # Initialize scraper with appropriate debug mode
+            # DOT scraper needs special handling due to website blocking
+            debug_mode = data_source.scraper_key == 'dot'  # Enable debug mode for DOT scraper
+            scraper_instance = ScraperClass(debug_mode=debug_mode)
             
             # Update status to 'working' before starting
             update_scraper_status(source_id=data_source.id, status='working', details="Scrape process initiated.")
