@@ -18,7 +18,7 @@ interface DataSource {
   url: string;
   description: string;
   last_scraped: string | null;
-  proposalCount: number;
+  prospectCount: number;
   last_checked: string | null;
   status: string;
 }
@@ -118,7 +118,12 @@ export default function Advanced() {
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return 'Never';
-    const date = new Date(dateString);
+    // The backend sends ISO format without Z, but it's UTC
+    // Add Z if not present to ensure proper UTC parsing
+    const dateStr = dateString.includes('Z') || dateString.includes('+') || dateString.includes('-') 
+      ? dateString 
+      : dateString + 'Z';
+    const date = new Date(dateStr);
     return date.toLocaleString();
   };
 
@@ -188,7 +193,7 @@ export default function Advanced() {
                     <TableHead>Description</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Last Scraped</TableHead>
-                    <TableHead>Proposals</TableHead>
+                    <TableHead>Prospects</TableHead>
                     <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -205,7 +210,7 @@ export default function Advanced() {
                           </span>
                         </TableCell>
                         <TableCell className="text-sm">{formatDate(source.last_scraped)}</TableCell>
-                        <TableCell>{source.proposalCount}</TableCell>
+                        <TableCell>{source.prospectCount}</TableCell>
                         <TableCell>
                           <Button
                             size="sm"

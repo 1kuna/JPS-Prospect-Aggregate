@@ -419,7 +419,7 @@ export default function Dashboard() {
         <div className="w-64 flex-shrink-0">
           <Card> {/* Removed shadow-lg to make it less prominent */} 
             <CardHeader className="pb-2 pt-0"> {/* Adjusted padding */}
-              <CardTitle className="text-base font-semibold text-black">Prospect Statistics</CardTitle> {/* Smaller title */} 
+              <CardTitle className="text-base font-semibold text-black">Prospects</CardTitle> {/* Smaller title */} 
             </CardHeader>
             <CardContent className="pt-2 pb-4"> {/* Adjusted padding */}
               {/* {isLoadingCount ? ( */}

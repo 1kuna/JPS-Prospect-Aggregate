@@ -36,7 +36,7 @@ class SsaScraper(BaseScraper):
     def __init__(self, debug_mode=False):
         """Initialize the SSA Forecast scraper."""
         super().__init__(
-            source_name="SSA Forecast",
+            source_name="Social Security Administration",
             base_url=active_config.SSA_CONTRACT_FORECAST_URL,
             debug_mode=debug_mode
         )
@@ -250,7 +250,8 @@ class SsaScraper(BaseScraper):
             
             prospect_model_fields = [col.name for col in Prospect.__table__.columns if col.name != 'loaded_at']
             # Original ID generation: naics, description (as requirement_title), agency
-            fields_for_id_hash = ['naics', 'description', 'agency']
+            # Include native_id, title, and location to ensure uniqueness
+            fields_for_id_hash = ['native_id', 'naics', 'title', 'description', 'agency', 'place_city', 'place_state']
 
 
             return self._process_and_load_data(df, final_column_rename_map, prospect_model_fields, fields_for_id_hash)

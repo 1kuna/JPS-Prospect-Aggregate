@@ -1,4 +1,5 @@
 import datetime
+from datetime import timezone
 from app.models import db, DataSource, ScraperStatus
 from app.exceptions import NotFoundError, ScraperError, DatabaseError
 from app.utils.logger import logger
@@ -46,15 +47,20 @@ class ScraperService:
 
             try:
                 logger.info(f"Starting scrape for {data_source.name} (ID: {source_id})")
-                # Assuming scraper_instance.run() is the correct method to execute the scrape.
-                # If run() is from BaseScraper.scrape() which calls scrape_with_structure,
-                # then process_func is part of it. If run() is specific to individual scrapers,
-                # ensure it returns a meaningful result or raises specific exceptions.
-                scraper_instance.run() # This should ideally return the result of process_func or raise error
+                # Run the scraper and check the result
+                scrape_result = scraper_instance.run()
                 
-                # If scrape is successful:
-                update_scraper_status(source_id=data_source.id, status='completed', details=f"Scrape completed successfully at {datetime.datetime.utcnow().isoformat()}.")
-                data_source.last_scraped = datetime.datetime.utcnow()
+                # Check if the scrape was successful
+                if isinstance(scrape_result, dict) and not scrape_result.get('success', False):
+                    # Scrape failed
+                    error_msg = scrape_result.get('error', 'Unknown error during scraping')
+                    logger.error(f"Scraper returned failure for {data_source.name}: {error_msg}")
+                    update_scraper_status(source_id=data_source.id, status='failed', details=error_msg[:500])
+                    raise ScraperError(f"Scraping {data_source.name} failed: {error_msg}")
+                
+                # If we get here, scrape is successful
+                update_scraper_status(source_id=data_source.id, status='completed', details=f"Scrape completed successfully at {datetime.datetime.now(timezone.utc).isoformat()}.")
+                data_source.last_scraped = datetime.datetime.now(timezone.utc)
                 session.commit() # Commit update to data_source.last_scraped
                 
                 logger.info(f"Scrape for {data_source.name} completed successfully.")

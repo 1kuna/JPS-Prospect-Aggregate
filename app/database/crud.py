@@ -123,24 +123,34 @@ def bulk_upsert_prospects(df_in: pd.DataFrame): # Renamed back
     session = db.session # Use Flask-SQLAlchemy session directly
 
     try:
-        # Prepare the insert statement using the Prospect table
-        # Make sure Prospect.__table__ is correctly accessed after db setup
-        stmt = insert(Prospect.__table__).values(data_to_insert)
-
-        update_columns = { 
-            col.name: col 
-            for col in stmt.excluded 
-            if col.name not in ['id', 'loaded_at']
-        }
+        # For SQLite, we need to use a different approach since on_conflict_do_update is PostgreSQL-specific
+        # We'll do a simple approach: delete existing records and insert new ones
         
-        on_conflict_stmt = stmt.on_conflict_do_update(
-            index_elements=['id'], # Assuming 'id' is the primary key and conflict target
-            set_=update_columns
-        )
-
-        session.execute(on_conflict_stmt)
+        # Extract all IDs from the data to insert
+        ids_to_upsert = [record['id'] for record in data_to_insert if 'id' in record]
+        
+        if ids_to_upsert:
+            # Delete existing records with these IDs in batches to avoid SQLite limitations
+            batch_size = 500  # SQLite has a limit on number of parameters
+            for i in range(0, len(ids_to_upsert), batch_size):
+                batch_ids = ids_to_upsert[i:i + batch_size]
+                delete_count = session.query(Prospect).filter(Prospect.id.in_(batch_ids)).delete(synchronize_session=False)
+                logging.info(f"Deleted {delete_count} existing records from batch {i//batch_size + 1}")
+            # Commit all delete operations
+            session.commit()
+            logging.info(f"Deleted all existing records with matching IDs")
+        
+        # Insert all records in batches to avoid memory issues
+        batch_size = 1000
+        total_inserted = 0
+        for i in range(0, len(data_to_insert), batch_size):
+            batch_data = data_to_insert[i:i + batch_size]
+            session.bulk_insert_mappings(Prospect, batch_data)
+            total_inserted += len(batch_data)
+            logging.info(f"Inserted batch {i//batch_size + 1}: {len(batch_data)} records")
+        
         session.commit()
-        logging.info(f"Successfully upserted {len(data_to_insert)} records into prospects table.")
+        logging.info(f"Successfully upserted {total_inserted} records into prospects table.")
 
     except SQLAlchemyError as e:
         logging.error(f"Database error during bulk upsert: {e}", exc_info=True)

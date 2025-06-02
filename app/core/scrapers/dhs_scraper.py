@@ -31,7 +31,7 @@ class DHSForecastScraper(BaseScraper):
     def __init__(self, debug_mode=False):
         """Initialize the DHS Forecast scraper."""
         super().__init__(
-            source_name="DHS Forecast",
+            source_name="Department of Homeland Security",
             base_url=active_config.DHS_FORECAST_URL,
             debug_mode=debug_mode
         )
@@ -94,9 +94,15 @@ class DHSForecastScraper(BaseScraper):
         Process the downloaded Excel file, transform data to Prospect objects, 
         and insert into the database using logic adapted from dhs_transform.py.
         """
-        self.logger.info(f"Processing downloaded Excel file: {file_path}")
+        self.logger.info(f"Processing downloaded file: {file_path}")
         try:
-            df = pd.read_excel(file_path, sheet_name=0, header=0) 
+            # Try to read as CSV first (since file has .csv extension)
+            try:
+                df = pd.read_csv(file_path, encoding='utf-8')
+                self.logger.info(f"Successfully read file as CSV")
+            except Exception as csv_error:
+                self.logger.warning(f"Failed to read as CSV: {csv_error}, trying Excel format")
+                df = pd.read_excel(file_path, sheet_name=0, header=0) 
             self.logger.info(f"Loaded {len(df)} rows from {file_path}")
 
             if df.empty:
@@ -191,7 +197,8 @@ class DHSForecastScraper(BaseScraper):
             final_column_rename_map_existing = {k: v for k, v in final_column_rename_map.items() if k in df.columns}
 
             prospect_model_fields = [col.name for col in Prospect.__table__.columns if col.name != 'loaded_at']
-            fields_for_id_hash = ['naics', 'title', 'description'] # Use final Prospect field names
+            # Include native_id and location to ensure uniqueness
+            fields_for_id_hash = ['native_id', 'naics', 'title', 'description', 'place_city', 'place_state'] # Use final Prospect field names
 
             return self._process_and_load_data(df, final_column_rename_map_existing, prospect_model_fields, fields_for_id_hash)
 
