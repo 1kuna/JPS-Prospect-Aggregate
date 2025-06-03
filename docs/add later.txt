@@ -15,6 +15,7 @@ LLM enrichment of data
         - try to stay within the 4-digit parent for inferring when one is already present UNLESS it's generic
     - mark all inferred data with blue text (like tesla autopilot blue)
     - let users filter between original and inferred included
+    - status on the advanced page and start/stop button for LLM enrichment
 
 marking opportunities as go/no-go
     - potentially showing who logged such and when they did for queued manual verification
