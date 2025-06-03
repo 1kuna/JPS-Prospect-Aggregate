@@ -8,6 +8,7 @@ from app.utils.parsing import fiscal_quarter_to_date, parse_value_range, split_p
 from app.utils.scraper_utils import generate_id_hash 
 from app.database.crud import bulk_upsert_prospects
 from app.models import Prospect # For getting model fields
+from app.config import active_config # For preserve_ai_data configuration
 
 
 class DataProcessingMixin:
@@ -214,7 +215,7 @@ class DataProcessingMixin:
             self.logger.info(f"Attempting to bulk upsert {len(prospects_data_list)} prospects for {source_name}.")
             # Convert prospects_data_list back to DataFrame for bulk_upsert_prospects
             prospects_df = pd.DataFrame(prospects_data_list)
-            result = bulk_upsert_prospects(prospects_df) 
+            result = bulk_upsert_prospects(prospects_df, preserve_ai_data=active_config.PRESERVE_AI_DATA_ON_REFRESH) 
             self.logger.info(f"Bulk upsert completed for {source_name}. Result: {result}")
             return len(prospects_data_list) 
         except Exception as e:

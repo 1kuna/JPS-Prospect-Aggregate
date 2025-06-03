@@ -49,6 +49,9 @@ REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 SCRAPE_INTERVAL_HOURS = int(os.getenv("SCRAPE_INTERVAL_HOURS", 24))
 HEALTH_CHECK_INTERVAL_MINUTES = int(os.getenv("HEALTH_CHECK_INTERVAL_MINUTES", 10))
 
+# AI data preservation configuration
+PRESERVE_AI_DATA_ON_REFRESH = os.getenv("PRESERVE_AI_DATA_ON_REFRESH", "true").lower() == "true"
+
 # File processing
 CSV_ENCODINGS = ['utf-8', 'latin-1', 'cp1252']
 FILE_FRESHNESS_SECONDS = int(os.getenv("FILE_FRESHNESS_SECONDS", 86400))   # 24 hours
@@ -110,6 +113,9 @@ class Config:
     # Scheduler configuration
     SCRAPE_INTERVAL_HOURS: int = SCRAPE_INTERVAL_HOURS
     HEALTH_CHECK_INTERVAL_MINUTES: int = HEALTH_CHECK_INTERVAL_MINUTES
+    
+    # AI data preservation configuration
+    PRESERVE_AI_DATA_ON_REFRESH: bool = PRESERVE_AI_DATA_ON_REFRESH
     
     # Redis configuration
     REDIS_URL: str = REDIS_URL

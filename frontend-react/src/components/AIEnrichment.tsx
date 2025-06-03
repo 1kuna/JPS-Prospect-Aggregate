@@ -2,61 +2,74 @@ import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+
 import { 
-  useAIEnrichmentStatus, 
-  useAIEnrichmentLogs, 
-  useAIEnrichmentMutation,
-  type AIEnrichmentRequest 
+  useAIEnrichmentStatus
 } from '@/hooks/api/useAIEnrichment';
+import {
+  useStartIterativeEnhancement,
+  useStopIterativeEnhancement,
+  useIterativeProgress,
+  type EnhancementType
+} from '@/hooks/api/useIterativeEnrichment';
+import { useLLMOutputs } from '@/hooks/api/useLLMOutputs';
+import { PlayIcon, StopIcon, ChevronDownIcon, ChevronRightIcon } from '@radix-ui/react-icons';
 
 export function AIEnrichment() {
-  const [enhancementType, setEnhancementType] = useState<'values' | 'contacts' | 'naics' | 'all'>('all');
-  const [limit, setLimit] = useState<string>('100');
+  const [enhancementType, setEnhancementType] = useState<EnhancementType>('all');
+  const [expandedOutputs, setExpandedOutputs] = useState<Set<number>>(new Set());
   
   const { data: status, isLoading: isLoadingStatus } = useAIEnrichmentStatus();
-  const { data: logs, isLoading: isLoadingLogs } = useAIEnrichmentLogs();
-  const enhancementMutation = useAIEnrichmentMutation();
 
-  const handleTriggerEnrichment = () => {
-    const request: AIEnrichmentRequest = {
-      enhancement_type: enhancementType,
-      limit: limit ? parseInt(limit) : undefined,
-    };
-    
-    enhancementMutation.mutate(request);
+  const { data: progress } = useIterativeProgress();
+  const { data: llmOutputs, isLoading: isLoadingOutputs } = useLLMOutputs({ enhancement_type: enhancementType });
+  const startMutation = useStartIterativeEnhancement();
+  const stopMutation = useStopIterativeEnhancement();
+
+  const isProcessing = progress?.status === 'processing';
+  
+  // Debug log
+  console.log('Progress:', progress);
+  console.log('Is Processing:', isProcessing);
+
+  const handleStart = () => {
+    startMutation.mutate({ enhancement_type: enhancementType });
+  };
+
+  const handleStop = () => {
+    stopMutation.mutate();
   };
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleString();
   };
 
-  const formatDuration = (duration: number) => {
-    if (duration < 60) {
-      return `${duration.toFixed(1)}s`;
-    }
-    const minutes = Math.floor(duration / 60);
-    const seconds = duration % 60;
-    return `${minutes}m ${seconds.toFixed(0)}s`;
+  const toggleOutputExpanded = (outputId: number) => {
+    setExpandedOutputs(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(outputId)) {
+        newSet.delete(outputId);
+      } else {
+        newSet.add(outputId);
+      }
+      return newSet;
+    });
   };
 
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'success':
+      case 'completed':
         return 'text-green-600';
       case 'failed':
+      case 'error':
         return 'text-red-600';
       case 'in_progress':
+      case 'processing':
         return 'text-blue-600';
+      case 'stopped':
+        return 'text-yellow-600';
       default:
         return 'text-gray-600';
     }
@@ -153,17 +166,22 @@ export function AIEnrichment() {
         </CardContent>
       </Card>
 
-      {/* Control Panel */}
+      {/* Iterative Processing Controls */}
       <Card>
         <CardHeader>
           <CardTitle>AI Enrichment Controls</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Enhancement Type Selection */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="enhancement-type">Enhancement Type</Label>
-                <Select value={enhancementType} onValueChange={(value: 'values' | 'contacts' | 'naics' | 'all') => setEnhancementType(value)}>
+                <Select 
+                  value={enhancementType} 
+                  onValueChange={(value: EnhancementType) => setEnhancementType(value)}
+                  disabled={isProcessing}
+                >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
@@ -177,46 +195,98 @@ export function AIEnrichment() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="limit">Limit (optional)</Label>
-                <Input
-                  id="limit"
-                  type="number"
-                  placeholder="e.g., 100"
-                  value={limit}
-                  onChange={(e) => setLimit(e.target.value)}
-                />
-              </div>
-
-              <div className="space-y-2">
                 <Label>&nbsp;</Label>
-                <Button
-                  onClick={handleTriggerEnrichment}
-                  disabled={enhancementMutation.isPending}
-                  className="w-full bg-blue-600 hover:bg-blue-700"
-                >
-                  {enhancementMutation.isPending ? (
-                    <>
-                      <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white mr-2"></div>
-                      Processing...
-                    </>
-                  ) : (
-                    'Start Enhancement'
-                  )}
-                </Button>
+                {!isProcessing ? (
+                  <Button
+                    onClick={handleStart}
+                    disabled={startMutation.isPending}
+                    className="w-full bg-green-600 hover:bg-green-700"
+                  >
+                    <PlayIcon className="mr-2 h-4 w-4" />
+                    Start Enhancement
+                  </Button>
+                ) : (
+                  <Button
+                    onClick={handleStop}
+                    disabled={stopMutation.isPending}
+                    variant="destructive"
+                    className="w-full"
+                  >
+                    <StopIcon className="mr-2 h-4 w-4" />
+                    Stop Enhancement
+                  </Button>
+                )}
               </div>
             </div>
 
-            {enhancementMutation.isError && (
-              <div className="text-red-600 text-sm mt-2">
-                Error: {enhancementMutation.error?.message || 'Failed to start enhancement'}
+            {/* Progress Display */}
+            {progress && (progress.status === 'processing' || progress.processed > 0) && (
+              <div className="space-y-3">
+                {/* Progress Bar */}
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className={`font-medium ${getStatusColor(progress.status)}`}>
+                      Status: {progress.status.charAt(0).toUpperCase() + progress.status.slice(1)}
+                    </span>
+                    <span className="text-gray-600">
+                      {progress.processed.toLocaleString()} of {progress.total.toLocaleString()} processed
+                    </span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-3">
+                    <div 
+                      className="bg-blue-600 h-3 rounded-full transition-all duration-500"
+                      style={{ width: `${progress.percentage}%` }}
+                    />
+                  </div>
+                  <div className="text-center text-sm font-medium">
+                    {progress.percentage.toFixed(1)}% Complete
+                  </div>
+                </div>
+
+                {/* Current Processing Info */}
+                {progress.current_prospect && progress.status === 'processing' && (
+                  <div className="bg-blue-50 border border-blue-200 p-3 rounded-lg">
+                    <div className="text-sm">
+                      <span className="font-medium text-blue-800">Currently processing: </span>
+                      <span className="text-blue-700">{progress.current_prospect.title}</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Errors */}
+                {progress.errors.length > 0 && (
+                  <div className="bg-red-50 border border-red-200 p-3 rounded-lg">
+                    <div className="text-sm text-red-800">
+                      <span className="font-medium">Errors encountered: </span>
+                      {progress.errors.length} prospect(s) failed
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
-            {enhancementMutation.isSuccess && enhancementMutation.data && (
-              <div className="bg-green-50 border border-green-200 p-3 rounded-lg mt-2">
-                <div className="text-green-800 font-medium">{enhancementMutation.data.message}</div>
+            {/* Error Messages */}
+            {(startMutation.isError || stopMutation.isError) && (
+              <div className="text-red-600 text-sm">
+                Error: {startMutation.error?.message || stopMutation.error?.message || 'Operation failed'}
+              </div>
+            )}
+
+            {/* Success Messages */}
+            {progress?.status === 'completed' && (
+              <div className="bg-green-50 border border-green-200 p-3 rounded-lg">
+                <div className="text-green-800 font-medium">Enhancement completed successfully!</div>
                 <div className="text-green-700 text-sm mt-1">
-                  Processed {enhancementMutation.data.processed_count} records in {formatDuration(enhancementMutation.data.duration)}
+                  Processed all {progress.processed} available records
+                </div>
+              </div>
+            )}
+
+            {progress?.status === 'stopped' && (
+              <div className="bg-yellow-50 border border-yellow-200 p-3 rounded-lg">
+                <div className="text-yellow-800 font-medium">Enhancement stopped</div>
+                <div className="text-yellow-700 text-sm mt-1">
+                  Processed {progress.processed} records before stopping
                 </div>
               </div>
             )}
@@ -224,62 +294,99 @@ export function AIEnrichment() {
         </CardContent>
       </Card>
 
-      {/* Recent Activity Log */}
+      {/* LLM Output Log */}
       <Card>
         <CardHeader>
-          <CardTitle>Recent Activity</CardTitle>
+          <CardTitle>LLM Output Log</CardTitle>
         </CardHeader>
         <CardContent>
-          {isLoadingLogs ? (
+          {isLoadingOutputs ? (
             <div className="flex items-center justify-center h-32">
               <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-600"></div>
             </div>
-          ) : logs && logs.length > 0 ? (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Timestamp</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Records</TableHead>
-                    <TableHead>Duration</TableHead>
-                    <TableHead>Message</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {logs.map((log) => (
-                    <TableRow key={log.id}>
-                      <TableCell className="text-sm">
-                        {formatDate(log.timestamp)}
-                      </TableCell>
-                      <TableCell>
-                        <span className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded">
-                          {log.enhancement_type}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <span className={`font-medium ${getStatusColor(log.status)}`}>
-                          {log.status}
-                        </span>
-                      </TableCell>
-                      <TableCell className="font-mono text-sm">
-                        {log.processed_count.toLocaleString()}
-                      </TableCell>
-                      <TableCell className="text-sm">
-                        {formatDuration(log.duration)}
-                      </TableCell>
-                      <TableCell className="text-sm text-gray-600">
-                        {log.message || log.error}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+          ) : llmOutputs && llmOutputs.length > 0 ? (
+            <div className="space-y-4 max-h-96 overflow-y-auto">
+              {llmOutputs.map((output) => {
+                const isExpanded = expandedOutputs.has(output.id);
+                return (
+                  <div key={output.id} className={`border rounded-lg p-4 ${output.success ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+                    {/* Header with basic info */}
+                    <div className="flex justify-between items-start">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="p-0 h-auto"
+                            onClick={() => toggleOutputExpanded(output.id)}
+                          >
+                            {isExpanded ? <ChevronDownIcon className="h-4 w-4" /> : <ChevronRightIcon className="h-4 w-4" />}
+                          </Button>
+                          <div className="text-sm">
+                            <span className="font-medium">{output.prospect_title || 'Unknown Prospect'}</span>
+                            <span className="text-gray-500 ml-2">({output.enhancement_type})</span>
+                          </div>
+                        </div>
+                        
+                        {/* Quick summary of result when collapsed */}
+                        {!isExpanded && output.parsed_result && (
+                          <div className="ml-6 mt-1 text-xs text-gray-600">
+                            {output.enhancement_type === 'naics' && output.parsed_result.code && (
+                              <span>NAICS: {output.parsed_result.code} - {output.parsed_result.description}</span>
+                            )}
+                            {output.enhancement_type === 'values' && output.parsed_result.single && (
+                              <span>Value: ${output.parsed_result.single.toLocaleString()}</span>
+                            )}
+                            {output.enhancement_type === 'contacts' && (output.parsed_result.name || output.parsed_result.email) && (
+                              <span>Contact: {output.parsed_result.name} {output.parsed_result.email && `<${output.parsed_result.email}>`}</span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {output.processing_time && (
+                          <span className="text-xs text-gray-500">{output.processing_time.toFixed(2)}s</span>
+                        )}
+                        <span className="text-xs text-gray-500">{new Date(output.timestamp).toLocaleTimeString()}</span>
+                      </div>
+                    </div>
+                    
+                    {/* Expandable details */}
+                    {isExpanded && (
+                      <div className="mt-3 space-y-2">
+                        {/* LLM Response */}
+                        <div className="text-sm">
+                          <span className="font-medium">Response:</span>
+                          <pre className="mt-1 p-2 bg-white rounded border text-xs overflow-x-auto max-h-40 overflow-y-auto">
+                            {output.response}
+                          </pre>
+                        </div>
+                        
+                        {/* Parsed Result */}
+                        {output.parsed_result && (
+                          <div className="text-sm">
+                            <span className="font-medium">Parsed Result:</span>
+                            <pre className="mt-1 p-2 bg-white rounded border text-xs overflow-x-auto">
+                              {JSON.stringify(output.parsed_result, null, 2)}
+                            </pre>
+                          </div>
+                        )}
+                        
+                        {/* Error Message */}
+                        {output.error_message && (
+                          <div className="text-sm text-red-600">
+                            <span className="font-medium">Error:</span> {output.error_message}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           ) : (
             <div className="text-center py-8 text-gray-500">
-              No recent activity found
+              No LLM outputs yet. Start an enhancement to see outputs here.
             </div>
           )}
         </CardContent>

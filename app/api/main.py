@@ -153,6 +153,85 @@ def clear_database():
             'message': f'Failed to clear database: {str(e)}'
         }), 500
 
+@main_bp.route('/database/clear-ai', methods=['POST'])
+def clear_ai_entries():
+    """Clear only AI-enriched entries from the database."""
+    try:
+        logger.info("AI entries clear operation initiated")
+        
+        # Count AI-enriched prospects
+        ai_prospect_count = db.session.query(func.count(Prospect.id)).filter(
+            Prospect.ollama_processed_at.isnot(None)
+        ).scalar()
+        
+        # Delete AI-enriched prospects
+        db.session.query(Prospect).filter(
+            Prospect.ollama_processed_at.isnot(None)
+        ).delete()
+        
+        # Clear AI enrichment logs
+        from app.models import AIEnrichmentLog, LLMOutput
+        log_count = db.session.query(func.count(AIEnrichmentLog.id)).scalar()
+        db.session.query(AIEnrichmentLog).delete()
+        
+        # Clear LLM outputs
+        output_count = db.session.query(func.count(LLMOutput.id)).scalar()
+        db.session.query(LLMOutput).delete()
+        
+        db.session.commit()
+        
+        logger.info(f"AI entries cleared successfully. Removed {ai_prospect_count} AI-enriched prospects, {log_count} enrichment logs, and {output_count} LLM outputs")
+        
+        return jsonify({
+            'status': 'success',
+            'message': f'AI entries cleared successfully. Removed {ai_prospect_count} AI-enriched prospects, {log_count} enrichment logs, and {output_count} LLM outputs.',
+            'timestamp': datetime.datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        logger.error(f"Error clearing AI entries: {str(e)}", exc_info=True)
+        db.session.rollback()
+        return jsonify({
+            'status': 'error',
+            'message': f'Failed to clear AI entries: {str(e)}'
+        }), 500
+
+@main_bp.route('/database/clear-original', methods=['POST'])
+def clear_original_entries():
+    """Clear only non-AI-enriched (original) entries from the database."""
+    try:
+        logger.info("Original entries clear operation initiated")
+        
+        # Count non-AI-enriched prospects
+        original_prospect_count = db.session.query(func.count(Prospect.id)).filter(
+            Prospect.ollama_processed_at.is_(None)
+        ).scalar()
+        
+        # Delete non-AI-enriched prospects
+        db.session.query(Prospect).filter(
+            Prospect.ollama_processed_at.is_(None)
+        ).delete()
+        
+        # Note: We keep data sources and scraper status as they might be needed for future scraping
+        
+        db.session.commit()
+        
+        logger.info(f"Original entries cleared successfully. Removed {original_prospect_count} non-AI-enriched prospects")
+        
+        return jsonify({
+            'status': 'success',
+            'message': f'Original entries cleared successfully. Removed {original_prospect_count} non-AI-enriched prospects.',
+            'timestamp': datetime.datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        logger.error(f"Error clearing original entries: {str(e)}", exc_info=True)
+        db.session.rollback()
+        return jsonify({
+            'status': 'error',
+            'message': f'Failed to clear original entries: {str(e)}'
+        }), 500
+
 @main_bp.route('/database/status', methods=['GET'])
 def database_status():
     """Get database status and statistics."""
@@ -164,6 +243,12 @@ def database_status():
         # Count prospects with valid source_id vs total
         prospects_with_source = db.session.query(func.count(Prospect.id)).filter(Prospect.source_id.isnot(None)).scalar()
         prospects_without_source = prospect_count - prospects_with_source
+        
+        # Count AI-enriched vs original prospects
+        ai_enriched_count = db.session.query(func.count(Prospect.id)).filter(
+            Prospect.ollama_processed_at.isnot(None)
+        ).scalar()
+        original_count = prospect_count - ai_enriched_count
         
         from app.models import ScraperStatus
         status_count = db.session.query(func.count(ScraperStatus.id)).scalar()
@@ -187,6 +272,8 @@ def database_status():
                 'prospect_count': prospect_count,
                 'prospects_with_source': prospects_with_source,
                 'prospects_without_source': prospects_without_source,
+                'ai_enriched_count': ai_enriched_count,
+                'original_count': original_count,
                 'data_source_count': data_source_count,
                 'status_record_count': status_count,
                 'database_size_bytes': db_size,
@@ -199,6 +286,58 @@ def database_status():
         return jsonify({
             'status': 'error',
             'message': f'Failed to get database status: {str(e)}'
+        }), 500
+
+@main_bp.route('/config/ai-preservation', methods=['GET'])
+def get_ai_preservation_config():
+    """Get AI data preservation configuration."""
+    from app.config import active_config
+    return jsonify({
+        'status': 'success',
+        'data': {
+            'preserve_ai_data_on_refresh': active_config.PRESERVE_AI_DATA_ON_REFRESH,
+            'description': 'When enabled, AI-enhanced fields (NAICS, contact info, parsed values) are preserved during data source refreshes'
+        }
+    })
+
+@main_bp.route('/config/ai-preservation', methods=['POST'])
+def set_ai_preservation_config():
+    """Set AI data preservation configuration."""
+    try:
+        from flask import request
+        from app.config import active_config
+        import os
+        
+        data = request.get_json()
+        if not data or 'preserve_ai_data_on_refresh' not in data:
+            return jsonify({
+                'status': 'error',
+                'message': 'preserve_ai_data_on_refresh field is required'
+            }), 400
+        
+        new_value = bool(data['preserve_ai_data_on_refresh'])
+        
+        # Update the active config (this affects new scraper runs)
+        active_config.PRESERVE_AI_DATA_ON_REFRESH = new_value
+        
+        # Also update the environment variable for persistence
+        os.environ['PRESERVE_AI_DATA_ON_REFRESH'] = 'true' if new_value else 'false'
+        
+        logger.info(f"AI data preservation setting updated to: {new_value}")
+        
+        return jsonify({
+            'status': 'success',
+            'data': {
+                'preserve_ai_data_on_refresh': new_value,
+                'message': f'AI data preservation {"enabled" if new_value else "disabled"}'
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Error updating AI preservation config: {str(e)}", exc_info=True)
+        return jsonify({
+            'status': 'error',
+            'message': f'Failed to update configuration: {str(e)}'
         }), 500
 
 # Add main/general routes here 

@@ -1,5 +1,5 @@
 import { PageLayout } from '@/components/layout';
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { createColumnHelper, flexRender, getCoreRowModel, useReactTable } from '@tanstack/react-table';
 import { useState, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -22,6 +22,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useSingleProspectEnhancement } from '@/hooks/api/useSingleProspectEnhancement';
+import { ReloadIcon } from '@radix-ui/react-icons';
 
 // Updated Prospect interface based on backend model
 interface Prospect {
@@ -79,6 +81,9 @@ const fetchProspects = async (page: number, limit: number, filters?: ProspectFil
     if (filters.naics) queryParams.append('naics', filters.naics);
     if (filters.keywords) queryParams.append('keywords', filters.keywords);
     if (filters.agency) queryParams.append('agency', filters.agency);
+    if (filters.ai_enrichment && filters.ai_enrichment !== 'all') {
+      queryParams.append('ai_enrichment', filters.ai_enrichment);
+    }
   }
   
   const url = `/api/prospects?${queryParams.toString()}`;
@@ -250,6 +255,10 @@ export default function Dashboard() {
     ai_enrichment: 'all'
   });
 
+  // Enhancement hook
+  const queryClient = useQueryClient();
+  const enhanceMutation = useSingleProspectEnhancement();
+
   // const { data: countData, isLoading: isLoadingCount } = useQuery({
   //   queryKey: ['prospectCount'],
   //   queryFn: fetchProspectCount,
@@ -303,7 +312,12 @@ export default function Dashboard() {
     setCurrentPage(1);
   }, []);
   
-  const hasActiveFilters = Object.values(filters).some(value => value && value.trim() !== '');
+  const hasActiveFilters = Object.entries(filters).some(([key, value]) => {
+    if (key === 'ai_enrichment') {
+      return value && value !== 'all';
+    }
+    return value && value.trim() !== '';
+  });
   
   const renderPaginationItems = () => {
     const pageItems = [];
@@ -717,6 +731,49 @@ export default function Dashboard() {
           
           {selectedProspect && (
             <div className="space-y-6 mt-6">
+              {/* Enhancement Button */}
+              {!selectedProspect.ollama_processed_at && (
+                <div className="flex justify-end">
+                  <Button
+                    onClick={() => {
+                      if (selectedProspect) {
+                        enhanceMutation.mutate(
+                          { prospect_id: selectedProspect.id },
+                          {
+                            onSuccess: () => {
+                              // Refresh the prospects data
+                              queryClient.invalidateQueries({ queryKey: ['prospects'] });
+                              // Show success message (you could add a toast here)
+                              console.log('Enhancement completed successfully');
+                            }
+                          }
+                        );
+                      }
+                    }}
+                    disabled={enhanceMutation.isPending}
+                    className="bg-blue-600 hover:bg-blue-700"
+                  >
+                    {enhanceMutation.isPending ? (
+                      <>
+                        <ReloadIcon className="mr-2 h-4 w-4 animate-spin" />
+                        Enhancing...
+                      </>
+                    ) : (
+                      'Enhance with AI'
+                    )}
+                  </Button>
+                </div>
+              )}
+              
+              {/* Enhancement Status */}
+              {selectedProspect.ollama_processed_at && (
+                <div className="bg-blue-50 border border-blue-200 p-3 rounded-lg">
+                  <div className="flex items-center text-sm text-blue-800">
+                    <div className="w-2 h-2 bg-blue-500 rounded-full mr-2"></div>
+                    AI Enhanced on {new Date(selectedProspect.ollama_processed_at).toLocaleDateString()}
+                  </div>
+                </div>
+              )}
               {/* Basic Information */}
               <div>
                 <h3 className="text-lg font-semibold mb-3 text-gray-900">Basic Information</h3>

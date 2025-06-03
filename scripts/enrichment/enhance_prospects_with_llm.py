@@ -28,7 +28,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def check_ollama_status(model_name: str = 'qwen3:8b') -> bool:
+def check_ollama_status(model_name: str = 'qwen3:latest') -> bool:
     """Check if Ollama is running and model is available"""
     try:
         from app.utils.llm_utils import call_ollama
@@ -181,9 +181,9 @@ def main():
         # Check Ollama status
         if not args.skip_check:
             if not check_ollama_status():
-                logger.error("\nPlease ensure Ollama is running and qwen3:8b model is available:")
+                logger.error("\nPlease ensure Ollama is running and qwen3:latest model is available:")
                 logger.error("  1. Start Ollama: ollama serve")
-                logger.error("  2. Pull model: ollama pull qwen3:8b")
+                logger.error("  2. Pull model: ollama pull qwen3:latest")
                 return
         
         # Run enhancement

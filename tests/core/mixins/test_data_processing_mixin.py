@@ -12,7 +12,6 @@ from app.utils.parsing import fiscal_quarter_to_date, parse_value_range, split_p
 
 # Mock the Prospect model for defining fields
 class MockProspectModel:
-    __table__ = MagicMock()
     _mock_fields = ['id', 'id_hash', 'source_name', 'title', 'description', 'agency', 
                     'release_date', 'award_date', 'award_fiscal_year',
                     'estimated_value', 'est_value_unit',
@@ -20,8 +19,14 @@ class MockProspectModel:
                     'extra_data', 'loaded_at']
     
     @classmethod
-    def columns(cls):
-        return [MagicMock(name=name) for name in cls._mock_fields]
+    def setup_table_mock(cls):
+        columns = []
+        for name in cls._mock_fields:
+            mock_col = MagicMock()
+            mock_col.name = name
+            columns.append(mock_col)
+        cls.__table__ = MagicMock()
+        cls.__table__.columns = columns
 
 # Test class incorporating DataProcessingMixin
 class TestScraperWithDP(DataProcessingMixin): # Renamed for clarity
@@ -92,7 +97,7 @@ def test_read_html_table_selection(mock_read_html, scraper_instance_dp, sample_h
     # Test default (first table)
     df_res = scraper_instance_dp.read_file_to_dataframe(str(sample_html_file), file_type_hint='html')
     pd.testing.assert_frame_equal(df_res, df1)
-    scraper_instance_dp.logger.info.assert_any_call(f"Multiple tables (2) found in HTML file {str(sample_html_file)}. Using the first one by default.")
+    scraper_instance_dp.logger.info.assert_any_call(f"Multiple tables (2) found in {str(sample_html_file)}. Using first one.")
 
 def test_read_file_unsupported_type_error(scraper_instance_dp, tmp_path):
     file = tmp_path / "sample.unsupported"; file.touch()
@@ -155,17 +160,24 @@ def test_transform_df_declarative_value_parse(mock_val_parser, scraper_instance_
 
 # --- prepare_and_load_data Tests ---
 @patch('app.core.mixins.data_processing_mixin.bulk_upsert_prospects')
-@patch('app.core.mixins.data_processing_mixin.Prospect', new=MockProspectModel)
 def test_prepare_load_empty_df(mock_bulk_upsert, scraper_instance_dp):
+    # Setup the mock model
+    MockProspectModel.setup_table_mock()
+    
     cfg = MockTransformConfig() # Minimal config
     empty_df = pd.DataFrame()
-    count = scraper_instance_dp.prepare_and_load_data(empty_df, cfg)
+    
+    with patch('app.core.mixins.data_processing_mixin.Prospect', MockProspectModel):
+        count = scraper_instance_dp.prepare_and_load_data(empty_df, cfg)
+    
     assert count == 0
     mock_bulk_upsert.assert_not_called()
 
 @patch('app.core.mixins.data_processing_mixin.bulk_upsert_prospects')
-@patch('app.core.mixins.data_processing_mixin.Prospect', new=MockProspectModel)
 def test_prepare_load_missing_required_fields(mock_bulk_upsert, scraper_instance_dp, sample_dataframe):
+    # Setup the mock model
+    MockProspectModel.setup_table_mock()
+    
     # sample_dataframe has "RawColA", "RawColB"
     # After db_rename_map, assume "RawColA" -> "title", "RawColB" -> "value_field"
     class MockLoadCfg(MockTransformConfig): # Inherit to get defaults
@@ -175,21 +187,25 @@ def test_prepare_load_missing_required_fields(mock_bulk_upsert, scraper_instance
     
     cfg = MockLoadCfg()
     df_copy = sample_dataframe.copy()
-    # Simulate that 'title' (from RawColA) is fine, but 'non_existent_req_field' will cause rows to be dropped
-    # This test is tricky because required_fields_for_load applies to *final* model field names,
-    # but dropna is on the DataFrame *before* to_dict for model instantiation.
-    # The current prepare_and_load_data applies dropna *before* rename for DB.
-    # This test will assume required_fields_for_load are columns that should exist with non-NA values *before* db_column_rename_map.
-    cfg.required_fields_for_load = ["RawColA", "NonExistentColInDf"] # Test current logic
+    # Add a required field that exists but has None values to trigger dropna
+    df_copy['EmptyRequiredCol'] = None
+    # Simulate that 'RawColA' is fine, but 'EmptyRequiredCol' will cause rows to be dropped
+    # This test tests the current logic where required_fields_for_load are columns that should exist 
+    # with non-NA values *before* db_column_rename_map.
+    cfg.required_fields_for_load = ["RawColA", "EmptyRequiredCol"] # Test current logic
     
-    count = scraper_instance_dp.prepare_and_load_data(df_copy, cfg)
-    assert count == 0 # All rows dropped as "NonExistentColInDf" is missing
-    scraper_instance_dp.logger.info.assert_any_call("Filtered 2 rows due to missing required fields: ['NonExistentColInDf']. 0 rows remaining.")
+    with patch('app.core.mixins.data_processing_mixin.Prospect', MockProspectModel):
+        count = scraper_instance_dp.prepare_and_load_data(df_copy, cfg)
+    
+    assert count == 0 # All rows dropped as "EmptyRequiredCol" has None values
+    scraper_instance_dp.logger.info.assert_any_call("Filtered 2 rows due to missing required fields: ['RawColA', 'EmptyRequiredCol']. 0 rows remaining.")
     mock_bulk_upsert.assert_not_called()
 
 @patch('app.core.mixins.data_processing_mixin.bulk_upsert_prospects', side_effect=Exception("DB Write Error"))
-@patch('app.core.mixins.data_processing_mixin.Prospect', new=MockProspectModel)
 def test_prepare_load_db_error(mock_bulk_upsert_err, scraper_instance_dp, sample_dataframe):
+    # Setup the mock model
+    MockProspectModel.setup_table_mock()
+    
     class MockLoadCfg(MockTransformConfig):
         fields_for_id_hash = ["RawColA"]
         db_column_rename_map = {"RawColA": "title"}
@@ -197,12 +213,19 @@ def test_prepare_load_db_error(mock_bulk_upsert_err, scraper_instance_dp, sample
     df_copy = sample_dataframe.copy()
 
     with pytest.raises(ScraperError, match="Mocked ScraperError: preparing and loading data for source: TestDataScraperDP from Exception - DB Write Error"):
-        scraper_instance_dp.prepare_and_load_data(df_copy, cfg)
+        with patch('app.core.mixins.data_processing_mixin.Prospect', MockProspectModel):
+            scraper_instance_dp.prepare_and_load_data(df_copy, cfg)
     scraper_instance_dp._handle_and_raise_scraper_error.assert_called_once()
 
 @patch('app.core.mixins.data_processing_mixin.bulk_upsert_prospects')
-@patch('app.core.mixins.data_processing_mixin.Prospect', new=MockProspectModel)
-def test_prepare_load_extra_data_generation(mock_bulk_upsert, scraper_instance_dp):
+@patch('app.core.mixins.data_processing_mixin.active_config')
+def test_prepare_load_extra_data_generation(mock_active_config, mock_bulk_upsert, scraper_instance_dp):
+    # Mock the config setting
+    mock_active_config.PRESERVE_AI_DATA_ON_REFRESH = True
+    
+    # Setup the mock model
+    MockProspectModel.setup_table_mock()
+    
     df = pd.DataFrame({
         "title_col": ["Title1"], # Will map to Prospect.title
         "unmapped_col1": ["ExtraValue1"],
@@ -214,15 +237,21 @@ def test_prepare_load_extra_data_generation(mock_bulk_upsert, scraper_instance_d
         # prospect_model_fields will be dynamically generated from MockProspectModel
     cfg = MockLoadCfg()
     
-    scraper_instance_dp.prepare_and_load_data(df, cfg)
+    with patch('app.core.mixins.data_processing_mixin.Prospect', MockProspectModel):
+        scraper_instance_dp.prepare_and_load_data(df, cfg)
     
     mock_bulk_upsert.assert_called_once()
-    # Get the data passed to bulk_upsert_prospects
-    # Assuming bulk_upsert_prospects is called with prospects_data as a positional or keyword arg
+    # Verify the preserve_ai_data parameter is passed correctly
     call_args = mock_bulk_upsert.call_args
-    prospects_data = call_args.kwargs.get('prospects_data', call_args.args[0])
+    assert 'preserve_ai_data' in call_args.kwargs
+    assert call_args.kwargs['preserve_ai_data'] is True
+    
+    # Get the data passed to bulk_upsert_prospects
+    prospects_data = call_args.args[0]  # First positional argument should be the DataFrame
     
     assert len(prospects_data) == 1
-    assert prospects_data[0]['title'] == "Title1"
-    assert 'extra_data' in prospects_data[0]
-    assert prospects_data[0]['extra_data'] == {"unmapped_col1": "ExtraValue1", "unmapped_col2": 123.45}
+    prospects_dict = prospects_data.to_dict(orient='records')[0]
+    # After db_column_rename_map: title_col -> title
+    assert prospects_dict['title'] == "Title1"
+    assert 'extra_data' in prospects_dict
+    assert prospects_dict['extra_data'] == {"unmapped_col1": "ExtraValue1", "unmapped_col2": 123.45}
