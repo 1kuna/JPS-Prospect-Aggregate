@@ -186,4 +186,66 @@ class ScraperStatus(db.Model): # Changed from Base to db.Model
             "details": self.details
         }
 
+class AIEnrichmentLog(db.Model):
+    __tablename__ = 'ai_enrichment_logs'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    timestamp = Column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now(), index=True)
+    enhancement_type = Column(String(50), nullable=False, index=True)  # 'values', 'contacts', 'naics', 'all'
+    status = Column(String(20), nullable=False, index=True)  # 'completed', 'stopped', 'error'
+    processed_count = Column(Integer, nullable=False, default=0)
+    duration = Column(Float, nullable=True)  # Duration in seconds
+    message = Column(Text, nullable=True)
+    error = Column(Text, nullable=True)
+
+    def __repr__(self):
+        return f"<AIEnrichmentLog(id={self.id}, enhancement_type='{self.enhancement_type}', status='{self.status}', processed_count={self.processed_count})>"
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "timestamp": self.timestamp.isoformat() if self.timestamp else None,
+            "enhancement_type": self.enhancement_type,
+            "status": self.status,
+            "processed_count": self.processed_count,
+            "duration": self.duration,
+            "message": self.message,
+            "error": self.error
+        }
+
+class LLMOutput(db.Model):
+    __tablename__ = 'llm_outputs'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    timestamp = Column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now(), index=True)
+    prospect_id = Column(String, ForeignKey('prospects.id'), nullable=True, index=True)
+    enhancement_type = Column(String(50), nullable=False, index=True)  # 'values', 'contacts', 'naics'
+    prompt = Column(Text, nullable=True)  # The prompt sent to LLM
+    response = Column(Text, nullable=True)  # Raw LLM response
+    parsed_result = Column(JSON, nullable=True)  # Parsed JSON result
+    success = Column(db.Boolean, default=True)
+    error_message = Column(Text, nullable=True)
+    processing_time = Column(Float, nullable=True)  # Time in seconds
+    
+    # Relationship to prospect
+    prospect = relationship("Prospect", backref="llm_outputs")
+
+    def __repr__(self):
+        return f"<LLMOutput(id={self.id}, prospect_id='{self.prospect_id}', enhancement_type='{self.enhancement_type}')>"
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "timestamp": self.timestamp.isoformat() if self.timestamp else None,
+            "prospect_id": self.prospect_id,
+            "prospect_title": self.prospect.title[:100] if self.prospect and self.prospect.title else None,
+            "enhancement_type": self.enhancement_type,
+            "prompt": self.prompt[:200] + "..." if self.prompt and len(self.prompt) > 200 else self.prompt,
+            "response": self.response,
+            "parsed_result": self.parsed_result,
+            "success": self.success,
+            "error_message": self.error_message,
+            "processing_time": self.processing_time
+        }
+
 # Removed Index definitions as index=True is used inline.

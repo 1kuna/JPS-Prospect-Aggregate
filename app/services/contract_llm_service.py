@@ -12,7 +12,9 @@ from decimal import Decimal
 
 from app.utils.llm_utils import call_ollama
 from app.database import db
-from app.database.models import Prospect, InferredProspectData
+from app.database.models import Prospect, InferredProspectData, LLMOutput
+from app.services.optimized_prompts import get_naics_prompt, get_value_prompt, get_contact_prompt
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +25,7 @@ class ContractLLMService:
     Designed to be modular and optional - can run independently of core data.
     """
     
-    def __init__(self, model_name: str = 'qwen3:8b'):
+    def __init__(self, model_name: str = 'qwen3:latest'):
         self.model_name = model_name
         self.batch_size = 50
         
@@ -49,107 +51,137 @@ class ContractLLMService:
         
         return {'code': str(naics_str), 'description': None}
     
-    def classify_naics_with_llm(self, title: str, description: str) -> Dict:
+    def _log_llm_output(self, prospect_id: str, enhancement_type: str, prompt: str, 
+                        response: str, parsed_result: Dict, success: bool, 
+                        error_message: str = None, processing_time: float = None):
+        """Log LLM output to database"""
+        try:
+            output = LLMOutput(
+                prospect_id=prospect_id,
+                enhancement_type=enhancement_type,
+                prompt=prompt,
+                response=response,
+                parsed_result=parsed_result,
+                success=success,
+                error_message=error_message,
+                processing_time=processing_time
+            )
+            db.session.add(output)
+            db.session.commit()
+        except Exception as e:
+            logger.error(f"Failed to log LLM output: {e}")
+            db.session.rollback()
+    
+    def classify_naics_with_llm(self, title: str, description: str, prospect_id: str = None) -> Dict:
         """NAICS Classification using qwen3:8b"""
-        prompt = f"""Classify the following government contract into a NAICS code and description.
-
-Title: {title}
-Description: {description}
-
-Return only a JSON object with this exact format:
-{{"code": "XXXXXX", "description": "Industry Name", "confidence": 0.95}}
-
-Focus on the primary industry or service being procured. Use standard NAICS 2022 codes."""
-
+        prompt = get_naics_prompt(title, description)
+        start_time = time.time()
         response = call_ollama(prompt, self.model_name)
+        processing_time = time.time() - start_time
         
         try:
             # Clean response of any think tags
+            cleaned_response = response
             if response:
-                response = re.sub(r'<think>.*?</think>', '', response, flags=re.DOTALL | re.IGNORECASE).strip()
+                cleaned_response = re.sub(r'<think>.*?</think>', '', response, flags=re.DOTALL | re.IGNORECASE).strip()
             
-            parsed = json.loads(response)
-            return {
+            parsed = json.loads(cleaned_response)
+            result = {
                 'code': parsed.get('code'),
                 'description': parsed.get('description'),
                 'confidence': parsed.get('confidence', 0.8)
             }
+            
+            # Log successful output
+            if prospect_id:
+                self._log_llm_output(prospect_id, 'naics', prompt, response, result, True, processing_time=processing_time)
+            
+            return result
         except (json.JSONDecodeError, TypeError) as e:
             logger.warning(f"Error parsing NAICS response: {e}")
-            return {'code': None, 'description': None, 'confidence': 0.0}
+            error_result = {'code': None, 'description': None, 'confidence': 0.0}
+            
+            # Log failed output
+            if prospect_id:
+                self._log_llm_output(prospect_id, 'naics', prompt, response, error_result, False, 
+                                   error_message=str(e), processing_time=processing_time)
+            
+            return error_result
     
-    def parse_contract_value_with_llm(self, value_text: str) -> Dict:
+    def parse_contract_value_with_llm(self, value_text: str, prospect_id: str = None) -> Dict:
         """Value parsing using qwen3:8b"""
         if not value_text:
             return {'min': None, 'max': None, 'single': None}
 
-        prompt = f"""Parse the following contract value text into structured amounts.
-
-Value Text: "{value_text}"
-
-Return only a JSON object with this exact format:
-{{"min": 1000000, "max": 5000000, "single": 3000000}}
-
-Rules:
-- Convert all amounts to numbers (no commas, no currency symbols)
-- If it's a range, provide min and max
-- Always provide a single best estimate value
-- If only one value given, use it for all three fields
-- Handle abbreviations: K=thousand, M=million, B=billion
-
-Examples:
-"$1M-$5M" → {{"min": 1000000, "max": 5000000, "single": 3000000}}
-"> $250K to < $750K" → {{"min": 250000, "max": 750000, "single": 500000}}
-"$2.5 million" → {{"min": 2500000, "max": 2500000, "single": 2500000}}"""
-
+        prompt = get_value_prompt(value_text)
+        start_time = time.time()
         response = call_ollama(prompt, self.model_name)
+        processing_time = time.time() - start_time
         
         try:
             # Clean response of any think tags
+            cleaned_response = response
             if response:
-                response = re.sub(r'<think>.*?</think>', '', response, flags=re.DOTALL | re.IGNORECASE).strip()
+                cleaned_response = re.sub(r'<think>.*?</think>', '', response, flags=re.DOTALL | re.IGNORECASE).strip()
                 
-            parsed = json.loads(response)
-            return {
+            parsed = json.loads(cleaned_response)
+            result = {
                 'min': parsed.get('min'),
                 'max': parsed.get('max'),
                 'single': parsed.get('single')
             }
+            
+            # Log successful output
+            if prospect_id:
+                self._log_llm_output(prospect_id, 'values', prompt, response, result, True, processing_time=processing_time)
+            
+            return result
         except (json.JSONDecodeError, TypeError) as e:
             logger.warning(f"Error parsing value response: {e}")
-            return {'min': None, 'max': None, 'single': None}
+            error_result = {'min': None, 'max': None, 'single': None}
+            
+            # Log failed output
+            if prospect_id:
+                self._log_llm_output(prospect_id, 'values', prompt, response, error_result, False,
+                                   error_message=str(e), processing_time=processing_time)
+            
+            return error_result
     
-    def extract_contact_with_llm(self, contact_data: Dict) -> Dict:
+    def extract_contact_with_llm(self, contact_data: Dict, prospect_id: str = None) -> Dict:
         """Contact extraction using qwen3:8b"""
-        prompt = f"""Extract the primary contact information from this government contract data.
-
-Contact Data: {json.dumps(contact_data, indent=2)}
-
-Return only a JSON object with this exact format:
-{{"email": "primary@agency.gov", "name": "John Smith", "confidence": 0.9}}
-
-Rules:
-- Choose the most likely primary point of contact
-- Prefer program/requirement POCs over administrative contacts
-- If multiple contacts, pick the one most relevant to the procurement
-- Return null for missing information"""
-
+        prompt = get_contact_prompt(contact_data)
+        start_time = time.time()
         response = call_ollama(prompt, self.model_name)
+        processing_time = time.time() - start_time
         
         try:
             # Clean response of any think tags
+            cleaned_response = response
             if response:
-                response = re.sub(r'<think>.*?</think>', '', response, flags=re.DOTALL | re.IGNORECASE).strip()
+                cleaned_response = re.sub(r'<think>.*?</think>', '', response, flags=re.DOTALL | re.IGNORECASE).strip()
                 
-            parsed = json.loads(response)
-            return {
+            parsed = json.loads(cleaned_response)
+            result = {
                 'email': parsed.get('email'),
                 'name': parsed.get('name'),
                 'confidence': parsed.get('confidence', 0.8)
             }
+            
+            # Log successful output
+            if prospect_id:
+                self._log_llm_output(prospect_id, 'contacts', prompt, response, result, True, processing_time=processing_time)
+            
+            return result
         except (json.JSONDecodeError, TypeError) as e:
             logger.warning(f"Error parsing contact response: {e}")
-            return {'email': None, 'name': None, 'confidence': 0.0}
+            error_result = {'email': None, 'name': None, 'confidence': 0.0}
+            
+            # Log failed output
+            if prospect_id:
+                self._log_llm_output(prospect_id, 'contacts', prompt, response, error_result, False,
+                                   error_message=str(e), processing_time=processing_time)
+            
+            return error_result
     
     def enhance_prospect_values(self, prospects: List[Prospect], commit_batch_size: int = 100) -> int:
         """
@@ -172,7 +204,14 @@ Rules:
                     # Try to parse from estimated_value_text first, then extra data
                     value_text = prospect.estimated_value_text
                     if not value_text and prospect.extra:
-                        value_text = prospect.extra.get('estimated_value_text', '')
+                        extra_data = prospect.extra
+                        if isinstance(extra_data, str):
+                            # Handle case where extra is stored as JSON string
+                            try:
+                                extra_data = json.loads(extra_data)
+                            except (json.JSONDecodeError, TypeError):
+                                extra_data = {}
+                        value_text = extra_data.get('estimated_value_text', '') if extra_data else ''
                     
                     if value_text:
                         parsed_value = self.parse_contract_value_with_llm(value_text)
@@ -227,14 +266,22 @@ Rules:
                         continue
                     
                     # Extract contact data from extra field
-                    if prospect.extra and 'contacts' in prospect.extra:
-                        contact_data = prospect.extra['contacts']
-                    elif prospect.extra:
+                    extra_data = prospect.extra
+                    if isinstance(extra_data, str):
+                        # Handle case where extra is stored as JSON string
+                        try:
+                            extra_data = json.loads(extra_data)
+                        except (json.JSONDecodeError, TypeError):
+                            extra_data = {}
+                    
+                    if extra_data and 'contacts' in extra_data:
+                        contact_data = extra_data['contacts']
+                    elif extra_data:
                         # Try to find contact info in extra data
                         contact_data = {
-                            'email': prospect.extra.get('contact_email') or prospect.extra.get('poc_email'),
-                            'name': prospect.extra.get('contact_name') or prospect.extra.get('poc_name'),
-                            'phone': prospect.extra.get('contact_phone') or prospect.extra.get('poc_phone'),
+                            'email': extra_data.get('contact_email') or extra_data.get('poc_email'),
+                            'name': extra_data.get('contact_name') or extra_data.get('poc_name'),
+                            'phone': extra_data.get('contact_phone') or extra_data.get('poc_phone'),
                         }
                     else:
                         continue
@@ -311,6 +358,13 @@ Rules:
                         # Add confidence to extras
                         if not prospect.extra:
                             prospect.extra = {}
+                        elif isinstance(prospect.extra, str):
+                            # Handle case where extra is stored as JSON string
+                            try:
+                                prospect.extra = json.loads(prospect.extra)
+                            except (json.JSONDecodeError, TypeError):
+                                prospect.extra = {}
+                        
                         prospect.extra['llm_classification'] = {
                             'naics_confidence': classification['confidence'],
                             'model_used': self.model_name,

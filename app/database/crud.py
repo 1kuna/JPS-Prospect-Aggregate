@@ -69,7 +69,7 @@ def paginate_sqlalchemy_query(query, page: int, per_page: int):
         "has_prev": page > 1 and total_items > 0 # Ensure has_prev is false if no items
     }
 
-def bulk_upsert_prospects(df_in: pd.DataFrame): # Renamed back
+def bulk_upsert_prospects(df_in: pd.DataFrame, preserve_ai_data: bool = True): # Renamed back
     """
     Performs a bulk UPSERT (INSERT ON CONFLICT DO UPDATE) of prospect data 
     from a Pandas DataFrame into the prospects table.
@@ -77,6 +77,8 @@ def bulk_upsert_prospects(df_in: pd.DataFrame): # Renamed back
     Args:
         df_in (pd.DataFrame): DataFrame containing prospect data matching the 
                            Prospect model schema.
+        preserve_ai_data (bool): If True, preserves AI-enhanced fields for 
+                               existing records that have been LLM-processed.
     """
     if df_in.empty:
         logging.info("DataFrame is empty, skipping database insertion.")
@@ -144,55 +146,80 @@ def bulk_upsert_prospects(df_in: pd.DataFrame): # Renamed back
     session = db.session # Use Flask-SQLAlchemy session directly
 
     try:
-        # For SQLite, we need to use a different approach since on_conflict_do_update is PostgreSQL-specific
-        # We'll do a simple approach: delete existing records and insert new ones
-        
         # Extract all IDs from the data to insert
         ids_to_upsert = [record['id'] for record in data_to_insert if 'id' in record]
         
-        if ids_to_upsert:
-            # Delete existing records with these IDs in batches to avoid SQLite limitations
+        ai_safe_updates = 0
+        regular_inserts = 0
+        
+        if ids_to_upsert and preserve_ai_data:
+            # Get existing AI-processed records
+            ai_processed_records = session.query(Prospect).filter(
+                Prospect.id.in_(ids_to_upsert),
+                Prospect.ollama_processed_at.isnot(None)
+            ).all()
+            
+            ai_processed_ids = {record.id for record in ai_processed_records}
+            logging.info(f"Found {len(ai_processed_ids)} AI-processed records to preserve")
+            
+            # AI-enhanced fields to preserve during updates
+            ai_fields = [
+                'naics', 'naics_description', 'naics_source',
+                'estimated_value_min', 'estimated_value_max', 'estimated_value_single',
+                'primary_contact_email', 'primary_contact_name',
+                'ollama_processed_at', 'ollama_model_version'
+            ]
+            
+            # Process records with AI preservation
+            for record in data_to_insert:
+                record_id = record.get('id')
+                if record_id in ai_processed_ids:
+                    # Update existing AI-processed record, preserving AI fields
+                    existing_record = session.query(Prospect).filter_by(id=record_id).first()
+                    if existing_record:
+                        # Update only source fields, preserve AI fields
+                        for key, value in record.items():
+                            if key not in ai_fields and hasattr(existing_record, key):
+                                setattr(existing_record, key, value)
+                        ai_safe_updates += 1
+                        logging.debug(f"AI-safe update for record {record_id}")
+                else:
+                    # Record either doesn't exist or isn't AI-processed
+                    # Delete and insert (regular upsert)
+                    session.query(Prospect).filter_by(id=record_id).delete()
+                    new_record = Prospect(**record)
+                    session.add(new_record)
+                    regular_inserts += 1
+            
+            logging.info(f"AI-safe processing: {ai_safe_updates} preserved, {regular_inserts} regular upserts")
+        
+        elif ids_to_upsert:
+            # Original behavior: delete existing records and insert new ones
             batch_size = 500  # SQLite has a limit on number of parameters
             for i in range(0, len(ids_to_upsert), batch_size):
                 batch_ids = ids_to_upsert[i:i + batch_size]
                 delete_count = session.query(Prospect).filter(Prospect.id.in_(batch_ids)).delete(synchronize_session=False)
                 logging.info(f"Deleted {delete_count} existing records from batch {i//batch_size + 1}")
-            # Commit all delete operations
-            session.commit()
-            logging.info(f"Deleted all existing records with matching IDs")
-        
-        # Insert all records in batches to avoid memory issues
-        batch_size = 1000
-        total_inserted = 0
-        for i in range(0, len(data_to_insert), batch_size):
-            batch_data = data_to_insert[i:i + batch_size]
-            try:
+            
+            # Insert all records in batches
+            batch_size = 1000
+            for i in range(0, len(data_to_insert), batch_size):
+                batch_data = data_to_insert[i:i + batch_size]
                 session.bulk_insert_mappings(Prospect, batch_data)
-                total_inserted += len(batch_data)
+                regular_inserts += len(batch_data)
                 logging.info(f"Inserted batch {i//batch_size + 1}: {len(batch_data)} records")
-            except IntegrityError as ie:
-                logging.error(f"IntegrityError in batch {i//batch_size + 1}: {ie}")
-                # Try inserting records one by one to identify the problematic record
-                session.rollback()
-                successful_inserts = 0
-                for record in batch_data:
-                    try:
-                        new_prospect = Prospect(**record)
-                        session.add(new_prospect)
-                        session.commit()
-                        successful_inserts += 1
-                    except IntegrityError:
-                        session.rollback()
-                        logging.debug(f"Skipping duplicate record with ID: {record.get('id', 'unknown')}")
-                        continue
-                total_inserted += successful_inserts
-                logging.info(f"Inserted {successful_inserts}/{len(batch_data)} records individually from batch {i//batch_size + 1}")
+            
+            logging.info(f"Standard upsert: {regular_inserts} records processed")
         
-        if total_inserted > 0:
-            session.commit()
-            logging.info(f"Successfully upserted {total_inserted} records into prospects table.")
+        # Commit all changes
+        session.commit()
+        total_processed = ai_safe_updates + regular_inserts
+        if total_processed > 0:
+            logging.info(f"Successfully processed {total_processed} records into prospects table.")
+            if preserve_ai_data and ai_safe_updates > 0:
+                logging.info(f"AI-enhanced data preserved for {ai_safe_updates} records.")
         else:
-            logging.warning("No records were inserted.")
+            logging.warning("No records were processed.")
 
     except SQLAlchemyError as e:
         logging.error(f"Database error during bulk upsert: {e}", exc_info=True)
