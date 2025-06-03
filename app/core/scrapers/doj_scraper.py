@@ -19,7 +19,7 @@ class DOJForecastScraper(PageInteractionScraper):
     def __init__(self, config: DOJConfig, debug_mode: bool = False):
         if config.base_url is None:
             config.base_url = active_config.DOJ_FORECAST_URL
-            print(f"Warning: DOJConfig.base_url was None, set from active_config: {config.base_url}")
+            self.logger.warning(f"DOJConfig.base_url was None, set from active_config: {config.base_url}")
         super().__init__(config=config, debug_mode=debug_mode)
 
     def _setup_method(self) -> None:
