@@ -215,7 +215,11 @@ class DataProcessingMixin:
             self.logger.info(f"Attempting to bulk upsert {len(prospects_data_list)} prospects for {source_name}.")
             # Convert prospects_data_list back to DataFrame for bulk_upsert_prospects
             prospects_df = pd.DataFrame(prospects_data_list)
-            result = bulk_upsert_prospects(prospects_df, preserve_ai_data=active_config.PRESERVE_AI_DATA_ON_REFRESH) 
+            result = bulk_upsert_prospects(
+                prospects_df, 
+                preserve_ai_data=active_config.PRESERVE_AI_DATA_ON_REFRESH,
+                enable_smart_matching=active_config.ENABLE_SMART_DUPLICATE_MATCHING
+            ) 
             self.logger.info(f"Bulk upsert completed for {source_name}. Result: {result}")
             return len(prospects_data_list) 
         except Exception as e:

@@ -69,7 +69,7 @@ def paginate_sqlalchemy_query(query, page: int, per_page: int):
         "has_prev": page > 1 and total_items > 0 # Ensure has_prev is false if no items
     }
 
-def bulk_upsert_prospects(df_in: pd.DataFrame, preserve_ai_data: bool = True): # Renamed back
+def bulk_upsert_prospects(df_in: pd.DataFrame, preserve_ai_data: bool = True, enable_smart_matching: bool = False): # Renamed back
     """
     Performs a bulk UPSERT (INSERT ON CONFLICT DO UPDATE) of prospect data 
     from a Pandas DataFrame into the prospects table.
@@ -79,10 +79,32 @@ def bulk_upsert_prospects(df_in: pd.DataFrame, preserve_ai_data: bool = True): #
                            Prospect model schema.
         preserve_ai_data (bool): If True, preserves AI-enhanced fields for 
                                existing records that have been LLM-processed.
+        enable_smart_matching (bool): If True, uses advanced matching strategies
+                                    to prevent duplicates when titles/descriptions change.
     """
     if df_in.empty:
         logging.info("DataFrame is empty, skipping database insertion.")
         return
+    
+    # Use enhanced matching if enabled
+    if enable_smart_matching:
+        from app.utils.duplicate_prevention import enhanced_bulk_upsert_prospects
+        try:
+            # Get the first row to determine source_id
+            first_row = df_in.iloc[0]
+            source_id = first_row.get('source_id')
+            if source_id:
+                stats = enhanced_bulk_upsert_prospects(
+                    df_in, db.session, source_id, preserve_ai_data, enable_smart_matching
+                )
+                logging.info(f"Enhanced upsert stats: {stats}")
+                return stats
+            else:
+                logging.warning("No source_id found, falling back to standard upsert")
+        except Exception as e:
+            logging.error(f"Enhanced matching failed, falling back to standard upsert: {e}")
+    
+    # Standard upsert logic below...
 
     # Work on a copy to avoid SettingWithCopyWarning
     df = df_in.copy()
