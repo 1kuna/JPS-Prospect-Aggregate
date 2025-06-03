@@ -11,6 +11,18 @@ from app.exceptions import (
 # Create a bound logger for error handlers
 error_logger = logger.bind(name="api.error_handlers")
 
+def error_response(status_code, message):
+    """Create a standardized error response."""
+    return jsonify({
+        'error': True,
+        'message': message,
+        'status_code': status_code
+    }), status_code
+
+def bad_request(message):
+    """Create a 400 Bad Request response."""
+    return error_response(400, message)
+
 def register_error_handlers(app):
     """Register error handlers with the Flask app."""
     

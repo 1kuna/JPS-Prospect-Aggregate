@@ -107,4 +107,98 @@ def get_dashboard():
         # db.session.rollback() # Removed
         return jsonify({"status": "error", "message": "An unexpected error occurred"}), 500
 
+@main_bp.route('/database/clear', methods=['POST'])
+def clear_database():
+    """Clear all data from the database."""
+    try:
+        logger.info("Database clear operation initiated")
+        
+        # Delete all prospects first (due to foreign key constraints)
+        prospect_count = db.session.query(func.count(Prospect.id)).scalar()
+        db.session.query(Prospect).delete()
+        
+        # Reset the auto-increment counters if using SQLite
+        try:
+            db.session.execute('DELETE FROM sqlite_sequence WHERE name="prospects"')
+            db.session.execute('DELETE FROM sqlite_sequence WHERE name="scraper_status"')
+        except Exception:
+            # Not SQLite or sequence doesn't exist, ignore
+            pass
+        
+        # Clear scraper status records
+        from app.models import ScraperStatus
+        status_count = db.session.query(func.count(ScraperStatus.id)).scalar()
+        db.session.query(ScraperStatus).delete()
+        
+        # Reset last_scraped on data sources
+        data_sources = db.session.query(DataSource).all()
+        for ds in data_sources:
+            ds.last_scraped = None
+        
+        db.session.commit()
+        
+        logger.info(f"Database cleared successfully. Removed {prospect_count} prospects and {status_count} status records")
+        
+        return jsonify({
+            'status': 'success',
+            'message': f'Database cleared successfully. Removed {prospect_count} prospects and {status_count} status records.',
+            'timestamp': datetime.datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        logger.error(f"Error clearing database: {str(e)}", exc_info=True)
+        db.session.rollback()
+        return jsonify({
+            'status': 'error',
+            'message': f'Failed to clear database: {str(e)}'
+        }), 500
+
+@main_bp.route('/database/status', methods=['GET'])
+def database_status():
+    """Get database status and statistics."""
+    try:
+        # Get counts for all main tables
+        prospect_count = db.session.query(func.count(Prospect.id)).scalar()
+        data_source_count = db.session.query(func.count(DataSource.id)).scalar()
+        
+        # Count prospects with valid source_id vs total
+        prospects_with_source = db.session.query(func.count(Prospect.id)).filter(Prospect.source_id.isnot(None)).scalar()
+        prospects_without_source = prospect_count - prospects_with_source
+        
+        from app.models import ScraperStatus
+        status_count = db.session.query(func.count(ScraperStatus.id)).scalar()
+        
+        # Get database file size if using SQLite
+        db_size = None
+        try:
+            import os
+            from flask import current_app
+            db_path = current_app.config.get('SQLALCHEMY_DATABASE_URI')
+            if db_path and db_path.startswith('sqlite:///'):
+                db_file = db_path.replace('sqlite:///', '')
+                if os.path.exists(db_file):
+                    db_size = os.path.getsize(db_file)
+        except Exception:
+            pass
+        
+        return jsonify({
+            'status': 'success',
+            'data': {
+                'prospect_count': prospect_count,
+                'prospects_with_source': prospects_with_source,
+                'prospects_without_source': prospects_without_source,
+                'data_source_count': data_source_count,
+                'status_record_count': status_count,
+                'database_size_bytes': db_size,
+                'timestamp': datetime.datetime.now().isoformat()
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting database status: {str(e)}", exc_info=True)
+        return jsonify({
+            'status': 'error',
+            'message': f'Failed to get database status: {str(e)}'
+        }), 500
+
 # Add main/general routes here 

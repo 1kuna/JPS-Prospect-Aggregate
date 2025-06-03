@@ -1,7 +1,7 @@
 import { PageLayout } from '@/components/layout';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { createColumnHelper, flexRender, getCoreRowModel, useReactTable } from '@tanstack/react-table';
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -12,16 +12,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import {
-  Pagination,
-  PaginationContent,
-  PaginationEllipsis,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from "@/components/ui/pagination";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
@@ -38,8 +31,14 @@ interface Prospect {
   description: string | null;
   agency: string | null;
   naics: string | null;
+  naics_description: string | null; // NEW: NAICS description
+  naics_source: string | null; // NEW: 'original', 'llm_inferred', 'llm_enhanced'
   estimated_value: string | null; // Represented as string in to_dict
   est_value_unit: string | null;
+  estimated_value_text: string | null; // NEW: Original value as text
+  estimated_value_min: string | null; // NEW: LLM-parsed minimum
+  estimated_value_max: string | null; // NEW: LLM-parsed maximum
+  estimated_value_single: string | null; // NEW: LLM best estimate
   release_date: string | null; // ISO date string
   award_date: string | null; // ISO date string
   award_fiscal_year: number | null;
@@ -48,7 +47,11 @@ interface Prospect {
   place_country: string | null;
   contract_type: string | null;
   set_aside: string | null;
+  primary_contact_email: string | null; // NEW: LLM-extracted email
+  primary_contact_name: string | null; // NEW: LLM-extracted name
   loaded_at: string | null; // ISO datetime string
+  ollama_processed_at: string | null; // NEW: When LLM processing completed
+  ollama_model_version: string | null; // NEW: Which LLM version was used
   extra: Record<string, any> | null; // JSON object
   source_id: number | null;
   source_name: string | null; // Name of the data source
@@ -60,11 +63,28 @@ interface Prospect {
 //   return { count: 583 }; // Example count
 // };
 
-const fetchProspects = async (page: number, limit: number): Promise<{ data: Prospect[], total: number, totalPages: number }> => {
-  console.log('Fetching prospects from:', `/api/prospects?page=${page}&limit=${limit}`);
+interface ProspectFilters {
+  naics?: string;
+  keywords?: string;
+  agency?: string;
+}
+
+const fetchProspects = async (page: number, limit: number, filters?: ProspectFilters): Promise<{ data: Prospect[], total: number, totalPages: number }> => {
+  const queryParams = new URLSearchParams();
+  queryParams.append('page', page.toString());
+  queryParams.append('limit', limit.toString());
+  
+  if (filters) {
+    if (filters.naics) queryParams.append('naics', filters.naics);
+    if (filters.keywords) queryParams.append('keywords', filters.keywords);
+    if (filters.agency) queryParams.append('agency', filters.agency);
+  }
+  
+  const url = `/api/prospects?${queryParams.toString()}`;
+  console.log('Fetching prospects from:', url);
   
   try {
-    const response = await fetch(`/api/prospects?page=${page}&limit=${limit}`);
+    const response = await fetch(url);
     console.log('Response status:', response.status);
     console.log('Response headers:', response.headers);
     
@@ -124,11 +144,63 @@ const columns = [
     },
     size: 200,
   }),
-  columnHelper.accessor('naics', {
+  columnHelper.accessor((row) => {
+    const naics = row.naics;
+    const description = row.naics_description;
+    const source = row.naics_source;
+    
+    if (!naics) return 'N/A';
+    
+    const display = description ? `${naics} - ${description}` : naics;
+    const sourceIcon = source === 'llm_inferred' ? ' 🤖' : source === 'original' ? ' ✓' : '';
+    
+    return display + sourceIcon;
+  }, {
+    id: 'naics',
     header: 'NAICS',
     cell: info => {
       const value = info.getValue();
-      return <div className="w-full truncate" title={value || 'N/A'}>{value || 'N/A'}</div>;
+      const row = info.row.original;
+      const title = row.naics_source === 'llm_inferred' 
+        ? `${value} (LLM Inferred)` 
+        : row.naics_source === 'original' 
+        ? `${value} (Original)` 
+        : value;
+      return <div className="w-full truncate" title={title}>{value}</div>;
+    },
+    size: 200,
+  }),
+  columnHelper.accessor((row) => {
+    // Show enhanced estimated value if available, otherwise fall back to original
+    if (row.estimated_value_single) {
+      const single = parseFloat(row.estimated_value_single);
+      if (single >= 1000000) {
+        return `$${(single / 1000000).toFixed(1)}M 🤖`;
+      } else if (single >= 1000) {
+        return `$${(single / 1000).toFixed(0)}K 🤖`;
+      } else {
+        return `$${single.toFixed(0)} 🤖`;
+      }
+    }
+    
+    if (row.estimated_value_text) {
+      return row.estimated_value_text;
+    }
+    
+    if (row.estimated_value) {
+      return row.estimated_value;
+    }
+    
+    return 'N/A';
+  }, {
+    id: 'estimated_value',
+    header: 'Est. Value',
+    cell: info => {
+      const value = info.getValue();
+      const row = info.row.original;
+      const isLLMProcessed = row.estimated_value_single ? ' (LLM Processed)' : '';
+      const title = `${value}${isLLMProcessed}`;
+      return <div className="w-full truncate" title={title}>{value}</div>;
     },
     size: 120,
   }),
@@ -146,9 +218,16 @@ const columns = [
 export default function Dashboard() {
   console.log('Dashboard component loaded!');
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(10); // Default items per page
+  const [itemsPerPage, setItemsPerPage] = useState(10);
   const [selectedProspect, setSelectedProspect] = useState<Prospect | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  
+  // Filter states
+  const [filters, setFilters] = useState<ProspectFilters>({
+    naics: '',
+    keywords: '',
+    agency: ''
+  });
 
   // const { data: countData, isLoading: isLoadingCount } = useQuery({
   //   queryKey: ['prospectCount'],
@@ -158,8 +237,8 @@ export default function Dashboard() {
   console.log('About to call useQuery with:', { currentPage, itemsPerPage });
   
   const { data: prospectsData, isLoading: isLoadingProspects, isFetching: isFetchingProspects } = useQuery({
-    queryKey: ['prospects', currentPage, itemsPerPage],
-    queryFn: () => fetchProspects(currentPage, itemsPerPage),
+    queryKey: ['prospects', currentPage, itemsPerPage, filters],
+    queryFn: () => fetchProspects(currentPage, itemsPerPage, filters),
     placeholderData: keepPreviousData,
   });
   
@@ -190,103 +269,146 @@ export default function Dashboard() {
 
   const handleItemsPerPageChange = (value: string) => {
     setItemsPerPage(Number(value));
-    setCurrentPage(1); // Reset to first page
+    setCurrentPage(1);
   };
+  
+  const handleFilterChange = useCallback((filterKey: keyof ProspectFilters, value: string) => {
+    setFilters(prev => ({ ...prev, [filterKey]: value }));
+    setCurrentPage(1); // Reset to first page when filters change
+  }, []);
+  
+  const clearFilters = useCallback(() => {
+    setFilters({ naics: '', keywords: '', agency: '' });
+    setCurrentPage(1);
+  }, []);
+  
+  const hasActiveFilters = Object.values(filters).some(value => value && value.trim() !== '');
   
   const renderPaginationItems = () => {
     const pageItems = [];
-    const SPREAD = 2; // Number of pages to show on each side of current page
 
     if (totalPages <= 1) return null; // No pagination needed for 1 or 0 pages
 
     // Previous Button
     pageItems.push(
-      <PaginationItem key="prev">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handlePreviousPage}
-          disabled={currentPage === 1}
-          className="h-9 px-3"
-        >
-          <PaginationPrevious className="h-4 w-4 mr-1" /> 
-        </Button>
-      </PaginationItem>
+      <Button
+        key="prev"
+        variant="outline"
+        size="sm"
+        onClick={handlePreviousPage}
+        disabled={currentPage === 1}
+        className="h-8 px-2 sm:px-3 flex items-center gap-1"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+          <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
+        </svg>
+        <span className="hidden sm:inline">Previous</span>
+      </Button>
     );
 
     // Page numbers logic
     if (totalPages <= 5) { // Show all pages if 5 or less
       for (let i = 1; i <= totalPages; i++) {
         pageItems.push(
-          <PaginationItem key={i}>
-            <PaginationLink href="#" isActive={currentPage === i} onClick={(e) => { e.preventDefault(); handlePageChange(i);}} className="w-9 h-9 flex items-center justify-center">
-              {i}
-            </PaginationLink>
-          </PaginationItem>
+          <Button
+            key={i}
+            variant={currentPage === i ? "default" : "outline"}
+            size="sm"
+            onClick={() => handlePageChange(i)}
+            className="h-8 min-w-[2rem] px-2"
+          >
+            {i}
+          </Button>
         );
       }
     } else {
       // First page
       pageItems.push(
-        <PaginationItem key={1}>
-          <PaginationLink href="#" isActive={currentPage === 1} onClick={(e) => { e.preventDefault(); handlePageChange(1);}} className="w-9 h-9 flex items-center justify-center">1</PaginationLink>
-        </PaginationItem>
+        <Button
+          key={1}
+          variant={currentPage === 1 ? "default" : "outline"}
+          size="sm"
+          onClick={() => handlePageChange(1)}
+          className="h-8 min-w-[2.5rem] px-3"
+        >
+          1
+        </Button>
       );
 
-      // Ellipsis or pages after first page
-      if (currentPage > SPREAD + 1) {
-        pageItems.push(<PaginationItem key="start-ellipsis"><PaginationEllipsis /></PaginationItem>);
-      }
-
-      let startPage = Math.max(2, currentPage - SPREAD + (currentPage === totalPages - SPREAD +1 ? 1:0) + (currentPage === SPREAD+2 && totalPages > 5 ? -1:0) );
-      let endPage = Math.min(totalPages - 1, currentPage + SPREAD - (currentPage === SPREAD ? 1:0) - (currentPage === totalPages-(SPREAD+1) && totalPages > 5 ? -1:0));
-
-      // Adjust window if near the beginning
-       if (currentPage <= SPREAD ) {
-           endPage = Math.min(totalPages -1, SPREAD * 2 +1 );
-       }
-       // Adjust window if near the end
-       if (currentPage >= totalPages - SPREAD +1 ){
-           startPage = Math.max(2, totalPages - SPREAD * 2 );
-       }
-
-
-      for (let i = startPage; i <= endPage; i++) {
+      // Ellipsis after first page
+      if (currentPage > 4) {
         pageItems.push(
-          <PaginationItem key={i}>
-            <PaginationLink href="#" isActive={currentPage === i} onClick={(e) => { e.preventDefault(); handlePageChange(i);}} className="w-9 h-9 flex items-center justify-center">
-              {i}
-            </PaginationLink>
-          </PaginationItem>
+          <span key="start-ellipsis" className="text-gray-400 px-2">...</span>
         );
       }
 
-      // Ellipsis or pages before last page
-      if (currentPage < totalPages - SPREAD) {
-        pageItems.push(<PaginationItem key="end-ellipsis"><PaginationEllipsis /></PaginationItem>);
+      // Middle pages - show fewer pages to avoid cramping
+      let startPage, endPage;
+      
+      if (currentPage <= 3) {
+        // Near the beginning
+        startPage = 2;
+        endPage = Math.min(4, totalPages - 1);
+      } else if (currentPage >= totalPages - 2) {
+        // Near the end
+        startPage = Math.max(totalPages - 3, 2);
+        endPage = totalPages - 1;
+      } else {
+        // In the middle
+        startPage = currentPage - 1;
+        endPage = currentPage + 1;
+      }
+
+      for (let i = startPage; i <= endPage; i++) {
+        pageItems.push(
+          <Button
+            key={i}
+            variant={currentPage === i ? "default" : "outline"}
+            size="sm"
+            onClick={() => handlePageChange(i)}
+            className="h-8 min-w-[2rem] px-2"
+          >
+            {i}
+          </Button>
+        );
+      }
+
+      // Ellipsis before last page
+      if (currentPage < totalPages - 3) {
+        pageItems.push(
+          <span key="end-ellipsis" className="text-gray-400 px-2">...</span>
+        );
       }
 
       // Last page
       pageItems.push(
-        <PaginationItem key={totalPages}>
-          <PaginationLink href="#" isActive={currentPage === totalPages} onClick={(e) => { e.preventDefault(); handlePageChange(totalPages);}} className="w-9 h-9 flex items-center justify-center">{totalPages}</PaginationLink>
-        </PaginationItem>
+        <Button
+          key={totalPages}
+          variant={currentPage === totalPages ? "default" : "outline"}
+          size="sm"
+          onClick={() => handlePageChange(totalPages)}
+          className="h-8 min-w-[2.5rem] px-3"
+        >
+          {totalPages}
+        </Button>
       );
     }
 
     // Next Button
     pageItems.push(
-      <PaginationItem key="next">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleNextPage}
-          disabled={currentPage === totalPages}
-          className="h-9 px-3"
-        >
-          <PaginationNext className="h-4 w-4 ml-1" />
-        </Button>
-      </PaginationItem>
+      <Button
+        key="next"
+        variant="outline"
+        size="sm"
+        onClick={handleNextPage}
+        disabled={currentPage === totalPages}
+        className="h-8 px-2 sm:px-3 flex items-center gap-1"
+      >
+        <span className="hidden sm:inline">Next</span>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+          <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+        </svg>
+      </Button>
     );
 
     return pageItems;
@@ -297,9 +419,115 @@ export default function Dashboard() {
       title="Dashboard"
       subtitle="Overview of your data collection system"
     >
-      {/* Flex container for main content and statistics */}
-      <div className="flex justify-between items-start gap-6">
-        {/* Prospects List Card - Main content (allow to grow) */}
+      {/* Main container with filters and content */}
+      <div className="flex gap-6">
+        {/* Filters Sidebar */}
+        <div className="w-80 flex-shrink-0">
+          <Card className="shadow-lg">
+            <CardHeader className="pb-4">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-lg font-semibold text-black">Filters</CardTitle>
+                {hasActiveFilters && (
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={clearFilters}
+                    className="text-xs px-2 py-1 h-7"
+                  >
+                    Clear All
+                  </Button>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Keywords Filter */}
+              <div className="space-y-2">
+                <Label htmlFor="keywords" className="text-sm font-medium text-gray-700">
+                  Keywords
+                </Label>
+                <Input
+                  id="keywords"
+                  placeholder="Search in title, description..."
+                  value={filters.keywords || ''}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleFilterChange('keywords', e.target.value)}
+                  className="text-sm"
+                />
+              </div>
+              
+              {/* NAICS Code Filter */}
+              <div className="space-y-2">
+                <Label htmlFor="naics" className="text-sm font-medium text-gray-700">
+                  NAICS Code
+                </Label>
+                <Input
+                  id="naics"
+                  placeholder="e.g., 541511, 334"
+                  value={filters.naics || ''}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleFilterChange('naics', e.target.value)}
+                  className="text-sm"
+                />
+              </div>
+              
+              {/* Agency Filter */}
+              <div className="space-y-2">
+                <Label htmlFor="agency" className="text-sm font-medium text-gray-700">
+                  Agency
+                </Label>
+                <Input
+                  id="agency"
+                  placeholder="e.g., DOD, HHS, DHS"
+                  value={filters.agency || ''}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleFilterChange('agency', e.target.value)}
+                  className="text-sm"
+                />
+              </div>
+              
+              {/* Filter Summary */}
+              {hasActiveFilters && (
+                <div className="pt-2 border-t border-gray-200">
+                  <p className="text-xs text-gray-600 mb-2">Active filters:</p>
+                  <div className="space-y-1">
+                    {filters.keywords && (
+                      <div className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded flex justify-between items-center">
+                        <span>Keywords: {filters.keywords}</span>
+                        <button 
+                          onClick={() => handleFilterChange('keywords', '')}
+                          className="ml-1 text-blue-500 hover:text-blue-700"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    )}
+                    {filters.naics && (
+                      <div className="text-xs bg-green-50 text-green-700 px-2 py-1 rounded flex justify-between items-center">
+                        <span>NAICS: {filters.naics}</span>
+                        <button 
+                          onClick={() => handleFilterChange('naics', '')}
+                          className="ml-1 text-green-500 hover:text-green-700"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    )}
+                    {filters.agency && (
+                      <div className="text-xs bg-purple-50 text-purple-700 px-2 py-1 rounded flex justify-between items-center">
+                        <span>Agency: {filters.agency}</span>
+                        <button 
+                          onClick={() => handleFilterChange('agency', '')}
+                          className="ml-1 text-purple-500 hover:text-purple-700"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+        
+        {/* Prospects List Card - Main content */}
         <div className="flex-grow">
           <Card className="shadow-lg">
             <CardHeader className="flex flex-row items-center justify-between py-5 px-6 border-b border-gray-200">
@@ -392,15 +620,13 @@ export default function Dashboard() {
                     </Table>
                   </div>
                   {totalPages > 1 && (
-                    <div className="mt-6 flex flex-col sm:flex-row items-center justify-between space-y-4 sm:space-y-0">
+                    <div className="mt-6 flex flex-col sm:flex-row items-center justify-between gap-4">
                        <p className="text-sm font-medium text-gray-700">
-                          Showing <span className="font-semibold">{prospectsData.data.length}</span> of <span className="font-semibold">{prospectsData?.total.toLocaleString()}</span> results
+                          Showing <span className="font-semibold">{((currentPage - 1) * itemsPerPage + 1)}-{Math.min(currentPage * itemsPerPage, prospectsData?.total || 0)}</span> of <span className="font-semibold">{prospectsData?.total.toLocaleString()}</span> results
                        </p>
-                      <Pagination>
-                        <PaginationContent>
-                          {renderPaginationItems() }
-                        </PaginationContent>
-                      </Pagination>
+                      <div className="flex items-center gap-2">
+                        {renderPaginationItems()}
+                      </div>
                     </div>
                   )}
                 </>
@@ -410,24 +636,6 @@ export default function Dashboard() {
                       <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-blue-600"></div>
                       <p className="ml-3 text-base font-medium text-gray-700">Updating data...</p>
                   </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Prospect Statistics Card - Positioned to the right, smaller */}
-        <div className="w-64 flex-shrink-0">
-          <Card> {/* Removed shadow-lg to make it less prominent */} 
-            <CardHeader className="pb-2 pt-0"> {/* Adjusted padding */}
-              <CardTitle className="text-base font-semibold text-black">Prospects</CardTitle> {/* Smaller title */} 
-            </CardHeader>
-            <CardContent className="pt-2 pb-4"> {/* Adjusted padding */}
-              {/* {isLoadingCount ? ( */}
-              {isLoadingProspects ? ( // Use isLoadingProspects as count will come from prospectsData
-                <p className="text-gray-600 animate-pulse text-sm">Loading...</p>
-              ) : (
-                // <p className="text-xl font-semibold text-blue-600">{countData?.count.toLocaleString()}</p> /* Smaller number */ 
-                <p className="text-xl font-semibold text-blue-600">{prospectsData?.total.toLocaleString()}</p>
               )}
             </CardContent>
           </Card>
@@ -491,7 +699,19 @@ export default function Dashboard() {
                     </div>
                     <div>
                       <span className="font-medium text-gray-700">NAICS:</span>
-                      <p className="mt-1 text-gray-900">{selectedProspect.naics || 'N/A'}</p>
+                      <p className="mt-1 text-gray-900">
+                        {selectedProspect.naics || 'N/A'}
+                        {selectedProspect.naics_source && (
+                          <span className="ml-2 text-xs text-gray-500">
+                            ({selectedProspect.naics_source === 'llm_inferred' ? 'LLM Inferred 🤖' : 
+                              selectedProspect.naics_source === 'original' ? 'Original ✓' : 
+                              selectedProspect.naics_source})
+                          </span>
+                        )}
+                      </p>
+                      {selectedProspect.naics_description && (
+                        <p className="mt-1 text-sm text-gray-600">{selectedProspect.naics_description}</p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -500,25 +720,50 @@ export default function Dashboard() {
               {/* Financial Information */}
               <div>
                 <h3 className="text-lg font-semibold mb-3 text-gray-900">Financial Information</h3>
-                <div className="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-lg">
+                <div className="grid grid-cols-1 gap-4 bg-gray-50 p-4 rounded-lg">
+                  {/* Original estimated value */}
                   <div>
-                    <span className="font-medium text-gray-700">Estimated Value:</span>
+                    <span className="font-medium text-gray-700">Original Estimated Value:</span>
                     <p className="mt-1 text-gray-900">
-                      {selectedProspect.estimated_value || 'N/A'}
+                      {selectedProspect.estimated_value_text || selectedProspect.estimated_value || 'N/A'}
                       {selectedProspect.est_value_unit && ` ${selectedProspect.est_value_unit}`}
                     </p>
                   </div>
-                  <div>
-                    <span className="font-medium text-gray-700">Contract Type:</span>
-                    <p className="mt-1 text-gray-900">{selectedProspect.contract_type || 'N/A'}</p>
-                  </div>
-                  <div>
-                    <span className="font-medium text-gray-700">Set Aside:</span>
-                    <p className="mt-1 text-gray-900">{selectedProspect.set_aside || 'N/A'}</p>
-                  </div>
-                  <div>
-                    <span className="font-medium text-gray-700">Award Fiscal Year:</span>
-                    <p className="mt-1 text-gray-900">{selectedProspect.award_fiscal_year || 'N/A'}</p>
+                  
+                  {/* LLM-parsed values */}
+                  {(selectedProspect.estimated_value_min || selectedProspect.estimated_value_max || selectedProspect.estimated_value_single) && (
+                    <div>
+                      <span className="font-medium text-gray-700">LLM-Parsed Values 🤖:</span>
+                      <div className="mt-1 space-y-1">
+                        {selectedProspect.estimated_value_single && (
+                          <p className="text-gray-900">
+                            <span className="text-sm text-gray-600">Best Estimate:</span> ${parseFloat(selectedProspect.estimated_value_single).toLocaleString()}
+                          </p>
+                        )}
+                        {(selectedProspect.estimated_value_min || selectedProspect.estimated_value_max) && (
+                          <p className="text-gray-900">
+                            <span className="text-sm text-gray-600">Range:</span> 
+                            ${selectedProspect.estimated_value_min ? parseFloat(selectedProspect.estimated_value_min).toLocaleString() : '?'} - 
+                            ${selectedProspect.estimated_value_max ? parseFloat(selectedProspect.estimated_value_max).toLocaleString() : '?'}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <span className="font-medium text-gray-700">Contract Type:</span>
+                      <p className="mt-1 text-gray-900">{selectedProspect.contract_type || 'N/A'}</p>
+                    </div>
+                    <div>
+                      <span className="font-medium text-gray-700">Set Aside:</span>
+                      <p className="mt-1 text-gray-900">{selectedProspect.set_aside || 'N/A'}</p>
+                    </div>
+                    <div>
+                      <span className="font-medium text-gray-700">Award Fiscal Year:</span>
+                      <p className="mt-1 text-gray-900">{selectedProspect.award_fiscal_year || 'N/A'}</p>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -570,6 +815,33 @@ export default function Dashboard() {
                 </div>
               )}
 
+              {/* Contact Information */}
+              {(selectedProspect.primary_contact_email || selectedProspect.primary_contact_name) && (
+                <div>
+                  <h3 className="text-lg font-semibold mb-3 text-gray-900">Contact Information 🤖</h3>
+                  <div className="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-lg">
+                    {selectedProspect.primary_contact_name && (
+                      <div>
+                        <span className="font-medium text-gray-700">Primary Contact:</span>
+                        <p className="mt-1 text-gray-900">{selectedProspect.primary_contact_name}</p>
+                      </div>
+                    )}
+                    {selectedProspect.primary_contact_email && (
+                      <div>
+                        <span className="font-medium text-gray-700">Email:</span>
+                        <p className="mt-1 text-gray-900">
+                          <a href={`mailto:${selectedProspect.primary_contact_email}`} 
+                             className="text-blue-600 hover:text-blue-800 underline">
+                            {selectedProspect.primary_contact_email}
+                          </a>
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-500 mt-2">* Contact information extracted by LLM</p>
+                </div>
+              )}
+
               {/* System Information */}
               <div>
                 <h3 className="text-lg font-semibold mb-3 text-gray-900">System Information</h3>
@@ -594,6 +866,20 @@ export default function Dashboard() {
                     <span className="font-medium text-gray-700">ID:</span>
                     <p className="mt-1 text-gray-900 font-mono text-sm">{selectedProspect.id}</p>
                   </div>
+                  {selectedProspect.ollama_processed_at && (
+                    <>
+                      <div>
+                        <span className="font-medium text-gray-700">LLM Processed:</span>
+                        <p className="mt-1 text-gray-900">
+                          {new Date(selectedProspect.ollama_processed_at).toLocaleString()}
+                        </p>
+                      </div>
+                      <div>
+                        <span className="font-medium text-gray-700">LLM Model:</span>
+                        <p className="mt-1 text-gray-900">{selectedProspect.ollama_model_version || 'N/A'}</p>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
