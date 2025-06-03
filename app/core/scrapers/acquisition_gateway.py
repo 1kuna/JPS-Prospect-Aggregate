@@ -2,244 +2,172 @@
 
 # Standard library imports
 import os
-import traceback # Keep one traceback
+# import traceback # No longer directly used, BaseScraper handles exc_info logging
+from typing import Optional 
 
 # Third-party imports
-import pandas as pd # Add pandas
-from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+import pandas as pd
+# from playwright.sync_api import TimeoutError as PlaywrightTimeoutError # Handled by mixins
 
 # Local application imports
-from app.core.base_scraper import BaseScraper
-from app.models import Prospect # Removed ScraperStatus
-from app.config import active_config # Import active_config
+from app.core.specialized_scrapers import PageInteractionScraper 
+# from app.models import Prospect # Data model, not directly used by scraper logic itself (mixin handles it)
+from app.config import active_config 
 from app.exceptions import ScraperError
-# from app.utils.file_utils import ensure_directory # Removed ensure_directory
-from app.utils.logger import logger
-from app.utils.scraper_utils import handle_scraper_error
-# import hashlib # No longer needed here
+from app.utils.logger import logger # Base logger, instance logger is self.logger
 
-# Set up logging
-logger = logger.bind(name="scraper.acquisition_gateway")
+# Import the specific config for this scraper
+from app.core.scrapers.configs.acquisition_gateway_config import AcquisitionGatewayConfig
 
-# Removed local check_url_accessibility function. Use self.check_url_accessibility() from BaseScraper.
 
-class AcquisitionGatewayScraper(BaseScraper):
-    """Scraper for the Acquisition Gateway site."""
+# Logger for this specific scraper module (can be used for module-level logging if needed)
+module_logger = logger.bind(name="module.acquisition_gateway")
+
+
+class AcquisitionGatewayScraper(PageInteractionScraper):
+    """Scraper for the Acquisition Gateway site, refactored to use mixins and configs."""
     
-    def __init__(self, debug_mode=False):
-        """Initialize the Acquisition Gateway scraper."""
-        super().__init__(
-            source_name="Acquisition Gateway",
-            base_url=active_config.ACQUISITION_GATEWAY_URL,
-            debug_mode=debug_mode,
-            use_stealth=True # Enable stealth mode for this scraper
-        )
-    
-    def navigate_to_forecast_page(self):
-        """Navigate to the forecast page."""
-        return self.navigate_to_url()
-    
-    def download_csv_file(self):
+    def __init__(self, config: AcquisitionGatewayConfig, debug_mode: bool = False):
         """
-        Download the CSV file from the Acquisition Gateway site.
-        Saves the file directly to the scraper's download directory.
+        Initialize the Acquisition Gateway scraper.
+        Args:
+            config (AcquisitionGatewayConfig): Configuration object for this scraper.
+            debug_mode (bool): Runtime override for debug mode.
+        """
+        if config.base_url is None: # Ensure base_url is set, it's vital.
+            config.base_url = active_config.ACQUISITION_GATEWAY_URL 
+            module_logger.warning(f"AcquisitionGatewayConfig.base_url was None, set from active_config: {config.base_url}")
+            
+        super().__init__(config=config, debug_mode=debug_mode)
+        # self.logger is initialized by PageInteractionScraper's super() call to BaseScraper.
+
+    def custom_summary_fallback(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Custom transformation: If 'Body' column is missing but 'Summary' exists,
+        rename 'Summary' to 'Body'. This runs BEFORE raw_column_rename_map in transform_dataframe.
+        """
+        self.logger.info("Applying custom_summary_fallback logic...")
+        if 'Body' not in df.columns and 'Summary' in df.columns:
+            self.logger.info("Found 'Summary' column but no 'Body' column. Renaming 'Summary' to 'Body'.")
+            df.rename(columns={'Summary': 'Body'}, inplace=True)
+        elif 'Body' in df.columns and 'Summary' in df.columns:
+            self.logger.info("'Body' and 'Summary' columns both exist. 'Body' will be preferred by raw_column_rename_map if 'Body' is mapped.")
+        elif 'Body' not in df.columns and 'Summary' not in df.columns:
+            self.logger.warning("'Body' and 'Summary' columns are both missing. Description might be empty.")
+        else: # 'Body' exists, 'Summary' might or might not. 'Body' takes precedence.
+            self.logger.info("'Body' column exists. No fallback needed from 'Summary'.")
+        return df
+
+    def _setup_method(self) -> None:
+        """Navigates to the base URL of the scraper and waits for initial load."""
+        self.logger.info(f"Executing setup: Navigating to base URL: {self.config.base_url}")
+        if not self.config.base_url: # Should have been set in __init__
+            self.logger.error("Base URL is not configured for AcquisitionGatewayScraper.")
+            raise ScraperError("Base URL is not configured for AcquisitionGatewayScraper.")
         
-        Returns:
-            str: Path to the downloaded file, or None if download failed
+        self.navigate_to_url(self.config.base_url) 
+        # An initial load wait; specific page interactions might need more granular waits.
+        self.wait_for_load_state('load', timeout_ms=self.config.navigation_timeout_ms)
+
+
+    def _extract_method(self) -> Optional[str]:
         """
+        Downloads the CSV file from the Acquisition Gateway site.
+        Returns: Path to the downloaded file, or None if download failed.
+        """
+        self.logger.info("Starting CSV file download process from Acquisition Gateway.")
+        
+        self.logger.info(f"Waiting {self.config.wait_after_load_ms}ms after page load/navigation...")
+        self.wait_for_timeout(self.config.wait_after_load_ms)
+        self.logger.info("Wait finished. Attempting to click Export button.")
+
         try:
-            # Wait for the page to load using 'load' state
-            self.logger.info("Waiting for page to load ('load')...")
-            self.page.wait_for_load_state('load', timeout=90000) # Changed to 'load', kept long timeout
+            self._last_download_path = None # Reset before download attempt
+
+            # The click_element method from NavigationMixin handles visibility wait and JS fallback.
+            # The expect_download block will catch the download triggered by this click.
+            # BaseScraper.setup_browser should have set self.page.on("download", self._handle_download_event)
+            # where _handle_download_event is now from DownloadMixin.
+            with self.page.expect_download(timeout=self.config.download_timeout_ms) as download_info:
+                self.click_element(
+                    selector=self.config.export_button_selector,
+                    js_click_fallback=True, # Allow JS click if standard fails
+                    timeout_ms=self.config.interaction_timeout_ms # Timeout for the click action itself
+                )
             
-            # Explicit wait after load
-            self.logger.info("Waiting 5 seconds after load for page to settle...") # Reduced wait back to 5s
-            self.page.wait_for_timeout(5000) # Reduced wait back to 5s
-            self.logger.info("Wait finished. Locating Export button.")
+            # download_info.value is the Download object.
+            # _handle_download_event (from DownloadMixin, set by BaseScraper) should be triggered by the event.
+            # It will save the file and set self._last_download_path.
             
-            # --- Debug Screenshot After Wait REMOVED ---
-            # debug_timestamp_after_wait = ...
-            # screenshot_path_after_wait = ...
-            # try:
-            # ...
-            # except ...
-            # --- End Debug Screenshot After Wait REMOVED ---
-            
-            # Find export button using ID
-            export_button_selector = 'button#export-0' 
-            export_button = self.page.locator(export_button_selector)
-            
-            # Wait for the button to be VISIBLE in the DOM
-            try:
-                export_button.wait_for(state='visible', timeout=60000) # Changed state back to 'visible'
-                self.logger.info("Export button is visible.")
-            except PlaywrightTimeoutError as wait_error:
-                self.logger.error(f"Timeout waiting for export button ({export_button_selector}) to be visible.") # Updated log message
-                # --- Debug Output REMOVED ---
-                # debug_timestamp = ...
-                # screenshot_path = ...
-                # html_path = ...
-                # try:
-                # ...
-                # except ...
-                # --- End Debug Output REMOVED ---
-                raise ScraperError(f"Timeout waiting for export button {export_button_selector} to become visible") from wait_error # Updated error message
-            
-            self.logger.info("Attempting to click Export CSV and waiting for download...")
-            
-            # Start waiting for the download BEFORE clicking
-            with self.page.expect_download(timeout=120000) as download_info: # Increased timeout
-                # Try standard click first, then JS click fallback
+            # Wait for the download event to be processed and file to be saved.
+            self.wait_for_timeout(self.config.default_wait_after_download_ms)
+
+            if self._last_download_path and os.path.exists(self._last_download_path):
+                self.logger.info(f"Download successful via click_element. File at: {self._last_download_path}")
+                return self._last_download_path
+            else:
+                # This path indicates that _handle_download_event might not have completed as expected,
+                # or the file system operation is delayed, or an error occurred in the event handler.
+                download_obj = download_info.value # For debugging
+                temp_playwright_path = "N/A"
                 try:
-                    self.logger.info("Attempting standard click...")
-                    export_button.click(timeout=15000) # Shorter timeout for the click itself
-                    self.logger.info("Standard click successful.")
-                except PlaywrightTimeoutError:
-                    self.logger.warning("Standard click timed out or failed, trying JavaScript click.")
-                    # Evaluate JS to click the first matching element
-                    self.page.evaluate(f"document.querySelector('{export_button_selector}').click();")
-                    self.logger.info("JavaScript click executed.")
-                except Exception as click_err:
-                    self.logger.error(f"Error during button click attempt: {click_err}")
-                    raise # Re-raise other click errors
-            
-            _ = download_info.value # Access the download object
-
-            # Wait a brief moment for the download event to be processed by the callback
-            self.page.wait_for_timeout(2000) # Adjust as needed
-
-            if not self._last_download_path or not os.path.exists(self._last_download_path):
-                self.logger.error(f"BaseScraper._last_download_path not set or invalid. Value: {self._last_download_path}")
-                # Fallback or detailed error logging
-                try:
-                    download_obj_for_debug = download_info.value 
-                    temp_playwright_path = download_obj_for_debug.path()
-                    self.logger.warning(f"Playwright temp download path for debugging: {temp_playwright_path}")
-                except Exception as path_err:
-                    self.logger.error(f"Could not retrieve Playwright temp download path for debugging: {path_err}")
-                raise ScraperError("Download failed: File not found or path not set by BaseScraper._handle_download.")
-
-            self.logger.info(f"Download process completed. File saved at: {self._last_download_path}")
-            return self._last_download_path
-
-        except PlaywrightTimeoutError as e:
-            handle_scraper_error(e, self.source_name, "Timeout error during download initiation")
-            raise ScraperError(f"Timeout error during download initiation: {str(e)}")
+                    if download_obj: temp_playwright_path = download_obj.path()
+                except Exception: pass # Ignore if path() fails
+                self.logger.error(f"Download via click_element: _last_download_path ('{self._last_download_path}') is invalid. Playwright temp: '{temp_playwright_path}'")
+                raise ScraperError("Download did not result in a valid saved file path via _handle_download_event.")
+                
+        except ScraperError as e:
+            self.logger.error(f"A ScraperError occurred during download: {e}", exc_info=True)
+            raise # Re-raise ScraperError to be caught by the main handler
         except Exception as e:
-            handle_scraper_error(e, self.source_name, "Error downloading CSV")
-            raise ScraperError(f"Error downloading CSV: {str(e)}")
-    
-    def process_func(self, file_path: str):
-        """
-        Process the downloaded CSV file, transform data to Prospect objects, 
-        and insert into the database using logic adapted from acqg_transform.py.
-        """
-        self.logger.info(f"Processing downloaded CSV file: {file_path}")
-        try:
-            df = pd.read_csv(file_path, header=0, on_bad_lines='skip')
-            self.logger.info(f"Loaded {len(df)} rows from {file_path}")
+            self.logger.error(f"Unexpected error during CSV download: {e}", exc_info=True)
+            if self.config.screenshot_on_error: self._save_error_screenshot("acq_gw_download_error")
+            if self.config.save_html_on_error: self._save_error_html("acq_gw_download_error")
+            raise ScraperError(f"Acquisition Gateway CSV download failed: {type(e).__name__}") from e
+        
 
+    def _process_method(self, file_path: str) -> Optional[int]:
+        """
+        Processes the downloaded CSV file.
+        Args: file_path (str): Path to the downloaded file.
+        Returns: Optional[int]: Number of prospects loaded, or 0/None on failure.
+        """
+        self.logger.info(f"Processing Acq Gateway file: {file_path}")
+        if not file_path or not os.path.exists(file_path):
+            self.logger.error(f"File path '{file_path}' is invalid. Cannot process.")
+            return 0
+
+        try:
+            df = self.read_file_to_dataframe(file_path, file_type_hint=self.config.file_type_hint)
             if df.empty:
-                self.logger.info("Downloaded file is empty. Nothing to process.")
-                return 0 # Return 0 as no records processed
+                self.logger.info("DataFrame is empty. Nothing to process.")
+                return 0
 
-            # Scraper-specific parsing (before common processing)
-            # Fallback for description (already handled by rename_map if 'Body' exists)
-            if 'Body' not in df.columns and 'Summary' in df.columns:
-                 df.rename(columns={'Summary': 'Body'}, inplace=True) # Rename Summary to Body so map picks it up
-
-            # Date Parsing
-            if 'Estimated Solicitation Date' in df.columns:
-                df['Estimated Solicitation Date'] = pd.to_datetime(df['Estimated Solicitation Date'], errors='coerce').dt.date
+            # config_params for transform_dataframe and prepare_and_load_data is self.config.data_processing_rules
+            df = self.transform_dataframe(df, config_params=self.config.data_processing_rules)
+            if df.empty:
+                self.logger.info("DataFrame is empty after transformations. Nothing to load.")
+                return 0
             
-            if 'Ultimate Completion Date' in df.columns: # This is for 'award_date_raw'
-                # First convert to datetime for fiscal year extraction
-                df['Ultimate Completion Date_dt'] = pd.to_datetime(df['Ultimate Completion Date'], errors='coerce')
-                
-            # Fiscal Year Parsing/Extraction - simplified as common logic will handle this if column exists
-            if 'Estimated Award FY' in df.columns:
-                df['Estimated Award FY'] = pd.to_numeric(df['Estimated Award FY'], errors='coerce')
-                # Fallback for NA fiscal years if award_date (from Ultimate Completion Date) is present
-                if 'Ultimate Completion Date_dt' in df.columns:
-                    fallback_mask = df['Estimated Award FY'].isna() & df['Ultimate Completion Date_dt'].notna()
-                    df.loc[fallback_mask, 'Estimated Award FY'] = df['Ultimate Completion Date_dt'].loc[fallback_mask].dt.year
-            elif 'Ultimate Completion Date' in df.columns:
-                self.logger.warning("'Estimated Award FY' not in source, extracting year from 'Ultimate Completion Date' as fallback for award_fiscal_year.")
-                if 'Ultimate Completion Date_dt' not in df.columns:
-                    df['Ultimate Completion Date_dt'] = pd.to_datetime(df['Ultimate Completion Date'], errors='coerce')
-                df['Estimated Award FY'] = df['Ultimate Completion Date_dt'].dt.year # Create the column
-                
-            # Now convert Ultimate Completion Date to date format after fiscal year extraction
-            if 'Ultimate Completion Date_dt' in df.columns:
-                df['Ultimate Completion Date'] = df['Ultimate Completion Date_dt'].dt.date
-                df.drop('Ultimate Completion Date_dt', axis=1, inplace=True)
+            loaded_count = self.prepare_and_load_data(df, config_params=self.config.data_processing_rules)
             
-            # Ensure 'Estimated Award FY' is Int64 if it exists
-            if 'Estimated Award FY' in df.columns:
-                 df['Estimated Award FY'] = df['Estimated Award FY'].astype('Int64')
+            self.logger.info(f"Acq Gateway processing complete. Loaded {loaded_count} prospects.")
+            return loaded_count
 
-
-            # Estimated Value Parsing
-            if 'Estimated Contract Value' in df.columns:
-                df['Estimated Contract Value'] = pd.to_numeric(df['Estimated Contract Value'], errors='coerce')
-            # est_value_unit is None for AcqG, so no specific parsing needed here for it.
-
-            # Define mappings and call the common processing method
-            column_rename_map = {
-                'Listing ID': 'native_id',
-                'Title': 'title',
-                'Body': 'description', # Renamed 'Summary' to 'Body' above if 'Body' was missing
-                'NAICS Code': 'naics',
-                'Estimated Contract Value': 'estimated_value',
-                'Estimated Solicitation Date': 'release_date',
-                'Ultimate Completion Date': 'award_date', # Directly map to award_date after parsing
-                'Estimated Award FY': 'award_fiscal_year',
-                'Organization': 'agency',
-                'Place of Performance City': 'place_city',
-                'Place of Performance State': 'place_state',
-                'Place of Performance Country': 'place_country',
-                'Contract Type': 'contract_type',
-                'Set Aside Type': 'set_aside'
-            }
-            
-            # Ensure all mapped source columns exist in df before passing to _process_and_load_data
-            # This is implicitly handled by how rename works (only existing columns are renamed)
-            # and how _process_and_load_data handles missing fields later.
-
-            prospect_model_fields = [col.name for col in Prospect.__table__.columns if col.name != 'loaded_at']
-            # Include native_id in hash to ensure uniqueness
-            fields_for_id_hash = ['native_id', 'naics', 'title', 'description'] # After renaming
-
-            return self._process_and_load_data(df, column_rename_map, prospect_model_fields, fields_for_id_hash)
-
-        except FileNotFoundError:
-            self.logger.error(f"CSV file not found at {file_path}")
-            raise ScraperError(f"Processing failed: CSV file not found at {file_path}")
-        except pd.errors.EmptyDataError:
-            self.logger.error(f"No data or empty CSV file at {file_path}")
-            # No ScraperError here, just log and return, as it's not a processing failure but empty source data.
-            return
-        except KeyError as e:
-            self.logger.error(f"Missing expected column during CSV processing: {e}. This might indicate a change in the CSV format or an issue with mappings.")
-            self.logger.error(traceback.format_exc())
-            raise ScraperError(f"Processing failed due to missing column: {e}")
+        except ScraperError as e:
+            self.logger.error(f"A ScraperError occurred during processing of {file_path}: {e}", exc_info=True)
+            raise # Re-raise to be caught by the main error handler
         except Exception as e:
-            self.logger.error(f"Error processing file {file_path}: {str(e)}")
-            self.logger.error(traceback.format_exc())
-            raise ScraperError(f"Error processing file {file_path}: {str(e)}")
-    
+            self.logger.error(f"Unexpected error processing file {file_path}: {e}", exc_info=True)
+            raise ScraperError(f"Error processing Acq Gateway file {file_path}: {type(e).__name__}") from e
+
     def scrape(self):
-        """
-        Run the scraper to download the file.
-        
-        Returns:
-            bool: True if scraping was successful, False otherwise
-        """
-        # Simplified call: only setup and extract
+        """Orchestrates the scraping process for Acquisition Gateway."""
+        self.logger.info(f"Starting scrape for {self.config.source_name} using structured approach.")
         return self.scrape_with_structure(
-            setup_func=self.navigate_to_forecast_page,
-            extract_func=self.download_csv_file,
-            process_func=self.process_func # Add process_func
+            setup_func=self._setup_method,
+            extract_func=self._extract_method,
+            process_func=self._process_method
         )
 
-# Removed check_last_download function as it's obsolete.
+```
