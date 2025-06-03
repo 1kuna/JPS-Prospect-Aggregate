@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, ANY
 
 from app.services.scraper_service import ScraperService
 from app.database.models import DataSource, ScraperStatus # Changed import
@@ -70,11 +70,20 @@ class TestScraperService:
         mock_data_source.scraper_key = 'acq_gateway'
 
         mock_session.query(DataSource).filter_by(id=1).first.return_value = mock_data_source
-        mock_session.query(ScraperStatus).filter_by(source_id=1).order_by().first.return_value = None 
         
         mock_created_status_record = MagicMock(spec=ScraperStatus)
         mock_created_status_record.source_id = 1
-        mock_created_status_record.status = 'pending'
+        mock_created_status_record.status = 'pending' # Initial status before it's updated
+
+        # Mock the behavior of finding ScraperStatus records:
+        # 1. First call to update_scraper_status (setting 'working'): No record found, so new one is created.
+        # 2. Second call to update_scraper_status (setting 'completed'): Finds the (mock_created_status_record).
+        # 3. Call to get_latest_scraper_status_by_source_id_as_str: Finds the (mock_created_status_record).
+        mock_session.query(ScraperStatus).filter_by(source_id=1).order_by(ScraperStatus.last_checked.desc()).first.side_effect = [
+            None,  # For the first update_scraper_status call ('working')
+            mock_created_status_record,  # For the second update_scraper_status call ('completed')
+            mock_created_status_record   # For get_latest_scraper_status_by_source_id_as_str
+        ]
 
         # Patch the SCRAPERS dictionary
         with patch.dict('app.core.scrapers.SCRAPERS', {mock_data_source.scraper_key: ScraperClassMock}, clear=True):
@@ -85,7 +94,7 @@ class TestScraperService:
         # Check if the constructor was called with arguments for the 'working' state,
         # as update_scraper_status creates this first when a record is new.
         # It will also be called for 'completed', so assert_any_call is appropriate.
-        MockStatusConstructor.assert_any_call(source_id=1, status='working', details='Scrape process initiated.')
+        MockStatusConstructor.assert_any_call(source_id=1, status='working', details='Scrape process initiated.', last_checked=ANY)
         mock_session.add.assert_any_call(mock_created_status_record) # This mock_created_status_record is 'pending' initially
         ScraperClassMock.assert_called_once_with(debug_mode=False) # Verify ScraperClassMock was used
 
@@ -93,7 +102,7 @@ class TestScraperService:
         assert result['scraper_status'] == 'completed'
         assert mock_created_status_record.status == 'completed' 
         scraper_instance_mock.run.assert_called_once()
-        assert mock_session.commit.call_count == 2
+        assert mock_session.commit.call_count == 3
 
     def test_trigger_scrape_datasource_not_found(self, mock_db_session_and_logger, app):
         mock_session, _ = mock_db_session_and_logger
@@ -119,7 +128,7 @@ class TestScraperService:
         assert str(excinfo.value) == expected_error_message
         assert mock_status_record.status == 'pending'
         mock_session.commit.assert_not_called()
-        mock_session.rollback.assert_called_once()
+        mock_session.rollback.assert_not_called()
 
     def test_trigger_scrape_scraper_run_fails(self, mock_db_session_and_logger, mock_data_source, mock_status_record, mock_scraper_class, app):
         mock_session, mock_logger = mock_db_session_and_logger
@@ -153,7 +162,8 @@ class TestScraperService:
         # Ensure the mock_data_source has a scraper_key for this test
         mock_data_source.scraper_key = 'acq_gateway'
         mock_session.query(DataSource).filter_by(id=1).first.return_value = mock_data_source
-        mock_session.query(ScraperStatus).filter_by(source_id=1).order_by().first.side_effect = Exception("DB boom before status update")
+        # This mock should target the specific query made by update_scraper_status
+        mock_session.query(ScraperStatus).filter_by(source_id=1).order_by(ScraperStatus.last_checked.desc()).first.side_effect = Exception("DB boom before status update")
 
         with pytest.raises(ScraperError) as excinfo: # Changed from DatabaseError
             ScraperService.trigger_scrape(source_id=1)
@@ -170,18 +180,26 @@ class TestScraperService:
         mock_data_source.scraper_key = 'acq_gateway'
 
         mock_session.query(DataSource).filter_by(id=1).first.return_value = mock_data_source
-        mock_session.query(ScraperStatus).filter_by(source_id=1).order_by().first.return_value = mock_status_record
+
+        # Simulate that the initial 'working' status was set successfully, so a record exists.
+        # update_scraper_status (when setting to 'failed') will query for this.
+        # mock_status_record here can represent the state *after* 'working' was set.
+        mock_status_record.status = 'working' # Simulate it was set to working
+        mock_session.query(ScraperStatus).filter_by(source_id=1).order_by(ScraperStatus.last_checked.desc()).first.return_value = mock_status_record
         
         FaultyScraperClassMock = MagicMock(side_effect=RuntimeError("Cannot init scraper"))
 
         # Patch the SCRAPERS dictionary
         with patch.dict('app.core.scrapers.SCRAPERS', {mock_data_source.scraper_key: FaultyScraperClassMock}, clear=True):
-            with pytest.raises(DatabaseError) as excinfo:
+            # Expect ScraperError now, not DatabaseError
+            with pytest.raises(ScraperError) as excinfo:
                  ScraperService.trigger_scrape(source_id=1)
 
-        assert f"Unexpected error processing pull for {mock_data_source.name} in service" in str(excinfo.value)
+        # Check the exception message from the service layer
+        assert f"Unexpected error processing pull for {mock_data_source.name} in service: Cannot init scraper" in str(excinfo.value)
         FaultyScraperClassMock.assert_called_once_with(debug_mode=False)
-        assert mock_session.commit.call_count == 2 # Initial status update + failed status update
+        # After rollback, only the 'failed' status commit should persist.
+        assert mock_session.commit.call_count == 1
         assert mock_status_record.status == 'failed'
         assert "Pull process failed unexpectedly in service: Cannot init scraper" in mock_status_record.details
         mock_logger.error.assert_any_call(f"Unexpected error in scraper service for source ID 1: Cannot init scraper", exc_info=True)

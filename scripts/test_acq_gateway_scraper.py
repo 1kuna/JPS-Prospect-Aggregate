@@ -73,7 +73,7 @@ def test_navigation():
             scraper.cleanup_browser()
         logger.info(f"Navigation Test Summary: Success={success}, Duration={navigation_time:.2f}s")
         logger.info("--- Finished Navigation Test ---")
-    return success
+    assert success, "Navigation test failed"
 
 def test_download_process():
     logger.info("--- Starting Download Process Test ---")
@@ -91,7 +91,7 @@ def test_download_process():
             logger.error(f"Navigation failed before download test could start: {nav_e}")
             if scraper and scraper.page:
                  scraper._take_screenshot("download_test_nav_failed")
-            return False # Cannot proceed with download test
+            assert False, "Navigation failed before download test could start" # Fail test explicitly
 
         logger.info("Calling download_csv_file()...")
         try:
@@ -121,7 +121,7 @@ def test_download_process():
             scraper.cleanup_browser()
         logger.info(f"Download Process Test Summary: Success={download_success}")
         logger.info("--- Finished Download Process Test ---")
-    return download_success
+    assert download_success, "Download process test failed"
 
 if __name__ == "__main__":
     print("--- TEST SCRIPT EXECUTION STARTED ---") # More prominent print

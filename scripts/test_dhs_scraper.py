@@ -149,7 +149,7 @@ def test_dhs_navigation_and_wait():
         for handler in logger.handlers:
             if isinstance(handler, logging.FileHandler):
                 handler.flush()
-    return nav_success
+    assert nav_success, "DHS Navigation and initial wait test failed"
 
 def test_dhs_download_action():
     logger.info("--- Starting DHS Button Interaction and Download Test ---")
@@ -190,7 +190,9 @@ def test_dhs_download_action():
             raise ScraperError(f"DHS Download trigger not visible: {e_vis}") from e_vis
 
         if not visible_success: # Should have been raised already, but as a safeguard
-            return False
+            # This path should ideally not be hit if the ScraperError above is raised correctly.
+            # If it is hit, it means visible_success is False.
+            assert visible_success, "DHS Download trigger not visible"
 
         # Test click and download expectation
         logger.info(f"Attempting to click on download trigger '{download_trigger_selector}' and expecting download...")
@@ -252,7 +254,7 @@ def test_dhs_download_action():
             scraper.cleanup_browser()
         logger.info(f"DHS Button Interaction and Download Test Summary: Success={download_test_success}")
         logger.info("--- Finished DHS Button Interaction and Download Test ---")
-    return download_test_success
+    assert download_test_success, "DHS Button interaction and download test failed"
 
 if __name__ == "__main__":
     initial_marker_and_log("Script execution started in __main__.") # This still uses basic file I/O for very first marker

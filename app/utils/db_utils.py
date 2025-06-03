@@ -69,3 +69,4 @@ def update_scraper_status(source_id: int, status: str, details: Optional[str] = 
             session.rollback()
         except Exception as rb_exc:
             logger.error(f"Failed to rollback session during status update error: {rb_exc}", exc_info=True)
+        raise # Re-raise the original exception
