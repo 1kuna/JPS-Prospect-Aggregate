@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { PageLayout } from '@/components/layout';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
@@ -11,6 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { DatabaseManagement } from '@/components/DatabaseManagement';
 
 interface DataSource {
   id: number;
@@ -33,6 +35,8 @@ interface ScraperResult {
 }
 
 export default function Advanced() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = searchParams.get('tab') || 'data-sources';
   const queryClient = useQueryClient();
   const [runningScrapers, setRunningScrapers] = useState<Set<number>>(new Set());
   const [runAllInProgress, setRunAllInProgress] = useState(false);
@@ -116,6 +120,10 @@ export default function Advanced() {
     }
   };
 
+  const setActiveTab = (tab: string) => {
+    setSearchParams({ tab });
+  };
+
   const formatDate = (dateString: string | null) => {
     if (!dateString) return 'Never';
     // The backend sends ISO format without Z, but it's UTC
@@ -143,28 +151,41 @@ export default function Advanced() {
     }
   };
 
-  if (isLoading) {
-    return (
-      <PageLayout title="Advanced" subtitle="Manage data sources and scrapers">
+  const tabs = [
+    { id: 'data-sources', label: 'Data Sources', description: 'Manage data sources and scrapers' },
+    { id: 'database', label: 'Database', description: 'Database management and operations' }
+  ];
+
+  const currentTab = tabs.find(tab => tab.id === activeTab) || tabs[0];
+
+  const renderTabContent = () => {
+    switch (activeTab) {
+      case 'database':
+        return <DatabaseManagement />;
+      case 'data-sources':
+      default:
+        return renderDataSourcesTab();
+    }
+  };
+
+  const renderDataSourcesTab = () => {
+    if (isLoading) {
+      return (
         <div className="flex items-center justify-center h-64">
           <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-600"></div>
         </div>
-      </PageLayout>
-    );
-  }
+      );
+    }
 
-  if (error) {
-    return (
-      <PageLayout title="Advanced" subtitle="Manage data sources and scrapers">
+    if (error) {
+      return (
         <div className="text-red-600">Error loading data sources: {(error as Error).message}</div>
-      </PageLayout>
-    );
-  }
+      );
+    }
 
-  const dataSources = sources?.data || [];
+    const dataSources = sources?.data || [];
 
-  return (
-    <PageLayout title="Advanced" subtitle="Manage data sources and scrapers">
+    return (
       <div className="space-y-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
@@ -236,6 +257,36 @@ export default function Advanced() {
             </div>
           </CardContent>
         </Card>
+      </div>
+    );
+  };
+
+  return (
+    <PageLayout title="Advanced" subtitle={currentTab.description}>
+      <div className="space-y-6">
+        {/* Tab Navigation */}
+        <div className="border-b border-gray-200">
+          <nav className="-mb-px flex space-x-8">
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`
+                  py-2 px-1 border-b-2 font-medium text-sm
+                  ${activeTab === tab.id
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }
+                `}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </nav>
+        </div>
+
+        {/* Tab Content */}
+        {renderTabContent()}
       </div>
     </PageLayout>
   );

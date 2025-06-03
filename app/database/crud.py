@@ -203,3 +203,129 @@ def bulk_upsert_prospects(df_in: pd.DataFrame): # Renamed back
 
 # The old get_prospects_paginated function has been removed.
 # Trailing comments and artifacts from previous attempts are also cleaned up.
+
+def get_prospects_for_llm_enhancement(enhancement_type: str = 'all', limit: int = None):
+    """
+    Get prospects that need LLM enhancement.
+    
+    Args:
+        enhancement_type: Type of enhancement needed ('values', 'contacts', 'naics', 'all')
+        limit: Maximum number of prospects to return
+        
+    Returns:
+        List of Prospect objects needing enhancement
+    """
+    query = Prospect.query
+    
+    if enhancement_type == 'values':
+        # Prospects with value text but no parsed values
+        query = query.filter(
+            Prospect.estimated_value_text.isnot(None),
+            Prospect.estimated_value_single.is_(None)
+        )
+    elif enhancement_type == 'contacts':
+        # Prospects with potential contact info in extra but no primary contact
+        query = query.filter(
+            Prospect.primary_contact_email.is_(None),
+            Prospect.extra.isnot(None)
+        )
+    elif enhancement_type == 'naics':
+        # Prospects without NAICS codes
+        query = query.filter(
+            Prospect.naics.is_(None)
+        )
+    elif enhancement_type == 'all':
+        # All prospects not yet processed by LLM
+        query = query.filter(
+            Prospect.ollama_processed_at.is_(None)
+        )
+    else:
+        raise ValidationError(f"Invalid enhancement type: {enhancement_type}")
+    
+    if limit:
+        query = query.limit(limit)
+        
+    return query.all()
+
+
+def update_prospect_llm_fields(prospect_id: str, llm_data: dict):
+    """
+    Update prospect with LLM-enhanced fields.
+    
+    Args:
+        prospect_id: The prospect ID to update
+        llm_data: Dictionary containing LLM-enhanced fields
+        
+    Returns:
+        Updated Prospect object or None if not found
+    """
+    prospect = Prospect.query.filter_by(id=prospect_id).first()
+    
+    if not prospect:
+        return None
+    
+    # Update LLM-enhanced fields
+    updateable_fields = [
+        'naics', 'naics_description', 'naics_source',
+        'estimated_value_min', 'estimated_value_max', 'estimated_value_single',
+        'primary_contact_email', 'primary_contact_name',
+        'ollama_processed_at', 'ollama_model_version'
+    ]
+    
+    for field in updateable_fields:
+        if field in llm_data:
+            setattr(prospect, field, llm_data[field])
+    
+    # Update extra field if provided
+    if 'extra_updates' in llm_data and prospect.extra:
+        prospect.extra.update(llm_data['extra_updates'])
+        # Flag the JSON field as modified for SQLAlchemy
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(prospect, 'extra')
+    
+    try:
+        db.session.commit()
+        logging.info(f"Updated prospect {prospect_id} with LLM enhancements")
+        return prospect
+    except SQLAlchemyError as e:
+        logging.error(f"Error updating prospect {prospect_id}: {e}")
+        db.session.rollback()
+        return None
+
+
+def get_prospect_statistics():
+    """
+    Get statistics about prospects and their enhancement status.
+    
+    Returns:
+        Dictionary with various statistics
+    """
+    try:
+        stats = {
+            'total_prospects': Prospect.query.count(),
+            'with_naics': Prospect.query.filter(Prospect.naics.isnot(None)).count(),
+            'with_naics_original': Prospect.query.filter(Prospect.naics_source == 'original').count(),
+            'with_naics_inferred': Prospect.query.filter(Prospect.naics_source == 'llm_inferred').count(),
+            'with_parsed_values': Prospect.query.filter(Prospect.estimated_value_single.isnot(None)).count(),
+            'with_contact_info': Prospect.query.filter(Prospect.primary_contact_email.isnot(None)).count(),
+            'llm_processed': Prospect.query.filter(Prospect.ollama_processed_at.isnot(None)).count(),
+            'pending_llm': Prospect.query.filter(Prospect.ollama_processed_at.is_(None)).count()
+        }
+        
+        # Calculate percentages
+        if stats['total_prospects'] > 0:
+            stats['naics_coverage_pct'] = round(100 * stats['with_naics'] / stats['total_prospects'], 2)
+            stats['value_parsing_pct'] = round(100 * stats['with_parsed_values'] / stats['total_prospects'], 2)
+            stats['contact_extraction_pct'] = round(100 * stats['with_contact_info'] / stats['total_prospects'], 2)
+            stats['llm_processed_pct'] = round(100 * stats['llm_processed'] / stats['total_prospects'], 2)
+        else:
+            stats['naics_coverage_pct'] = 0
+            stats['value_parsing_pct'] = 0
+            stats['contact_extraction_pct'] = 0
+            stats['llm_processed_pct'] = 0
+            
+        return stats
+        
+    except SQLAlchemyError as e:
+        logging.error(f"Error getting prospect statistics: {e}")
+        return {}

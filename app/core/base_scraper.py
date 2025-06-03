@@ -536,7 +536,13 @@ class BaseScraper(ABC):
         #     if field not in df.columns:
         #         df.loc[:, field] = pd.NA # Use pd.NA for consistency, converts to None for object types
 
-        # # 7. Select Final Columns (ensure 'id' is included if not in prospect_model_fields list initially)
+        # # 7. Normalize NAICS codes
+        # if 'naics' in df.columns:
+        #     from app.utils.parsing import normalize_naics_code
+        #     df['naics'] = df['naics'].apply(normalize_naics_code)
+        #     self.logger.info(f"Normalized NAICS codes for {self.source_name}")
+
+        # # 8. Select Final Columns (ensure 'id' is included if not in prospect_model_fields list initially)
         # # prospect_model_fields should ideally contain all columns for the final table including 'id', 'source_id', 'extra'
         # # but excluding 'loaded_at'
         # final_columns_for_db = [col for col in prospect_model_fields if col in df.columns]
@@ -546,14 +552,14 @@ class BaseScraper(ABC):
         
         # df_to_insert = df[final_columns_for_db].copy()
 
-        # # 8. Data Cleaning: Drop rows that are entirely NA (after selecting final columns)
+        # # 9. Data Cleaning: Drop rows that are entirely NA (after selecting final columns)
         # df_to_insert = df_to_insert.dropna(how='all')
 
         # if df_to_insert.empty:
         #     self.logger.info(f"After all processing, no valid data rows to insert for {self.source_name}.")
         #     return 0 # No records processed
 
-        # # 9. Load Data
+        # # 10. Load Data
         # self.logger.info(f"Attempting to insert/update {len(df_to_insert)} records for {self.source_name}.")
         # try:
         #     bulk_upsert_prospects(df_to_insert)
