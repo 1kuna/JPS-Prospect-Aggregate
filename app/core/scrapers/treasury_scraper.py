@@ -1,293 +1,203 @@
-"""Treasury Forecast scraper."""
+"""Department of Treasury Forecast scraper."""
 
-# Standard library imports
 import os
-# import sys # Unused
-import time
-# import shutil # Unused
+# import traceback # No longer directly used
+from typing import Optional
 
-# Third-party imports
-# import requests # Unused
-from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 import pandas as pd
-import traceback # Added traceback
-# import re # Unused
+# from playwright.sync_api import TimeoutError as PlaywrightTimeoutError # Handled by mixins
 
-# Local application imports
-from app.core.base_scraper import BaseScraper
-from app.models import Prospect # Added Prospect, DataSource, db
-# from app.database.crud import bulk_upsert_prospects # Unused
-from app.config import active_config # Import active_config
+from app.core.specialized_scrapers import PageInteractionScraper
+from app.config import active_config 
 from app.exceptions import ScraperError
-from app.utils.file_utils import ensure_directory # find_files was unused
-from app.utils.logger import logger
-from app.utils.scraper_utils import (
-    # check_url_accessibility, # Unused
-    # download_file, # Unused
-    # save_permanent_copy, # Unused
-    handle_scraper_error
-)
-from app.utils.parsing import parse_value_range, fiscal_quarter_to_date, split_place # Added parsing utils
+from app.core.scrapers.configs.treasury_config import TreasuryConfig
 
-# Set up logging
-logger = logger.bind(name="scraper.treasury_forecast")
 
-# Placeholder for URL check function if needed, similar to acquisition_gateway
-# def check_url_accessibility(url=None): ...
+class TreasuryScraper(PageInteractionScraper):
+    """Scraper for the Department of Treasury Forecast site."""
+    
+    def __init__(self, config: TreasuryConfig, debug_mode: bool = False):
+        if config.base_url is None:
+            config.base_url = active_config.TREASURY_FORECAST_URL
+            print(f"Warning: TreasuryConfig.base_url was None, set from active_config: {config.base_url}")
+        super().__init__(config=config, debug_mode=debug_mode)
 
-class TreasuryScraper(BaseScraper):
-    """Scraper for the Treasury Forecast site."""
+    def _setup_method(self) -> None:
+        """Navigates to the base URL and waits for page load."""
+        self.logger.info(f"Executing Treasury setup: Navigating to base URL: {self.config.base_url}")
+        if not self.config.base_url:
+            self._handle_and_raise_scraper_error(ValueError("Base URL not configured."), "Treasury setup navigation")
+        
+        self.navigate_to_url(self.config.base_url)
+        # Default wait_until in navigate_to_url is 'domcontentloaded'. 
+        # Treasury scraper originally waited for 'load'.
+        self.wait_for_load_state('load', timeout_ms=self.config.navigation_timeout_ms)
+        self.logger.info("Page 'load' state reached.")
 
-    def __init__(self, debug_mode=False):
-        """Initialize the Treasury scraper."""
-        super().__init__(
-            source_name="Department of Treasury",
-            base_url=active_config.TREASURY_FORECAST_URL, # Use config URL
-            debug_mode=debug_mode
+    def _extract_method(self) -> Optional[str]:
+        """Downloads the Opportunity Data file from the Treasury Forecast site."""
+        self.logger.info("Starting Treasury data file download process.")
+        
+        # Wait for the download button to be visible first
+        self.wait_for_selector(
+            self.config.download_button_xpath_selector, 
+            timeout_ms=self.config.interaction_timeout_ms,
+            state='visible' # Ensure it's visible, not just attached
         )
-        # Ensure the specific download directory for this scraper exists
-        ensure_directory(self.download_path)
+        self.logger.info(f"Download button '{self.config.download_button_xpath_selector}' is visible.")
 
-    def navigate_to_forecast_page(self):
-        """Navigate to the forecast page."""
-        self.logger.info(f"Navigating to {self.base_url}")
-        return self.navigate_to_url()
+        # download_file_via_click uses click_element internally, which handles js_click_fallback
+        # However, the js_click_fallback is a parameter to click_element, not download_file_via_click.
+        # For Treasury, a JS click fallback was specifically needed.
+        # So, we'll replicate the logic of download_file_via_click but ensure click_element gets the fallback flag.
+        
+        self._last_download_path = None # Reset before download
+        operation_desc = f"clicking download button (XPath: {self.config.download_button_xpath_selector})"
+        self.logger.info(f"Attempting {operation_desc} and expecting download.")
 
-    def download_opportunity_data(self):
-        """
-        Download the Opportunity Data file from the Treasury Forecast site.
-        Saves the file directly to the scraper's download directory.
-
-        Returns:
-            str: Path to the downloaded file, or None if download failed
-        """
         try:
-            # Wait for the page to load completely (changed from networkidle to load)
-            self.logger.info("Waiting for page 'load' state...")
-            self.page.wait_for_load_state('load', timeout=90000)
-            self.logger.info("Page loaded. Waiting for download button.")
+            with self.page.expect_download(timeout=self.config.download_timeout_ms) as download_info:
+                self.click_element(
+                    selector=self.config.download_button_xpath_selector,
+                    js_click_fallback=self.config.js_click_fallback_for_download, # Pass the flag
+                    timeout_ms=self.config.interaction_timeout_ms 
+                )
+            
+            download = download_info.value
+            # Manually call the handler from the mixin, as BaseScraper's _handle_download is a placeholder
+            # and DownloadMixin._handle_download_event is the actual implementation.
+            self._handle_download_event(download) 
 
-            # Locate the download button using XPath
-            download_button_xpath = "//lightning-button/button[contains(text(), 'Download Opportunity Data')]"
-            download_button = self.page.locator(download_button_xpath)
+            self.wait_for_timeout(self.config.default_wait_after_download_ms)
 
-            # Wait for the button to be visible
-            download_button.wait_for(state='visible', timeout=60000)
-            self.logger.info("Download button found and visible.")
+            if self._last_download_path and os.path.exists(self._last_download_path):
+                self.logger.info(f"Download successful. File at: {self._last_download_path}")
+                return self._last_download_path
+            else:
+                self.logger.error(f"Download attempt for Treasury finished, but _last_download_path ('{self._last_download_path}') is not valid.")
+                raise ScraperError("Failed to download file or _last_download_path not set correctly after Treasury download.")
+        
+        except ScraperError as e: # Re-raise if already a ScraperError (e.g. from click_element)
+            self.logger.error(f"A ScraperError occurred during Treasury download: {e}", exc_info=True)
+            raise
+        except Exception as e: # Catch other errors (e.g. from expect_download timeout)
+            self.logger.error(f"Unexpected error during Treasury download: {e}", exc_info=True)
+            if self.config.screenshot_on_error: self._save_error_screenshot("treasury_extract_error")
+            if self.config.save_html_on_error: self._save_error_html("treasury_extract_error")
+            self._handle_and_raise_scraper_error(e, operation_desc) # Standardized handler
+        return None # Should be unreachable
 
-            self.logger.info("Clicking 'Download Opportunity Data' and waiting for download...")
-            with self.page.expect_download(timeout=120000) as download_info: # Increased download timeout
-                # Sometimes clicks need retries or alternative methods if obscured
+    def _custom_treasury_pre_transforms(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Applies Treasury-specific transformations *before* the main DataProcessingMixin.transform_dataframe.
+        Handles native_id selection and row_index addition.
+        """
+        self.logger.info("Applying Treasury pre-transformations...")
+        
+        # Handle alternative native_id fields
+        # raw_column_rename_map has already mapped these to intermediate names.
+        # Config has: 'Specific Id': 'native_id_intermediate', 'ShopCart/req': 'shopcart_req_intermediate', 'Contract Number': 'contract_num_intermediate'
+        if 'native_id_intermediate' in df.columns:
+            df['native_id_final'] = df['native_id_intermediate']
+        elif 'shopcart_req_intermediate' in df.columns:
+            df['native_id_final'] = df['shopcart_req_intermediate']
+            self.logger.info("Used 'shopcart_req_intermediate' as native_id_final.")
+        elif 'contract_num_intermediate' in df.columns:
+            df['native_id_final'] = df['contract_num_intermediate']
+            self.logger.info("Used 'contract_num_intermediate' as native_id_final.")
+        else:
+            df['native_id_final'] = None # Ensure column exists
+            self.logger.warning("No primary or fallback native ID column found. 'native_id_final' set to None.")
+
+        # Add row_index for unique ID generation, as Treasury data may have duplicates
+        df.reset_index(drop=True, inplace=True) # Ensure index is clean if multiple files were concatenated (not here, but good practice)
+        df['row_index'] = df.index 
+        self.logger.debug("Added 'row_index' to DataFrame.")
+        
+        return df
+
+    def _custom_treasury_transforms_in_mixin_flow(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Applies Treasury-specific transformations that fit within the DataProcessingMixin.transform_dataframe flow
+        (i.e., after raw_column_rename_map, before specific parsers if needed).
+        Mainly for initializing description.
+        """
+        self.logger.info("Applying Treasury transforms within mixin flow (description init)...")
+        # Initialize Prospect.description as None (Treasury source lacks detailed description)
+        # This will be picked up by db_column_rename_map
+        df['description_final'] = None 
+        self.logger.debug("Initialized 'description_final' to None.")
+        return df
+
+    def _process_method(self, file_path: Optional[str]) -> Optional[int]:
+        """Processes the downloaded Treasury file."""
+        self.logger.info(f"Starting Treasury processing for file: {file_path}")
+        if not file_path or not os.path.exists(file_path):
+            self.logger.error(f"File path '{file_path}' is invalid. Cannot process.")
+            return 0
+
+        try:
+            df = None
+            if self.config.file_read_strategy == "html_then_excel":
+                self.logger.info(f"Using 'html_then_excel' strategy for {file_path}.")
                 try:
-                    download_button.click(timeout=15000)
-                except PlaywrightTimeoutError:
-                    self.logger.warning("Initial click timed out, trying JavaScript click.")
-                    self.page.evaluate(f"document.evaluate('{download_button_xpath}', document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue.click();")
-                except Exception as click_err:
-                    self.logger.error(f"Error during button click: {click_err}")
-                    raise
+                    # header=0 is now in self.config.read_options for the excel fallback
+                    df_list = pd.read_html(file_path, **(self.config.read_options or {})) # Pass read_options for html too
+                    if not df_list:
+                        self._handle_and_raise_scraper_error(ScraperError(f"No tables found in HTML file: {file_path}"), "reading HTML file")
+                    df = df_list[0] 
+                    self.logger.info(f"Successfully read HTML table from {file_path}. Shape: {df.shape}")
+                except ValueError as ve: # pandas raises ValueError if HTML parsing fails
+                    self.logger.warning(f"Could not read {file_path} as HTML table ({ve}), attempting pd.read_excel...")
+                    try:
+                        df = pd.read_excel(file_path, **(self.config.read_options or {}))
+                        self.logger.info(f"Successfully read as Excel file {file_path}. Shape: {df.shape}")
+                    except Exception as ex_err:
+                        self._handle_and_raise_scraper_error(ex_err, f"parsing file {file_path} as HTML or Excel fallback")
+            else: # Fallback to default mixin reading behavior
+                df = self.read_file_to_dataframe(file_path, read_options=self.config.read_options)
+            
+            if df is None or df.empty: # Should be caught by error handlers if read failed
+                self.logger.info("DataFrame is empty after reading attempts. Nothing to process.")
+                return 0
+            
+            # Initial cleanup
+            df.dropna(how='all', inplace=True)
+            if df.empty:
+                self.logger.info("DataFrame is empty after initial dropna. Nothing to process.")
+                return 0
 
-            _ = download_info.value # Access the download object
+            # Apply pre-transformations (native_id selection, row_index)
+            df = self._custom_treasury_pre_transforms(df)
 
-            # Wait a brief moment for the download event to be processed by the callback
-            self.page.wait_for_timeout(2000) # Adjust as needed
+            # Apply main transformations via DataProcessingMixin
+            # This will call _custom_treasury_transforms_in_mixin_flow for description init
+            df = self.transform_dataframe(df, config_params=self.config.data_processing_rules)
+            if df.empty:
+                self.logger.info("DataFrame is empty after transformations. Nothing to load.")
+                return 0
+            
+            loaded_count = self.prepare_and_load_data(df, config_params=self.config.data_processing_rules)
+            
+            self.logger.info(f"Treasury processing completed. Loaded {loaded_count} prospects.")
+            return loaded_count
 
-            if not self._last_download_path or not os.path.exists(self._last_download_path):
-                self.logger.error(f"BaseScraper._last_download_path not set or invalid. Value: {self._last_download_path}")
-                # Fallback or detailed error logging
-                try:
-                    download_obj_for_debug = download_info.value
-                    temp_playwright_path = download_obj_for_debug.path()
-                    self.logger.warning(f"Playwright temp download path for debugging: {temp_playwright_path}")
-                except Exception as path_err:
-                    self.logger.error(f"Could not retrieve Playwright temp download path for debugging: {path_err}")
-                raise ScraperError("Download failed: File not found or path not set by BaseScraper._handle_download.")
-
-            self.logger.info(f"Download process completed. File saved at: {self._last_download_path}")
-            return self._last_download_path
-
-        except PlaywrightTimeoutError as e:
-            self.logger.error(f"Timeout error during download process: {str(e)}")
-            # Capture screenshot for debugging timeouts
-            screenshot_path = os.path.join(active_config.LOGS_DIR, f"treasury_timeout_error_{int(time.time())}.png")
-            try:
-                self.page.screenshot(path=screenshot_path, full_page=True)
-                self.logger.info(f"Screenshot saved to {screenshot_path}")
-            except Exception as ss_err:
-                self.logger.error(f"Failed to save screenshot: {ss_err}")
-            handle_scraper_error(e, self.source_name, "Timeout error during download")
-            raise ScraperError(f"Timeout error during download: {str(e)}")
+        except ScraperError as e:
+            self.logger.error(f"ScraperError during Treasury processing of {file_path}: {e}", exc_info=True)
+            raise
         except Exception as e:
-            self.logger.error(f"Unexpected error downloading data: {str(e)}")
-            handle_scraper_error(e, self.source_name, "Error downloading opportunity data")
-            raise ScraperError(f"Error downloading opportunity data: {str(e)}")
+            self.logger.error(f"Unexpected error processing Treasury file {file_path}: {e}", exc_info=True)
+            self._handle_and_raise_scraper_error(e, f"processing Treasury file {file_path}")
+        return 0
+
 
     def scrape(self):
-        """
-        Run the scraper to navigate and download the file.
-
-        Returns:
-            str: Path to the downloaded file if successful, raises ScraperError otherwise.
-        """
-        # Use the structured scrape method from the base class
+        """Orchestrates the scraping process for Treasury."""
+        self.logger.info(f"Starting scrape for {self.config.source_name} using TreasuryScraper logic.")
         return self.scrape_with_structure(
-            setup_func=self.navigate_to_forecast_page,
-            extract_func=self.download_opportunity_data,
-            process_func=self.process_func
+            setup_func=self._setup_method,
+            extract_func=self._extract_method,
+            process_func=self._process_method
         )
 
-    def process_func(self, file_path: str):
-        """
-        Process the downloaded HTML file (masquerading as .xls), transform data to Prospect objects,
-        and insert into the database using logic adapted from treasury_transform.py.
-        """
-        self.logger.info(f"Processing downloaded file (expected HTML as .xls): {file_path}")
-        try:
-            # Treasury transform: reads HTML table (often saved as .xls), header row 0
-            # pd.read_html returns a list of DataFrames
-            try:
-                df_list = pd.read_html(file_path, header=0)
-                if not df_list:
-                    self.logger.error(f"No tables found in HTML file: {file_path}")
-                    raise ScraperError(f"No tables found in HTML file: {file_path}")
-                df = df_list[0] # Assume the first table is the correct one
-                self.logger.info(f"Successfully read HTML table from {file_path}. Shape: {df.shape}")
-            except ValueError as ve:
-                 # Fallback if it's a real Excel file (though less common for Treasury)
-                self.logger.warning(f"Could not read {file_path} as HTML table ({ve}), attempting pd.read_excel...")
-                try:
-                    df = pd.read_excel(file_path, header=0) # Basic excel read as fallback
-                    self.logger.info(f"Successfully read as Excel file {file_path}. Shape: {df.shape}")
-                except Exception as ex_err:
-                    self.logger.error(f"Failed to read {file_path} as either HTML or Excel: {ex_err}")
-                    raise ScraperError(f"Could not parse file {file_path} as HTML or Excel.") from ex_err
-            
-            df.dropna(how='all', inplace=True) # Pre-processing from transform script
-            self.logger.info(f"Loaded {len(df)} rows from {file_path} after initial dropna.")
-
-            if df.empty:
-                self.logger.info("Downloaded file is empty. Nothing to process.")
-                return
-
-            # --- Start: Logic adapted from treasury_transform.normalize_columns_treasury ---
-            rename_map = {
-                'Specific Id': 'native_id',
-                'Bureau': 'agency', # Mapped to Prospect.agency (was 'office' in transform)
-                'PSC': 'title', # Mapped to Prospect.title (was 'requirement_title' in transform)
-                # 'Type of Requirement': 'requirement_type', # This will go to extra
-                'Place of Performance': 'place_raw',
-                'Contract Type': 'contract_type',
-                'NAICS': 'naics',
-                'Estimated Total Contract Value': 'estimated_value_raw',
-                'Type of Small Business Set-aside': 'set_aside',
-                'Projected Award FY_Qtr': 'award_qtr_raw',
-                'Project Period of Performance Start': 'release_date_raw' # Mapped to Prospect.release_date
-            }
-
-            # Handle alternative native_id fields from transform script
-            if 'Specific Id' not in df.columns and 'ShopCart/req' in df.columns:
-                rename_map['ShopCart/req'] = 'native_id'
-            elif 'Specific Id' not in df.columns and 'Contract Number' in df.columns:
-                rename_map['Contract Number'] = 'native_id'
-
-            rename_map_existing = {k: v for k, v in rename_map.items() if k in df.columns}
-            df.rename(columns=rename_map_existing, inplace=True)
-
-            # Place of Performance Parsing
-            if 'place_raw' in df.columns:
-                split_places_data = df['place_raw'].apply(split_place)
-                df['place_city'] = split_places_data.apply(lambda x: x[0])
-                df['place_state'] = split_places_data.apply(lambda x: x[1])
-                df['place_country'] = 'USA'  # Assume USA
-            else:
-                df['place_city'], df['place_state'], df['place_country'] = pd.NA, pd.NA, 'USA'
-
-            # Estimated Value Parsing
-            if 'estimated_value_raw' in df.columns:
-                parsed_values = df['estimated_value_raw'].apply(parse_value_range)
-                df['estimated_value'] = parsed_values.apply(lambda x: x[0])
-                df['est_value_unit'] = parsed_values.apply(lambda x: x[1])
-            else:
-                df['estimated_value'], df['est_value_unit'] = pd.NA, pd.NA
-
-            # Award Date and Fiscal Year Parsing (from Projected Award FY_Qtr)
-            if 'award_qtr_raw' in df.columns:
-                parsed_award_info = df['award_qtr_raw'].apply(fiscal_quarter_to_date)
-                df['award_date'] = parsed_award_info.apply(lambda x: x[0].date() if pd.notna(x[0]) else None)
-                df['award_fiscal_year'] = parsed_award_info.apply(lambda x: x[1])
-            else:
-                df['award_date'] = None
-                df['award_fiscal_year'] = pd.NA
-            if 'award_fiscal_year' in df.columns: # Ensure correct type
-                df['award_fiscal_year'] = pd.to_numeric(df['award_fiscal_year'], errors='coerce').astype('Int64')
-
-            # Solicitation Date (Release Date) Parsing
-            if 'release_date_raw' in df.columns:
-                df['release_date'] = pd.to_datetime(df['release_date_raw'], errors='coerce').dt.date
-            else:
-                df['release_date'] = None
-
-            # Initialize Prospect.description as None (Treasury source lacks detailed description)
-            df['description'] = None 
-
-            # Drop raw/intermediate columns
-            cols_to_drop = ['place_raw', 'estimated_value_raw', 'award_qtr_raw', 'release_date_raw']
-            df.drop(columns=[col for col in cols_to_drop if col in df.columns], errors='ignore', inplace=True)
-            # --- End: Logic adapted from treasury_transform.normalize_columns_treasury ---
-
-            # Define the final column rename map.
-            final_column_rename_map = {
-                'native_id': 'native_id',
-                'agency': 'agency',
-                'title': 'title', # Mapped from 'PSC'
-                'description': 'description', # Initialized as None
-                'place_city': 'place_city',
-                'place_state': 'place_state',
-                'place_country': 'place_country',
-                'contract_type': 'contract_type',
-                'naics': 'naics',
-                'estimated_value': 'estimated_value',
-                'est_value_unit': 'est_value_unit',
-                'set_aside': 'set_aside',
-                'award_date': 'award_date',
-                'award_fiscal_year': 'award_fiscal_year',
-                'release_date': 'release_date',
-                'row_index': 'row_index', # Include row_index for uniqueness
-                # 'Type of Requirement' was in original source, if renamed to 'requirement_type',
-                # it will be handled by 'extra' if not in prospect_model_fields.
-            }
-
-            # Ensure all columns in final_column_rename_map exist in df.
-            for col_name in final_column_rename_map.keys():
-                if col_name not in df.columns:
-                    df[col_name] = pd.NA
-            
-            prospect_model_fields = [col.name for col in Prospect.__table__.columns if col.name != 'loaded_at']
-            # Treasury data may contain duplicates (especially with description=None), so add row index for uniqueness
-            # First, add a unique row identifier to distinguish true duplicates
-            df.reset_index(drop=False, inplace=True)
-            df['row_index'] = df.index
-            
-            # Original ID generation: naics, title (as PSC), description (None), agency
-            # Include native_id, location, and row index to ensure uniqueness
-            fields_for_id_hash = ['native_id', 'naics', 'title', 'description', 'agency', 'place_city', 'place_state', 'row_index']
-
-            return self._process_and_load_data(df, final_column_rename_map, prospect_model_fields, fields_for_id_hash)
-
-        except FileNotFoundError:
-            self.logger.error(f"Treasury file not found: {file_path}")
-            raise ScraperError(f"Processing failed: Treasury file not found: {file_path}")
-        except pd.errors.EmptyDataError:
-            self.logger.error(f"No data or empty Treasury file: {file_path}")
-            return # Not a ScraperError
-        except KeyError as e:
-            self.logger.error(f"Missing expected column during Treasury processing: {e}.")
-            self.logger.error(traceback.format_exc())
-            raise ScraperError(f"Processing failed due to missing column: {e}")
-        except Exception as e:
-            self.logger.error(f"Error processing Treasury file {file_path}: {str(e)}")
-            self.logger.error(traceback.format_exc())
-            raise ScraperError(f"Error processing Treasury file {file_path}: {str(e)}")
-
-# Placeholder for check_last_download function if needed
-# def check_last_download(): ...
+```
