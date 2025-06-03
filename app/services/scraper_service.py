@@ -84,17 +84,28 @@ class ScraperService:
             return {"status": "success", "message": result_message, "data_source_name": data_source.name, "scraper_status": final_status_str}
 
         except NotFoundError as nfe:
-            # db.session.rollback() # Typically handled by app error handlers or session teardown
+            session.rollback() # Ensure rollback is called
             raise nfe # Re-raise to be caught by Flask error handlers
         except ScraperError as se:
-            # db.session.rollback()
+            # Rollback might have been handled by update_scraper_status if it was called for failure
+            # However, if ScraperError is raised before that, a rollback here could be useful.
+            # For now, let's assume update_scraper_status handles its transaction or the generic except does.
             logger.error(f"Scraper service error for source ID {source_id}: {se}", exc_info=True)
             raise se
         except Exception as e:
-            # db.session.rollback()
+            # Rollback might have been handled by update_scraper_status if it was called for failure
+            # However, if ScraperError is raised before that, a rollback here could be useful.
+            # For now, let's assume update_scraper_status handles its transaction or the generic except does.
             logger.error(f"Unexpected error in scraper service for source ID {source_id}: {e}", exc_info=True)
+            try:
+                session.rollback() # Attempt rollback first
+            except Exception as rb_exc:
+                logger.error(f"Rollback failed during generic exception handling for source ID {source_id}: {rb_exc}", exc_info=True)
+
             if data_source: # Check if data_source object was fetched
                 error_detail = f"Pull process failed unexpectedly in service: {str(e)[:500]}"
+                # This update_scraper_status will attempt its own session commit.
+                # If the session was rolled back above, this might operate in a new transaction or fail if session is broken.
                 update_scraper_status(source_id=data_source.id, status='failed', details=error_detail)
             raise DatabaseError(f"Unexpected error processing pull for {data_source.name if data_source else source_id} in service")
 

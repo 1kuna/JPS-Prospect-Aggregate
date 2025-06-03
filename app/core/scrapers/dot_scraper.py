@@ -49,10 +49,8 @@ class DotScraper(BaseScraper):
         
         # Try multiple approaches to handle HTTP/2 protocol errors and timeouts
         attempts = [
-            {'wait_until': 'load', 'timeout': 120000},
-            {'wait_until': 'domcontentloaded', 'timeout': 90000}, 
-            {'wait_until': 'networkidle', 'timeout': 60000},
-            {'wait_until': 'commit', 'timeout': 45000}
+            {'wait_until': 'load', 'timeout': 75000}, # 75 seconds
+            {'wait_until': 'domcontentloaded', 'timeout': 60000} # 60 seconds
         ]
         
         for i, params in enumerate(attempts, 1):
@@ -60,8 +58,8 @@ class DotScraper(BaseScraper):
                 self.logger.info(f"Navigation attempt {i}/{len(attempts)} with {params}")
                 
                 # Add extra delay for subsequent attempts
-                if i > 1:
-                    delay_time = i * 5
+                if i > 1: # This will only apply for the 2nd attempt if list has 2 items
+                    delay_time = i * 3 # Reduced general retry delay
                     self.logger.info(f"Waiting {delay_time} seconds before attempt {i}...")
                     time.sleep(delay_time)
                 
@@ -70,7 +68,10 @@ class DotScraper(BaseScraper):
                 if response and not response.ok:
                     self.logger.warning(f"Navigation resulted in status {response.status}. URL: {response.url}")
                     if i == len(attempts):  # Last attempt
-                        raise ScraperError(f"Navigation failed with status {response.status}")
+                        raise ScraperError(f"Navigation failed with status {response.status} after {i} attempts.")
+                    # General delay for non-OK response before next attempt
+                    self.logger.info(f"Waiting {i * 3} seconds before next attempt due to status {response.status}...")
+                    time.sleep(i * 3)
                     continue
                 
                 self.logger.info(f"Successfully navigated to {self.base_url} on attempt {i}")
@@ -83,7 +84,7 @@ class DotScraper(BaseScraper):
                     self.logger.error(error_msg)
                     raise ScraperError(error_msg) from e
                 # Add progressive delay for timeout retries
-                retry_delay = i * 10
+                retry_delay = i * 5 # Reduced PlaywrightTimeoutError retry delay
                 self.logger.info(f"Waiting {retry_delay} seconds before timeout retry...")
                 time.sleep(retry_delay)
                 continue
@@ -93,23 +94,28 @@ class DotScraper(BaseScraper):
                 if "ERR_HTTP2_PROTOCOL_ERROR" in error_str:
                     self.logger.warning(f"HTTP/2 protocol error on attempt {i}: {error_str}")
                     if i == len(attempts):
-                        error_msg = f"HTTP/2 protocol error persists after all attempts for DOT URL: {self.base_url}"
+                        error_msg = f"HTTP/2 protocol error persists after {i} attempts for DOT URL: {self.base_url}"
                         self.logger.error(error_msg)
                         raise ScraperError(error_msg) from e
-                    # Add delay before retry
-                    self.logger.info(f"Waiting {i * 3} seconds before retry...")
-                    time.sleep(i * 3)
+                    http2_delay = i * 2 # Reduced ERR_HTTP2_PROTOCOL_ERROR retry delay
+                    self.logger.info(f"Waiting {http2_delay} seconds before http2 error retry...")
+                    time.sleep(http2_delay)
                     continue
-                elif "ERR_TIMED_OUT" in error_str:
-                    self.logger.warning(f"Network timeout error on attempt {i}: {error_str}")
+                elif "ERR_TIMED_OUT" in error_str: # This is a general network timeout string from Playwright
+                    self.logger.warning(f"General network timeout error (ERR_TIMED_OUT) on attempt {i}: {error_str}")
                     if i == len(attempts):
-                        error_msg = f"Network timeout error persists after all attempts for DOT URL: {self.base_url}"
+                        error_msg = f"General network timeout error (ERR_TIMED_OUT) persists after {i} attempts for DOT URL: {self.base_url}"
                         self.logger.error(error_msg)
                         raise ScraperError(error_msg) from e
-                    # Add progressive delay for network timeout retries
-                    timeout_delay = i * 15
-                    self.logger.info(f"Waiting {timeout_delay} seconds before timeout retry...")
-                    time.sleep(timeout_delay)
+                    network_timeout_delay = i * 7 # Reduced ERR_TIMED_OUT retry delay
+                    self.logger.info(f"Waiting {network_timeout_delay} seconds before general network timeout retry...")
+                    time.sleep(network_timeout_delay)
+                    continue
+                elif "net::ERR_CONNECTION_RESET" in error_str and i < len(attempts): # Ensure it's not the last attempt before retrying
+                    self.logger.warning(f"Connection reset error on attempt {i}: {error_str}. Retrying...")
+                    conn_reset_delay = i * 4 # Reduced net::ERR_CONNECTION_RESET retry delay
+                    self.logger.info(f"Waiting {conn_reset_delay} seconds before connection reset retry...")
+                    time.sleep(conn_reset_delay)
                     continue
                 else:
                     error_msg = f"Unexpected error navigating to DOT URL {self.base_url}: {error_str}"

@@ -20,3 +20,4 @@ Flask-SQLAlchemy
 python-dateutil
 Flask-Migrate
 playwright-stealth
+lxml

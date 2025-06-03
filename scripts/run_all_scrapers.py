@@ -8,6 +8,7 @@ This script runs all configured scrapers to pull data from various government so
 import sys
 import logging
 import time
+import argparse # Add argparse
 from pathlib import Path
 
 # --- Path Setup ---
@@ -88,17 +89,34 @@ def main():
             sys.exit(1)
         # --- End Table Creation ---
         
-        logger.info(">>> Starting all scrapers <<<")
+        parser = argparse.ArgumentParser(description="Run scrapers for specified data sources.")
+        parser.add_argument("--source-id", type=int, help="Run scraper for a single source ID.")
+        parser.add_argument("--scraper-key", type=str, help="Run scraper for a single scraper key.")
+        args = parser.parse_args()
+
+        logger.info(">>> Starting scraper execution <<<")
         overall_start_time = time.time()
         
-        # Get all data sources that have scraper_keys configured
+        # Get data sources based on arguments
         try:
-            data_sources = DataSource.query.filter(
-                DataSource.scraper_key.isnot(None)
-            ).order_by(DataSource.id).all()
+            if args.source_id:
+                data_sources = DataSource.query.filter_by(id=args.source_id).all()
+                if not data_sources:
+                    logger.error(f"No data source found with ID: {args.source_id}")
+                    return
+            elif args.scraper_key:
+                data_sources = DataSource.query.filter_by(scraper_key=args.scraper_key).all()
+                if not data_sources:
+                    logger.error(f"No data source found with scraper key: {args.scraper_key}")
+                    return
+            else:
+                # Default: Get all data sources that have scraper_keys configured
+                data_sources = DataSource.query.filter(
+                    DataSource.scraper_key.isnot(None)
+                ).order_by(DataSource.id).all()
             
             if not data_sources:
-                logger.warning("No data sources with configured scrapers found!")
+                logger.warning("No data sources found to scrape based on criteria!")
                 return
                 
             logger.info(f"Found {len(data_sources)} data sources to scrape")
@@ -138,9 +156,22 @@ def main():
         
         # Print detailed results
         logger.info("\n=== Detailed Results ===")
-        for result in results:
-            status = "SUCCESS" if result['success'] else "FAILED"
-            logger.info(f"{result['source']}: {status} ({result['duration']:.2f}s) - {result['message']}")
+        detailed_results_path = Path(project_root) / "temp" / "run_all_scrapers_results.log"
+        detailed_results_path.parent.mkdir(parents=True, exist_ok=True) # Ensure temp dir exists
+
+        with open(detailed_results_path, "w") as f_log:
+            f_log.write("=== Detailed Results ===\n")
+            for result in results:
+                status = "SUCCESS" if result['success'] else "FAILED"
+                log_line = f"{result['source']}: {status} ({result['duration']:.2f}s) - {result['message']}\n"
+                logger.info(log_line.strip()) # Log to stdout as well
+                f_log.write(log_line)
+
+            if not results and (args.source_id or args.scraper_key):
+                 no_scraper_ran_msg = "No scraper was run for the specified criteria.\n"
+                 logger.info(no_scraper_ran_msg.strip())
+                 f_log.write(no_scraper_ran_msg)
+        logger.info(f"Detailed results also saved to {detailed_results_path}")
 
 
 if __name__ == "__main__":

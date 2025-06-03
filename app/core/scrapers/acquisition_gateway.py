@@ -3,6 +3,9 @@
 # Standard library imports
 import os
 import traceback # Keep one traceback
+import time # For timing
+from pathlib import Path # For creating temp directory
+from datetime import datetime # For screenshot timestamp
 
 # Third-party imports
 import pandas as pd # Add pandas
@@ -32,7 +35,24 @@ class AcquisitionGatewayScraper(BaseScraper):
             debug_mode=debug_mode,
             use_stealth=True # Enable stealth mode for this scraper
         )
-    
+        # Ensure temp directory for screenshots exists for this scraper instance
+        Path("temp").mkdir(parents=True, exist_ok=True)
+
+    def _take_screenshot(self, filename_prefix: str):
+        """Helper to take a screenshot if the page object exists."""
+        if self.page:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            safe_filename_prefix = "".join(c if c.isalnum() else "_" for c in filename_prefix)
+            safe_filename_prefix = safe_filename_prefix[:50]
+            path = Path("temp") / f"screenshot_acq_gw_{safe_filename_prefix}_{timestamp}.png"
+            try:
+                self.page.screenshot(path=str(path))
+                self.logger.info(f"Screenshot saved to {path}")
+            except Exception as e:
+                self.logger.error(f"Failed to take screenshot: {e}")
+        else:
+            self.logger.warning("Page object not available, cannot take screenshot.")
+
     def navigate_to_forecast_page(self):
         """Navigate to the forecast page."""
         return self.navigate_to_url()
@@ -60,32 +80,49 @@ class AcquisitionGatewayScraper(BaseScraper):
             export_button = self.page.locator(export_button_selector)
             
             # Wait for the button to be VISIBLE in the DOM
+            self.logger.info(f"Checking if export button '{export_button_selector}' is found and visible...")
             try:
                 export_button.wait_for(state='visible', timeout=60000) # Changed state back to 'visible'
-                self.logger.info("Export button is visible.")
+                self.logger.info(f"Export button '{export_button_selector}' is visible.")
             except PlaywrightTimeoutError as wait_error:
                 self.logger.error(f"Timeout waiting for export button ({export_button_selector}) to be visible.") # Updated log message
+                self._take_screenshot("export_button_timeout")
                 raise ScraperError(f"Timeout waiting for export button {export_button_selector} to become visible") from wait_error # Updated error message
             
             self.logger.info("Attempting to click Export CSV and waiting for download...")
             
             # Start waiting for the download BEFORE clicking
-            with self.page.expect_download(timeout=120000) as download_info: # Increased timeout
-                # Try standard click first, then JS click fallback
-                try:
-                    self.logger.info("Attempting standard click...")
-                    export_button.click(timeout=15000) # Shorter timeout for the click itself
-                    self.logger.info("Standard click successful.")
-                except PlaywrightTimeoutError:
-                    self.logger.warning("Standard click timed out or failed, trying JavaScript click.")
-                    # Evaluate JS to click the first matching element
-                    self.page.evaluate(f"document.querySelector('{export_button_selector}').click();")
-                    self.logger.info("JavaScript click executed.")
-                except Exception as click_err:
-                    self.logger.error(f"Error during button click attempt: {click_err}")
-                    raise # Re-raise other click errors
-            
-            _ = download_info.value # Access the download object
+            download_start_time = time.time()
+            self.logger.info(f"Starting page.expect_download() at {download_start_time}")
+            try:
+                with self.page.expect_download(timeout=120000) as download_info: # Increased timeout
+                    self.logger.info(f"About to click export button '{export_button_selector}'...")
+                    # Try standard click first, then JS click fallback
+                    try:
+                        self.logger.info("Attempting standard click...")
+                        export_button.click(timeout=15000) # Shorter timeout for the click itself
+                        self.logger.info("Standard click successful.")
+                    except PlaywrightTimeoutError:
+                        self.logger.warning("Standard click timed out or failed, trying JavaScript click.")
+                        # Evaluate JS to click the first matching element
+                        self.page.evaluate(f"document.querySelector('{export_button_selector}').click();")
+                        self.logger.info("JavaScript click executed.")
+                    except Exception as click_err:
+                        self.logger.error(f"Error during button click attempt: {click_err}")
+                        self._take_screenshot("export_button_click_error")
+                        raise # Re-raise other click errors
+                    self.logger.info(f"Click on '{export_button_selector}' initiated.")
+
+                download = download_info.value # Access the download object
+                download_duration = time.time() - download_start_time
+                self.logger.info(f"page.expect_download() finished after {download_duration:.2f} seconds.")
+                self.logger.info(f"Download suggested filename: {download.suggested_filename}")
+
+            except PlaywrightTimeoutError as e_download:
+                download_duration = time.time() - download_start_time
+                self.logger.error(f"Timeout ({download_duration:.2f}s) waiting for download to start after clicking export button.")
+                self._take_screenshot("download_expect_timeout")
+                raise ScraperError(f"Timeout waiting for download: {str(e_download)}")
 
             # Wait a brief moment for the download event to be processed by the callback
             self.page.wait_for_timeout(2000) # Adjust as needed
@@ -93,6 +130,7 @@ class AcquisitionGatewayScraper(BaseScraper):
             if not self._last_download_path or not os.path.exists(self._last_download_path):
                 self.logger.error(f"BaseScraper._last_download_path not set or invalid. Value: {self._last_download_path}")
                 # Fallback or detailed error logging
+                self._take_screenshot("download_path_error")
                 try:
                     download_obj_for_debug = download_info.value 
                     temp_playwright_path = download_obj_for_debug.path()
@@ -105,10 +143,15 @@ class AcquisitionGatewayScraper(BaseScraper):
             return self._last_download_path
 
         except PlaywrightTimeoutError as e:
-            handle_scraper_error(e, self.source_name, "Timeout error during download initiation")
-            raise ScraperError(f"Timeout error during download initiation: {str(e)}")
+            # This might be redundant if specific timeouts are caught above, but good as a catch-all for other PW timeouts
+            self.logger.error(f"A PlaywrightTimeoutError occurred in download_csv_file: {str(e)}")
+            self._take_screenshot("download_csv_playwright_timeout")
+            handle_scraper_error(e, self.source_name, "Timeout error during download CSV file") # Generic message
+            raise ScraperError(f"Timeout error during download_csv_file: {str(e)}")
         except Exception as e:
-            handle_scraper_error(e, self.source_name, "Error downloading CSV")
+            self.logger.error(f"An unexpected error occurred in download_csv_file: {str(e)}")
+            self._take_screenshot("download_csv_unexpected_error")
+            handle_scraper_error(e, self.source_name, "Error downloading CSV") # Generic message
             raise ScraperError(f"Error downloading CSV: {str(e)}")
     
     def process_func(self, file_path: str):

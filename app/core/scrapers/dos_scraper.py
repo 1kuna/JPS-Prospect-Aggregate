@@ -4,6 +4,7 @@
 import os
 import traceback
 import datetime # Used for datetime.datetime
+import zipfile # Added import
 
 # Third-party imports
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
@@ -127,34 +128,59 @@ class DOSForecastScraper(BaseScraper):
         and insert into the database using logic adapted from dos_transform.py.
         """
         self.logger.info(f"Processing downloaded Excel file: {file_path}")
-        try:
-            # DOS files can sometimes be HTML tables disguised as .xlsx
+        df = pd.DataFrame() # Initialize df
+
+        try: # Main try block for all operations
+            # --- Step 1: Attempt to read and parse the file ---
             try:
                 self.logger.info(f"Attempting to read {file_path} as Excel (engine openpyxl)...")
                 df = pd.read_excel(file_path, sheet_name='FY25-Procurement-Forecast', header=0, engine='openpyxl')
-            except ValueError as e:
-                self.logger.warning(f"Failed to read as Excel ({e}), attempting to read as HTML table...")
+                self.logger.info(f"Successfully read {file_path} as Excel.")
+            except zipfile.BadZipFile:
+                self.logger.warning(f"File {file_path} is not a valid zip file (likely not Excel). Attempting to read as HTML...")
                 try:
                     dfs = pd.read_html(file_path, header=0)
-                    if not dfs:
-                        raise ValueError("No tables found in HTML file.")
-                    df = dfs[0] # Assume the first table is the correct one
-                    self.logger.info("Successfully read as HTML table.")
+                    if dfs:
+                        df = dfs[0]
+                        self.logger.info(f"Successfully read {file_path} as HTML table.")
+                    else:
+                        self.logger.warning(f"No tables found when reading {file_path} as HTML.")
+                        df = pd.DataFrame()
                 except Exception as html_err:
-                    self.logger.error(f"Failed to read as HTML after Excel attempt failed: {html_err}")
-                    raise html_err # Re-raise the error from HTML parsing attempt
+                    self.logger.error(f"Failed to read {file_path} as HTML after BadZipFile: {html_err}")
+                    df = pd.DataFrame()
+            except ValueError as ve:
+                self.logger.warning(f"ValueError reading Excel {file_path} ({ve}). Attempting to read as HTML...")
+                try:
+                    dfs = pd.read_html(file_path, header=0)
+                    if dfs:
+                        df = dfs[0]
+                        self.logger.info(f"Successfully read {file_path} as HTML table after ValueError.")
+                    else:
+                        self.logger.warning(f"No tables found when reading {file_path} as HTML after ValueError.")
+                        df = pd.DataFrame()
+                except Exception as html_err_ve:
+                    self.logger.error(f"Failed to read {file_path} as HTML after ValueError: {html_err_ve}")
+                    df = pd.DataFrame()
 
-            df.dropna(how='all', inplace=True) # Pre-processing from transform script
-            self.logger.info(f"Loaded {len(df)} rows from {file_path} after initial dropna.")
-
+            # --- Step 2: Check if DataFrame is empty after read attempts ---
             if df.empty:
-                self.logger.info("Downloaded file is empty. Nothing to process.")
-                return
+                self.logger.info(f"DataFrame is empty after attempting to read/parse {file_path}. Nothing further to process.")
+                return 0 # No records processed
+
+            # --- Step 3: Process the DataFrame (only if not empty) ---
+            self.logger.info(f"Loaded {len(df)} rows from {file_path} (before internal dropna).")
+            df.dropna(how='all', inplace=True)
+            if df.empty: # Check again after primary dropna
+                self.logger.info("DataFrame became empty after initial dropna. Nothing to process.")
+                return 0
+
+            self.logger.info(f"Processing {len(df)} rows after initial dropna.")
 
             # --- Start: Logic adapted from dos_transform.normalize_columns_dos ---
-            rename_map = {
+            rename_map = { # This block is now part of the main try
                 'Contract Number': 'native_id',
-                'Office Symbol': 'agency', # Maps to Prospect.agency
+                'Office Symbol': 'agency',
                 'Requirement Title': 'title',
                 'Requirement Description': 'description',
                 'Estimated Value': 'estimated_value_raw1', 
@@ -269,19 +295,27 @@ class DOSForecastScraper(BaseScraper):
 
             return self._process_and_load_data(df, final_column_rename_map, prospect_model_fields, fields_for_id_hash)
 
-        except FileNotFoundError:
+        # These except blocks are for the initial try block that wraps file reading attempts
+        except FileNotFoundError: # This should be at the same level as the initial try
             self.logger.error(f"DOS Excel file not found: {file_path}")
             raise ScraperError(f"Processing failed: DOS Excel file not found: {file_path}")
-        except pd.errors.EmptyDataError:
+        except pd.errors.EmptyDataError: # Same level
             self.logger.error(f"No data or empty DOS Excel file: {file_path}")
-            return
-        except KeyError as e:
+            return 0 # Return 0 records processed
+        except KeyError as e: # Same level
             self.logger.error(f"Missing expected column during DOS Excel processing: {e}.")
             self.logger.error(traceback.format_exc())
             raise ScraperError(f"Processing failed due to missing column: {e}")
-        except Exception as e:
-            self.logger.error(f"Error processing DOS file {file_path}: {str(e)}")
+        except Exception as e: # Same level - this is the catch-all for the main try
+            self.logger.error(f"General error in process_func for DOS file {file_path}: {str(e)}")
             self.logger.error(traceback.format_exc())
+            # Ensure df is empty if an unexpected error occurs before df processing logic but after read attempts
+            if 'df' not in locals() or not isinstance(df, pd.DataFrame) or df.empty:
+                 self.logger.info("Returning 0 due to error before/during processing, df is empty.")
+                 return 0
+            # If df has data but another error occurs, it might be partially processed.
+            # Depending on desired behavior, could raise or try to return partial count.
+            # For now, re-raise if it's not one of the specific parsing failures handled above.
             raise ScraperError(f"Error processing DOS file {file_path}: {str(e)}")
 
     def scrape(self):
