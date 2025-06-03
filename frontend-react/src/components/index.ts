@@ -10,4 +10,5 @@ export * from './data-display';
 // Re-export other components
 export { AIEnrichment } from './AIEnrichment';
 export { DatabaseManagement } from './DatabaseManagement';
+export { DuplicateReview } from './DuplicateReview';
 export { ErrorBoundary } from './ErrorBoundary';

@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/table';
 import { DatabaseManagement } from '@/components/DatabaseManagement';
 import { AIEnrichment } from '@/components/AIEnrichment';
+import { DuplicateReview } from '@/components/DuplicateReview';
 
 interface DataSource {
   id: number;
@@ -38,6 +39,7 @@ interface ScraperResult {
 export default function Advanced() {
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = searchParams.get('tab') || 'data-sources';
+  const activeSubTab = searchParams.get('subtab') || 'overview';
   const queryClient = useQueryClient();
   const [runningScrapers, setRunningScrapers] = useState<Set<number>>(new Set());
   const [runAllInProgress, setRunAllInProgress] = useState(false);
@@ -121,8 +123,12 @@ export default function Advanced() {
     }
   };
 
-  const setActiveTab = (tab: string) => {
-    setSearchParams({ tab });
+  const setActiveTab = (tab: string, subtab?: string) => {
+    const params: any = { tab };
+    if (subtab) {
+      params.subtab = subtab;
+    }
+    setSearchParams(params);
   };
 
   const formatDate = (dateString: string | null) => {
@@ -154,7 +160,15 @@ export default function Advanced() {
 
   const tabs = [
     { id: 'data-sources', label: 'Data Sources', description: 'Manage data sources and scrapers' },
-    { id: 'database', label: 'Database', description: 'Database management and operations' },
+    { 
+      id: 'database', 
+      label: 'Database', 
+      description: 'Database management and operations',
+      subTabs: [
+        { id: 'overview', label: 'Overview' },
+        { id: 'duplicates', label: 'Duplicate Review' }
+      ]
+    },
     { id: 'ai-enrichment', label: 'AI Enhancement', description: 'AI enrichment controls and status monitoring' }
   ];
 
@@ -163,13 +177,48 @@ export default function Advanced() {
   const renderTabContent = () => {
     switch (activeTab) {
       case 'database':
-        return <DatabaseManagement />;
+        return renderDatabaseTab();
       case 'ai-enrichment':
         return <AIEnrichment />;
       case 'data-sources':
       default:
         return renderDataSourcesTab();
     }
+  };
+
+  const renderDatabaseTab = () => {
+    const currentTab = tabs.find(tab => tab.id === 'database');
+    const subTabs = currentTab?.subTabs || [];
+    
+    return (
+      <div className="space-y-6">
+        {/* SubTab Navigation */}
+        {subTabs.length > 0 && (
+          <div className="border-b border-gray-200">
+            <nav className="-mb-px flex space-x-8">
+              {subTabs.map((subTab) => (
+                <button
+                  key={subTab.id}
+                  onClick={() => setActiveTab('database', subTab.id)}
+                  className={`
+                    py-2 px-1 border-b-2 font-medium text-sm
+                    ${activeSubTab === subTab.id
+                      ? 'border-blue-500 text-blue-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    }
+                  `}
+                >
+                  {subTab.label}
+                </button>
+              ))}
+            </nav>
+          </div>
+        )}
+
+        {/* SubTab Content */}
+        {activeSubTab === 'duplicates' ? <DuplicateReview /> : <DatabaseManagement />}
+      </div>
+    );
   };
 
   const renderDataSourcesTab = () => {

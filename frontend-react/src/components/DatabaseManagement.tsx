@@ -17,6 +17,7 @@ interface DatabaseStatus {
 
 interface AIPreservationConfig {
   preserve_ai_data_on_refresh: boolean;
+  enable_smart_duplicate_matching: boolean;
   description: string;
 }
 
@@ -142,13 +143,13 @@ export function DatabaseManagement() {
 
   // Mutation for updating AI preservation config
   const updateAIConfigMutation = useMutation({
-    mutationFn: async (newValue: boolean) => {
+    mutationFn: async (updates: Partial<AIPreservationConfig>) => {
       const response = await fetch('/api/config/ai-preservation', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ preserve_ai_data_on_refresh: newValue }),
+        body: JSON.stringify(updates),
       });
       if (!response.ok) {
         throw new Error('Failed to update AI preservation config');
@@ -156,11 +157,11 @@ export function DatabaseManagement() {
       return response.json();
     },
     onSuccess: (data) => {
-      alert(`AI preservation setting updated!\n\n${data.data.message}`);
+      alert(`Configuration updated!\n\n${data.data.message}`);
       queryClient.invalidateQueries({ queryKey: ['aiPreservationConfig'] });
     },
     onError: (error: Error) => {
-      alert(`Failed to update AI preservation setting: ${error.message}`);
+      alert(`Failed to update configuration: ${error.message}`);
     },
   });
 
@@ -387,7 +388,7 @@ export function DatabaseManagement() {
 
       <Card>
         <CardHeader>
-          <CardTitle>AI Data Preservation Settings</CardTitle>
+          <CardTitle>AI Data Preservation & Duplicate Prevention</CardTitle>
         </CardHeader>
         <CardContent>
           {isLoadingConfig ? (
@@ -395,7 +396,8 @@ export function DatabaseManagement() {
               <div className="animate-spin rounded-full h-6 w-6 border-t-2 border-b-2 border-blue-600"></div>
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-6">
+              {/* AI Preservation Section */}
               <div>
                 <h4 className="font-medium text-gray-900 mb-2">Preserve AI-Enhanced Data During Refreshes</h4>
                 <p className="text-sm text-gray-600 mb-4">
@@ -419,7 +421,7 @@ export function DatabaseManagement() {
                   <button 
                     className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 bg-green-600 text-white shadow-xs hover:bg-green-700 h-9 px-4 py-2"
                     disabled={updateAIConfigMutation.isPending || aiConfigData?.data?.preserve_ai_data_on_refresh}
-                    onClick={() => updateAIConfigMutation.mutate(true)}
+                    onClick={() => updateAIConfigMutation.mutate({ preserve_ai_data_on_refresh: true })}
                   >
                     {updateAIConfigMutation.isPending ? (
                       <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white mr-2"></div>
@@ -438,7 +440,7 @@ export function DatabaseManagement() {
                         '• LLM-enhanced values\\n\\n' +
                         'Consider this carefully as it may undo AI processing work.'
                       )) {
-                        updateAIConfigMutation.mutate(false);
+                        updateAIConfigMutation.mutate({ preserve_ai_data_on_refresh: false });
                       }
                     }}
                   >
@@ -446,6 +448,57 @@ export function DatabaseManagement() {
                       <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white mr-2"></div>
                     ) : null}
                     Disable Protection
+                  </button>
+                </div>
+              </div>
+
+              {/* Smart Duplicate Matching Section */}
+              <div className="border-t pt-6">
+                <h4 className="font-medium text-gray-900 mb-2">Smart Duplicate Prevention</h4>
+                <p className="text-sm text-gray-600 mb-4">
+                  Advanced matching prevents duplicates when titles or descriptions change by using fuzzy matching on multiple fields (native_id, NAICS, location, content similarity).
+                </p>
+                <div className="flex items-center space-x-4">
+                  <div className="flex items-center space-x-2">
+                    <span className="text-sm font-medium">
+                      Current Setting: 
+                      <span className={`ml-2 px-2 py-1 rounded-full text-xs font-semibold ${
+                        aiConfigData?.data?.enable_smart_duplicate_matching 
+                          ? 'bg-blue-100 text-blue-800' 
+                          : 'bg-gray-100 text-gray-800'
+                      }`}>
+                        {aiConfigData?.data?.enable_smart_duplicate_matching ? 'ENABLED' : 'DISABLED'}
+                      </span>
+                    </span>
+                  </div>
+                </div>
+                <div className="flex space-x-2 mt-4">
+                  <button 
+                    className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 bg-blue-600 text-white shadow-xs hover:bg-blue-700 h-9 px-4 py-2"
+                    disabled={updateAIConfigMutation.isPending || aiConfigData?.data?.enable_smart_duplicate_matching}
+                    onClick={() => updateAIConfigMutation.mutate({ enable_smart_duplicate_matching: true })}
+                  >
+                    {updateAIConfigMutation.isPending ? (
+                      <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white mr-2"></div>
+                    ) : null}
+                    Enable Smart Matching
+                  </button>
+                  <button 
+                    className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 bg-gray-600 text-white shadow-xs hover:bg-gray-700 h-9 px-4 py-2"
+                    disabled={updateAIConfigMutation.isPending || !aiConfigData?.data?.enable_smart_duplicate_matching}
+                    onClick={() => {
+                      if (window.confirm(
+                        'Are you sure you want to disable smart duplicate matching?\\n\\n' +
+                        'This will use only exact hash matching for duplicates. Changes to titles or descriptions will create new records instead of updating existing ones.'
+                      )) {
+                        updateAIConfigMutation.mutate({ enable_smart_duplicate_matching: false });
+                      }
+                    }}
+                  >
+                    {updateAIConfigMutation.isPending ? (
+                      <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white mr-2"></div>
+                    ) : null}
+                    Disable Smart Matching
                   </button>
                 </div>
               </div>

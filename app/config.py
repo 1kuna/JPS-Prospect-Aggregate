@@ -51,6 +51,7 @@ HEALTH_CHECK_INTERVAL_MINUTES = int(os.getenv("HEALTH_CHECK_INTERVAL_MINUTES", 1
 
 # AI data preservation configuration
 PRESERVE_AI_DATA_ON_REFRESH = os.getenv("PRESERVE_AI_DATA_ON_REFRESH", "true").lower() == "true"
+ENABLE_SMART_DUPLICATE_MATCHING = os.getenv("ENABLE_SMART_DUPLICATE_MATCHING", "true").lower() == "true"
 
 # File processing
 CSV_ENCODINGS = ['utf-8', 'latin-1', 'cp1252']
@@ -116,6 +117,7 @@ class Config:
     
     # AI data preservation configuration
     PRESERVE_AI_DATA_ON_REFRESH: bool = PRESERVE_AI_DATA_ON_REFRESH
+    ENABLE_SMART_DUPLICATE_MATCHING: bool = ENABLE_SMART_DUPLICATE_MATCHING
     
     # Redis configuration
     REDIS_URL: str = REDIS_URL

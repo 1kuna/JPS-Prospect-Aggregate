@@ -296,6 +296,7 @@ def get_ai_preservation_config():
         'status': 'success',
         'data': {
             'preserve_ai_data_on_refresh': active_config.PRESERVE_AI_DATA_ON_REFRESH,
+            'enable_smart_duplicate_matching': active_config.ENABLE_SMART_DUPLICATE_MATCHING,
             'description': 'When enabled, AI-enhanced fields (NAICS, contact info, parsed values) are preserved during data source refreshes'
         }
     })
@@ -309,27 +310,42 @@ def set_ai_preservation_config():
         import os
         
         data = request.get_json()
-        if not data or 'preserve_ai_data_on_refresh' not in data:
+        if not data:
             return jsonify({
                 'status': 'error',
-                'message': 'preserve_ai_data_on_refresh field is required'
+                'message': 'Request body is required'
             }), 400
         
-        new_value = bool(data['preserve_ai_data_on_refresh'])
+        updated_fields = []
         
-        # Update the active config (this affects new scraper runs)
-        active_config.PRESERVE_AI_DATA_ON_REFRESH = new_value
+        # Handle AI preservation setting
+        if 'preserve_ai_data_on_refresh' in data:
+            new_value = bool(data['preserve_ai_data_on_refresh'])
+            active_config.PRESERVE_AI_DATA_ON_REFRESH = new_value
+            os.environ['PRESERVE_AI_DATA_ON_REFRESH'] = 'true' if new_value else 'false'
+            updated_fields.append(f'AI preservation {"enabled" if new_value else "disabled"}')
+            logger.info(f"AI data preservation setting updated to: {new_value}")
         
-        # Also update the environment variable for persistence
-        os.environ['PRESERVE_AI_DATA_ON_REFRESH'] = 'true' if new_value else 'false'
+        # Handle smart matching setting
+        if 'enable_smart_duplicate_matching' in data:
+            new_value = bool(data['enable_smart_duplicate_matching'])
+            active_config.ENABLE_SMART_DUPLICATE_MATCHING = new_value
+            os.environ['ENABLE_SMART_DUPLICATE_MATCHING'] = 'true' if new_value else 'false'
+            updated_fields.append(f'Smart duplicate matching {"enabled" if new_value else "disabled"}')
+            logger.info(f"Smart duplicate matching setting updated to: {new_value}")
         
-        logger.info(f"AI data preservation setting updated to: {new_value}")
+        if not updated_fields:
+            return jsonify({
+                'status': 'error',
+                'message': 'At least one configuration field is required'
+            }), 400
         
         return jsonify({
             'status': 'success',
             'data': {
-                'preserve_ai_data_on_refresh': new_value,
-                'message': f'AI data preservation {"enabled" if new_value else "disabled"}'
+                'preserve_ai_data_on_refresh': active_config.PRESERVE_AI_DATA_ON_REFRESH,
+                'enable_smart_duplicate_matching': active_config.ENABLE_SMART_DUPLICATE_MATCHING,
+                'message': f'Configuration updated: {", ".join(updated_fields)}'
             }
         })
         
@@ -338,6 +354,385 @@ def set_ai_preservation_config():
         return jsonify({
             'status': 'error',
             'message': f'Failed to update configuration: {str(e)}'
+        }), 500
+
+@main_bp.route('/duplicates/detect', methods=['POST'])
+def detect_duplicates():
+    """Detect potential duplicate prospects in the database."""
+    try:
+        from flask import request
+        from app.utils.duplicate_prevention import DuplicateDetector
+        from app.models import Prospect, DataSource
+        import threading
+        import time
+        
+        data = request.get_json() or {}
+        source_id = data.get('source_id')
+        min_confidence = float(data.get('min_confidence', 0.7))
+        limit = int(data.get('limit', 100))
+        
+        # Generate a unique scan ID for progress tracking
+        scan_id = f"scan_{int(time.time())}_{threading.get_ident()}"
+        
+        # Initialize progress in a global store
+        global_progress_store = getattr(detect_duplicates, 'progress_store', {})
+        
+        global_progress_store[scan_id] = {
+            'status': 'starting',
+            'current': 0,
+            'total': 0,
+            'message': 'Initializing scan...',
+            'start_time': time.time()
+        }
+        
+        # Ensure the store is attached to the function
+        detect_duplicates.progress_store = global_progress_store
+        
+        logger.info(f"Started duplicate scan with ID: {scan_id}")
+        
+        # Do the actual processing synchronously for now to avoid Flask context issues
+        detector = DuplicateDetector()
+        potential_duplicates = []
+        
+        # Get prospects to check
+        query = db.session.query(Prospect)
+        if source_id:
+            query = query.filter(Prospect.source_id == source_id)
+        
+        # If limit is very high (10000+), treat as "scan all"
+        if limit >= 10000:
+            prospects = query.order_by(Prospect.loaded_at.desc()).all()
+        else:
+            prospects = query.order_by(Prospect.loaded_at.desc()).limit(limit * 2).all()
+        
+        # Process up to the limit (or all if scanning all)
+        prospects_to_process = prospects if limit >= 10000 else prospects[:limit]
+        
+        # Update progress with total count
+        detect_duplicates.progress_store[scan_id].update({
+            'status': 'processing',
+            'total': len(prospects_to_process),
+            'message': f'Scanning {len(prospects_to_process)} prospects for duplicates...'
+        })
+        
+        logger.info(f"Processing {len(prospects_to_process)} prospects for scan {scan_id}")
+        
+        for index, prospect in enumerate(prospects_to_process):
+            # Update progress every 25 records or on last record for better performance
+            if index % 25 == 0 or index == len(prospects_to_process) - 1:
+                detect_duplicates.progress_store[scan_id].update({
+                    'current': index + 1,
+                    'message': f'Processing prospect {index + 1} of {len(prospects_to_process)}...'
+                })
+                logger.debug(f"Scan {scan_id} progress: {index + 1}/{len(prospects_to_process)}")
+            # Convert prospect to dict for matching
+            prospect_data = {
+                'native_id': prospect.native_id,
+                'title': prospect.title,
+                'description': prospect.description,
+                'naics': prospect.naics,
+                'agency': prospect.agency,
+                'place_city': prospect.place_city,
+                'place_state': prospect.place_state
+            }
+            
+            # Find potential matches
+            matches = detector.find_potential_matches(
+                db.session, prospect_data, prospect.source_id or 0
+            )
+            
+            # Filter by confidence and exclude self-matches
+            high_confidence_matches = [
+                match for match in matches 
+                if match.confidence_score >= min_confidence 
+                and match.prospect_id != prospect.id
+            ]
+            
+            if high_confidence_matches:
+                # Get prospect details for the matches
+                match_ids = [m.prospect_id for m in high_confidence_matches]
+                matched_prospects = db.session.query(Prospect).filter(
+                    Prospect.id.in_(match_ids)
+                ).all()
+                
+                matched_prospects_dict = {p.id: p for p in matched_prospects}
+                
+                duplicate_group = {
+                    'original': {
+                        'id': prospect.id,
+                        'native_id': prospect.native_id,
+                        'title': prospect.title[:100] + '...' if prospect.title and len(prospect.title) > 100 else prospect.title,
+                        'description': prospect.description[:150] + '...' if prospect.description and len(prospect.description) > 150 else prospect.description,
+                        'agency': prospect.agency,
+                        'naics': prospect.naics,
+                        'place_city': prospect.place_city,
+                        'place_state': prospect.place_state,
+                        'ai_processed': prospect.ollama_processed_at is not None,
+                        'loaded_at': prospect.loaded_at.isoformat() if prospect.loaded_at else None
+                    },
+                    'matches': []
+                }
+                
+                for match in high_confidence_matches:
+                    matched_prospect = matched_prospects_dict.get(match.prospect_id)
+                    if matched_prospect:
+                        duplicate_group['matches'].append({
+                            'id': matched_prospect.id,
+                            'native_id': matched_prospect.native_id,
+                            'title': matched_prospect.title[:100] + '...' if matched_prospect.title and len(matched_prospect.title) > 100 else matched_prospect.title,
+                            'description': matched_prospect.description[:150] + '...' if matched_prospect.description and len(matched_prospect.description) > 150 else matched_prospect.description,
+                            'agency': matched_prospect.agency,
+                            'naics': matched_prospect.naics,
+                            'place_city': matched_prospect.place_city,
+                            'place_state': matched_prospect.place_state,
+                            'ai_processed': matched_prospect.ollama_processed_at is not None,
+                            'loaded_at': matched_prospect.loaded_at.isoformat() if matched_prospect.loaded_at else None,
+                            'confidence_score': match.confidence_score,
+                            'match_type': match.match_type,
+                            'matched_fields': match.matched_fields
+                        })
+                
+                potential_duplicates.append(duplicate_group)
+        
+        # Mark scan as completed and store results
+        processing_time = time.time() - detect_duplicates.progress_store[scan_id]['start_time']
+        detect_duplicates.progress_store[scan_id].update({
+            'status': 'completed',
+            'current': len(prospects_to_process),
+            'message': f'Scan completed! Found {len(potential_duplicates)} duplicate groups.',
+            'end_time': time.time(),
+            'results': {
+                'potential_duplicates': potential_duplicates,
+                'total_found': len(potential_duplicates),
+                'scan_parameters': {
+                    'source_id': source_id,
+                    'min_confidence': min_confidence,
+                    'limit': limit
+                },
+                'processing_time': processing_time
+            }
+        })
+        
+        logger.info(f"Scan {scan_id} completed in {processing_time:.2f}s. Found {len(potential_duplicates)} duplicate groups.")
+        
+        # Return the scan results directly with the scan_id
+        return jsonify({
+            'status': 'success',
+            'data': {
+                'potential_duplicates': potential_duplicates,
+                'total_found': len(potential_duplicates),
+                'scan_parameters': {
+                    'source_id': source_id,
+                    'min_confidence': min_confidence,
+                    'limit': limit
+                },
+                'scan_id': scan_id,
+                'processing_time': processing_time
+            }
+        })
+        
+    except Exception as e:
+        # Mark scan as failed in progress store
+        if 'scan_id' in locals():
+            detect_duplicates.progress_store[scan_id].update({
+                'status': 'error',
+                'message': f'Scan failed: {str(e)}',
+                'end_time': time.time()
+            })
+        
+        logger.error(f"Error detecting duplicates: {str(e)}", exc_info=True)
+        return jsonify({
+            'status': 'error',
+            'message': f'Failed to detect duplicates: {str(e)}'
+        }), 500
+
+@main_bp.route('/duplicates/progress/<scan_id>', methods=['GET'])
+def get_duplicate_scan_progress(scan_id):
+    """Get progress of a duplicate detection scan."""
+    try:
+        import time
+        
+        if not hasattr(detect_duplicates, 'progress_store'):
+            return jsonify({
+                'status': 'error',
+                'message': 'No active scans found'
+            }), 404
+        
+        progress = detect_duplicates.progress_store.get(scan_id)
+        if not progress:
+            return jsonify({
+                'status': 'error',
+                'message': 'Scan not found'
+            }), 404
+        
+        # Calculate percentage
+        percentage = 0
+        if progress['total'] > 0:
+            percentage = min(100, (progress['current'] / progress['total']) * 100)
+        
+        # Calculate elapsed time
+        elapsed_time = time.time() - progress['start_time']
+        
+        # Estimate remaining time
+        eta = None
+        if progress['current'] > 0 and progress['status'] == 'processing':
+            rate = progress['current'] / elapsed_time
+            remaining_items = progress['total'] - progress['current']
+            eta = remaining_items / rate if rate > 0 else None
+        
+        return jsonify({
+            'status': 'success',
+            'data': {
+                'scan_id': scan_id,
+                'status': progress['status'],
+                'current': progress['current'],
+                'total': progress['total'],
+                'percentage': round(percentage, 1),
+                'message': progress['message'],
+                'elapsed_time': round(elapsed_time, 1),
+                'eta': round(eta, 1) if eta else None
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting scan progress: {str(e)}", exc_info=True)
+        return jsonify({
+            'status': 'error',
+            'message': f'Failed to get scan progress: {str(e)}'
+        }), 500
+
+@main_bp.route('/duplicates/merge', methods=['POST'])
+def merge_duplicates():
+    """Merge duplicate prospects, preserving AI data from the best record."""
+    try:
+        from flask import request
+        from sqlalchemy.orm.attributes import flag_modified
+        
+        data = request.get_json()
+        if not data or 'keep_id' not in data or 'remove_ids' not in data:
+            return jsonify({
+                'status': 'error',
+                'message': 'keep_id and remove_ids are required'
+            }), 400
+        
+        keep_id = data['keep_id']
+        remove_ids = data['remove_ids']
+        
+        if not isinstance(remove_ids, list) or not remove_ids:
+            return jsonify({
+                'status': 'error',
+                'message': 'remove_ids must be a non-empty list'
+            }), 400
+        
+        # Get the record to keep
+        keep_record = db.session.query(Prospect).filter_by(id=keep_id).first()
+        if not keep_record:
+            return jsonify({
+                'status': 'error',
+                'message': f'Record with id {keep_id} not found'
+            }), 404
+        
+        # Get records to remove
+        remove_records = db.session.query(Prospect).filter(
+            Prospect.id.in_(remove_ids)
+        ).all()
+        
+        if len(remove_records) != len(remove_ids):
+            return jsonify({
+                'status': 'error',
+                'message': 'Some records to remove were not found'
+            }), 404
+        
+        # Merge strategy: preserve AI data if any record has it
+        ai_enhanced_records = [r for r in remove_records if r.ollama_processed_at]
+        if ai_enhanced_records and not keep_record.ollama_processed_at:
+            # Use AI data from the best AI-enhanced record (most recent)
+            best_ai_record = max(ai_enhanced_records, key=lambda x: x.ollama_processed_at)
+            
+            # Copy AI fields
+            ai_fields = [
+                'naics', 'naics_description', 'naics_source',
+                'estimated_value_min', 'estimated_value_max', 'estimated_value_single',
+                'primary_contact_email', 'primary_contact_name',
+                'ollama_processed_at', 'ollama_model_version'
+            ]
+            
+            for field in ai_fields:
+                if hasattr(best_ai_record, field):
+                    setattr(keep_record, field, getattr(best_ai_record, field))
+            
+            # Merge extra fields
+            if best_ai_record.extra:
+                if keep_record.extra:
+                    # Parse JSON strings if needed
+                    import json
+                    keep_extra = keep_record.extra if isinstance(keep_record.extra, dict) else json.loads(keep_record.extra)
+                    ai_extra = best_ai_record.extra if isinstance(best_ai_record.extra, dict) else json.loads(best_ai_record.extra)
+                    
+                    # Merge extras, preferring AI-enhanced data
+                    merged_extra = {**keep_extra, **ai_extra}
+                    keep_record.extra = json.dumps(merged_extra)
+                else:
+                    keep_record.extra = best_ai_record.extra
+                
+                # Flag as modified for SQLAlchemy
+                flag_modified(keep_record, 'extra')
+        
+        # Delete the duplicate records
+        for record in remove_records:
+            db.session.delete(record)
+        
+        db.session.commit()
+        
+        logger.info(f"Merged duplicates: kept {keep_id}, removed {remove_ids}")
+        
+        return jsonify({
+            'status': 'success',
+            'data': {
+                'kept_id': keep_id,
+                'removed_ids': remove_ids,
+                'ai_data_preserved': bool(ai_enhanced_records),
+                'message': f'Successfully merged {len(remove_ids)} duplicate(s) into record {keep_id}'
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Error merging duplicates: {str(e)}", exc_info=True)
+        db.session.rollback()
+        return jsonify({
+            'status': 'error',
+            'message': f'Failed to merge duplicates: {str(e)}'
+        }), 500
+
+@main_bp.route('/duplicates/sources', methods=['GET'])
+def get_data_sources_for_duplicates():
+    """Get list of data sources for duplicate detection filtering."""
+    try:
+        from app.models import DataSource
+        
+        sources = db.session.query(DataSource).order_by(DataSource.name).all()
+        
+        return jsonify({
+            'status': 'success',
+            'data': {
+                'sources': [
+                    {
+                        'id': source.id,
+                        'name': source.name,
+                        'prospect_count': db.session.query(func.count(Prospect.id)).filter(
+                            Prospect.source_id == source.id
+                        ).scalar()
+                    }
+                    for source in sources
+                ]
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting data sources: {str(e)}", exc_info=True)
+        return jsonify({
+            'status': 'error',
+            'message': f'Failed to get data sources: {str(e)}'
         }), 500
 
 # Add main/general routes here 
