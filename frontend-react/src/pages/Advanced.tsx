@@ -13,6 +13,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { DatabaseManagement } from '@/components/DatabaseManagement';
+import { AIEnrichment } from '@/components/AIEnrichment';
 
 interface DataSource {
   id: number;
@@ -153,7 +154,8 @@ export default function Advanced() {
 
   const tabs = [
     { id: 'data-sources', label: 'Data Sources', description: 'Manage data sources and scrapers' },
-    { id: 'database', label: 'Database', description: 'Database management and operations' }
+    { id: 'database', label: 'Database', description: 'Database management and operations' },
+    { id: 'ai-enrichment', label: 'AI Enhancement', description: 'AI enrichment controls and status monitoring' }
   ];
 
   const currentTab = tabs.find(tab => tab.id === activeTab) || tabs[0];
@@ -162,6 +164,8 @@ export default function Advanced() {
     switch (activeTab) {
       case 'database':
         return <DatabaseManagement />;
+      case 'ai-enrichment':
+        return <AIEnrichment />;
       case 'data-sources':
       default:
         return renderDataSourcesTab();

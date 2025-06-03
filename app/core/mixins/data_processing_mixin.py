@@ -112,7 +112,7 @@ class DataProcessingMixin:
                     elif isinstance(func_spec, Callable): df = func_spec(df.copy())
                     else: self.logger.warning(f"Invalid custom_transform_function type: {type(func_spec)}.")
             
-            rename_map = getattr(config_params, 'column_rename_map', None)
+            rename_map = getattr(config_params, 'raw_column_rename_map', None)
             if rename_map: 
                 df.rename(columns=rename_map, inplace=True, errors='ignore')
                 self.logger.debug(f"Cols after raw rename: {df.columns.tolist()}")
@@ -123,8 +123,8 @@ class DataProcessingMixin:
                 if col in df.columns:
                     if p_type == 'fiscal_quarter':
                         parsed = df[col].apply(lambda x: fiscal_quarter_to_date(x) if pd.notna(x) else (None, None))
-                        df[conf.get('target_date_col') or f"{target}_date"] = parsed.apply(lambda x: x[0].date() if x[0] else None)
-                        df[conf.get('target_fy_col') or f"{target}_fy"] = parsed.apply(lambda x: x[1]).astype('Int64')
+                        df[conf.get('target_date_col') or f"{target}_date"] = parsed.apply(lambda x: x[0].date() if x[0] and x[0] is not None else None)
+                        df[conf.get('target_fy_col') or f"{target}_fy"] = parsed.apply(lambda x: x[1] if x[1] is not None else None).astype('Int64')
                     else:
                         df[target] = pd.to_datetime(df[col], errors='coerce', format=fmt)
                         if store_date: df[target] = df[target].dt.date
@@ -143,10 +143,13 @@ class DataProcessingMixin:
             for conf in place_configs:
                 col = conf['column']
                 if col in df.columns:
-                    parsed = df[col].apply(lambda x: split_place(x) if pd.notna(x) else (None, None, None))
-                    df[conf.get('target_city_col', f"{col}_city")] = parsed.apply(lambda x: x[0])
-                    df[conf.get('target_state_col', f"{col}_state")] = parsed.apply(lambda x: x[1])
-                    df[conf.get('target_country_col', f"{col}_country")] = parsed.apply(lambda x: x[2] or getattr(config_params, 'default_country', 'USA'))
+                    parsed = df[col].apply(lambda x: split_place(x) if pd.notna(x) else (None, None))
+                    df[conf.get('target_city_col', f"{col}_city")] = parsed.apply(lambda x: x[0] if len(x) > 0 else None)
+                    df[conf.get('target_state_col', f"{col}_state")] = parsed.apply(lambda x: x[1] if len(x) > 1 else None)
+                    # Set country from config default if target_country_col is specified
+                    country_col = conf.get('target_country_col')
+                    if country_col:
+                        df[country_col] = getattr(config_params, 'default_country', 'USA')
                 else: self.logger.warning(f"Place column '{col}' not found for parsing.")
             
             self.logger.info(f"DataFrame transformation completed. Shape after all transforms: {df.shape}")
@@ -179,7 +182,7 @@ class DataProcessingMixin:
             if df.empty: self.logger.info("DataFrame empty after filtering. Nothing to load."); return 0
             
             db_col_map = getattr(config_params, 'db_column_rename_map', {})
-            if db_col_map: df.rename(columns=db_col_map, inplace=True, errors='raise')
+            if db_col_map: df.rename(columns=db_col_map, inplace=True, errors='ignore')
             
             # Determine actual Prospect model fields dynamically
             actual_model_fields = [col.name for col in Prospect.__table__.columns]
@@ -209,11 +212,11 @@ class DataProcessingMixin:
             if not prospects_data_list: self.logger.info("No valid data to load after final prep."); return 0
             
             self.logger.info(f"Attempting to bulk upsert {len(prospects_data_list)} prospects for {source_name}.")
-            # bulk_upsert_prospects is assumed to handle its own DB session or use a global/contextual one.
-            result = bulk_upsert_prospects(prospects_data=prospects_data_list) 
+            # Convert prospects_data_list back to DataFrame for bulk_upsert_prospects
+            prospects_df = pd.DataFrame(prospects_data_list)
+            result = bulk_upsert_prospects(prospects_df) 
             self.logger.info(f"Bulk upsert completed for {source_name}. Result: {result}")
             return len(prospects_data_list) 
         except Exception as e:
             self._handle_and_raise_scraper_error(e, operation_desc)
         return 0 # Should be unreachable
-```

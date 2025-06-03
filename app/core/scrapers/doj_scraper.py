@@ -157,5 +157,3 @@ class DOJForecastScraper(PageInteractionScraper):
             extract_func=self._extract_method,
             process_func=self._process_method
         )
-
-```

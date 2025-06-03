@@ -167,5 +167,3 @@ def test_doj_process_method_integration(doj_scraper_for_integration, doj_full_te
         expected_extra = expected.get('extra_data', {}) if isinstance(expected.get('extra_data'), dict) else {}
         assert retrieved_extra == expected_extra
         assert retrieved.loaded_at is not None
-
-```

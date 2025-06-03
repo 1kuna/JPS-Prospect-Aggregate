@@ -195,5 +195,3 @@ def test_treasury_process_method_integration(treasury_scraper_for_integration, t
         expected_extra = expected.get('extra_data', {}) if isinstance(expected.get('extra_data'), dict) else {}
         assert retrieved_extra == expected_extra
         assert retrieved.loaded_at is not None
-
-```

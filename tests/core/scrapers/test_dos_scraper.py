@@ -163,4 +163,3 @@ def test_dos_process_method_integration(dos_scraper_for_integration, dos_full_te
         expected_extra = expected.get('extra_data', {}) if isinstance(expected.get('extra_data'), dict) else {}
         assert retrieved_extra == expected_extra # Should be empty based on current DOS config for sample
         assert retrieved.loaded_at is not None
-```

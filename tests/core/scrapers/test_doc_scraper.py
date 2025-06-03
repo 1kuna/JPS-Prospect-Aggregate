@@ -171,4 +171,3 @@ def test_doc_process_method_integration(doc_scraper_for_integration, doc_full_te
         # However, for this test, direct comparison should work if types are consistent.
         assert retrieved_extra == expected_extra
         assert retrieved.loaded_at is not None
-```

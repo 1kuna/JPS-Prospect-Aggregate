@@ -22,56 +22,49 @@ class DOCConfig(BaseScraperConfig):
     data_processing_rules: DataProcessingRules = field(default_factory=lambda: DataProcessingRules(
         custom_transform_functions=["_custom_doc_transforms"],
         raw_column_rename_map={
-            'Forecast ID': 'native_id_raw',
-            'Organization': 'agency_raw',
-            'Title': 'title_raw',
-            'Description': 'description_raw',
-            'Naics Code': 'naics_raw',
-            'Place Of Performance City': 'place_city_raw',
-            'Place Of Performance State': 'place_state_raw',
-            'Place Of Performance Country': 'place_country_raw',
-            'Estimated Value Range': 'estimated_value_raw', 
+            'Forecast ID': 'native_id',
+            'Organization': 'agency',
+            'Title': 'title',
+            'Description': 'description',
+            'Naics Code': 'naics_code',
+            'Place Of Performance City': 'place_city',
+            'Place Of Performance State': 'place_state',
+            'Place Of Performance Country': 'place_country',
+            'Estimated Value Range': 'estimated_value_text', # Keep original text
             'Estimated Solicitation Fiscal Year': 'solicitation_fy_raw', # For custom release_date
             'Estimated Solicitation Fiscal Quarter': 'solicitation_qtr_raw', # For custom release_date
-            'Anticipated Set Aside And Type': 'set_aside_raw',
-            'Anticipated Action Award Type': 'action_award_type_extra', # For extra_data
-            'Competition Strategy': 'competition_strategy_extra', # For extra_data
-            'Anticipated Contract Vehicle': 'contract_vehicle_extra' # For extra_data
+            'Anticipated Set Aside And Type': 'set_aside',
+            'Anticipated Action Award Type': 'action_award_type', # Will go to extras
+            'Competition Strategy': 'competition_strategy', # Will go to extras
+            'Anticipated Contract Vehicle': 'contract_vehicle' # Will go to extras
         },
-        value_column_configs=[ # Declarative parsing for value ranges
-            {'column': 'estimated_value_raw', 
-             'target_value_col': 'estimated_value', 
-             'target_unit_col': 'est_value_unit'
-            }
+        value_column_configs=[
+            # No value parsing needed - keeping original text in estimated_value_text
         ],
-        # Date parsing for release_date is custom due to FY/Qtr combination.
-        # Award date is initialized as None in custom transforms.
-        
+        date_column_configs=[
+            # Date parsing for release_date is custom due to FY/Qtr combination
+        ],
         db_column_rename_map={
-            'native_id_raw': 'native_id',
-            'agency_raw': 'agency',
-            'title_raw': 'title',
-            'description_raw': 'description',
-            'naics_raw': 'naics',
-            'place_city_raw': 'place_city',
-            'place_state_raw': 'place_state',
-            'place_country_final': 'place_country', # Created by custom transform
-            'estimated_value': 'estimated_value',
-            'est_value_unit': 'est_value_unit',
-            'release_date_final': 'release_date', # Created by custom transform
-            'award_date_final': 'award_date',       # Created by custom transform
-            'award_fiscal_year_final': 'award_fiscal_year', # Created by custom transform
-            'set_aside_raw': 'set_aside',
+            # Most fields are already correctly named from raw_column_rename_map
+            'native_id': 'native_id',
+            'agency': 'agency',
+            'title': 'title',
+            'description': 'description',
+            'naics_code': 'naics_code',
+            'place_city': 'place_city',
+            'place_state': 'place_state',
+            'place_country': 'place_country',
+            'estimated_value_text': 'estimated_value_text',
+            'release_date': 'release_date', # Created by custom transform
+            'set_aside': 'set_aside'
         },
-        fields_for_id_hash=[ # Names after raw_rename and custom transforms
-            'native_id_raw', 
-            'naics_raw', 
-            'title_raw', 
-            'description_raw', 
-            'place_city_raw', 
-            'place_state_raw'
-            # 'release_date_final' could be added if it's stable enough
+        fields_for_id_hash=[
+            'native_id', 
+            'naics_code', 
+            'title', 
+            'description', 
+            'place_city', 
+            'place_state'
         ],
-        dropna_how_all: True
+        dropna_how_all=True
     ))
-```

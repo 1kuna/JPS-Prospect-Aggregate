@@ -23,45 +23,34 @@ class TreasuryConfig(BaseScraperConfig):
 
 
     data_processing_rules: DataProcessingRules = field(default_factory=lambda: DataProcessingRules(
-        # Custom transforms run *before* raw_column_rename_map in DataProcessingMixin.transform_dataframe
-        # However, for Treasury, the native_id logic and row_index addition are better handled
-        # in a dedicated method *before* calling the main transform_dataframe.
-        # So, list it here, but the call order will be managed in TreasuryScraper._process_method.
-        custom_transform_functions=["_custom_treasury_transforms_in_mixin_flow"], # For transforms that fit the mixin flow (e.g. description init)
-        
+        custom_transform_functions=["_custom_treasury_transforms"],
         raw_column_rename_map={
-            # Native ID handled by _custom_treasury_pre_transform
-            'Specific Id': 'native_id_intermediate', # Primary candidate
-            'ShopCart/req': 'shopcart_req_intermediate', # Fallback candidate 1
-            'Contract Number': 'contract_num_intermediate', # Fallback candidate 2
-            
-            'Bureau': 'agency_intermediate',
-            'PSC': 'title_intermediate', # Used as title
-            # 'Type of Requirement': 'requirement_type_extra', # For extra_data
-            'Place of Performance': 'place_raw',
-            'Contract Type': 'contract_type_intermediate',
-            'NAICS': 'naics_intermediate',
-            'Estimated Total Contract Value': 'estimated_value_raw',
-            'Type of Small Business Set-aside': 'set_aside_intermediate',
-            'Projected Award FY_Qtr': 'award_qtr_raw',
-            'Project Period of Performance Start': 'release_date_raw'
+            'Specific Id': 'native_id_primary', # Primary candidate for native_id
+            'ShopCart/req': 'native_id_fallback1', # Fallback candidate 1
+            'Contract Number': 'native_id_fallback2', # Fallback candidate 2
+            'Bureau': 'agency',
+            'PSC': 'title', # Used as title
+            'Type of Requirement': 'requirement_type', # Will go to extras
+            'Place of Performance': 'place_raw', # For place parsing
+            'Contract Type': 'contract_type',
+            'NAICS': 'naics_code',
+            'Estimated Total Contract Value': 'estimated_value_text', # Keep original text
+            'Type of Small Business Set-aside': 'set_aside',
+            'Projected Award FY_Qtr': 'award_qtr_raw', # For fiscal quarter parsing
+            'Project Period of Performance Start': 'release_date_raw' # Still needs date parsing
         },
         place_column_configs=[
             {'column': 'place_raw', 
              'target_city_col': 'place_city', 
              'target_state_col': 'place_state',
-             'target_country_col': 'place_country', # Will default to USA
+             'target_country_col': 'place_country'
             }
         ],
         value_column_configs=[
-            {'column': 'estimated_value_raw', 
-             'target_value_col': 'estimated_value', 
-             'target_unit_col': 'est_value_unit'
-            }
+            # No value parsing needed - keeping original text in estimated_value_text
         ],
         date_column_configs=[
             {'column': 'release_date_raw', 'target_column': 'release_date', 'parse_type': 'datetime', 'store_as_date': True},
-            # For 'Projected Award FY_Qtr' (award_qtr_raw)
             {'column': 'award_qtr_raw', 
              'target_date_col': 'award_date', 
              'target_fy_col': 'award_fiscal_year',
@@ -69,33 +58,29 @@ class TreasuryConfig(BaseScraperConfig):
             }
         ],
         db_column_rename_map={
-            'native_id_final': 'native_id', # Created by _custom_treasury_pre_transform
-            'agency_intermediate': 'agency',
-            'title_intermediate': 'title',
-            'description_final': 'description', # Created by _custom_treasury_transforms_in_mixin_flow
+            # Most fields are already correctly named from raw_column_rename_map
+            'native_id': 'native_id', # Custom transform will create from primary/fallback fields
+            'agency': 'agency',
+            'title': 'title',
+            'description': 'description', # Custom transform will create
             'place_city': 'place_city',
             'place_state': 'place_state',
             'place_country': 'place_country',
-            'contract_type_intermediate': 'contract_type',
-            'naics_intermediate': 'naics',
-            'estimated_value': 'estimated_value',
-            'est_value_unit': 'est_value_unit',
-            'set_aside_intermediate': 'set_aside',
+            'contract_type': 'contract_type',
+            'naics_code': 'naics_code',
+            'estimated_value_text': 'estimated_value_text',
+            'set_aside': 'set_aside',
             'award_date': 'award_date',
             'award_fiscal_year': 'award_fiscal_year',
-            'release_date': 'release_date',
-            'row_index': 'row_index' # Added by _custom_treasury_pre_transform, for id_hash and extra_data
+            'release_date': 'release_date'
         },
-        fields_for_id_hash=[ # These are columns present after all transforms, before db_map
-            'native_id_final', 
-            'naics_intermediate', # Name after raw rename
-            'title_intermediate', # Name after raw rename
-            'description_final',  # Name after custom transform
-            'agency_intermediate',# Name after raw rename
+        fields_for_id_hash=[
+            'native_id', 
+            'naics_code', 
+            'title', 
+            'description',
+            'agency',
             'place_city', 
-            'place_state', 
-            'row_index' # Added by custom transform
-        ],
-        # required_fields_for_load: Optional[List[str]] = ['native_id_final', 'title_intermediate']
+            'place_state'
+        ]
     ))
-```

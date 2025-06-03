@@ -228,5 +228,3 @@ def test_get_last_downloaded_path(scraper_instance_dl):
     assert scraper_instance_dl.get_last_downloaded_path() is None # Initially None
     scraper_instance_dl._last_download_path = "/test/path.zip"
     assert scraper_instance_dl.get_last_downloaded_path() == "/test/path.zip"
-
-```

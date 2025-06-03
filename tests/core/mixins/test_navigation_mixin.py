@@ -183,5 +183,3 @@ def test_wait_for_load_state_success(scraper_instance_nav, mock_page):
 def test_wait_for_timeout_success(scraper_instance_nav, mock_page):
     scraper_instance_nav.wait_for_timeout(500)
     mock_page.wait_for_timeout.assert_called_once_with(500)
-
-```

@@ -71,5 +71,3 @@ def db_session(db): # Depends on the session-scoped db fixture
 def client(app):
     """Create a test client for the app."""
     return app.test_client()
-
-```

@@ -62,16 +62,10 @@ class DHSForecastScraper(PageInteractionScraper):
         *after* raw_column_rename_map.
         """
         self.logger.info("Applying custom DHS transformations...")
-        # Default place_country_final to 'USA'
-        # Assumes raw_column_rename_map did *not* create a 'place_country_raw' if source doesn't have it.
-        # If it did (e.g. from a non-existent col), it would be all NA.
-        # This transform creates 'place_country_final' which db_column_rename_map maps to 'place_country'.
-        if 'place_country_raw' in df.columns: # If source might sometimes provide country
-            df['place_country_final'] = df['place_country_raw'].fillna('USA')
-            self.logger.debug("Processed 'place_country_raw' into 'place_country_final', defaulting NA to USA.")
-        else:
-            df['place_country_final'] = 'USA' # If source never provides country
-            self.logger.debug("Initialized 'place_country_final' to 'USA' as 'place_country_raw' not found.")
+        # Default place_country to 'USA' since DHS data doesn't include country
+        if 'place_country' not in df.columns:
+            df['place_country'] = 'USA'
+            self.logger.debug("Initialized 'place_country' to 'USA' as DHS data doesn't include country.")
         return df
 
     def _process_method(self, file_path: Optional[str]) -> Optional[int]:
@@ -131,5 +125,3 @@ class DHSForecastScraper(PageInteractionScraper):
             extract_func=self._extract_method,
             process_func=self._process_method
         )
-
-```

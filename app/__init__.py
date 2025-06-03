@@ -33,7 +33,7 @@ def create_app(config_name='default'): # config_name is no longer used but kept 
     from app.api.data_sources import data_sources_bp
     from app.api.scrapers import scrapers_bp
     from app.api.prospects import prospects_bp # Import the new blueprint
-    from app.api.llm_processing import bp as llm_bp  # Import LLM processing blueprint
+    from app.api.llm_processing import llm_bp  # Import LLM processing blueprint
     from app.web.routes import main as web_main_bp # Import the web blueprint
 
     app.register_blueprint(web_main_bp) # Register the web blueprint

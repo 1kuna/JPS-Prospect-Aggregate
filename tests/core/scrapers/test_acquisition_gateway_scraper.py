@@ -204,4 +204,3 @@ def test_ags_process_method_integration(ags_scraper_for_integration, db_session,
         # For extra_data, assuming None for this sample based on current AGS config and sample data
         assert retrieved.extra_data == expected.get('extra_data', None) # Handles if key is missing too
         assert retrieved.loaded_at is not None # Should be set by the database default
-```
