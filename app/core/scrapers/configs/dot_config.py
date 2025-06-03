@@ -37,61 +37,56 @@ class DOTConfig(BaseScraperConfig):
     data_processing_rules: DataProcessingRules = field(default_factory=lambda: DataProcessingRules(
         custom_transform_functions=["_custom_dot_transforms"],
         raw_column_rename_map={
-            'Sequence Number': 'native_id_raw',
-            'Procurement Office': 'agency_raw',
-            'Project Title': 'title_raw',
-            'Description': 'description_raw',
-            'Estimated Value': 'estimated_value_raw', # For value parsing
-            'NAICS': 'naics_raw',
-            'Competition Type': 'set_aside_raw',
-            'RFP Quarter': 'solicitation_qtr_raw', # For date parsing
-            'Anticipated Award Date': 'award_date_raw_custom', # For custom date parsing
+            'Sequence Number': 'native_id',
+            'Procurement Office': 'agency',
+            'Project Title': 'title',
+            'Description': 'description',
+            'Estimated Value': 'estimated_value_text', # Keep original text
+            'NAICS': 'naics_code',
+            'Competition Type': 'set_aside',
+            'RFP Quarter': 'solicitation_qtr_raw', # For fiscal quarter parsing
+            'Anticipated Award Date': 'award_date_raw', # For custom date parsing
             'Place of Performance': 'place_raw', # For place parsing
-            'Action/Award Type': 'action_award_type_extra', # For extra_data and custom contract_type
-            'Contract Vehicle': 'contract_vehicle_extra' # For extra_data
+            'Action/Award Type': 'contract_type_raw', # For custom contract_type
+            'Contract Vehicle': 'contract_vehicle' # Will go to extras
         },
         place_column_configs=[
             {'column': 'place_raw', 
-             'target_city_col': 'place_city_intermediate', 
-             'target_state_col': 'place_state_intermediate',
-             'target_country_col': 'place_country_intermediate' # Defaults to USA if not parsed
+             'target_city_col': 'place_city', 
+             'target_state_col': 'place_state',
+             'target_country_col': 'place_country'
             }
         ],
         value_column_configs=[
-            {'column': 'estimated_value_raw', 
-             'target_value_col': 'estimated_value', 
-             'target_unit_col': 'est_value_unit'
-            }
+            # No value parsing needed - keeping original text in estimated_value_text
         ],
-        date_column_configs=[ # For RFP Quarter -> release_date
+        date_column_configs=[
             {'column': 'solicitation_qtr_raw', 
-             'target_date_col': 'release_date_intermediate', 
-             # 'target_fy_col': 'solicitation_fiscal_year', # If needed
+             'target_date_col': 'release_date', 
+             'target_fy_col': 'release_fiscal_year',
              'parse_type': 'fiscal_quarter'
-            }
-            # Award date (award_date_raw_custom) is handled by _custom_dot_transforms
+            },
+            {'column': 'award_date_raw', 'target_column': 'award_date', 'parse_type': 'datetime', 'store_as_date': True}
         ],
         db_column_rename_map={
-            'native_id_raw': 'native_id',
-            'agency_raw': 'agency',
-            'title_raw': 'title',
-            'description_raw': 'description',
-            'naics_raw': 'naics',
-            'set_aside_raw': 'set_aside',
-            'release_date_intermediate': 'release_date',
-            'award_date_final': 'award_date',           # From custom transform
-            'award_fiscal_year_final': 'award_fiscal_year', # From custom transform
-            'place_city_intermediate': 'place_city',
-            'place_state_intermediate': 'place_state',
-            'place_country_intermediate': 'place_country',
-            'estimated_value': 'estimated_value',
-            'est_value_unit': 'est_value_unit',
-            'contract_type_final': 'contract_type', # From custom transform
+            # Most fields are already correctly named from raw_column_rename_map
+            'native_id': 'native_id',
+            'agency': 'agency',
+            'title': 'title',
+            'description': 'description',
+            'naics_code': 'naics_code',
+            'set_aside': 'set_aside',
+            'estimated_value_text': 'estimated_value_text',
+            'release_date': 'release_date',
+            'award_date': 'award_date',
+            'place_city': 'place_city',
+            'place_state': 'place_state',
+            'place_country': 'place_country',
+            'contract_type': 'contract_type' # Custom transform will derive from contract_type_raw
         },
         fields_for_id_hash=[
-            'native_id_raw', 'naics_raw', 'title_raw', 'description_raw', 
-            'place_city_intermediate', 'place_state_intermediate'
+            'native_id', 'naics_code', 'title', 'description', 
+            'place_city', 'place_state'
         ],
-        dropna_how_all: True
+        dropna_how_all=True
     ))
-```

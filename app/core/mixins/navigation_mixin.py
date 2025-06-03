@@ -244,4 +244,3 @@ class NavigationMixin:
             self.logger.warning(f"Generic exception during '{operation_desc}'.")
             # No screenshot/HTML here as the page state might be unstable or closed.
             self._handle_and_raise_scraper_error(e, f"generic error during {operation_desc}")
-```

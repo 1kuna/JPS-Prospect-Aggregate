@@ -9,6 +9,8 @@ from app.core.mixins.navigation_mixin import NavigationMixin
 from app.core.mixins.download_mixin import DownloadMixin
 from app.core.mixins.data_processing_mixin import DataProcessingMixin
 from app.utils.logger import logger # Import the shared logger instance
+from app.core.configs.base_config import BaseScraperConfig
+from typing import Optional
 
 class PageInteractionScraper(NavigationMixin, DownloadMixin, DataProcessingMixin, BaseScraper):
     """
@@ -27,80 +29,12 @@ class PageInteractionScraper(NavigationMixin, DownloadMixin, DataProcessingMixin
     - Specific abstract methods if any were defined in mixins (though current mixins
       provide default implementations or placeholders).
     - Their own `__init__` to call `super().__init__(source_name, base_url, ...)`.
-
-    Example usage:
-        class SpecificWebsiteScraper(PageInteractionScraper):
-            def __init__(self, debug_mode=False):
-                super().__init__(
-                    source_name="Specific Website",
-                    base_url="https://example.com",
-                    debug_mode=debug_mode
-                )
-                # self.logger is already initialized by BaseScraper via super() call
-
-            def extract_data(self):
-                # Use methods from NavigationMixin like self.navigate_to_url(), self.click_element()
-                # Use methods from DownloadMixin like self.download_file_via_click()
-                self.navigate_to_url(self.base_url)
-                download_button_selector = "#downloadButton"
-                file_path = self.download_file_via_click(download_button_selector)
-                return file_path
-
-            def process_data(self, file_path):
-                # Use methods from DataProcessingMixin like self.process_downloaded_file()
-                # and self._process_and_load_data() (or its wrapper self.load_data_to_db)
-                if file_path:
-                    df = self.process_downloaded_file(file_path, file_type='csv')
-                    if df is not None and not df.empty:
-                        # Define column map, fields for hash, etc. based on the specific CSV structure
-                        column_map = {"CSV Header 1": "prospect_field_1", ...}
-                        id_fields = ["prospect_field_1", ...]
-                        # prospect_model_fields can be obtained from Prospect.__table__.columns
-                        # or defined manually if a subset is needed.
-                        from app.models import Prospect
-                        model_fields = [col.name for col in Prospect.__table__.columns if col.name != 'loaded_at']
-
-                        return self._process_and_load_data(df, column_map, model_fields, id_fields)
-                return 0
-
-            def scrape(self):
-                # Orchestrate the scraping process
-                self.setup_browser() # From BaseScraper
-                try:
-                    self.logger.info(f"Starting scrape for {self.source_name}")
-                    downloaded_file = self.extract_data()
-                    if downloaded_file:
-                        records_processed = self.process_data(downloaded_file)
-                        self.logger.info(f"Processed {records_processed} records.")
-                        return {"success": True, "records_processed": records_processed, "file_path": downloaded_file}
-                    else:
-                        self.logger.warning("No file downloaded, skipping processing.")
-                        return {"success": False, "error": "No file downloaded"}
-                except Exception as e:
-                    self.logger.error(f"Scraping failed: {e}", exc_info=True)
-                    return {"success": False, "error": str(e)}
-                finally:
-                    self.cleanup_browser() # From BaseScraper
     """
-
-    def __init__(self, source_name, base_url, debug_mode=False, use_stealth=False):
-        """
-        Initialize the PageInteractionScraper.
-        
-        Args:
-            source_name (str): Name of the data source.
-            base_url (str): Base URL for the data source.
-            debug_mode (bool): Whether to run in debug mode.
-            use_stealth (bool): Whether to apply playwright-stealth patches.
-        """
-        # Initialize BaseScraper first, which sets up self.logger
-        super().__init__(source_name, base_url, debug_mode=debug_mode, use_stealth=use_stealth)
-        
-        # Mixins are implicitly initialized by being part of the MRO.
-        # If mixins had their own __init__ methods that needed to be called,
-        # super().__init__() would handle it based on MRO, or they'd need explicit calls.
-        # For now, our mixins primarily rely on attributes set by BaseScraper (e.g., self.page, self.logger).
-        self.logger.info(f"PageInteractionScraper initialized for {self.source_name}")
+    
+    def __init__(self, config: BaseScraperConfig, debug_mode: Optional[bool] = None):
+        """Initialize the PageInteractionScraper with config and optional debug mode."""
+        super().__init__(config=config, debug_mode=debug_mode)
+    
 
     # Scrapers inheriting from PageInteractionScraper would typically implement
     # their specific logic in methods like extract_data, process_downloaded_data,

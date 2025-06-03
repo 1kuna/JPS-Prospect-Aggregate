@@ -45,36 +45,34 @@ class AcquisitionGatewayConfig(BaseScraperConfig):
     data_processing_rules: DataProcessingRules = field(default_factory=lambda: DataProcessingRules(
         custom_transform_functions=["custom_summary_fallback"], # Runs before raw_column_rename_map
         raw_column_rename_map={
-            # 'Summary' will be handled by custom_summary_fallback if 'Body' is missing.
-            # If 'Body' exists, it's used. If 'Body' is missing and 'Summary' exists, 'Summary' becomes 'Body'.
-            # Then, 'Body' (whether original or renamed from Summary) is mapped to 'description_intermediate'.
-            'Listing ID': 'native_id_intermediate', # Using intermediate suffixes for clarity
-            'Title': 'title_intermediate',
-            'Body': 'description_intermediate', # This is the target for original 'Body' or renamed 'Summary'
-            'NAICS Code': 'naics_intermediate',
-            'Estimated Contract Value': 'estimated_value_raw', # Raw, needs parsing
-            'Estimated Solicitation Date': 'release_date_raw', # Raw, needs parsing
-            'Ultimate Completion Date': 'award_date_raw', # Raw, needs parsing
-            'Estimated Award FY': 'award_fiscal_year_raw', # Raw, needs parsing
-            'Organization': 'agency_intermediate',
-            'Place of Performance City': 'place_city_intermediate',
-            'Place of Performance State': 'place_state_intermediate',
-            'Place of Performance Country': 'place_country_intermediate',
-            'Contract Type': 'contract_type_intermediate',
-            'Set Aside Type': 'set_aside_intermediate'
+            # Direct mapping to new schema fields
+            'Listing ID': 'native_id',
+            'Title': 'title',
+            'Body': 'description', # Will be handled by custom_summary_fallback if missing
+            'NAICS Code': 'naics_code',
+            'Estimated Contract Value': 'estimated_value_text', # Keep original text
+            'Estimated Solicitation Date': 'release_date_raw', # Still needs date parsing
+            'Ultimate Completion Date': 'award_date_raw', # Still needs date parsing
+            'Estimated Award FY': 'award_fiscal_year',
+            'Organization': 'agency',
+            'Agency': 'parent_agency', # Additional agency info
+            'Place of Performance City': 'place_city',
+            'Place of Performance State': 'place_state', 
+            'Place of Performance Country': 'place_country',
+            'Contract Type': 'contract_type',
+            'Set Aside Type': 'set_aside'
         },
         date_column_configs=[
             {'column': 'release_date_raw', 'target_column': 'release_date', 'parse_type': 'datetime', 'store_as_date': True},
             {'column': 'award_date_raw', 'target_column': 'award_date', 'parse_type': 'datetime', 'store_as_date': True}
         ],
         value_column_configs=[
-            # For 'Estimated Contract Value' (renamed to 'estimated_value_raw')
-            {'column': 'estimated_value_raw', 'target_value_col': 'estimated_value', 'target_unit_col': 'est_value_unit', 'type': 'numeric'} # 'type':'numeric' implies direct conversion after cleaning
+            # No value parsing needed - keeping original text in estimated_value_text
         ],
         fiscal_year_configs=[
-            # For 'Estimated Award FY' (renamed to 'award_fiscal_year_raw')
-            {'column': 'award_fiscal_year_raw', 'target_column': 'award_fiscal_year', 'parse_type': 'direct'}, # 'direct' means try to use as is after pd.to_numeric
-            # Fallback: if 'award_fiscal_year' is still NA, derive from 'award_date' (parsed from 'award_date_raw')
+            # Award fiscal year is already mapped correctly, just ensure it's numeric
+            {'column': 'award_fiscal_year', 'target_column': 'award_fiscal_year', 'parse_type': 'direct'},
+            # Fallback: if 'award_fiscal_year' is still NA, derive from 'award_date'
             {'date_column': 'award_date', 'target_column': 'award_fiscal_year', 'parse_type': 'from_date_year'}
         ],
         # No specific place parsing needed beyond direct mapping if columns are already split.
@@ -82,29 +80,28 @@ class AcquisitionGatewayConfig(BaseScraperConfig):
         
         # db_column_rename_map maps from intermediate column names (after parsing/transformation) to final DB model fields
         db_column_rename_map={
-            'native_id_intermediate': 'native_id',
-            'title_intermediate': 'title',
-            'description_intermediate': 'description',
-            'naics_intermediate': 'naics',
-            'estimated_value': 'estimated_value', # Parsed from estimated_value_raw
-            'est_value_unit': 'est_value_unit',   # Created during value parsing
-            'release_date': 'release_date',       # Parsed from release_date_raw
-            'award_date': 'award_date',           # Parsed from award_date_raw
-            'award_fiscal_year': 'award_fiscal_year', # Parsed or derived
-            'agency_intermediate': 'agency',
-            'place_city_intermediate': 'place_city',
-            'place_state_intermediate': 'place_state',
-            'place_country_intermediate': 'place_country',
-            'contract_type_intermediate': 'contract_type',
-            'set_aside_intermediate': 'set_aside'
-            # 'id_hash' is generated and added separately by prepare_and_load_data
-            # 'extra_data' is generated and added separately
+            # Most fields are already correctly named from raw_column_rename_map
+            # Only map fields that need different names for the DB
+            'native_id': 'native_id',
+            'title': 'title',
+            'description': 'description',
+            'naics_code': 'naics_code',
+            'estimated_value_text': 'estimated_value_text',
+            'release_date': 'release_date',
+            'award_date': 'award_date',
+            'award_fiscal_year': 'award_fiscal_year',
+            'agency': 'agency',
+            'place_city': 'place_city',
+            'place_state': 'place_state',
+            'place_country': 'place_country',
+            'contract_type': 'contract_type',
+            'set_aside': 'set_aside'
         },
-        fields_for_id_hash=[ # These should be intermediate names, present after raw_column_rename_map and custom transforms
-            'native_id_intermediate', 
-            'naics_intermediate', 
-            'title_intermediate', 
-            'description_intermediate'
+        fields_for_id_hash=[ # These should match the column names after raw_column_rename_map
+            'native_id', 
+            'naics_code', 
+            'title', 
+            'description'
         ],
         # required_fields_for_load: Optional[List[str]] = None # Example: ['native_id', 'title'] if some fields are critical for DB record
     ))
@@ -113,4 +110,3 @@ class AcquisitionGatewayConfig(BaseScraperConfig):
     # navigation_timeout_ms: int = 100000 # Example
     # download_timeout_ms: int = 150000 # Example
     # interaction_timeout_ms: int = 45000 # Example
-```

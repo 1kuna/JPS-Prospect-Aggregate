@@ -5,9 +5,34 @@ from app.exceptions import NotFoundError, ScraperError, DatabaseError
 from app.utils.logger import logger
 from app.utils.db_utils import update_scraper_status
 from app.core.scrapers import SCRAPERS
+from app.config import active_config
+
+# Import all config classes
+from app.core.scrapers.configs.acquisition_gateway_config import AcquisitionGatewayConfig
+from app.core.scrapers.configs.doc_config import DOCConfig
+from app.core.scrapers.configs.dhs_config import DHSConfig
+from app.core.scrapers.configs.doj_config import DOJConfig
+from app.core.scrapers.configs.dos_config import DOSConfig
+from app.core.scrapers.configs.dot_config import DOTConfig
+from app.core.scrapers.configs.hhs_config import HHSConfig
+from app.core.scrapers.configs.ssa_config import SSAConfig
+from app.core.scrapers.configs.treasury_config import TreasuryConfig
 
 # Set up logging using the centralized utility
 logger = logger.bind(name="services.scraper_service")
+
+# Map scraper keys to their config classes
+SCRAPER_CONFIGS = {
+    "acq_gateway": AcquisitionGatewayConfig,
+    "doc": DOCConfig,
+    "dhs": DHSConfig,
+    "doj": DOJConfig,
+    "dos": DOSConfig,
+    "hhs": HHSConfig,
+    "ssa": SSAConfig,
+    "treasury": TreasuryConfig,
+    "dot": DOTConfig,
+}
 
 class ScraperService:
     @staticmethod
@@ -40,10 +65,37 @@ class ScraperService:
             if not ScraperClass:
                 raise ScraperError(f"No scraper configured for scraper_key: '{data_source.scraper_key}' for data source: {data_source.name}")
 
+            ConfigClass = SCRAPER_CONFIGS.get(data_source.scraper_key)
+            if not ConfigClass:
+                raise ScraperError(f"No config class found for scraper_key: '{data_source.scraper_key}' for data source: {data_source.name}")
+
+            # Create config instance with base_url from active_config if needed
+            config = ConfigClass()
+            
+            # Set base_url from active_config based on scraper_key
+            if data_source.scraper_key == 'acq_gateway' and not config.base_url:
+                config.base_url = active_config.ACQUISITION_GATEWAY_URL
+            elif data_source.scraper_key == 'dhs' and not config.base_url:
+                config.base_url = active_config.DHS_FORECAST_URL
+            elif data_source.scraper_key == 'doc' and not config.base_url:
+                config.base_url = active_config.COMMERCE_FORECAST_URL
+            elif data_source.scraper_key == 'doj' and not config.base_url:
+                config.base_url = active_config.DOJ_FORECAST_URL
+            elif data_source.scraper_key == 'dos' and not config.base_url:
+                config.base_url = active_config.DOS_FORECAST_URL
+            elif data_source.scraper_key == 'dot' and not config.base_url:
+                config.base_url = active_config.DOT_FORECAST_URL
+            elif data_source.scraper_key == 'hhs' and not config.base_url:
+                config.base_url = active_config.HHS_FORECAST_URL
+            elif data_source.scraper_key == 'ssa' and not config.base_url:
+                config.base_url = active_config.SSA_CONTRACT_FORECAST_URL
+            elif data_source.scraper_key == 'treasury' and not config.base_url:
+                config.base_url = active_config.TREASURY_FORECAST_URL
+
             # Initialize scraper with appropriate debug mode
             # DOT scraper needs special handling due to website blocking
             debug_mode = data_source.scraper_key == 'dot'  # Enable debug mode for DOT scraper
-            scraper_instance = ScraperClass(debug_mode=debug_mode)
+            scraper_instance = ScraperClass(config=config, debug_mode=debug_mode)
             
             # Update status to 'working' before starting
             update_scraper_status(source_id=data_source.id, status='working', details="Scrape process initiated.")

@@ -215,4 +215,3 @@ class DownloadMixin:
             self.logger.warning("_last_download_path attribute not found. Returning None.")
             return None
         return self._last_download_path
-```

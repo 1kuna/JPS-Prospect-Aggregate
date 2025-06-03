@@ -67,6 +67,7 @@ interface ProspectFilters {
   naics?: string;
   keywords?: string;
   agency?: string;
+  ai_enrichment?: 'all' | 'enhanced' | 'original';
 }
 
 const fetchProspects = async (page: number, limit: number, filters?: ProspectFilters): Promise<{ data: Prospect[], total: number, totalPages: number }> => {
@@ -147,26 +148,35 @@ const columns = [
   columnHelper.accessor((row) => {
     const naics = row.naics;
     const description = row.naics_description;
-    const source = row.naics_source;
     
     if (!naics) return 'N/A';
     
     const display = description ? `${naics} - ${description}` : naics;
-    const sourceIcon = source === 'llm_inferred' ? ' 🤖' : source === 'original' ? ' ✓' : '';
     
-    return display + sourceIcon;
+    return display;
   }, {
     id: 'naics',
     header: 'NAICS',
     cell: info => {
       const value = info.getValue();
       const row = info.row.original;
-      const title = row.naics_source === 'llm_inferred' 
-        ? `${value} (LLM Inferred)` 
+      const isAIEnhanced = row.naics_source === 'llm_inferred';
+      const title = isAIEnhanced 
+        ? `${value} (AI Classified)` 
         : row.naics_source === 'original' 
         ? `${value} (Original)` 
         : value;
-      return <div className="w-full truncate" title={title}>{value}</div>;
+      
+      return (
+        <div className="w-full truncate" title={title}>
+          <span className={isAIEnhanced ? 'text-blue-700 font-medium' : ''}>
+            {value}
+          </span>
+          {isAIEnhanced && (
+            <div className="w-2 h-2 bg-blue-500 rounded-full inline-block ml-2" title="AI Enhanced"></div>
+          )}
+        </div>
+      );
     },
     size: 200,
   }),
@@ -175,11 +185,11 @@ const columns = [
     if (row.estimated_value_single) {
       const single = parseFloat(row.estimated_value_single);
       if (single >= 1000000) {
-        return `$${(single / 1000000).toFixed(1)}M 🤖`;
+        return `$${(single / 1000000).toFixed(1)}M`;
       } else if (single >= 1000) {
-        return `$${(single / 1000).toFixed(0)}K 🤖`;
+        return `$${(single / 1000).toFixed(0)}K`;
       } else {
-        return `$${single.toFixed(0)} 🤖`;
+        return `$${single.toFixed(0)}`;
       }
     }
     
@@ -198,9 +208,19 @@ const columns = [
     cell: info => {
       const value = info.getValue();
       const row = info.row.original;
-      const isLLMProcessed = row.estimated_value_single ? ' (LLM Processed)' : '';
-      const title = `${value}${isLLMProcessed}`;
-      return <div className="w-full truncate" title={title}>{value}</div>;
+      const isAIProcessed = row.estimated_value_single !== null;
+      const title = isAIProcessed ? `${value} (AI Processed)` : value;
+      
+      return (
+        <div className="w-full truncate" title={title}>
+          <span className={isAIProcessed ? 'text-green-700 font-medium' : ''}>
+            {value}
+          </span>
+          {isAIProcessed && (
+            <div className="w-2 h-2 bg-green-500 rounded-full inline-block ml-2" title="AI Processed"></div>
+          )}
+        </div>
+      );
     },
     size: 120,
   }),
@@ -226,7 +246,8 @@ export default function Dashboard() {
   const [filters, setFilters] = useState<ProspectFilters>({
     naics: '',
     keywords: '',
-    agency: ''
+    agency: '',
+    ai_enrichment: 'all'
   });
 
   // const { data: countData, isLoading: isLoadingCount } = useQuery({
@@ -278,7 +299,7 @@ export default function Dashboard() {
   }, []);
   
   const clearFilters = useCallback(() => {
-    setFilters({ naics: '', keywords: '', agency: '' });
+    setFilters({ naics: '', keywords: '', agency: '', ai_enrichment: 'all' });
     setCurrentPage(1);
   }, []);
   
@@ -482,6 +503,23 @@ export default function Dashboard() {
                 />
               </div>
               
+              {/* AI Enrichment Filter */}
+              <div className="space-y-2">
+                <Label htmlFor="ai-enrichment" className="text-sm font-medium text-gray-700">
+                  AI Enrichment
+                </Label>
+                <Select value={filters.ai_enrichment || 'all'} onValueChange={(value: 'all' | 'enhanced' | 'original') => handleFilterChange('ai_enrichment', value)}>
+                  <SelectTrigger className="text-sm">
+                    <SelectValue placeholder="All prospects" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Prospects</SelectItem>
+                    <SelectItem value="enhanced">AI Enhanced Only</SelectItem>
+                    <SelectItem value="original">Original Data Only</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              
               {/* Filter Summary */}
               {hasActiveFilters && (
                 <div className="pt-2 border-t border-gray-200">
@@ -515,6 +553,17 @@ export default function Dashboard() {
                         <button 
                           onClick={() => handleFilterChange('agency', '')}
                           className="ml-1 text-purple-500 hover:text-purple-700"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    )}
+                    {filters.ai_enrichment && filters.ai_enrichment !== 'all' && (
+                      <div className="text-xs bg-indigo-50 text-indigo-700 px-2 py-1 rounded flex justify-between items-center">
+                        <span>AI: {filters.ai_enrichment === 'enhanced' ? 'Enhanced Only' : 'Original Only'}</span>
+                        <button 
+                          onClick={() => handleFilterChange('ai_enrichment', 'all')}
+                          className="ml-1 text-indigo-500 hover:text-indigo-700"
                         >
                           ×
                         </button>
@@ -702,10 +751,12 @@ export default function Dashboard() {
                       <p className="mt-1 text-gray-900">
                         {selectedProspect.naics || 'N/A'}
                         {selectedProspect.naics_source && (
-                          <span className="ml-2 text-xs text-gray-500">
-                            ({selectedProspect.naics_source === 'llm_inferred' ? 'LLM Inferred 🤖' : 
-                              selectedProspect.naics_source === 'original' ? 'Original ✓' : 
-                              selectedProspect.naics_source})
+                          <span className={`ml-2 text-xs px-2 py-1 rounded ${
+                            selectedProspect.naics_source === 'llm_inferred' 
+                              ? 'bg-blue-100 text-blue-700' 
+                              : 'bg-gray-100 text-gray-600'
+                          }`}>
+                            {selectedProspect.naics_source === 'llm_inferred' ? 'AI Classified' : 'Original'}
                           </span>
                         )}
                       </p>
@@ -730,10 +781,13 @@ export default function Dashboard() {
                     </p>
                   </div>
                   
-                  {/* LLM-parsed values */}
+                  {/* AI-parsed values */}
                   {(selectedProspect.estimated_value_min || selectedProspect.estimated_value_max || selectedProspect.estimated_value_single) && (
-                    <div>
-                      <span className="font-medium text-gray-700">LLM-Parsed Values 🤖:</span>
+                    <div className="bg-green-50 p-3 rounded-lg border border-green-200">
+                      <div className="flex items-center mb-2">
+                        <span className="font-medium text-green-800">AI-Processed Values</span>
+                        <div className="w-2 h-2 bg-green-500 rounded-full ml-2"></div>
+                      </div>
                       <div className="mt-1 space-y-1">
                         {selectedProspect.estimated_value_single && (
                           <p className="text-gray-900">
@@ -818,17 +872,20 @@ export default function Dashboard() {
               {/* Contact Information */}
               {(selectedProspect.primary_contact_email || selectedProspect.primary_contact_name) && (
                 <div>
-                  <h3 className="text-lg font-semibold mb-3 text-gray-900">Contact Information 🤖</h3>
-                  <div className="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-lg">
+                  <div className="flex items-center mb-3">
+                    <h3 className="text-lg font-semibold text-gray-900">Contact Information</h3>
+                    <div className="w-2 h-2 bg-orange-500 rounded-full ml-2" title="AI Extracted"></div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4 bg-orange-50 p-4 rounded-lg border border-orange-200">
                     {selectedProspect.primary_contact_name && (
                       <div>
-                        <span className="font-medium text-gray-700">Primary Contact:</span>
+                        <span className="font-medium text-orange-800">Primary Contact:</span>
                         <p className="mt-1 text-gray-900">{selectedProspect.primary_contact_name}</p>
                       </div>
                     )}
                     {selectedProspect.primary_contact_email && (
                       <div>
-                        <span className="font-medium text-gray-700">Email:</span>
+                        <span className="font-medium text-orange-800">Email:</span>
                         <p className="mt-1 text-gray-900">
                           <a href={`mailto:${selectedProspect.primary_contact_email}`} 
                              className="text-blue-600 hover:text-blue-800 underline">
@@ -838,7 +895,7 @@ export default function Dashboard() {
                       </div>
                     )}
                   </div>
-                  <p className="text-xs text-gray-500 mt-2">* Contact information extracted by LLM</p>
+                  <p className="text-xs text-gray-500 mt-2">AI-extracted contact information</p>
                 </div>
               )}
 

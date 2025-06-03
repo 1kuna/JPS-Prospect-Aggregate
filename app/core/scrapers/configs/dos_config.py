@@ -22,59 +22,53 @@ class DOSConfig(BaseScraperConfig):
 
     data_processing_rules: DataProcessingRules = field(default_factory=lambda: DataProcessingRules(
         custom_transform_functions=["_custom_dos_transforms"],
-        # Raw column names from the Excel file
         raw_column_rename_map={
-            'Contract Number': 'native_id_raw',
-            'Office Symbol': 'agency_raw',
-            'Requirement Title': 'title_raw',
-            'Requirement Description': 'description_raw',
-            'Estimated Value': 'estimated_value_raw1', # Primary estimate field
-            'Dollar Value': 'estimated_value_raw2',    # Secondary estimate field
-            'Place of Performance Country': 'place_country_raw',
-            'Place of Performance City': 'place_city_raw',
-            'Place of Performance State': 'place_state_raw',
-            'Award Type': 'contract_type_raw',
-            'Anticipated Award Date': 'award_date_raw', # Raw direct date
-            'Target Award Quarter': 'award_qtr_raw',    # Raw quarter string
-            'Fiscal Year': 'award_fiscal_year_raw', # Raw fiscal year number
-            'Anticipated Set Aside': 'set_aside_raw',
-            'Anticipated Solicitation Release Date': 'release_date_raw'
+            'Contract Number': 'native_id',
+            'Office Symbol': 'agency',
+            'Requirement Title': 'title',
+            'Requirement Description': 'description',
+            'Estimated Value': 'estimated_value_text', # Primary estimate field  
+            'Dollar Value': 'estimated_value_text2', # Secondary estimate field
+            'Place of Performance Country': 'place_country',
+            'Place of Performance City': 'place_city',
+            'Place of Performance State': 'place_state',
+            'Award Type': 'contract_type',
+            'Anticipated Award Date': 'award_date_raw', # Still needs date parsing
+            'Target Award Quarter': 'award_qtr_raw', # For custom transform
+            'Fiscal Year': 'award_fiscal_year',
+            'Anticipated Set Aside': 'set_aside',
+            'Anticipated Solicitation Release Date': 'release_date_raw' # Still needs date parsing
         },
-        # Declarative parsing for simple fields (if any) can be defined here.
-        # Most complex parsing (dates, values with priority) is handled in _custom_dos_transforms.
-        # For example, if 'place_country_raw' was just 'place_country', no specific place_column_config needed here if direct map.
-        # The _custom_dos_transforms will create final versions of columns like 'award_date', 'award_fiscal_year', 'estimated_value', etc.
-        
-        # db_column_rename_map maps from columns *after all transforms* (including custom) to DB fields.
-        db_column_rename_map={
-            'native_id_raw': 'native_id', # Assuming direct map after initial rename
-            'agency_raw': 'agency',
-            'title_raw': 'title',
-            'description_raw': 'description',
-            'place_country_final': 'place_country', # Created/defaulted in custom
-            'place_city_final': 'place_city',       # Created/defaulted in custom
-            'place_state_final': 'place_state',     # Created/defaulted in custom
-            'contract_type_raw': 'contract_type',
-            'award_date_final': 'award_date',           # Created in custom
-            'award_fiscal_year_final': 'award_fiscal_year', # Created in custom
-            'set_aside_raw': 'set_aside',
-            'release_date_final': 'release_date',       # Created in custom (parsed from release_date_raw)
-            'estimated_value_final': 'estimated_value', # Created in custom
-            'est_value_unit_final': 'est_value_unit',   # Created in custom
-            'naics_final': 'naics',                     # Created in custom (set to NA)
-            'row_index': 'row_index'                    # Created in custom
-        },
-        fields_for_id_hash=[ # These should be names of columns available after all transforms
-            'native_id_raw', 
-            'naics_final', 
-            'title_raw', 
-            'description_raw', 
-            'place_city_final', 
-            'place_state_final', 
-            'release_date_final', 
-            'award_date_final', 
-            'row_index'
+        date_column_configs=[
+            {'column': 'award_date_raw', 'target_column': 'award_date', 'parse_type': 'datetime', 'store_as_date': True},
+            {'column': 'release_date_raw', 'target_column': 'release_date', 'parse_type': 'datetime', 'store_as_date': True}
         ],
-        dropna_how_all: True # Initial drop of fully empty rows
+        value_column_configs=[
+            # No value parsing needed - keeping original text in estimated_value_text
+        ],
+        db_column_rename_map={
+            # Most fields are already correctly named from raw_column_rename_map
+            'native_id': 'native_id',
+            'agency': 'agency',
+            'title': 'title',
+            'description': 'description',
+            'place_country': 'place_country',
+            'place_city': 'place_city',
+            'place_state': 'place_state',
+            'contract_type': 'contract_type',
+            'award_date': 'award_date',
+            'award_fiscal_year': 'award_fiscal_year',
+            'set_aside': 'set_aside',
+            'release_date': 'release_date',
+            'estimated_value_text': 'estimated_value_text', # Custom transform will consolidate
+            'naics_code': 'naics_code' # Custom transform will set to null
+        },
+        fields_for_id_hash=[
+            'native_id', 
+            'title', 
+            'description', 
+            'place_city', 
+            'place_state'
+        ],
+        dropna_how_all=True
     ))
-```

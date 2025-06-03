@@ -27,8 +27,9 @@ def get_prospects_route():
         naics_filter = request.args.get('naics', '', type=str)
         keywords_filter = request.args.get('keywords', '', type=str)
         agency_filter = request.args.get('agency', '', type=str)
+        ai_enrichment_filter = request.args.get('ai_enrichment', 'all', type=str)
         
-        logger.debug(f"Requesting prospects with page={page}, limit={limit}, sort_by={sort_by}, sort_order={sort_order}, search='{search_term}', naics='{naics_filter}', keywords='{keywords_filter}', agency='{agency_filter}'")
+        logger.debug(f"Requesting prospects with page={page}, limit={limit}, sort_by={sort_by}, sort_order={sort_order}, search='{search_term}', naics='{naics_filter}', keywords='{keywords_filter}', agency='{agency_filter}', ai_enrichment='{ai_enrichment_filter}'")
         
         # Construct the base query
         base_query = Prospect.query
@@ -57,6 +58,15 @@ def get_prospects_route():
         # Apply agency filter
         if agency_filter:
             base_query = base_query.filter(Prospect.agency.ilike(f'%{agency_filter}%'))
+            
+        # Apply AI enrichment filter
+        if ai_enrichment_filter == 'enhanced':
+            # Show only prospects that have been processed by AI (have LLM timestamp)
+            base_query = base_query.filter(Prospect.ollama_processed_at.isnot(None))
+        elif ai_enrichment_filter == 'original':
+            # Show only prospects that have NOT been processed by AI
+            base_query = base_query.filter(Prospect.ollama_processed_at.is_(None))
+        # 'all' or any other value means no filter applied
         
         # Apply sorting
         sort_column = getattr(Prospect, sort_by, Prospect.id) # Default to Prospect.id if sort_by is invalid

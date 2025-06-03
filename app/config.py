@@ -12,9 +12,11 @@ LOGS_DIR = os.path.join(BASE_DIR, 'logs')
 DATA_DIR = os.path.join(BASE_DIR, 'data')
 RAW_DATA_DIR = os.path.join(DATA_DIR, 'raw')
 TEMP_DIR = os.path.join(BASE_DIR, 'temp')
+ERROR_SCREENSHOTS_DIR = os.path.join(LOGS_DIR, 'error_screenshots')
+ERROR_HTML_DIR = os.path.join(LOGS_DIR, 'error_html')
 
 # Ensure directories exist (directly, without using file_utils to avoid circular imports)
-for directory in [LOGS_DIR, DATA_DIR, RAW_DATA_DIR, TEMP_DIR]:
+for directory in [LOGS_DIR, DATA_DIR, RAW_DATA_DIR, TEMP_DIR, ERROR_SCREENSHOTS_DIR, ERROR_HTML_DIR]:
     os.makedirs(directory, exist_ok=True)
 
 # Define all configuration variables at the module level
@@ -72,6 +74,8 @@ class Config:
     DATA_DIR: str = DATA_DIR
     RAW_DATA_DIR: str = RAW_DATA_DIR
     TEMP_DIR: str = TEMP_DIR
+    ERROR_SCREENSHOTS_DIR: str = ERROR_SCREENSHOTS_DIR
+    ERROR_HTML_DIR: str = ERROR_HTML_DIR
     
     # Playwright timeouts (in milliseconds)
     PAGE_NAVIGATION_TIMEOUT: int = PAGE_NAVIGATION_TIMEOUT

@@ -22,21 +22,20 @@ class DHSConfig(BaseScraperConfig):
     data_processing_rules: DataProcessingRules = field(default_factory=lambda: DataProcessingRules(
         custom_transform_functions=["_custom_dhs_transforms"],
         raw_column_rename_map={
-            'APFS Number': 'native_id_raw',
-            'NAICS': 'naics_raw',
-            'Component': 'agency_raw',
-            'Title': 'title_raw',
-            'Contract Type': 'contract_type_raw',
-            'Contract Vehicle': 'contract_vehicle_extra', # For extra_data
-            'Dollar Range': 'estimated_value_raw',
-            'Small Business Set-Aside': 'set_aside_raw',
-            'Small Business Program': 'small_business_program_extra', # For extra_data
-            'Contract Status': 'contract_status_extra', # For extra_data
-            'Place of Performance City': 'place_city_raw',
-            'Place of Performance State': 'place_state_raw',
-            # No 'Place of Performance Country' in source, will be defaulted by custom transform
-            'Description': 'description_raw',
-            'Estimated Solicitation Release': 'release_date_raw',
+            'APFS Number': 'native_id',
+            'NAICS': 'naics_code',
+            'Component': 'agency',
+            'Title': 'title',
+            'Contract Type': 'contract_type',
+            'Contract Vehicle': 'contract_vehicle', # Will go to extras
+            'Dollar Range': 'estimated_value_text', # Keep original text
+            'Small Business Set-Aside': 'set_aside',
+            'Small Business Program': 'small_business_program', # Will go to extras
+            'Contract Status': 'contract_status', # Will go to extras
+            'Place of Performance City': 'place_city',
+            'Place of Performance State': 'place_state',
+            'Description': 'description',
+            'Estimated Solicitation Release': 'release_date_raw', # Still needs date parsing
             'Award Quarter': 'award_qtr_raw' # For custom award_date and award_fiscal_year
         },
         date_column_configs=[
@@ -48,37 +47,32 @@ class DHSConfig(BaseScraperConfig):
             }
         ],
         value_column_configs=[
-            {'column': 'estimated_value_raw', 
-             'target_value_col': 'estimated_value', 
-             'target_unit_col': 'est_value_unit'
-            }
+            # No value parsing needed - keeping original text in estimated_value_text
         ],
         db_column_rename_map={
-            'native_id_raw': 'native_id',
-            'naics_raw': 'naics',
-            'agency_raw': 'agency',
-            'title_raw': 'title',
-            'description_raw': 'description',
-            'contract_type_raw': 'contract_type',
+            # Most fields are already correctly named from raw_column_rename_map
+            'native_id': 'native_id',
+            'naics_code': 'naics_code',
+            'agency': 'agency',
+            'title': 'title',
+            'description': 'description',
+            'contract_type': 'contract_type',
+            'estimated_value_text': 'estimated_value_text',
             'release_date': 'release_date',
             'award_date': 'award_date',
             'award_fiscal_year': 'award_fiscal_year',
-            'estimated_value': 'estimated_value',
-            'est_value_unit': 'est_value_unit',
-            'set_aside_raw': 'set_aside',
-            'place_city_raw': 'place_city',
-            'place_state_raw': 'place_state',
-            'place_country_final': 'place_country', # Created by _custom_dhs_transforms
+            'set_aside': 'set_aside',
+            'place_city': 'place_city',
+            'place_state': 'place_state',
+            'place_country': 'place_country' # Created by custom transform
         },
         fields_for_id_hash=[ # Names after raw rename and custom transforms
-            'native_id_raw', 
-            'naics_raw', 
-            'title_raw', 
-            'description_raw', 
-            'place_city_raw', 
-            'place_state_raw'
-            # Note: row_index was not in original DHS scraper's hash fields
+            'native_id', 
+            'naics_code', 
+            'title', 
+            'description', 
+            'place_city', 
+            'place_state'
         ],
-        dropna_how_all: True # This is the default in DataProcessingRules, explicitly stated for clarity
+        dropna_how_all=True # This is the default in DataProcessingRules, explicitly stated for clarity
     ))
-```

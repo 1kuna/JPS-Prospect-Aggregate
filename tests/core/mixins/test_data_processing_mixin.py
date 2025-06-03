@@ -226,5 +226,3 @@ def test_prepare_load_extra_data_generation(mock_bulk_upsert, scraper_instance_d
     assert prospects_data[0]['title'] == "Title1"
     assert 'extra_data' in prospects_data[0]
     assert prospects_data[0]['extra_data'] == {"unmapped_col1": "ExtraValue1", "unmapped_col2": 123.45}
-
-```

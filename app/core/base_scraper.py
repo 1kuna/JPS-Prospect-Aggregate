@@ -208,44 +208,40 @@ class BaseScraper(ABC):
     def _handle_download(self, download: Download) -> None:
         """
         Callback function to handle downloads initiated by Playwright.
-        NOTE: The core logic of this method is intended to be moved to DownloadMixin.
-        This method in BaseScraper will likely be removed or become a simple wrapper/placeholder.
+        This method delegates to DownloadMixin if available, otherwise implements basic functionality.
         """
-        # try:
-        #     suggested_filename = download.suggested_filename
-        #     if not suggested_filename:
-        #         self.logger.warning("Download suggested_filename is empty. Using default.")
-        #         suggested_filename = f"{self.source_name.lower().replace(' ', '_')}_download.dat"
+        # Check if this instance has the DownloadMixin's method
+        if hasattr(self, '_handle_download_event'):
+            # Use the mixin's implementation
+            self._handle_download_event(download)
+        else:
+            # Fallback implementation for scrapers that don't use DownloadMixin
+            try:
+                suggested_filename = download.suggested_filename
+                if not suggested_filename:
+                    self.logger.warning("Download suggested_filename is empty. Using default.")
+                    suggested_filename = f"{self.source_name.lower().replace(' ', '_')}_download.dat"
 
-        #     file_name_part, ext = os.path.splitext(suggested_filename)
-        #     if not ext:
-        #         self.logger.warning(f"Filename '{suggested_filename}' has no extension. Defaulting to '.dat'.")
-        #         ext = '.dat'
+                file_name_part, ext = os.path.splitext(suggested_filename)
+                if not ext:
+                    self.logger.warning(f"Filename '{suggested_filename}' has no extension. Defaulting to '.dat'.")
+                    ext = '.dat'
 
-        #     timestamp_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        #     final_filename = f"{self.source_name.lower().replace(' ', '_')}_{timestamp_str}{ext}"
-            
-        #     # Ensure self.download_path (scraper's specific download dir) exists
-        #     ensure_directory(self.download_path) 
-            
-        #     final_save_path = os.path.join(self.download_path, final_filename)
+                timestamp_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                final_filename = f"{self.source_name.lower().replace(' ', '_')}_{timestamp_str}{ext}"
+                
+                # Ensure self.download_path (scraper's specific download dir) exists
+                ensure_directory(self.download_path) 
+                
+                final_save_path = os.path.join(self.download_path, final_filename)
 
-        #     download.save_as(final_save_path)
-        #     self.logger.info(f"Successfully saved download to: {final_save_path}")
-        #     self._last_download_path = final_save_path
-        # except Exception as e:
-        #     self.logger.error(f"Error in _handle_download: {str(e)}")
-        #     self.logger.error(traceback.format_exc())
-        #     self._last_download_path = None # Ensure path is None on error
-        self.logger.info("BaseScraper._handle_download called. Logic to be moved to DownloadMixin.")
-        # Example of how it might call a mixin method if this class inherited from it:
-        # if hasattr(super(), '_handle_download_event'): # Check if mixin method exists
-        #     self._last_download_path = super()._handle_download_event(download)
-        # else:
-        #     self.logger.warning("DownloadMixin._handle_download_event not found.")
-        #     # Fallback or raise error
-        #     self._last_download_path = None
-        pass # Placeholder
+                download.save_as(final_save_path)
+                self.logger.info(f"Successfully saved download to: {final_save_path}")
+                self._last_download_path = final_save_path
+            except Exception as e:
+                self.logger.error(f"Error in _handle_download: {str(e)}")
+                self.logger.error(traceback.format_exc())
+                self._last_download_path = None # Ensure path is None on error
     
     def cleanup_browser(self):
         """
