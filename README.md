@@ -1,23 +1,87 @@
-# JPS Proposal Forecast Aggregator
+# JPS Prospect Aggregate
 
-A dashboard application that scrapes data from various government procurement forecast sites and organizes them into a searchable, sortable dashboard.
+JPS Prospect Aggregate collects U.S. government procurement forecasts and surfaces them through a Flask API and a React dashboard. Playwright-driven scrapers pull data from agency websites and store the results in a SQLite database via SQLAlchemy (other backends can be configured). Helper scripts populate the database, run scrapers and optionally enhance prospect records using `qwen3` via Ollama.
 
-## Features
+## Repository Layout
 
-- Automated scraping of procurement forecast data from government websites
-- Data storage in a structured SQLite database (configurable for other databases)
-- Web-based dashboard for viewing and analyzing procurement opportunities
-- Filtering and sorting capabilities by various criteria
-- Scheduled data refresh to keep information current
-- Asynchronous task processing with Celery for improved performance
-- Health monitoring of scrapers with automated alerts
-- Robust logging with Loguru
-- Type checking with MyPy
-- Code formatting with Black
-- Data validation with Pydantic
+```
+app/              Flask application, API routes and scrapers
+frontend-react/   React (Vite + TypeScript) dashboard
+scripts/          Command line utilities and helpers
+migrations/       Alembic migration scripts
+tests/            Pytest based unit tests
+```
+
+Additional design notes are located in `docs/`.
+
+## Current Features
+
+- Playwright-based scrapers collect forecasts from several federal agencies
+- SQLite database managed via SQLAlchemy (other back ends can be configured)
+- Flask API exposing prospects, data sources and scraper operations
+- React dashboard for browsing and deduplicating opportunities
+- Duplicate detection and review workflow
+- Optional LLM enrichment of contract values and contacts
+- Centralized logging using Loguru
+- Script for basic scraper health checks
+- Database migrations handled with Alembic
+- Helper scripts for running scrapers and LLM enrichment
+
+## Setup
+
+1. Create and activate a Python virtual environment (Python 3.11 is recommended)
+   ```bash
+   python3 -m venv venv
+   source venv/bin/activate
+   ```
+2. Install backend dependencies and Playwright browsers
+   ```bash
+   pip install -r requirements.txt
+   playwright install
+   ```
+3. Copy `.env.example` to `.env` and adjust any settings if required.
+4. Initialize the database and populate data source records
+   ```bash
+   flask db upgrade
+   python scripts/populate_data_sources.py
+   ```
+5. Install front-end dependencies
+   ```bash
+   cd frontend-react
+   npm install
+   cd ..
+   ```
+
+## Running
+
+Start the Flask API using Waitress:
+```bash
+python run.py
+```
+The React application can be launched separately:
+```bash
+cd frontend-react
+npm run dev
+```
+Scrapers are run via the helper script:
+```bash
+python scripts/run_all_scrapers.py
+```
+LLM based enrichment can be executed when Ollama is available:
+```bash
+python scripts/enrichment/enhance_prospects_with_llm.py values --limit 100
+```
+
+## Testing
+
+Execute all unit tests with:
+```bash
+pytest
+```
 
 ## Current Data Sources
 
+The following agencies are configured through `populate_data_sources.py`:
 - [Acquisition Gateway](https://acquisitiongateway.gov/forecast)
 - [Social Security Administration](https://www.ssa.gov/oag/business/forecast.html)
 - [Department of Commerce](https://www.commerce.gov/oam/industry/procurement-forecasts)
@@ -32,3 +96,14 @@ A dashboard application that scrapes data from various government procurement fo
 - [Department of Veterans Affairs](https://acquisitiongateway.gov/forecast)
 - [General Services Administration](https://acquisitiongateway.gov/forecast)
 - [Nuclear Regulatory Commission](https://acquisitiongateway.gov/forecast)
+
+See `docs/scraper_architecture.md` and `docs/CONTRACT_MAPPING_LLM.md` for detailed implementation notes.
+
+## Upcoming Features
+
+- Automated refresh schedule to keep data sources up to date
+- Background task queue for scrapers and enrichment
+- Expanded logging configuration
+- Faster and more efficient processing pipeline
+- Scraper health alerts with notifications
+- Go/no-go tagging with user attribution
