@@ -31,8 +31,14 @@ interface Prospect {
   description: string | null;
   agency: string | null;
   naics: string | null;
+  naics_description: string | null; // NEW: NAICS description
+  naics_source: string | null; // NEW: 'original', 'llm_inferred', 'llm_enhanced'
   estimated_value: string | null; // Represented as string in to_dict
   est_value_unit: string | null;
+  estimated_value_text: string | null; // NEW: Original value as text
+  estimated_value_min: string | null; // NEW: LLM-parsed minimum
+  estimated_value_max: string | null; // NEW: LLM-parsed maximum
+  estimated_value_single: string | null; // NEW: LLM best estimate
   release_date: string | null; // ISO date string
   award_date: string | null; // ISO date string
   award_fiscal_year: number | null;
@@ -41,7 +47,11 @@ interface Prospect {
   place_country: string | null;
   contract_type: string | null;
   set_aside: string | null;
+  primary_contact_email: string | null; // NEW: LLM-extracted email
+  primary_contact_name: string | null; // NEW: LLM-extracted name
   loaded_at: string | null; // ISO datetime string
+  ollama_processed_at: string | null; // NEW: When LLM processing completed
+  ollama_model_version: string | null; // NEW: Which LLM version was used
   extra: Record<string, any> | null; // JSON object
   source_id: number | null;
   source_name: string | null; // Name of the data source
@@ -134,11 +144,63 @@ const columns = [
     },
     size: 200,
   }),
-  columnHelper.accessor('naics', {
+  columnHelper.accessor((row) => {
+    const naics = row.naics;
+    const description = row.naics_description;
+    const source = row.naics_source;
+    
+    if (!naics) return 'N/A';
+    
+    const display = description ? `${naics} - ${description}` : naics;
+    const sourceIcon = source === 'llm_inferred' ? ' 🤖' : source === 'original' ? ' ✓' : '';
+    
+    return display + sourceIcon;
+  }, {
+    id: 'naics',
     header: 'NAICS',
     cell: info => {
       const value = info.getValue();
-      return <div className="w-full truncate" title={value || 'N/A'}>{value || 'N/A'}</div>;
+      const row = info.row.original;
+      const title = row.naics_source === 'llm_inferred' 
+        ? `${value} (LLM Inferred)` 
+        : row.naics_source === 'original' 
+        ? `${value} (Original)` 
+        : value;
+      return <div className="w-full truncate" title={title}>{value}</div>;
+    },
+    size: 200,
+  }),
+  columnHelper.accessor((row) => {
+    // Show enhanced estimated value if available, otherwise fall back to original
+    if (row.estimated_value_single) {
+      const single = parseFloat(row.estimated_value_single);
+      if (single >= 1000000) {
+        return `$${(single / 1000000).toFixed(1)}M 🤖`;
+      } else if (single >= 1000) {
+        return `$${(single / 1000).toFixed(0)}K 🤖`;
+      } else {
+        return `$${single.toFixed(0)} 🤖`;
+      }
+    }
+    
+    if (row.estimated_value_text) {
+      return row.estimated_value_text;
+    }
+    
+    if (row.estimated_value) {
+      return row.estimated_value;
+    }
+    
+    return 'N/A';
+  }, {
+    id: 'estimated_value',
+    header: 'Est. Value',
+    cell: info => {
+      const value = info.getValue();
+      const row = info.row.original;
+      const isLLMProcessed = row.estimated_value_single ? ' (LLM Processed)' : '';
+      const title = `${value}${isLLMProcessed}`;
+      return <div className="w-full truncate" title={title}>{value}</div>;
     },
     size: 120,
   }),
@@ -637,7 +699,19 @@ export default function Dashboard() {
                     </div>
                     <div>
                       <span className="font-medium text-gray-700">NAICS:</span>
-                      <p className="mt-1 text-gray-900">{selectedProspect.naics || 'N/A'}</p>
+                      <p className="mt-1 text-gray-900">
+                        {selectedProspect.naics || 'N/A'}
+                        {selectedProspect.naics_source && (
+                          <span className="ml-2 text-xs text-gray-500">
+                            ({selectedProspect.naics_source === 'llm_inferred' ? 'LLM Inferred 🤖' : 
+                              selectedProspect.naics_source === 'original' ? 'Original ✓' : 
+                              selectedProspect.naics_source})
+                          </span>
+                        )}
+                      </p>
+                      {selectedProspect.naics_description && (
+                        <p className="mt-1 text-sm text-gray-600">{selectedProspect.naics_description}</p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -646,25 +720,50 @@ export default function Dashboard() {
               {/* Financial Information */}
               <div>
                 <h3 className="text-lg font-semibold mb-3 text-gray-900">Financial Information</h3>
-                <div className="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-lg">
+                <div className="grid grid-cols-1 gap-4 bg-gray-50 p-4 rounded-lg">
+                  {/* Original estimated value */}
                   <div>
-                    <span className="font-medium text-gray-700">Estimated Value:</span>
+                    <span className="font-medium text-gray-700">Original Estimated Value:</span>
                     <p className="mt-1 text-gray-900">
-                      {selectedProspect.estimated_value || 'N/A'}
+                      {selectedProspect.estimated_value_text || selectedProspect.estimated_value || 'N/A'}
                       {selectedProspect.est_value_unit && ` ${selectedProspect.est_value_unit}`}
                     </p>
                   </div>
-                  <div>
-                    <span className="font-medium text-gray-700">Contract Type:</span>
-                    <p className="mt-1 text-gray-900">{selectedProspect.contract_type || 'N/A'}</p>
-                  </div>
-                  <div>
-                    <span className="font-medium text-gray-700">Set Aside:</span>
-                    <p className="mt-1 text-gray-900">{selectedProspect.set_aside || 'N/A'}</p>
-                  </div>
-                  <div>
-                    <span className="font-medium text-gray-700">Award Fiscal Year:</span>
-                    <p className="mt-1 text-gray-900">{selectedProspect.award_fiscal_year || 'N/A'}</p>
+                  
+                  {/* LLM-parsed values */}
+                  {(selectedProspect.estimated_value_min || selectedProspect.estimated_value_max || selectedProspect.estimated_value_single) && (
+                    <div>
+                      <span className="font-medium text-gray-700">LLM-Parsed Values 🤖:</span>
+                      <div className="mt-1 space-y-1">
+                        {selectedProspect.estimated_value_single && (
+                          <p className="text-gray-900">
+                            <span className="text-sm text-gray-600">Best Estimate:</span> ${parseFloat(selectedProspect.estimated_value_single).toLocaleString()}
+                          </p>
+                        )}
+                        {(selectedProspect.estimated_value_min || selectedProspect.estimated_value_max) && (
+                          <p className="text-gray-900">
+                            <span className="text-sm text-gray-600">Range:</span> 
+                            ${selectedProspect.estimated_value_min ? parseFloat(selectedProspect.estimated_value_min).toLocaleString() : '?'} - 
+                            ${selectedProspect.estimated_value_max ? parseFloat(selectedProspect.estimated_value_max).toLocaleString() : '?'}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <span className="font-medium text-gray-700">Contract Type:</span>
+                      <p className="mt-1 text-gray-900">{selectedProspect.contract_type || 'N/A'}</p>
+                    </div>
+                    <div>
+                      <span className="font-medium text-gray-700">Set Aside:</span>
+                      <p className="mt-1 text-gray-900">{selectedProspect.set_aside || 'N/A'}</p>
+                    </div>
+                    <div>
+                      <span className="font-medium text-gray-700">Award Fiscal Year:</span>
+                      <p className="mt-1 text-gray-900">{selectedProspect.award_fiscal_year || 'N/A'}</p>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -716,6 +815,33 @@ export default function Dashboard() {
                 </div>
               )}
 
+              {/* Contact Information */}
+              {(selectedProspect.primary_contact_email || selectedProspect.primary_contact_name) && (
+                <div>
+                  <h3 className="text-lg font-semibold mb-3 text-gray-900">Contact Information 🤖</h3>
+                  <div className="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-lg">
+                    {selectedProspect.primary_contact_name && (
+                      <div>
+                        <span className="font-medium text-gray-700">Primary Contact:</span>
+                        <p className="mt-1 text-gray-900">{selectedProspect.primary_contact_name}</p>
+                      </div>
+                    )}
+                    {selectedProspect.primary_contact_email && (
+                      <div>
+                        <span className="font-medium text-gray-700">Email:</span>
+                        <p className="mt-1 text-gray-900">
+                          <a href={`mailto:${selectedProspect.primary_contact_email}`} 
+                             className="text-blue-600 hover:text-blue-800 underline">
+                            {selectedProspect.primary_contact_email}
+                          </a>
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-500 mt-2">* Contact information extracted by LLM</p>
+                </div>
+              )}
+
               {/* System Information */}
               <div>
                 <h3 className="text-lg font-semibold mb-3 text-gray-900">System Information</h3>
@@ -740,6 +866,20 @@ export default function Dashboard() {
                     <span className="font-medium text-gray-700">ID:</span>
                     <p className="mt-1 text-gray-900 font-mono text-sm">{selectedProspect.id}</p>
                   </div>
+                  {selectedProspect.ollama_processed_at && (
+                    <>
+                      <div>
+                        <span className="font-medium text-gray-700">LLM Processed:</span>
+                        <p className="mt-1 text-gray-900">
+                          {new Date(selectedProspect.ollama_processed_at).toLocaleString()}
+                        </p>
+                      </div>
+                      <div>
+                        <span className="font-medium text-gray-700">LLM Model:</span>
+                        <p className="mt-1 text-gray-900">{selectedProspect.ollama_model_version || 'N/A'}</p>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             </div>

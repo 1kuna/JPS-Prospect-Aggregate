@@ -15,8 +15,14 @@ class Prospect(db.Model): # Renamed back to Prospect
     description = Column(Text)
     agency = Column(Text)
     naics = Column(String, index=True)
+    naics_description = Column(String(200))  # New: NAICS description
+    naics_source = Column(String(20), index=True)  # New: 'original', 'llm_inferred', 'llm_enhanced'
     estimated_value = Column(Numeric)
     est_value_unit = Column(String)
+    estimated_value_text = Column(String(100))  # New: Original text value
+    estimated_value_min = Column(Numeric(15, 2))  # New: LLM-parsed minimum
+    estimated_value_max = Column(Numeric(15, 2))  # New: LLM-parsed maximum
+    estimated_value_single = Column(Numeric(15, 2), index=True)  # New: LLM best estimate
     release_date = Column(Date, index=True)
     award_date = Column(Date, index=True)
     award_fiscal_year = Column(Integer, index=True, nullable=True)
@@ -25,7 +31,11 @@ class Prospect(db.Model): # Renamed back to Prospect
     place_country = Column(Text)
     contract_type = Column(Text)
     set_aside = Column(Text)
+    primary_contact_email = Column(String(100), index=True)  # New: LLM-extracted email
+    primary_contact_name = Column(String(100))  # New: LLM-extracted name
     loaded_at = Column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now(), index=True)
+    ollama_processed_at = Column(TIMESTAMP(timezone=True), index=True)  # New: When LLM processing completed
+    ollama_model_version = Column(String(50))  # New: Which LLM version was used
     extra = Column(JSON)
 
     # Foreign Key to DataSource
@@ -64,8 +74,14 @@ class Prospect(db.Model): # Renamed back to Prospect
             "description": self.description,
             "agency": self.agency,
             "naics": self.naics,
+            "naics_description": self.naics_description,
+            "naics_source": self.naics_source,
             "estimated_value": str(self.estimated_value) if self.estimated_value is not None else None,
             "est_value_unit": self.est_value_unit,
+            "estimated_value_text": self.estimated_value_text,
+            "estimated_value_min": str(self.estimated_value_min) if self.estimated_value_min is not None else None,
+            "estimated_value_max": str(self.estimated_value_max) if self.estimated_value_max is not None else None,
+            "estimated_value_single": str(self.estimated_value_single) if self.estimated_value_single is not None else None,
             "release_date": self.release_date.isoformat() if self.release_date else None,
             "award_date": self.award_date.isoformat() if self.award_date else None,
             "award_fiscal_year": self.award_fiscal_year,
@@ -74,7 +90,11 @@ class Prospect(db.Model): # Renamed back to Prospect
             "place_country": self.place_country,
             "contract_type": self.contract_type,
             "set_aside": self.set_aside,
+            "primary_contact_email": self.primary_contact_email,
+            "primary_contact_name": self.primary_contact_name,
             "loaded_at": self.loaded_at.isoformat() if self.loaded_at else None,
+            "ollama_processed_at": self.ollama_processed_at.isoformat() if self.ollama_processed_at else None,
+            "ollama_model_version": self.ollama_model_version,
             "extra": clean_value(self.extra) if self.extra else None,
             "source_id": self.source_id,
             "source_name": self.data_source.name if self.data_source else None,
@@ -89,8 +109,11 @@ class InferredProspectData(db.Model): # Renamed back
     inferred_requirement_title = Column(Text, nullable=True)
     inferred_requirement_description = Column(Text, nullable=True)
     inferred_naics = Column(String, nullable=True)
+    inferred_naics_description = Column(String(200), nullable=True)  # New
     inferred_estimated_value = Column(Float, nullable=True)
     inferred_est_value_unit = Column(String, nullable=True)
+    inferred_estimated_value_min = Column(Float, nullable=True)  # New
+    inferred_estimated_value_max = Column(Float, nullable=True)  # New
     inferred_solicitation_date = Column(Text, nullable=True)
     inferred_award_date = Column(Text, nullable=True)
     inferred_place_city = Column(Text, nullable=True)
@@ -98,6 +121,9 @@ class InferredProspectData(db.Model): # Renamed back
     inferred_place_country = Column(Text, nullable=True)
     inferred_contract_type = Column(Text, nullable=True)
     inferred_set_aside = Column(Text, nullable=True)
+    inferred_primary_contact_email = Column(String(100), nullable=True)  # New
+    inferred_primary_contact_name = Column(String(100), nullable=True)  # New
+    llm_confidence_scores = Column(JSON, nullable=True)  # New: Store confidence for each field
     inferred_at = Column(TIMESTAMP(timezone=False), server_default=func.now(), onupdate=func.now())
     inferred_by_model = Column(String, nullable=True)
 
