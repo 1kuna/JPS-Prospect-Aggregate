@@ -50,6 +50,13 @@ def get_llm_status():
         
         contact_extraction_percentage = (contact_extracted_count / total_prospects * 100) if total_prospects > 0 else 0
         
+        # Get title enhancement statistics
+        title_enhanced_count = db.session.query(func.count(Prospect.id)).filter(
+            Prospect.ai_enhanced_title.isnot(None)
+        ).scalar()
+        
+        title_enhancement_percentage = (title_enhanced_count / total_prospects * 100) if total_prospects > 0 else 0
+        
         # Get last processed timestamp and model version
         last_processed_prospect = db.session.query(Prospect).filter(
             Prospect.ollama_processed_at.isnot(None)
@@ -74,6 +81,10 @@ def get_llm_status():
                 "extracted_count": contact_extracted_count,
                 "total_percentage": round(contact_extraction_percentage, 1)
             },
+            "title_enhancement": {
+                "enhanced_count": title_enhanced_count,
+                "total_percentage": round(title_enhancement_percentage, 1)
+            },
             "last_processed": last_processed,
             "model_version": model_version
         }
@@ -97,7 +108,7 @@ def trigger_llm_enhancement():
         limit = data.get('limit', 10)  # Changed default from 100 to 10
         
         # Validate enhancement type
-        valid_types = ['values', 'contacts', 'naics', 'all']
+        valid_types = ['values', 'contacts', 'naics', 'titles', 'all']
         if enhancement_type not in valid_types:
             return jsonify({"error": f"Invalid enhancement type. Must be one of: {valid_types}"}), 400
             
@@ -246,7 +257,7 @@ def start_iterative_enhancement():
         enhancement_type = data.get('enhancement_type', 'all')
         
         # Validate enhancement type
-        valid_types = ['values', 'contacts', 'naics', 'all']
+        valid_types = ['values', 'contacts', 'naics', 'titles', 'all']
         if enhancement_type not in valid_types:
             return jsonify({"error": f"Invalid enhancement type. Must be one of: {valid_types}"}), 400
         
@@ -373,12 +384,22 @@ def enhance_single_prospect():
         enhancements = []
         
         # Process values
+        value_to_parse = None
         if prospect.estimated_value_text and not prospect.estimated_value_single:
-            parsed_value = llm_service.parse_contract_value_with_llm(prospect.estimated_value_text, prospect_id=prospect.id)
+            value_to_parse = prospect.estimated_value_text
+        elif prospect.estimated_value and not prospect.estimated_value_single:
+            # Convert numeric value to text for LLM processing
+            value_to_parse = str(prospect.estimated_value)
+        
+        if value_to_parse:
+            parsed_value = llm_service.parse_contract_value_with_llm(value_to_parse, prospect_id=prospect.id)
             if parsed_value['single'] is not None:
                 prospect.estimated_value_single = float(parsed_value['single'])
                 prospect.estimated_value_min = float(parsed_value['min']) if parsed_value['min'] else float(parsed_value['single'])
                 prospect.estimated_value_max = float(parsed_value['max']) if parsed_value['max'] else float(parsed_value['single'])
+                # Store the text version if it didn't exist
+                if not prospect.estimated_value_text:
+                    prospect.estimated_value_text = value_to_parse
                 processed = True
                 enhancements.append('values')
         
@@ -441,6 +462,40 @@ def enhance_single_prospect():
                 }
                 processed = True
                 enhancements.append('naics')
+        
+        # Process titles
+        if prospect.title and not prospect.ai_enhanced_title:
+            enhanced_title = llm_service.enhance_title_with_llm(
+                prospect.title, 
+                prospect.description or "",
+                prospect.agency or "",
+                prospect_id=prospect.id
+            )
+            
+            if enhanced_title['enhanced_title']:
+                prospect.ai_enhanced_title = enhanced_title['enhanced_title']
+                
+                # Add confidence and reasoning to extras
+                if not prospect.extra:
+                    prospect.extra = {}
+                elif isinstance(prospect.extra, str):
+                    try:
+                        prospect.extra = json.loads(prospect.extra)
+                    except (json.JSONDecodeError, TypeError):
+                        prospect.extra = {}
+                
+                if not isinstance(prospect.extra, dict):
+                    prospect.extra = {}
+                    
+                prospect.extra['llm_title_enhancement'] = {
+                    'confidence': enhanced_title['confidence'],
+                    'reasoning': enhanced_title.get('reasoning', ''),
+                    'original_title': prospect.title,
+                    'model_used': llm_service.model_name,
+                    'enhanced_at': datetime.now().isoformat()
+                }
+                processed = True
+                enhancements.append('titles')
         
         if processed:
             prospect.ollama_processed_at = datetime.now()

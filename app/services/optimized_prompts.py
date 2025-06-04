@@ -87,6 +87,52 @@ Confidence guidelines:
 - 0.5-0.69: Multiple contacts, unclear which is primary
 - <0.5: No clear contact information"""
 
+TITLE_ENHANCEMENT_PROMPT = """You are a government procurement title optimizer. Your job is to rewrite vague, unclear, or generic procurement titles into clear, descriptive, actionable titles that accurately reflect what is being procured.
+
+Original Title: "{title}"
+Description: "{description}"
+Agency: "{agency}"
+
+Guidelines for enhanced titles:
+1. BE SPECIFIC: Replace vague terms with specific ones
+   - Bad: "Services" → Good: "IT Support Services"
+   - Bad: "Support" → Good: "Maintenance and Technical Support"
+   - Bad: "Requirements" → Good: "Software Development Requirements"
+
+2. INCLUDE KEY DETAILS: Add important context from description
+   - Include technology/system names if mentioned
+   - Include location if relevant
+   - Include duration if it's a key characteristic
+
+3. MAKE IT ACTIONABLE: Use action-oriented language
+   - "Development of..." "Procurement of..." "Maintenance of..."
+   - Avoid passive constructions
+
+4. KEEP GOVERNMENT CONTEXT: Preserve important government/military terminology
+   - Keep acronyms that are widely understood
+   - Preserve security classifications if mentioned
+   - Keep agency-specific terms that add value
+
+5. OPTIMAL LENGTH: 8-15 words typically
+   - Long enough to be descriptive
+   - Short enough to be scannable
+   - Remove unnecessary articles (a, an, the) if it improves flow
+
+6. EXAMPLES:
+   - "IT Services" → "Cloud Infrastructure Development and Migration Services"
+   - "Support Services" → "Help Desk and User Support Services for DOD Systems"
+   - "Requirements Document" → "Technical Requirements for Enterprise Software Modernization"
+   - "Professional Services" → "Cybersecurity Assessment and Implementation Services"
+
+Return ONLY valid JSON:
+{{"enhanced_title": "Clear Descriptive Title Here", "confidence": 0.85, "reasoning": "Brief explanation of changes made"}}
+
+Confidence guidelines:
+- 0.9-1.0: Original title was very vague, significant improvement made
+- 0.7-0.89: Moderate improvement, some ambiguity resolved
+- 0.5-0.69: Minor improvement, original was somewhat clear
+- <0.5: Original title was already clear, minimal changes needed"""
+
 def get_naics_prompt(title: str, description: str) -> str:
     """Get optimized NAICS classification prompt"""
     return NAICS_CLASSIFICATION_PROMPT.format(title=title, description=description)
@@ -101,3 +147,11 @@ def get_contact_prompt(contact_data: str) -> str:
     if isinstance(contact_data, dict):
         contact_data = json.dumps(contact_data, indent=2)
     return CONTACT_EXTRACTION_PROMPT.format(contact_data=contact_data)
+
+def get_title_prompt(title: str, description: str, agency: str) -> str:
+    """Get optimized title enhancement prompt"""
+    return TITLE_ENHANCEMENT_PROMPT.format(
+        title=title or "No title provided",
+        description=description or "No description available", 
+        agency=agency or "Unknown agency"
+    )

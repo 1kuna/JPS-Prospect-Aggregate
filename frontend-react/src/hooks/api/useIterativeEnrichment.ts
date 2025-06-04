@@ -1,10 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 
-export type EnhancementType = 'all' | 'values' | 'contacts' | 'naics';
+export type EnhancementType = 'all' | 'values' | 'contacts' | 'naics' | 'titles';
 
 export interface IterativeProgress {
-  status: 'idle' | 'processing' | 'completed' | 'stopped' | 'error';
+  status: 'idle' | 'processing' | 'completed' | 'stopped' | 'stopping' | 'error';
   current_type: EnhancementType | null;
   processed: number;
   total: number;

@@ -15,7 +15,7 @@ from app.services.contract_llm_service import ContractLLMService
 from app.utils.logger import logger
 from app.database import db
 
-EnhancementType = Literal["all", "values", "contacts", "naics"]
+EnhancementType = Literal["all", "values", "contacts", "naics", "titles"]
 
 
 class IterativeLLMServiceV2:
@@ -98,9 +98,13 @@ class IterativeLLMServiceV2:
         # Signal the thread to stop
         self._stop_event.set()
         
+        # Immediately mark as stopping for UI feedback
+        with self._lock:
+            self._progress["status"] = "stopping"
+        
         # Wait for thread to finish (with timeout)
         if self._thread and self._thread.is_alive():
-            self._thread.join(timeout=5)
+            self._thread.join(timeout=10)  # Increased timeout to allow current LLM call to finish
         
         with self._lock:
             self._progress["status"] = "stopped"
@@ -108,35 +112,81 @@ class IterativeLLMServiceV2:
         self._processing = False
         
         return {
-            "status": "stopped",
-            "message": "Enhancement process stopped",
+            "status": "stopping",  # Return stopping status immediately
+            "message": "Stopping enhancement process (waiting for current LLM call to complete)...",
             "processed": self._progress["processed"]
         }
     
     def _count_unprocessed(self, enhancement_type: EnhancementType, db_session: Session) -> int:
         """Count prospects that need processing"""
-        query = db_session.query(Prospect)
-        
-        if enhancement_type in ["values", "all"]:
-            query = query.filter(
-                Prospect.estimated_value_text.isnot(None),
-                Prospect.estimated_value_single.is_(None)
-            )
-        elif enhancement_type in ["contacts", "all"]:
-            query = query.filter(
+        if enhancement_type == "values":
+            return db_session.query(Prospect).filter(
+                or_(
+                    and_(
+                        Prospect.estimated_value_text.isnot(None),
+                        Prospect.estimated_value_single.is_(None)
+                    ),
+                    and_(
+                        Prospect.estimated_value.isnot(None),
+                        Prospect.estimated_value_single.is_(None)
+                    )
+                )
+            ).count()
+        elif enhancement_type == "contacts":
+            return db_session.query(Prospect).filter(
                 Prospect.extra.isnot(None),
                 Prospect.primary_contact_name.is_(None)
-            )
-        elif enhancement_type in ["naics", "all"]:
-            query = query.filter(
+            ).count()
+        elif enhancement_type == "naics":
+            return db_session.query(Prospect).filter(
                 Prospect.description.isnot(None),
                 or_(
                     Prospect.naics.is_(None),
                     Prospect.naics_source != 'llm_inferred'
                 )
-            )
+            ).count()
+        elif enhancement_type == "titles":
+            return db_session.query(Prospect).filter(
+                Prospect.title.isnot(None),
+                Prospect.ai_enhanced_title.is_(None)
+            ).count()
+        elif enhancement_type == "all":
+            # Count prospects that need ANY type of enhancement
+            return db_session.query(Prospect).filter(
+                or_(
+                    # Needs value parsing
+                    or_(
+                        and_(
+                            Prospect.estimated_value_text.isnot(None),
+                            Prospect.estimated_value_single.is_(None)
+                        ),
+                        and_(
+                            Prospect.estimated_value.isnot(None),
+                            Prospect.estimated_value_single.is_(None)
+                        )
+                    ),
+                    # Needs contact extraction
+                    and_(
+                        Prospect.extra.isnot(None),
+                        Prospect.primary_contact_name.is_(None)
+                    ),
+                    # Needs NAICS classification
+                    and_(
+                        Prospect.description.isnot(None),
+                        or_(
+                            Prospect.naics.is_(None),
+                            Prospect.naics_source != 'llm_inferred'
+                        )
+                    ),
+                    # Needs title enhancement
+                    and_(
+                        Prospect.title.isnot(None),
+                        Prospect.ai_enhanced_title.is_(None)
+                    )
+                )
+            ).count()
         
-        return query.count()
+        return 0
     
     def _process_iteratively(self, enhancement_type: EnhancementType, app):
         """Process prospects one by one in a thread"""
@@ -160,6 +210,11 @@ class IterativeLLMServiceV2:
                             "id": prospect.id,
                             "title": prospect.title[:100] if prospect.title else "Untitled"
                         }
+                    
+                    # Check stop event again before starting LLM processing
+                    if self._stop_event.is_set():
+                        logger.info("Stop event detected before processing prospect, breaking")
+                        break
                     
                     # Process single prospect
                     try:
@@ -225,8 +280,16 @@ class IterativeLLMServiceV2:
         
         if enhancement_type == "values":
             query = query.filter(
-                Prospect.estimated_value_text.isnot(None),
-                Prospect.estimated_value_single.is_(None)
+                or_(
+                    and_(
+                        Prospect.estimated_value_text.isnot(None),
+                        Prospect.estimated_value_single.is_(None)
+                    ),
+                    and_(
+                        Prospect.estimated_value.isnot(None),
+                        Prospect.estimated_value_single.is_(None)
+                    )
+                )
             )
         elif enhancement_type == "contacts":
             query = query.filter(
@@ -241,8 +304,13 @@ class IterativeLLMServiceV2:
                     Prospect.naics_source != 'llm_inferred'
                 )
             )
+        elif enhancement_type == "titles":
+            query = query.filter(
+                Prospect.title.isnot(None),
+                Prospect.ai_enhanced_title.is_(None)
+            )
         elif enhancement_type == "all":
-            # For "all", prioritize by type: values -> contacts -> naics
+            # For "all", prioritize by type: values -> contacts -> naics -> titles
             query = query.filter(
                 or_(
                     and_(
@@ -259,6 +327,10 @@ class IterativeLLMServiceV2:
                             Prospect.naics.is_(None),
                             Prospect.naics_source != 'llm_inferred'
                         )
+                    ),
+                    and_(
+                        Prospect.title.isnot(None),
+                        Prospect.ai_enhanced_title.is_(None)
                     )
                 )
             )
@@ -277,13 +349,23 @@ class IterativeLLMServiceV2:
             
             # Process based on type
             if enhancement_type in ["values", "all"]:
+                value_to_parse = None
                 if prospect.estimated_value_text and not prospect.estimated_value_single:
+                    value_to_parse = prospect.estimated_value_text
+                elif prospect.estimated_value and not prospect.estimated_value_single:
+                    # Convert numeric value to text for LLM processing
+                    value_to_parse = str(prospect.estimated_value)
+                
+                if value_to_parse:
                     # Parse contract value
-                    parsed_value = self.llm_service.parse_contract_value_with_llm(prospect.estimated_value_text, prospect_id=prospect.id)
+                    parsed_value = self.llm_service.parse_contract_value_with_llm(value_to_parse, prospect_id=prospect.id)
                     if parsed_value['single'] is not None:
                         prospect.estimated_value_single = float(parsed_value['single'])
                         prospect.estimated_value_min = float(parsed_value['min']) if parsed_value['min'] else float(parsed_value['single'])
                         prospect.estimated_value_max = float(parsed_value['max']) if parsed_value['max'] else float(parsed_value['single'])
+                        # Store the text version if it didn't exist
+                        if not prospect.estimated_value_text:
+                            prospect.estimated_value_text = value_to_parse
                         prospect.ollama_processed_at = datetime.now(timezone.utc)
                         prospect.ollama_model_version = self.llm_service.model_name
                         processed = True
@@ -351,6 +433,44 @@ class IterativeLLMServiceV2:
                             'naics_confidence': classification['confidence'],
                             'model_used': self.llm_service.model_name,
                             'classified_at': datetime.now(timezone.utc).isoformat()
+                        }
+                        processed = True
+            
+            if enhancement_type in ["titles", "all"]:
+                if prospect.title and not prospect.ai_enhanced_title:
+                    # Enhance title with LLM
+                    enhanced_title = self.llm_service.enhance_title_with_llm(
+                        prospect.title, 
+                        prospect.description or "",
+                        prospect.agency or "",
+                        prospect_id=prospect.id
+                    )
+                    
+                    if enhanced_title['enhanced_title']:
+                        prospect.ai_enhanced_title = enhanced_title['enhanced_title']
+                        prospect.ollama_processed_at = datetime.now(timezone.utc)
+                        prospect.ollama_model_version = self.llm_service.model_name
+                        
+                        # Add confidence and reasoning to extras
+                        import json
+                        if not prospect.extra:
+                            prospect.extra = {}
+                        elif isinstance(prospect.extra, str):
+                            try:
+                                prospect.extra = json.loads(prospect.extra)
+                            except (json.JSONDecodeError, TypeError):
+                                prospect.extra = {}
+                        
+                        # Ensure extra is a dict before assignment
+                        if not isinstance(prospect.extra, dict):
+                            prospect.extra = {}
+                            
+                        prospect.extra['llm_title_enhancement'] = {
+                            'confidence': enhanced_title['confidence'],
+                            'reasoning': enhanced_title.get('reasoning', ''),
+                            'original_title': prospect.title,
+                            'model_used': self.llm_service.model_name,
+                            'enhanced_at': datetime.now(timezone.utc).isoformat()
                         }
                         processed = True
             
