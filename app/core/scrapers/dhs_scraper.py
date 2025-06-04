@@ -68,7 +68,7 @@ class DHSForecastScraper(PageInteractionScraper):
             self.logger.debug("Initialized 'place_country' to 'USA' as DHS data doesn't include country.")
         return df
 
-    def _process_method(self, file_path: Optional[str]) -> Optional[int]:
+    def _process_method(self, file_path: Optional[str], data_source=None) -> Optional[int]:
         """Processes the downloaded CSV/Excel file."""
         self.logger.info(f"Starting DHS processing for file: {file_path}")
         if not file_path or not os.path.exists(file_path):
@@ -103,7 +103,7 @@ class DHSForecastScraper(PageInteractionScraper):
                 self.logger.info("DataFrame is empty after transformations. Nothing to load for DHS.")
                 return 0
             
-            loaded_count = self.prepare_and_load_data(df, config_params=self.config.data_processing_rules)
+            loaded_count = self.prepare_and_load_data(df, config_params=self.config.data_processing_rules, data_source=data_source)
             
             self.logger.info(f"DHS processing completed. Loaded {loaded_count} prospects.")
             return loaded_count

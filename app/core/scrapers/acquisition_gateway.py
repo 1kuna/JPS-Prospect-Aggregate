@@ -7,7 +7,7 @@ from typing import Optional
 
 # Third-party imports
 import pandas as pd
-# from playwright.sync_api import TimeoutError as PlaywrightTimeoutError # Handled by mixins
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 # Local application imports
 from app.core.specialized_scrapers import PageInteractionScraper 
@@ -70,6 +70,15 @@ class AcquisitionGatewayScraper(PageInteractionScraper):
         self.wait_for_load_state('load', timeout_ms=self.config.navigation_timeout_ms)
 
 
+    def _check_page_alive(self) -> bool:
+        """Check if the page is still alive and responsive."""
+        try:
+            # Try to evaluate a simple JavaScript expression
+            result = self.page.evaluate("() => true")
+            return result == True
+        except:
+            return False
+
     def _extract_method(self) -> Optional[str]:
         """
         Downloads the CSV file from the Acquisition Gateway site.
@@ -77,59 +86,89 @@ class AcquisitionGatewayScraper(PageInteractionScraper):
         """
         self.logger.info("Starting CSV file download process from Acquisition Gateway.")
         
-        self.logger.info(f"Waiting {self.config.wait_after_load_ms}ms after page load/navigation...")
-        self.wait_for_timeout(self.config.wait_after_load_ms)
-        self.logger.info("Wait finished. Attempting to click Export button.")
-
+        # Wait for export button to be visible and clickable
+        self.logger.info(f"Waiting for export button '{self.config.export_button_selector}' to be visible...")
+        self.wait_for_selector(
+            selector=self.config.export_button_selector,
+            timeout_ms=30000,  # 30 seconds to wait for button to appear
+            visible=True,
+            state='visible'
+        )
+        self.logger.info("Export button is visible.")
+        
+        # Add natural pause before clicking
+        self.logger.info("Waiting 5 seconds before clicking to appear natural...")
+        self.wait_for_timeout(5000)
+        
         try:
-            self._last_download_path = None # Reset before download attempt
-
-            # The click_element method from NavigationMixin handles visibility wait and JS fallback.
-            # The expect_download block will catch the download triggered by this click.
-            # BaseScraper.setup_browser should have set self.page.on("download", self._handle_download_event)
-            # where _handle_download_event is now from DownloadMixin.
-            with self.page.expect_download(timeout=self.config.download_timeout_ms) as download_info:
+            self._last_download_path = None  # Reset before download attempt
+            
+            # Try to click and download with extended timeout
+            download_timeout = self.config.download_timeout_ms  # Use configured timeout (150 seconds)
+            
+            with self.page.expect_download(timeout=download_timeout) as download_info:
+                self.logger.info("Clicking export button...")
+                
+                # Get button state before clicking
+                button_disabled = self.page.locator(self.config.export_button_selector).is_disabled()
+                self.logger.info(f"Button disabled state before click: {button_disabled}")
+                
                 self.click_element(
                     selector=self.config.export_button_selector,
-                    js_click_fallback=True, # Allow JS click if standard fails
-                    timeout_ms=self.config.interaction_timeout_ms # Timeout for the click action itself
+                    js_click_fallback=True,  # Allow JS click if standard fails
+                    timeout_ms=self.config.interaction_timeout_ms
                 )
+                self.logger.info("Click executed, waiting for download...")
             
-            # download_info.value is the Download object.
-            # _handle_download_event (from DownloadMixin, set by BaseScraper) should be triggered by the event.
-            # It will save the file and set self._last_download_path.
-            
-            # Wait for the download event to be processed and file to be saved.
+            # Wait for the download event to be processed and file to be saved
             self.wait_for_timeout(self.config.default_wait_after_download_ms)
-
+            
             if self._last_download_path and os.path.exists(self._last_download_path):
-                self.logger.info(f"Download successful via click_element. File at: {self._last_download_path}")
+                self.logger.info(f"Download successful. File at: {self._last_download_path}")
                 return self._last_download_path
             else:
-                # This path indicates that _handle_download_event might not have completed as expected,
-                # or the file system operation is delayed, or an error occurred in the event handler.
-                download_obj = download_info.value # For debugging
+                # Download didn't complete properly
+                download_obj = download_info.value
                 temp_playwright_path = "N/A"
                 try:
                     if download_obj: temp_playwright_path = download_obj.path()
-                except Exception: pass # Ignore if path() fails
-                self.logger.error(f"Download via click_element: _last_download_path ('{self._last_download_path}') is invalid. Playwright temp: '{temp_playwright_path}'")
-                raise ScraperError("Download did not result in a valid saved file path via _handle_download_event.")
+                except Exception: pass
                 
-        except ScraperError as e:
-            self.logger.error(f"A ScraperError occurred during download: {e}", exc_info=True)
-            raise # Re-raise ScraperError to be caught by the main handler
+                error_msg = f"Download failed: _last_download_path ('{self._last_download_path}') is invalid. Playwright temp: '{temp_playwright_path}'"
+                self.logger.error(error_msg)
+                raise ScraperError("Download did not result in a valid saved file path")
+                
+        except PlaywrightTimeoutError as e:
+            # This is expected if the button loading times out after ~60 seconds
+            self.logger.warning(f"Download timeout (expected if site is having issues): {str(e)}")
+            if self.config.screenshot_on_error:
+                self._save_error_screenshot("acq_gw_timeout")
+            
+            # Check button state after timeout
+            try:
+                button_disabled = self.page.locator(self.config.export_button_selector).is_disabled()
+                self.logger.info(f"Button disabled state after timeout: {button_disabled}")
+            except:
+                self.logger.warning("Could not check button state after timeout")
+            
+            raise ScraperError(f"Acquisition Gateway download timed out: {str(e)}") from e
+                    
         except Exception as e:
             self.logger.error(f"Unexpected error during CSV download: {e}", exc_info=True)
-            if self.config.screenshot_on_error: self._save_error_screenshot("acq_gw_download_error")
-            if self.config.save_html_on_error: self._save_error_html("acq_gw_download_error")
+            if self.config.screenshot_on_error:
+                self._save_error_screenshot("acq_gw_error")
+            if self.config.save_html_on_error:
+                self._save_error_html("acq_gw_error")
+            
             raise ScraperError(f"Acquisition Gateway CSV download failed: {type(e).__name__}") from e
         
 
-    def _process_method(self, file_path: str) -> Optional[int]:
+    def _process_method(self, file_path: str, data_source=None) -> Optional[int]:
         """
         Processes the downloaded CSV file.
-        Args: file_path (str): Path to the downloaded file.
+        Args: 
+            file_path (str): Path to the downloaded file.
+            data_source: DataSource object for setting source_id
         Returns: Optional[int]: Number of prospects loaded, or 0/None on failure.
         """
         self.logger.info(f"Processing Acq Gateway file: {file_path}")
@@ -149,7 +188,7 @@ class AcquisitionGatewayScraper(PageInteractionScraper):
                 self.logger.info("DataFrame is empty after transformations. Nothing to load.")
                 return 0
             
-            loaded_count = self.prepare_and_load_data(df, config_params=self.config.data_processing_rules)
+            loaded_count = self.prepare_and_load_data(df, config_params=self.config.data_processing_rules, data_source=data_source)
             
             self.logger.info(f"Acq Gateway processing complete. Loaded {loaded_count} prospects.")
             return loaded_count

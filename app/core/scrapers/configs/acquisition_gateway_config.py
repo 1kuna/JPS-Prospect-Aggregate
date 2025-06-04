@@ -34,12 +34,11 @@ class AcquisitionGatewayConfig(BaseScraperConfig):
     """
     source_name: str = "Acquisition Gateway" # Default, but will be set by runner
     # base_url will be set by the runner/environment config (e.g., from active_config.ACQUISITION_GATEWAY_URL)
-    use_stealth: bool = True
+    use_stealth: bool = False  # Disabled - stealth may interfere with download functionality
     
     # Scraper-specific selectors and settings
     export_button_selector: str = "button#export-0"
     file_type_hint: str = "csv"
-    wait_after_load_ms: int = 5000  # Explicit wait after page load and before download interaction
 
     # Data processing rules
     data_processing_rules: DataProcessingRules = field(default_factory=lambda: DataProcessingRules(
@@ -108,5 +107,5 @@ class AcquisitionGatewayConfig(BaseScraperConfig):
 
     # Override navigation_timeout_ms from BaseScraperConfig if needed for this specific scraper
     # navigation_timeout_ms: int = 100000 # Example
-    # download_timeout_ms: int = 150000 # Example
+    download_timeout_ms: int = 150000 # Extended to 150 seconds for slow downloads
     # interaction_timeout_ms: int = 45000 # Example

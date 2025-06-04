@@ -94,7 +94,8 @@ class ScraperService:
 
             # Initialize scraper with appropriate debug mode
             # DOT scraper needs special handling due to website blocking
-            debug_mode = data_source.scraper_key == 'dot'  # Enable debug mode for DOT scraper
+            # Acquisition Gateway also runs in debug mode to monitor slow downloads
+            debug_mode = data_source.scraper_key in ['dot', 'acq_gateway']  # Enable debug mode for DOT and Acquisition Gateway scrapers
             scraper_instance = ScraperClass(config=config, debug_mode=debug_mode)
             
             # Update status to 'working' before starting
@@ -113,16 +114,34 @@ class ScraperService:
                     update_scraper_status(source_id=data_source.id, status='failed', details=error_msg[:500])
                     raise ScraperError(f"Scraping {data_source.name} failed: {error_msg}")
                 
-                # If we get here, scrape is successful
-                update_scraper_status(source_id=data_source.id, status='completed', details=f"Scrape completed successfully at {datetime.datetime.now(timezone.utc).isoformat()}.")
-                data_source.last_scraped = datetime.datetime.now(timezone.utc)
-                session.commit() # Commit update to data_source.last_scraped
-                
-                logger.info(f"Scrape for {data_source.name} completed successfully.")
-                # Get the latest status for the return message
-                latest_status_record = session.query(ScraperStatus).filter_by(source_id=source_id).order_by(ScraperStatus.last_checked.desc()).first()
-                final_status_str = latest_status_record.status if latest_status_record else "unknown"
-                result_message = f"Data pull for {data_source.name} processed. Final status: {final_status_str}"
+                # Check if fallback was used
+                elif isinstance(scrape_result, dict) and scrape_result.get('used_fallback', False):
+                    # Scrape used fallback data
+                    fallback_reason = scrape_result.get('fallback_reason', 'Download failed')
+                    fallback_msg = f"Used fallback data due to: {fallback_reason}. Data may be outdated."
+                    logger.warning(f"Scraper used fallback for {data_source.name}: {fallback_msg}")
+                    update_scraper_status(
+                        source_id=data_source.id, 
+                        status='completed_with_fallback', 
+                        details=fallback_msg[:500]
+                    )
+                    # Update last_scraped time even for fallback
+                    data_source.last_scraped = datetime.datetime.now()
+                    session.commit() # Commit update to data_source.last_scraped
+                    final_status_str = "completed_with_fallback"
+                    result_message = f"Data pull for {data_source.name} completed using fallback data. Reason: {fallback_reason}"
+                    
+                else:
+                    # Normal successful scrape
+                    update_scraper_status(source_id=data_source.id, status='completed', details=f"Scrape completed successfully at {datetime.datetime.now().isoformat()}.")
+                    data_source.last_scraped = datetime.datetime.now()
+                    session.commit() # Commit update to data_source.last_scraped
+                    
+                    logger.info(f"Scrape for {data_source.name} completed successfully.")
+                    # Get the latest status for the return message
+                    latest_status_record = session.query(ScraperStatus).filter_by(source_id=source_id).order_by(ScraperStatus.last_checked.desc()).first()
+                    final_status_str = latest_status_record.status if latest_status_record else "unknown"
+                    result_message = f"Data pull for {data_source.name} processed. Final status: {final_status_str}"
 
             except Exception as scrape_exc: # Catch any exception from scraper_instance.run()
                 logger.error(f"Scraper for {data_source.name} failed: {scrape_exc}", exc_info=True)

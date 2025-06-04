@@ -139,7 +139,7 @@ class SsaScraper(PageInteractionScraper):
             
         return df
 
-    def _process_method(self, file_path: Optional[str]) -> Optional[int]:
+    def _process_method(self, file_path: Optional[str], data_source=None) -> Optional[int]:
         """
         Processes the downloaded Excel file using DataProcessingMixin methods.
         """
@@ -164,7 +164,7 @@ class SsaScraper(PageInteractionScraper):
                 self.logger.info("DataFrame is empty after transformations. Nothing to load for SSA.")
                 return 0
             
-            loaded_count = self.prepare_and_load_data(df, config_params=self.config.data_processing_rules)
+            loaded_count = self.prepare_and_load_data(df, config_params=self.config.data_processing_rules, data_source=data_source)
             
             self.logger.info(f"SSA processing completed. Loaded {loaded_count} prospects.")
             return loaded_count
