@@ -160,7 +160,7 @@ class DataProcessingMixin:
         return pd.DataFrame() # Should be unreachable
 
 
-    def prepare_and_load_data(self, df: pd.DataFrame, config_params: Any) -> int:
+    def prepare_and_load_data(self, df: pd.DataFrame, config_params: Any, data_source=None) -> int:
         """Prepares DataFrame data and loads it into the database."""
         if not all(hasattr(self, attr) for attr in ['logger', 'config', '_handle_and_raise_scraper_error']):
             raise AttributeError("DataProcessingMixin.prepare_and_load_data is missing required attributes/methods.")
@@ -194,9 +194,10 @@ class DataProcessingMixin:
                 prospect_instance_data = {k: data[k] for k in actual_model_fields if k in data}
                 extra_data = {k: data[k] for k in data if k not in actual_model_fields and k != 'id_hash'} # id_hash is special
                 
-                prospect_instance_data['extra_data'] = extra_data if extra_data else None
-                prospect_instance_data['source_name'] = source_name # Ensure source_name from config
-                if 'id_hash' in data: prospect_instance_data['id_hash'] = data['id_hash'] # Ensure id_hash is present
+                prospect_instance_data['extra'] = extra_data if extra_data else None
+                if data_source and hasattr(data_source, 'id'):
+                    prospect_instance_data['source_id'] = data_source.id # Set source_id from data_source
+                if 'id_hash' in data: prospect_instance_data['id'] = data['id_hash'] # Map id_hash to id field
                 
                 # Ensure all model fields are present in prospect_instance_data, defaulting to None
                 for mf in actual_model_fields:

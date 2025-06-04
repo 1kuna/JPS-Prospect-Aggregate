@@ -90,6 +90,41 @@ class BaseScraper(ABC):
         self.logger = logger.bind(name=f"scraper.{self.source_name_short}")
         self.logger.info(f"Initialized {self.config.source_name} scraper. Debug mode: {self.debug_mode}. Base URL: {self.base_url}")
     
+    def get_most_recent_download(self) -> Optional[str]:
+        """
+        Find the most recent download file for this scraper.
+        Returns: Path to the most recent file, or None if no files exist.
+        """
+        try:
+            # List all files in the download directory
+            files = []
+            if os.path.exists(self.download_path):
+                for filename in os.listdir(self.download_path):
+                    filepath = os.path.join(self.download_path, filename)
+                    if os.path.isfile(filepath):
+                        # Get file modification time
+                        mtime = os.path.getmtime(filepath)
+                        files.append((filepath, mtime))
+            
+            if not files:
+                self.logger.warning(f"No previous downloads found in {self.download_path}")
+                return None
+            
+            # Sort by modification time (newest first)
+            files.sort(key=lambda x: x[1], reverse=True)
+            most_recent_file = files[0][0]
+            
+            # Get file age
+            file_age_seconds = datetime.datetime.now().timestamp() - files[0][1]
+            file_age_days = file_age_seconds / (24 * 3600)
+            
+            self.logger.info(f"Found most recent download: {most_recent_file} (age: {file_age_days:.1f} days)")
+            return most_recent_file
+            
+        except Exception as e:
+            self.logger.error(f"Error finding most recent download: {e}", exc_info=True)
+            return None
+
     # -------------------------------------------------------------------------
     # Logging and Setup Methods
     # -------------------------------------------------------------------------
@@ -142,6 +177,22 @@ class BaseScraper(ABC):
                     '--disable-background-timer-throttling',
                     '--disable-renderer-backgrounding',
                     '--disable-backgrounding-occluded-windows',
+                    '--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                ])
+            elif hasattr(self, 'source_name') and 'Acquisition Gateway' in self.source_name:
+                # Add specific args for Acquisition Gateway to prevent timeouts
+                launch_args.extend([
+                    '--disable-blink-features=AutomationControlled',
+                    '--no-sandbox',
+                    '--disable-dev-shm-usage',
+                    '--disable-background-timer-throttling',
+                    '--disable-renderer-backgrounding',
+                    '--disable-backgrounding-occluded-windows',
+                    '--disable-features=TranslateUI',
+                    '--disable-ipc-flooding-protection',
+                    '--unlimited-storage',
+                    '--disable-hang-monitor',
+                    '--disable-prompt-on-repost',
                     '--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
                 ])
             
@@ -781,8 +832,24 @@ class BaseScraper(ABC):
             # Run the extraction phase
             if extract_func:
                 self.logger.info("Running extraction phase")
-                raw_data = extract_func()
-                result["data"] = raw_data
+                try:
+                    raw_data = extract_func()
+                    result["data"] = raw_data
+                except Exception as extract_error:
+                    self.logger.error(f"Extraction failed: {extract_error}")
+                    
+                    # Try fallback to most recent download
+                    self.logger.info("Attempting to use most recent download as fallback...")
+                    fallback_file = self.get_most_recent_download()
+                    
+                    if fallback_file:
+                        self.logger.warning(f"Using fallback file: {fallback_file}")
+                        result["data"] = fallback_file
+                        result["used_fallback"] = True
+                        result["fallback_reason"] = str(extract_error)
+                    else:
+                        # No fallback available, re-raise the original error
+                        raise
             
             # Run the processing phase
             if process_func and result["data"]:
@@ -800,8 +867,8 @@ class BaseScraper(ABC):
                     # This check is important to ensure data source exists before processing.
                     raise ScraperError(f"Could not find or create DataSource for {self.source_name}")
                 
-                # Call process_func without session and data_source arguments
-                processed_data = process_func(result["data"]) 
+                # Call process_func and pass the data_source for source_id
+                processed_data = process_func(result["data"], data_source) 
                 result["data"] = processed_data
             
             result["success"] = True
