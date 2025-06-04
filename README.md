@@ -107,3 +107,4 @@ See `docs/scraper_architecture.md` and `docs/CONTRACT_MAPPING_LLM.md` for detail
 - Faster and more efficient processing pipeline
 - Scraper health alerts with notifications
 - Go/no-go tagging with user attribution
+- Scrape with specific parameters for sites with limited extraction like ACQG

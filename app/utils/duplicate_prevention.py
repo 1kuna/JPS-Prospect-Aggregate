@@ -119,6 +119,12 @@ class DuplicateDetector:
             # Build base query
             query = session.query(Prospect).filter(Prospect.source_id == source_id)
             
+            # Validate required fields exist in new_record
+            for field in strategy.required_fields:
+                if field not in new_record or new_record.get(field) is None:
+                    logger.debug(f"Skipping strategy {strategy.name}: missing required field {field}")
+                    return []
+            
             if strategy.name == "exact_native_id":
                 candidates.extend(self._exact_native_id_match(
                     query, new_record, strategy
@@ -189,19 +195,23 @@ class DuplicateDetector:
             similarity_scores.append(agency_sim)
             
             # Check location similarity
-            location_sim = 1.0 if (
-                new_record.get('place_city', '').lower() == (match.place_city or '').lower() and
-                new_record.get('place_state', '').lower() == (match.place_state or '').lower()
-            ) else 0.0
+            new_city = (new_record.get('place_city') or '').strip().lower()
+            new_state = (new_record.get('place_state') or '').strip().lower()
+            match_city = (match.place_city or '').strip().lower()
+            match_state = (match.place_state or '').strip().lower()
+            
+            location_sim = 1.0 if (new_city and match_city and new_city == match_city and 
+                                   new_state and match_state and new_state == match_state) else 0.0
             if location_sim > 0.5:
                 matched_fields.append("location")
             similarity_scores.append(location_sim)
             
             # Calculate weighted confidence score
-            # Native ID match gives base 50%, but require meaningful content similarity
-            title_weight = 0.3
-            desc_weight = 0.15  
-            agency_weight = 0.15
+            # For native_id matches, we need to ensure content similarity matters significantly
+            # Otherwise different job postings with same ID will show as duplicates
+            title_weight = 0.4  # Increased title importance
+            desc_weight = 0.3   # Increased description importance
+            agency_weight = 0.2
             location_weight = 0.1  # Reduced location weight since many records share locations
             
             weighted_similarity = (
@@ -211,16 +221,31 @@ class DuplicateDetector:
                 location_sim * location_weight
             )
             
-            # Base score of 50% for native_id match + weighted content similarity
-            confidence_score = 0.5 + (weighted_similarity * 0.5)
+            # For native_id matches, start with a lower base score and require content similarity
+            # This prevents false positives when IDs match but content is completely different
+            if title_sim < 0.2 and desc_sim < 0.2:
+                # If both title AND description are very different, this is likely NOT a duplicate
+                # even if native_id matches (could be reused ID or different positions)
+                confidence_score = 0.2 + (weighted_similarity * 0.3)
+            else:
+                # Normal calculation: base 40% for ID match + weighted content similarity
+                confidence_score = 0.4 + (weighted_similarity * 0.6)
             
-            # Penalty for very low title similarity (different job titles probably aren't duplicates)
-            if title_sim < 0.3:
-                confidence_score *= 0.8
+            # Strong penalties for very low content similarity
+            if title_sim < 0.1:
+                confidence_score *= 0.5  # Halve confidence for completely different titles
+            elif title_sim < 0.3:
+                confidence_score *= 0.7
             
-            # Penalty for very low agency similarity 
+            if desc_sim < 0.1:
+                confidence_score *= 0.7  # Additional penalty for completely different descriptions
+            
             if agency_sim < 0.3:
-                confidence_score *= 0.9
+                confidence_score *= 0.85
+            
+            # Debug logging for this specific native_id
+            if native_id == "19AQMM19D0120":
+                logger.info(f"Debug 19AQMM19D0120 match: title_sim={title_sim:.3f}, desc_sim={desc_sim:.3f}, agency_sim={agency_sim:.3f}, location_sim={location_sim:.3f}, weighted_sim={weighted_similarity:.3f}, confidence={confidence_score:.3f}")
             
             # Determine match type based on confidence
             if confidence_score >= 0.95:
@@ -232,14 +257,20 @@ class DuplicateDetector:
             else:
                 match_type = "weak"
             
-            candidates.append(MatchCandidate(
-                prospect_id=match.id,
-                native_id=match.native_id,
-                title=match.title or "",
-                confidence_score=confidence_score,
-                match_type=match_type,
-                matched_fields=matched_fields
-            ))
+            # Ensure confidence score is capped at 1.0
+            confidence_score = min(confidence_score, 1.0)
+            
+            # Only include candidates with meaningful confidence scores
+            # This prevents false positives from native_id matches with completely different content
+            if confidence_score >= 0.3:  # Minimum threshold
+                candidates.append(MatchCandidate(
+                    prospect_id=match.id,
+                    native_id=match.native_id,
+                    title=match.title or "",
+                    confidence_score=confidence_score,
+                    match_type=match_type,
+                    matched_fields=matched_fields
+                ))
         
         return candidates
     
@@ -261,7 +292,9 @@ class DuplicateDetector:
                 
             title_similarity = self._calculate_text_similarity(new_title, match.title)
             if title_similarity >= 0.7:  # 70% title similarity threshold
-                confidence = strategy.weight * (0.5 + 0.5 * title_similarity)
+                # Base confidence from native_id match (40%) + title similarity contribution
+                confidence = 0.4 + (title_similarity * 0.6 * strategy.weight)
+                confidence = min(confidence, 1.0)  # Cap at 1.0
                 
                 if confidence >= strategy.min_confidence:
                     candidates.append(MatchCandidate(
@@ -286,10 +319,11 @@ class DuplicateDetector:
         if not all([naics, city, state, new_title]):
             return []
         
+        # Use case-insensitive matching for location
         matches = query.filter(
             Prospect.naics == naics,
-            Prospect.place_city == city,
-            Prospect.place_state == state
+            Prospect.place_city.ilike(city),
+            Prospect.place_state.ilike(state)
         ).all()
         
         candidates = []
@@ -299,7 +333,9 @@ class DuplicateDetector:
                 
             title_similarity = self._calculate_text_similarity(new_title, match.title)
             if title_similarity >= 0.6:  # 60% title similarity for this strategy
-                confidence = strategy.weight * title_similarity
+                # Base confidence for NAICS+location match (60%) + title similarity contribution
+                confidence = 0.6 * strategy.weight + (title_similarity * 0.4 * strategy.weight)
+                confidence = min(confidence, 1.0)  # Cap at 1.0
                 
                 if confidence >= strategy.min_confidence:
                     candidates.append(MatchCandidate(
@@ -325,10 +361,11 @@ class DuplicateDetector:
         if not all([agency, city, state]) or not (new_title or new_desc):
             return []
         
+        # Use case-insensitive matching for location
         matches = query.filter(
             Prospect.agency == agency,
-            Prospect.place_city == city,
-            Prospect.place_state == state
+            Prospect.place_city.ilike(city),
+            Prospect.place_state.ilike(state)
         ).all()
         
         candidates = []
@@ -346,6 +383,7 @@ class DuplicateDetector:
             max_content_sim = max(title_sim, desc_sim)
             if max_content_sim >= 0.8:  # 80% content similarity
                 confidence = strategy.weight * max_content_sim
+                confidence = min(confidence, 1.0)  # Cap at 1.0
                 
                 if confidence >= strategy.min_confidence:
                     matched_fields = ["agency", "location"]
@@ -389,10 +427,13 @@ class DuplicateDetector:
                 desc_sim = 0
                 if match.description and new_desc:
                     desc_sim = self._calculate_text_similarity(new_desc, match.description)
-                
-                # Combine title and description similarity
-                combined_sim = 0.7 * title_sim + 0.3 * desc_sim
+                    # Combine title and description similarity
+                    combined_sim = 0.7 * title_sim + 0.3 * desc_sim
+                else:
+                    # If no description to compare, use title similarity only
+                    combined_sim = title_sim
                 confidence = strategy.weight * combined_sim
+                confidence = min(confidence, 1.0)  # Cap at 1.0
                 
                 if confidence >= strategy.min_confidence:
                     candidates.append(MatchCandidate(
@@ -408,15 +449,28 @@ class DuplicateDetector:
     
     def _calculate_text_similarity(self, text1: str, text2: str) -> float:
         """Calculate similarity between two text strings."""
-        if not text1 or not text2:
+        # Handle None values explicitly
+        if text1 is None or text2 is None:
+            return 0.0
+            
+        # Convert to strings and check if empty
+        text1_str = str(text1).strip()
+        text2_str = str(text2).strip()
+        
+        if not text1_str or not text2_str:
             return 0.0
         
         # Normalize texts
-        text1_norm = text1.lower().strip()
-        text2_norm = text2.lower().strip()
+        text1_norm = text1_str.lower()
+        text2_norm = text2_str.lower()
         
         if text1_norm == text2_norm:
             return 1.0
+        
+        # Handle very short strings (less than 3 characters)
+        if len(text1_norm) < 3 or len(text2_norm) < 3:
+            # For very short strings, use exact match only
+            return 1.0 if text1_norm == text2_norm else 0.0
         
         # Use difflib for sequence matching
         similarity = difflib.SequenceMatcher(None, text1_norm, text2_norm).ratio()
@@ -545,6 +599,7 @@ def _update_preserving_ai_fields(existing_prospect: Prospect, new_data: Dict):
         'naics', 'naics_description', 'naics_source',
         'estimated_value_min', 'estimated_value_max', 'estimated_value_single',
         'primary_contact_email', 'primary_contact_name',
+        'ai_enhanced_title',
         'ollama_processed_at', 'ollama_model_version'
     }
     

@@ -654,6 +654,7 @@ def merge_duplicates():
                 'naics', 'naics_description', 'naics_source',
                 'estimated_value_min', 'estimated_value_max', 'estimated_value_single',
                 'primary_contact_email', 'primary_contact_name',
+                'ai_enhanced_title',
                 'ollama_processed_at', 'ollama_model_version'
             ]
             

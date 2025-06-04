@@ -12,6 +12,7 @@ class Prospect(db.Model): # Renamed back to Prospect
     id = Column(String, primary_key=True)  # Generated MD5 hash
     native_id = Column(String, index=True)
     title = Column(Text)
+    ai_enhanced_title = Column(Text)  # New: LLM-enhanced title for better clarity
     description = Column(Text)
     agency = Column(Text)
     naics = Column(String, index=True)
@@ -71,6 +72,7 @@ class Prospect(db.Model): # Renamed back to Prospect
             "id": self.id,
             "native_id": self.native_id,
             "title": self.title,
+            "ai_enhanced_title": self.ai_enhanced_title,
             "description": self.description,
             "agency": self.agency,
             "naics": self.naics,

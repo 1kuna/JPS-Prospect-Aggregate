@@ -6,7 +6,7 @@ export interface LLMOutput {
   timestamp: string;
   prospect_id: string;
   prospect_title: string | null;
-  enhancement_type: 'values' | 'contacts' | 'naics';
+  enhancement_type: 'values' | 'contacts' | 'naics' | 'titles';
   prompt: string;
   response: string;
   parsed_result: any;
@@ -17,7 +17,7 @@ export interface LLMOutput {
 
 interface LLMOutputsParams {
   limit?: number;
-  enhancement_type?: 'all' | 'values' | 'contacts' | 'naics';
+  enhancement_type?: 'all' | 'values' | 'contacts' | 'naics' | 'titles';
 }
 
 export function useLLMOutputs(params: LLMOutputsParams = {}) {

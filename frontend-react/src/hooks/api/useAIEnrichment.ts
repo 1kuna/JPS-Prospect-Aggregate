@@ -17,6 +17,10 @@ interface AIEnrichmentStatus {
     extracted_count: number;
     total_percentage: number;
   };
+  title_enhancement: {
+    enhanced_count: number;
+    total_percentage: number;
+  };
   last_processed: string | null;
   model_version: string | null;
 }

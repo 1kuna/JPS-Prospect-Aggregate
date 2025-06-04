@@ -13,7 +13,7 @@ from decimal import Decimal
 from app.utils.llm_utils import call_ollama
 from app.database import db
 from app.database.models import Prospect, InferredProspectData, LLMOutput
-from app.services.optimized_prompts import get_naics_prompt, get_value_prompt, get_contact_prompt
+from app.services.optimized_prompts import get_naics_prompt, get_value_prompt, get_contact_prompt, get_title_prompt
 import time
 
 logger = logging.getLogger(__name__)
@@ -179,6 +179,42 @@ class ContractLLMService:
             # Log failed output
             if prospect_id:
                 self._log_llm_output(prospect_id, 'contacts', prompt, response, error_result, False,
+                                   error_message=str(e), processing_time=processing_time)
+            
+            return error_result
+    
+    def enhance_title_with_llm(self, title: str, description: str, agency: str, prospect_id: str = None) -> Dict:
+        """Title enhancement using qwen3:8b"""
+        prompt = get_title_prompt(title, description, agency)
+        start_time = time.time()
+        response = call_ollama(prompt, self.model_name)
+        processing_time = time.time() - start_time
+        
+        try:
+            # Clean response of any think tags
+            cleaned_response = response
+            if response:
+                cleaned_response = re.sub(r'<think>.*?</think>', '', response, flags=re.DOTALL | re.IGNORECASE).strip()
+                
+            parsed = json.loads(cleaned_response)
+            result = {
+                'enhanced_title': parsed.get('enhanced_title'),
+                'confidence': parsed.get('confidence', 0.8),
+                'reasoning': parsed.get('reasoning', '')
+            }
+            
+            # Log successful output
+            if prospect_id:
+                self._log_llm_output(prospect_id, 'titles', prompt, response, result, True, processing_time=processing_time)
+            
+            return result
+        except (json.JSONDecodeError, TypeError) as e:
+            logger.warning(f"Error parsing title response: {e}")
+            error_result = {'enhanced_title': None, 'confidence': 0.0, 'reasoning': ''}
+            
+            # Log failed output
+            if prospect_id:
+                self._log_llm_output(prospect_id, 'titles', prompt, response, error_result, False,
                                    error_message=str(e), processing_time=processing_time)
             
             return error_result

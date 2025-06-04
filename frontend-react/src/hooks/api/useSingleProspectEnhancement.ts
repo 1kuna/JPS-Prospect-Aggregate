@@ -9,6 +9,7 @@ interface EnhanceSingleProspectResponse {
   status: string;
   message: string;
   processed: boolean;
+  enhancements: string[];
 }
 
 export function useSingleProspectEnhancement() {

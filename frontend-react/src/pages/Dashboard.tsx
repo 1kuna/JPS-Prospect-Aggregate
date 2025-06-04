@@ -30,6 +30,7 @@ interface Prospect {
   id: string; // Primary key, string (UUID)
   native_id: string | null; // From source system
   title: string; // Main title/name of the prospect
+  ai_enhanced_title: string | null; // NEW: AI-enhanced title
   description: string | null;
   agency: string | null;
   naics: string | null;
@@ -123,6 +124,8 @@ const columnHelper = createColumnHelper<Prospect>();
 
 const columns = [
   columnHelper.accessor((row) => {
+    // Prioritize AI-enhanced title if available
+    if (row.ai_enhanced_title) return row.ai_enhanced_title;
     // Try multiple sources for title
     if (row.title) return row.title;
     if (row.extra?.summary && typeof row.extra.summary === 'string') return row.extra.summary;
@@ -137,7 +140,19 @@ const columns = [
     header: 'Title',
     cell: info => {
       const value = info.getValue();
-      return <div className="w-full truncate" title={value || 'No Title'}>{value || 'No Title'}</div>;
+      const row = info.row.original;
+      const isAIEnhanced = !!row.ai_enhanced_title;
+      const title = isAIEnhanced 
+        ? `${value} (AI Enhanced)` 
+        : value || 'No Title';
+      
+      return (
+        <div className="w-full truncate" title={title}>
+          <span className={isAIEnhanced ? 'text-blue-700 font-medium' : ''}>
+            {value || 'No Title'}
+          </span>
+        </div>
+      );
     },
     size: 350,
   }),
@@ -710,19 +725,23 @@ export default function Dashboard() {
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-2xl font-bold pr-8">
-              {(() => {
-                if (!selectedProspect) return 'Prospect Details';
-                // Use the same logic as the table column
-                if (selectedProspect.title) return selectedProspect.title;
-                if (selectedProspect.extra?.summary && typeof selectedProspect.extra.summary === 'string') {
-                  return selectedProspect.extra.summary;
-                }
-                if (selectedProspect.native_id) {
-                  const agency = selectedProspect.extra?.agency || selectedProspect.agency || 'Unknown Agency';
-                  return `${agency} - ${selectedProspect.native_id}`;
-                }
-                return 'Prospect Details';
-              })()}
+              <span className={selectedProspect?.ai_enhanced_title ? 'text-blue-700' : ''}>
+                {(() => {
+                  if (!selectedProspect) return 'Prospect Details';
+                  // Prioritize AI-enhanced title if available
+                  if (selectedProspect.ai_enhanced_title) return selectedProspect.ai_enhanced_title;
+                  // Use the same logic as the table column
+                  if (selectedProspect.title) return selectedProspect.title;
+                  if (selectedProspect.extra?.summary && typeof selectedProspect.extra.summary === 'string') {
+                    return selectedProspect.extra.summary;
+                  }
+                  if (selectedProspect.native_id) {
+                    const agency = selectedProspect.extra?.agency || selectedProspect.agency || 'Unknown Agency';
+                    return `${agency} - ${selectedProspect.native_id}`;
+                  }
+                  return 'Prospect Details';
+                })()}
+              </span>
             </DialogTitle>
             <DialogDescription>
               Full details for this prospect opportunity
@@ -740,18 +759,64 @@ export default function Dashboard() {
                         enhanceMutation.mutate(
                           { prospect_id: selectedProspect.id },
                           {
-                            onSuccess: () => {
+                            onSuccess: (data) => {
                               // Refresh the prospects data
                               queryClient.invalidateQueries({ queryKey: ['prospects'] });
-                              // Show success message (you could add a toast here)
-                              console.log('Enhancement completed successfully');
+                              
+                              // Show success toast with enhancement details
+                              const enhancements = data.enhancements || [];
+                              const prospectTitle = selectedProspect.title || selectedProspect.ai_enhanced_title || 'Prospect';
+                              const truncatedTitle = prospectTitle.length > 40 ? prospectTitle.substring(0, 40) + '...' : prospectTitle;
+                              
+                              if (enhancements.length > 0) {
+                                const enhancementTypes = enhancements.map(e => {
+                                  switch(e) {
+                                    case 'values': return 'Value Parsing';
+                                    case 'contacts': return 'Contact Extraction';
+                                    case 'naics': return 'NAICS Classification';
+                                    case 'titles': return 'Title Enhancement';
+                                    default: return e;
+                                  }
+                                });
+                                
+                                if (window.showToast) {
+                                  window.showToast({
+                                    title: 'AI Enhancement Complete',
+                                    message: `Enhanced "${truncatedTitle}" with: ${enhancementTypes.join(', ')}`,
+                                    type: 'success',
+                                    duration: 5000
+                                  });
+                                }
+                              } else {
+                                if (window.showToast) {
+                                  window.showToast({
+                                    title: 'Enhancement Skipped',
+                                    message: `"${truncatedTitle}" was already fully enhanced`,
+                                    type: 'info',
+                                    duration: 3000
+                                  });
+                                }
+                              }
+                            },
+                            onError: (error) => {
+                              const prospectTitle = selectedProspect?.title || selectedProspect?.ai_enhanced_title || 'Prospect';
+                              const truncatedTitle = prospectTitle.length > 40 ? prospectTitle.substring(0, 40) + '...' : prospectTitle;
+                              
+                              if (window.showToast) {
+                                window.showToast({
+                                  title: 'Enhancement Failed',
+                                  message: `Failed to enhance "${truncatedTitle}": ${error.message}`,
+                                  type: 'error',
+                                  duration: 5000
+                                });
+                              }
                             }
                           }
                         );
                       }
                     }}
                     disabled={enhanceMutation.isPending}
-                    className="bg-blue-600 hover:bg-blue-700"
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
                   >
                     {enhanceMutation.isPending ? (
                       <>
