@@ -394,14 +394,25 @@ def enhance_single_prospect():
         if value_to_parse:
             parsed_value = llm_service.parse_contract_value_with_llm(value_to_parse, prospect_id=prospect.id)
             if parsed_value['single'] is not None:
-                prospect.estimated_value_single = float(parsed_value['single'])
-                prospect.estimated_value_min = float(parsed_value['min']) if parsed_value['min'] else float(parsed_value['single'])
-                prospect.estimated_value_max = float(parsed_value['max']) if parsed_value['max'] else float(parsed_value['single'])
-                # Store the text version if it didn't exist
-                if not prospect.estimated_value_text:
-                    prospect.estimated_value_text = value_to_parse
-                processed = True
-                enhancements.append('values')
+                try:
+                    # Safely convert to float with validation
+                    single_val = float(parsed_value['single']) if parsed_value['single'] is not None else None
+                    min_val = float(parsed_value['min']) if parsed_value['min'] is not None else single_val
+                    max_val = float(parsed_value['max']) if parsed_value['max'] is not None else single_val
+                    
+                    # Only update if all conversions were successful
+                    if single_val is not None:
+                        prospect.estimated_value_single = single_val
+                        prospect.estimated_value_min = min_val
+                        prospect.estimated_value_max = max_val
+                        # Store the text version if it didn't exist
+                        if not prospect.estimated_value_text:
+                            prospect.estimated_value_text = value_to_parse
+                        processed = True
+                        enhancements.append('values')
+                except (ValueError, TypeError) as e:
+                    logger.warning(f"Failed to convert LLM parsed values to float for prospect {prospect.id}: {e}")
+                    # Continue processing without raising an error
         
         # Process contacts
         if prospect.extra and not prospect.primary_contact_name:

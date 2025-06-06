@@ -56,7 +56,10 @@ class IterativeLLMServiceV2:
         app = create_app()
         
         with app.app_context():
-            db_session = db.session()
+            # Create a new session for thread safety
+            from sqlalchemy.orm import sessionmaker
+            Session = sessionmaker(bind=db.engine)
+            db_session = Session()
             
             try:
                 self._processing = True
@@ -191,7 +194,10 @@ class IterativeLLMServiceV2:
     def _process_iteratively(self, enhancement_type: EnhancementType, app):
         """Process prospects one by one in a thread"""
         with app.app_context():
-            db_session = db.session()
+            # Create a new session for this thread to avoid sharing sessions across threads
+            from sqlalchemy.orm import sessionmaker
+            Session = sessionmaker(bind=db.engine)
+            db_session = Session()
             
             try:
                 while not self._stop_event.is_set() and self._processing:

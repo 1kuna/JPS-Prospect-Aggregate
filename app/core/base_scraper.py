@@ -351,7 +351,7 @@ class BaseScraper(ABC):
             return 0
         
         # Keep the 2 most recent files
-        deleted = clean_old_files(download_dir, file_pattern, keep_count=2)
+        deleted = clean_old_files(self.download_path, file_pattern, keep_count=2)
         logger.info(f"Cleaned up {deleted} old download files for {self.source_name}")
         return deleted
     

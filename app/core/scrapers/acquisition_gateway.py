@@ -76,7 +76,8 @@ class AcquisitionGatewayScraper(PageInteractionScraper):
             # Try to evaluate a simple JavaScript expression
             result = self.page.evaluate("() => true")
             return result == True
-        except:
+        except Exception as e:
+            self.logger.warning(f"Page evaluation failed during health check: {e}")
             return False
 
     def _extract_method(self) -> Optional[str]:
