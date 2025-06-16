@@ -370,6 +370,8 @@ def enhance_single_prospect():
         if not prospect_id:
             return jsonify({"error": "prospect_id is required"}), 400
             
+        force_redo = data.get('force_redo', False)
+            
         # Get the prospect
         prospect = Prospect.query.get(prospect_id)
         if not prospect:
@@ -385,11 +387,18 @@ def enhance_single_prospect():
         
         # Process values
         value_to_parse = None
-        if prospect.estimated_value_text and not prospect.estimated_value_single:
+        if force_redo or (prospect.estimated_value_text and not prospect.estimated_value_single):
             value_to_parse = prospect.estimated_value_text
-        elif prospect.estimated_value and not prospect.estimated_value_single:
+        elif force_redo or (prospect.estimated_value and not prospect.estimated_value_single):
             # Convert numeric value to text for LLM processing
             value_to_parse = str(prospect.estimated_value)
+        
+        # If force_redo, try to get a value even if we already have parsed values
+        if force_redo and not value_to_parse:
+            if prospect.estimated_value_text:
+                value_to_parse = prospect.estimated_value_text
+            elif prospect.estimated_value:
+                value_to_parse = str(prospect.estimated_value)
         
         if value_to_parse:
             parsed_value = llm_service.parse_contract_value_with_llm(value_to_parse, prospect_id=prospect.id)
@@ -415,7 +424,7 @@ def enhance_single_prospect():
                     # Continue processing without raising an error
         
         # Process contacts
-        if prospect.extra and not prospect.primary_contact_name:
+        if prospect.extra and (force_redo or not prospect.primary_contact_name):
             import json
             extra_data = prospect.extra
             if isinstance(extra_data, str):
@@ -446,7 +455,7 @@ def enhance_single_prospect():
                     enhancements.append('contacts')
         
         # Process NAICS
-        if prospect.description and (not prospect.naics or prospect.naics_source != 'llm_inferred'):
+        if prospect.description and (force_redo or not prospect.naics or prospect.naics_source != 'llm_inferred'):
             classification = llm_service.classify_naics_with_llm(prospect.title, prospect.description, prospect_id=prospect.id)
             
             if classification['code']:
@@ -475,7 +484,7 @@ def enhance_single_prospect():
                 enhancements.append('naics')
         
         # Process titles
-        if prospect.title and not prospect.ai_enhanced_title:
+        if prospect.title and (force_redo or not prospect.ai_enhanced_title):
             enhanced_title = llm_service.enhance_title_with_llm(
                 prospect.title, 
                 prospect.description or "",
@@ -508,7 +517,8 @@ def enhance_single_prospect():
                 processed = True
                 enhancements.append('titles')
         
-        if processed:
+        # Always update timestamp for force_redo, even if no new enhancements
+        if processed or force_redo:
             prospect.ollama_processed_at = datetime.now()
             prospect.ollama_model_version = llm_service.model_name
             db.session.commit()

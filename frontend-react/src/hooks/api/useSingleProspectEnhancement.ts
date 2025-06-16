@@ -3,6 +3,7 @@ import axios from 'axios';
 
 interface EnhanceSingleProspectRequest {
   prospect_id: string;
+  force_redo?: boolean;
 }
 
 interface EnhanceSingleProspectResponse {
@@ -16,10 +17,11 @@ export function useSingleProspectEnhancement() {
   const queryClient = useQueryClient();
   
   return useMutation<EnhanceSingleProspectResponse, Error, EnhanceSingleProspectRequest>({
-    mutationFn: async ({ prospect_id }) => {
+    mutationFn: async ({ prospect_id, force_redo = false }) => {
       const response = await axios.post('/api/llm/enhance-single', {
         prospect_id,
-        enhancement_type: 'all'
+        enhancement_type: 'all',
+        force_redo
       });
       return response.data;
     },
