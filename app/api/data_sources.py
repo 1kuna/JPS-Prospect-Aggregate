@@ -3,7 +3,6 @@ from sqlalchemy import func
 from app.models import db, Prospect, DataSource, ScraperStatus
 from app.exceptions import ValidationError, NotFoundError, DatabaseError
 from app.utils.logger import logger
-# import datetime # Unused
 
 data_sources_bp = Blueprint('data_sources', __name__)
 

@@ -1,13 +1,10 @@
 import logging
 import pandas as pd
-# from sqlalchemy.orm import Session # No longer needed directly
 from sqlalchemy import insert # Changed to core SQLAlchemy insert
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 import numpy as np
 import math
 
-# from .models import Prospect # Old import
-# from .session import get_db # Old import
 from app.models import db, Prospect # Changed back to Prospect
 from app.exceptions import ValidationError
 
