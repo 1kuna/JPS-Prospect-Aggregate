@@ -1,10 +1,16 @@
 import { useState } from 'react';
 import { DataPageLayout } from '@/components/layout';
-import { DataTable, Column } from '@/components/data-display';
 import { useInfiniteProposals, useProposalStatistics } from '@/hooks/api/useProposals';
-import { Proposal, ProposalFilters } from '@/types/proposals';
-import styles from './Proposals.module.css';
+import { ProposalFilters } from '@/types/proposals';
 import { Button } from '@/components/ui';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
 export default function Proposals() {
   const [filters] = useState<ProposalFilters>({});
@@ -31,41 +37,6 @@ export default function Proposals() {
     }
   };
 
-  const columns: Column<Proposal>[] = [
-    {
-      header: 'Title',
-      accessorKey: 'title',
-    },
-    {
-      header: 'Status',
-      accessorKey: 'status',
-    },
-    {
-      header: 'Data Source',
-      accessorKey: 'dataSource.name',
-    },
-    {
-      header: 'Created',
-      accessorKey: 'createdAt',
-      cell: ({ row }: { row: Proposal }) => 
-        new Date(row.createdAt).toLocaleDateString(),
-    },
-    {
-      header: 'Actions',
-      accessorKey: 'actions', // Added required accessorKey
-      cell: ({ row }: { row: Proposal }) => (
-        <div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => row.url && window.open(row.url, '_blank')}
-          >
-            View
-          </Button>
-        </div>
-      ),
-    },
-  ];
 
   const pageError = isError ? (error as Error) : null;
   const totalProposals = statisticsData?.data?.total ?? 0;
@@ -78,15 +49,62 @@ export default function Proposals() {
       loading={isLoading || isLoadingStats}
       error={pageError}
     >
-      <>
-        <DataTable
-          data={proposals ?? []}
-          columns={columns}
-          isLoading={isLoading}
-        />
+      <div className="space-y-4">
+        <div className="rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Title</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Data Source</TableHead>
+                <TableHead>Created</TableHead>
+                <TableHead>Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {isLoading ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="h-24 text-center">
+                    Loading...
+                  </TableCell>
+                </TableRow>
+              ) : !proposals || proposals.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="h-24 text-center">
+                    No proposals found.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                proposals.map((proposal) => (
+                  <TableRow key={proposal.id}>
+                    <TableCell className="font-medium">
+                      {proposal.title || 'Untitled'}
+                    </TableCell>
+                    <TableCell>{proposal.status || 'N/A'}</TableCell>
+                    <TableCell>
+                      {proposal.dataSource?.name || 'N/A'}
+                    </TableCell>
+                    <TableCell>
+                      {new Date(proposal.createdAt).toLocaleDateString()}
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => alert('View proposal details')}
+                      >
+                        View
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
         
         {hasNextPage && (
-          <div className={styles.loadMoreContainer}>
+          <div className="flex justify-center">
             <Button
               onClick={handleLoadMore}
               disabled={isFetchingNextPage}
@@ -95,7 +113,7 @@ export default function Proposals() {
             </Button>
           </div>
         )}
-      </>
+      </div>
     </DataPageLayout>
   );
 } 

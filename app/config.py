@@ -39,7 +39,7 @@ DOT_FORECAST_URL = "https://www.transportation.gov/osdbu/procurement-assistance/
 
 # Database configuration
 # Use an absolute path for the SQLite database
-DEFAULT_DB_PATH = os.path.join(BASE_DIR, 'jps.db')
+DEFAULT_DB_PATH = os.path.join(DATA_DIR, 'jps_aggregate.db')
 DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{DEFAULT_DB_PATH}")
 
 # Redis configuration
