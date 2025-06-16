@@ -2,7 +2,6 @@
 
 # Standard library imports
 import os
-# import traceback # No longer directly used, BaseScraper handles exc_info logging
 from typing import Optional 
 
 # Third-party imports
@@ -10,11 +9,9 @@ import pandas as pd
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 # Local application imports
-from app.core.specialized_scrapers import PageInteractionScraper 
-# from app.models import Prospect # Data model, not directly used by scraper logic itself (mixin handles it)
+from app.core.specialized_scrapers import PageInteractionScraper
 from app.config import active_config 
-from app.exceptions import ScraperError
-from app.utils.logger import logger # Base logger, instance logger is self.logger
+from app.utils.logger import logger
 
 # Import the specific config for this scraper
 from app.core.scrapers.configs.acquisition_gateway_config import AcquisitionGatewayConfig
@@ -34,19 +31,18 @@ class AcquisitionGatewayScraper(PageInteractionScraper):
             config (AcquisitionGatewayConfig): Configuration object for this scraper.
             debug_mode (bool): Runtime override for debug mode.
         """
-        if config.base_url is None: # Ensure base_url is set, it's vital.
-            config.base_url = active_config.ACQUISITION_GATEWAY_URL 
-            module_logger.warning(f"AcquisitionGatewayConfig.base_url was None, set from active_config: {config.base_url}")
-            
         super().__init__(config=config, debug_mode=debug_mode)
-        # self.logger is initialized by PageInteractionScraper's super() call to BaseScraper.
+    
+    def _get_default_url(self) -> str:
+        """Return default URL for Acquisition Gateway scraper."""
+        return active_config.ACQUISITION_GATEWAY_URL
 
-    def custom_summary_fallback(self, df: pd.DataFrame) -> pd.DataFrame:
+    def _apply_custom_transforms(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Custom transformation: If 'Body' column is missing but 'Summary' exists,
         rename 'Summary' to 'Body'. This runs BEFORE raw_column_rename_map in transform_dataframe.
         """
-        self.logger.info("Applying custom_summary_fallback logic...")
+        self.logger.info("Applying custom transformation logic...")
         if 'Body' not in df.columns and 'Summary' in df.columns:
             self.logger.info("Found 'Summary' column but no 'Body' column. Renaming 'Summary' to 'Body'.")
             df.rename(columns={'Summary': 'Body'}, inplace=True)

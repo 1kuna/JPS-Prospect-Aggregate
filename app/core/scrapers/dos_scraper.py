@@ -1,11 +1,9 @@
 """Department Of State Opportunity Forecast scraper."""
 
 import os
-# import traceback # No longer directly used
 from typing import Optional
 
 import pandas as pd
-# from playwright.sync_api import TimeoutError as PlaywrightTimeoutError # Handled by mixins
 
 from app.core.specialized_scrapers import PageInteractionScraper
 from app.config import active_config
