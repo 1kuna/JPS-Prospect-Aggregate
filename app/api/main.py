@@ -343,143 +343,169 @@ def set_ai_preservation_config():
             'message': f'Failed to update configuration: {str(e)}'
         }), 500
 
+def _setup_progress_tracking():
+    """Initialize progress tracking for duplicate detection scan."""
+    import threading
+    import time
+    
+    scan_id = f"scan_{int(time.time())}_{threading.get_ident()}"
+    
+    # Initialize progress in a global store
+    global_progress_store = getattr(detect_duplicates, 'progress_store', {})
+    
+    global_progress_store[scan_id] = {
+        'status': 'starting',
+        'current': 0,
+        'total': 0,
+        'message': 'Initializing scan...',
+        'start_time': time.time()
+    }
+    
+    # Ensure the store is attached to the function
+    detect_duplicates.progress_store = global_progress_store
+    
+    logger.info(f"Started duplicate scan with ID: {scan_id}")
+    return scan_id
+
+def _get_prospects_to_process(source_id, limit):
+    """Get the list of prospects to process for duplicate detection."""
+    from app.models import Prospect
+    
+    query = db.session.query(Prospect)
+    if source_id:
+        query = query.filter(Prospect.source_id == source_id)
+    
+    # If limit is very high (10000+), treat as "scan all"
+    if limit >= 10000:
+        prospects = query.order_by(Prospect.loaded_at.desc()).all()
+    else:
+        prospects = query.order_by(Prospect.loaded_at.desc()).limit(limit * 2).all()
+    
+    # Process up to the limit (or all if scanning all)
+    return prospects if limit >= 10000 else prospects[:limit]
+
+def _format_prospect_for_api(prospect):
+    """Format a single prospect for API response."""
+    return {
+        'id': prospect.id,
+        'native_id': prospect.native_id,
+        'title': prospect.title[:100] + '...' if prospect.title and len(prospect.title) > 100 else prospect.title,
+        'description': prospect.description[:150] + '...' if prospect.description and len(prospect.description) > 150 else prospect.description,
+        'agency': prospect.agency,
+        'naics': prospect.naics,
+        'place_city': prospect.place_city,
+        'place_state': prospect.place_state,
+        'ai_processed': prospect.ollama_processed_at is not None,
+        'loaded_at': prospect.loaded_at.isoformat() if prospect.loaded_at else None
+    }
+
+def _create_duplicate_group(prospect, high_confidence_matches):
+    """Create a duplicate group from a prospect and its matches."""
+    from app.models import Prospect
+    
+    # Get prospect details for the matches
+    match_ids = [m.prospect_id for m in high_confidence_matches]
+    matched_prospects = db.session.query(Prospect).filter(
+        Prospect.id.in_(match_ids)
+    ).all()
+    
+    matched_prospects_dict = {p.id: p for p in matched_prospects}
+    
+    duplicate_group = {
+        'original': _format_prospect_for_api(prospect),
+        'matches': []
+    }
+    
+    for match in high_confidence_matches:
+        matched_prospect = matched_prospects_dict.get(match.prospect_id)
+        if matched_prospect:
+            match_data = _format_prospect_for_api(matched_prospect)
+            match_data.update({
+                'confidence_score': match.confidence_score,
+                'match_type': match.match_type,
+                'matched_fields': match.matched_fields
+            })
+            duplicate_group['matches'].append(match_data)
+    
+    return duplicate_group
+
+def _process_prospects_for_duplicates(prospects_to_process, scan_id, min_confidence):
+    """Process prospects to find duplicates with progress tracking."""
+    from app.utils.duplicate_prevention import DuplicateDetector
+    
+    detector = DuplicateDetector()
+    potential_duplicates = []
+    
+    # Update progress with total count
+    detect_duplicates.progress_store[scan_id].update({
+        'status': 'processing',
+        'total': len(prospects_to_process),
+        'message': f'Scanning {len(prospects_to_process)} prospects for duplicates...'
+    })
+    
+    logger.info(f"Processing {len(prospects_to_process)} prospects for scan {scan_id}")
+    
+    for index, prospect in enumerate(prospects_to_process):
+        # Update progress every 25 records or on last record for better performance
+        if index % 25 == 0 or index == len(prospects_to_process) - 1:
+            detect_duplicates.progress_store[scan_id].update({
+                'current': index + 1,
+                'message': f'Processing prospect {index + 1} of {len(prospects_to_process)}...'
+            })
+            logger.debug(f"Scan {scan_id} progress: {index + 1}/{len(prospects_to_process)}")
+        
+        # Convert prospect to dict for matching
+        prospect_data = {
+            'native_id': prospect.native_id,
+            'title': prospect.title,
+            'description': prospect.description,
+            'naics': prospect.naics,
+            'agency': prospect.agency,
+            'place_city': prospect.place_city,
+            'place_state': prospect.place_state
+        }
+        
+        # Find potential matches
+        matches = detector.find_potential_matches(
+            db.session, prospect_data, prospect.source_id or 0
+        )
+        
+        # Filter by confidence and exclude self-matches
+        high_confidence_matches = [
+            match for match in matches 
+            if match.confidence_score >= min_confidence 
+            and match.prospect_id != prospect.id
+        ]
+        
+        if high_confidence_matches:
+            duplicate_group = _create_duplicate_group(prospect, high_confidence_matches)
+            potential_duplicates.append(duplicate_group)
+    
+    return potential_duplicates
+
 @main_bp.route('/duplicates/detect', methods=['POST'])
 def detect_duplicates():
     """Detect potential duplicate prospects in the database."""
     try:
         from flask import request
-        from app.utils.duplicate_prevention import DuplicateDetector
-        from app.models import Prospect, DataSource
-        import threading
         import time
         
+        # Parse request parameters
         data = request.get_json() or {}
         source_id = data.get('source_id')
         min_confidence = float(data.get('min_confidence', 0.7))
         limit = int(data.get('limit', 100))
         
-        # Generate a unique scan ID for progress tracking
-        scan_id = f"scan_{int(time.time())}_{threading.get_ident()}"
+        # Setup progress tracking
+        scan_id = _setup_progress_tracking()
         
-        # Initialize progress in a global store
-        global_progress_store = getattr(detect_duplicates, 'progress_store', {})
+        # Get prospects to process
+        prospects_to_process = _get_prospects_to_process(source_id, limit)
         
-        global_progress_store[scan_id] = {
-            'status': 'starting',
-            'current': 0,
-            'total': 0,
-            'message': 'Initializing scan...',
-            'start_time': time.time()
-        }
-        
-        # Ensure the store is attached to the function
-        detect_duplicates.progress_store = global_progress_store
-        
-        logger.info(f"Started duplicate scan with ID: {scan_id}")
-        
-        # Do the actual processing synchronously for now to avoid Flask context issues
-        detector = DuplicateDetector()
-        potential_duplicates = []
-        
-        # Get prospects to check
-        query = db.session.query(Prospect)
-        if source_id:
-            query = query.filter(Prospect.source_id == source_id)
-        
-        # If limit is very high (10000+), treat as "scan all"
-        if limit >= 10000:
-            prospects = query.order_by(Prospect.loaded_at.desc()).all()
-        else:
-            prospects = query.order_by(Prospect.loaded_at.desc()).limit(limit * 2).all()
-        
-        # Process up to the limit (or all if scanning all)
-        prospects_to_process = prospects if limit >= 10000 else prospects[:limit]
-        
-        # Update progress with total count
-        detect_duplicates.progress_store[scan_id].update({
-            'status': 'processing',
-            'total': len(prospects_to_process),
-            'message': f'Scanning {len(prospects_to_process)} prospects for duplicates...'
-        })
-        
-        logger.info(f"Processing {len(prospects_to_process)} prospects for scan {scan_id}")
-        
-        for index, prospect in enumerate(prospects_to_process):
-            # Update progress every 25 records or on last record for better performance
-            if index % 25 == 0 or index == len(prospects_to_process) - 1:
-                detect_duplicates.progress_store[scan_id].update({
-                    'current': index + 1,
-                    'message': f'Processing prospect {index + 1} of {len(prospects_to_process)}...'
-                })
-                logger.debug(f"Scan {scan_id} progress: {index + 1}/{len(prospects_to_process)}")
-            # Convert prospect to dict for matching
-            prospect_data = {
-                'native_id': prospect.native_id,
-                'title': prospect.title,
-                'description': prospect.description,
-                'naics': prospect.naics,
-                'agency': prospect.agency,
-                'place_city': prospect.place_city,
-                'place_state': prospect.place_state
-            }
-            
-            # Find potential matches
-            matches = detector.find_potential_matches(
-                db.session, prospect_data, prospect.source_id or 0
-            )
-            
-            # Filter by confidence and exclude self-matches
-            high_confidence_matches = [
-                match for match in matches 
-                if match.confidence_score >= min_confidence 
-                and match.prospect_id != prospect.id
-            ]
-            
-            if high_confidence_matches:
-                # Get prospect details for the matches
-                match_ids = [m.prospect_id for m in high_confidence_matches]
-                matched_prospects = db.session.query(Prospect).filter(
-                    Prospect.id.in_(match_ids)
-                ).all()
-                
-                matched_prospects_dict = {p.id: p for p in matched_prospects}
-                
-                duplicate_group = {
-                    'original': {
-                        'id': prospect.id,
-                        'native_id': prospect.native_id,
-                        'title': prospect.title[:100] + '...' if prospect.title and len(prospect.title) > 100 else prospect.title,
-                        'description': prospect.description[:150] + '...' if prospect.description and len(prospect.description) > 150 else prospect.description,
-                        'agency': prospect.agency,
-                        'naics': prospect.naics,
-                        'place_city': prospect.place_city,
-                        'place_state': prospect.place_state,
-                        'ai_processed': prospect.ollama_processed_at is not None,
-                        'loaded_at': prospect.loaded_at.isoformat() if prospect.loaded_at else None
-                    },
-                    'matches': []
-                }
-                
-                for match in high_confidence_matches:
-                    matched_prospect = matched_prospects_dict.get(match.prospect_id)
-                    if matched_prospect:
-                        duplicate_group['matches'].append({
-                            'id': matched_prospect.id,
-                            'native_id': matched_prospect.native_id,
-                            'title': matched_prospect.title[:100] + '...' if matched_prospect.title and len(matched_prospect.title) > 100 else matched_prospect.title,
-                            'description': matched_prospect.description[:150] + '...' if matched_prospect.description and len(matched_prospect.description) > 150 else matched_prospect.description,
-                            'agency': matched_prospect.agency,
-                            'naics': matched_prospect.naics,
-                            'place_city': matched_prospect.place_city,
-                            'place_state': matched_prospect.place_state,
-                            'ai_processed': matched_prospect.ollama_processed_at is not None,
-                            'loaded_at': matched_prospect.loaded_at.isoformat() if matched_prospect.loaded_at else None,
-                            'confidence_score': match.confidence_score,
-                            'match_type': match.match_type,
-                            'matched_fields': match.matched_fields
-                        })
-                
-                potential_duplicates.append(duplicate_group)
+        # Process prospects for duplicates
+        potential_duplicates = _process_prospects_for_duplicates(
+            prospects_to_process, scan_id, min_confidence
+        )
         
         # Mark scan as completed and store results
         processing_time = time.time() - detect_duplicates.progress_store[scan_id]['start_time']
@@ -502,7 +528,7 @@ def detect_duplicates():
         
         logger.info(f"Scan {scan_id} completed in {processing_time:.2f}s. Found {len(potential_duplicates)} duplicate groups.")
         
-        # Return the scan results directly with the scan_id
+        # Return the scan results
         return jsonify({
             'status': 'success',
             'data': {

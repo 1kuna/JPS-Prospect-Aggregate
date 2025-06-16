@@ -66,7 +66,153 @@ def paginate_sqlalchemy_query(query, page: int, per_page: int):
         "has_prev": page > 1 and total_items > 0 # Ensure has_prev is false if no items
     }
 
-def bulk_upsert_prospects(df_in: pd.DataFrame, preserve_ai_data: bool = True, enable_smart_matching: bool = False): # Renamed back
+def _try_enhanced_matching(df_in, preserve_ai_data, enable_smart_matching):
+    """Try to use enhanced matching if enabled, return stats or None if fallback needed."""
+    if not enable_smart_matching:
+        return None
+        
+    from app.utils.duplicate_prevention import enhanced_bulk_upsert_prospects
+    try:
+        # Get the first row to determine source_id
+        first_row = df_in.iloc[0]
+        source_id = first_row.get('source_id')
+        if source_id:
+            stats = enhanced_bulk_upsert_prospects(
+                df_in, db.session, source_id, preserve_ai_data, enable_smart_matching
+            )
+            logging.info(f"Enhanced upsert stats: {stats}")
+            return stats
+        else:
+            logging.warning("No source_id found, falling back to standard upsert")
+    except Exception as e:
+        logging.error(f"Enhanced matching failed, falling back to standard upsert: {e}")
+    
+    return None
+
+def _preprocess_dataframe(df_in):
+    """Preprocess DataFrame: convert dates, handle nulls, remove loaded_at column."""
+    # Work on a copy to avoid SettingWithCopyWarning
+    df = df_in.copy()
+
+    # Convert Timestamp columns to Python date objects for SQLite compatibility
+    date_columns = ['release_date', 'award_date']
+    for col in date_columns:
+        if col in df.columns:
+            if pd.api.types.is_datetime64_any_dtype(df[col]):
+                df[col] = df[col].apply(lambda x: x.date() if pd.notna(x) else None)
+                logging.debug(f"Converted column '{col}' to Python date objects.")
+            else:
+                logging.debug(f"Column '{col}' is not datetime type ({df[col].dtype}). Attempting conversion.")
+                try:
+                    df[col] = pd.to_datetime(df[col], errors='coerce').dt.date
+                    logging.debug(f"Successfully converted column '{col}' to date objects.")
+                except Exception as e:
+                    logging.error(f"Failed to convert column '{col}' to date: {e}")
+                    df[col] = None
+
+    # Handle NaN/null values
+    try:
+        with pd.option_context('future.no_silent_downcasting', True):
+            df = df.fillna(value=np.nan).replace([np.nan], [None])
+        df = df.infer_objects(copy=False)
+        logging.debug("DataFrame NaN/null values replaced with None using fillna/replace.")
+    except ImportError:
+        logging.error("Numpy not found. Cannot perform robust NaN replacement. Falling back to df.where().")
+        df = df.where(pd.notna(df), None)
+
+    if 'loaded_at' in df.columns:
+        df = df.drop(columns=['loaded_at'])
+        
+    return df
+
+def _remove_batch_duplicates(data_to_insert):
+    """Remove duplicate records within the same batch based on ID."""
+    seen_ids = set()
+    unique_data_to_insert = []
+    duplicates_count = 0
+    
+    for record in data_to_insert:
+        record_id = record.get('id')
+        if record_id and record_id not in seen_ids:
+            seen_ids.add(record_id)
+            unique_data_to_insert.append(record)
+        elif record_id:
+            duplicates_count += 1
+    
+    if duplicates_count > 0:
+        logging.warning(f"Removed {duplicates_count} duplicate records within the same batch")
+    
+    return unique_data_to_insert
+
+def _process_ai_safe_upserts(session, data_to_insert, ids_to_upsert):
+    """Process upserts with AI field preservation."""
+    # Get existing AI-processed records
+    ai_processed_records = session.query(Prospect).filter(
+        Prospect.id.in_(ids_to_upsert),
+        Prospect.ollama_processed_at.isnot(None)
+    ).all()
+    
+    ai_processed_ids = {record.id for record in ai_processed_records}
+    logging.info(f"Found {len(ai_processed_ids)} AI-processed records to preserve")
+    
+    # AI-enhanced fields to preserve during updates
+    ai_fields = [
+        'naics', 'naics_description', 'naics_source',
+        'estimated_value_min', 'estimated_value_max', 'estimated_value_single',
+        'primary_contact_email', 'primary_contact_name',
+        'ollama_processed_at', 'ollama_model_version'
+    ]
+    
+    ai_safe_updates = 0
+    regular_inserts = 0
+    
+    # Process records with AI preservation
+    for record in data_to_insert:
+        record_id = record.get('id')
+        if record_id in ai_processed_ids:
+            # Update existing AI-processed record, preserving AI fields
+            existing_record = session.query(Prospect).filter_by(id=record_id).first()
+            if existing_record:
+                # Update only source fields, preserve AI fields
+                for key, value in record.items():
+                    if key not in ai_fields and hasattr(existing_record, key):
+                        setattr(existing_record, key, value)
+                ai_safe_updates += 1
+                logging.debug(f"AI-safe update for record {record_id}")
+        else:
+            # Record either doesn't exist or isn't AI-processed
+            # Delete and insert (regular upsert)
+            session.query(Prospect).filter_by(id=record_id).delete()
+            new_record = Prospect(**record)
+            session.add(new_record)
+            regular_inserts += 1
+    
+    logging.info(f"AI-safe processing: {ai_safe_updates} preserved, {regular_inserts} regular upserts")
+    return ai_safe_updates, regular_inserts
+
+def _process_standard_upserts(session, data_to_insert, ids_to_upsert):
+    """Process standard upserts: delete existing records and insert new ones."""
+    regular_inserts = 0
+    
+    # Delete existing records in batches
+    batch_size = 500  # SQLite has a limit on number of parameters
+    for i in range(0, len(ids_to_upsert), batch_size):
+        batch_ids = ids_to_upsert[i:i + batch_size]
+        delete_count = session.query(Prospect).filter(Prospect.id.in_(batch_ids)).delete(synchronize_session=False)
+        logging.info(f"Deleted {delete_count} existing records from batch {i//batch_size + 1}")
+    
+    # Insert all records in batches
+    batch_size = 1000
+    for i in range(0, len(data_to_insert), batch_size):
+        batch_data = data_to_insert[i:i + batch_size]
+        session.bulk_insert_mappings(Prospect, batch_data)
+        regular_inserts += len(batch_data)
+        logging.info(f"Inserted batch {i//batch_size + 1}: {len(batch_data)} records")
+    
+    logging.info(f"Standard upsert: {regular_inserts} records processed")
+    return 0, regular_inserts  # 0 ai_safe_updates, regular_inserts
+
+def bulk_upsert_prospects(df_in: pd.DataFrame, preserve_ai_data: bool = True, enable_smart_matching: bool = False)
     """
     Performs a bulk UPSERT (INSERT ON CONFLICT DO UPDATE) of prospect data 
     from a Pandas DataFrame into the prospects table.
@@ -83,152 +229,38 @@ def bulk_upsert_prospects(df_in: pd.DataFrame, preserve_ai_data: bool = True, en
         logging.info("DataFrame is empty, skipping database insertion.")
         return
     
-    # Use enhanced matching if enabled
-    if enable_smart_matching:
-        from app.utils.duplicate_prevention import enhanced_bulk_upsert_prospects
-        try:
-            # Get the first row to determine source_id
-            first_row = df_in.iloc[0]
-            source_id = first_row.get('source_id')
-            if source_id:
-                stats = enhanced_bulk_upsert_prospects(
-                    df_in, db.session, source_id, preserve_ai_data, enable_smart_matching
-                )
-                logging.info(f"Enhanced upsert stats: {stats}")
-                return stats
-            else:
-                logging.warning("No source_id found, falling back to standard upsert")
-        except Exception as e:
-            logging.error(f"Enhanced matching failed, falling back to standard upsert: {e}")
+    # Try enhanced matching first
+    enhanced_result = _try_enhanced_matching(df_in, preserve_ai_data, enable_smart_matching)
+    if enhanced_result is not None:
+        return enhanced_result
     
-    # Standard upsert logic below...
-
-    # Work on a copy to avoid SettingWithCopyWarning
-    df = df_in.copy()
-
-    # --- Convert Timestamp columns to Python date objects for SQLite compatibility ---
-    # Assuming 'release_date' and 'award_date' are the correct date columns for Prospect
-    date_columns = ['release_date', 'award_date'] # Adjusted from solicitation_date if necessary
-    for col in date_columns:
-        if col in df.columns:
-            if pd.api.types.is_datetime64_any_dtype(df[col]):
-                df[col] = df[col].apply(lambda x: x.date() if pd.notna(x) else None)
-                logging.debug(f"Converted column '{col}' to Python date objects.")
-            else:
-                logging.debug(f"Column '{col}' is not datetime type ({df[col].dtype}). Attempting conversion.")
-                try:
-                    df[col] = pd.to_datetime(df[col], errors='coerce').dt.date
-                    logging.debug(f"Successfully converted column '{col}' to date objects.")
-                except Exception as e:
-                    logging.error(f"Failed to convert column '{col}' to date: {e}")
-                    # Decide how to handle: skip column, fill with None, or raise error
-                    df[col] = None # Example: fill with None
-    # --- End Date Conversion ---
-
-    try:
-        # Fix FutureWarning about downcasting on fillna
-        with pd.option_context('future.no_silent_downcasting', True):
-            df = df.fillna(value=np.nan).replace([np.nan], [None])
-        df = df.infer_objects(copy=False)
-        logging.debug("DataFrame NaN/null values replaced with None using fillna/replace.")
-    except ImportError:
-        logging.error("Numpy not found. Cannot perform robust NaN replacement. Falling back to df.where().")
-        df = df.where(pd.notna(df), None)
-
-    if 'loaded_at' in df.columns:
-        df = df.drop(columns=['loaded_at'])
-        
+    # Standard upsert logic
+    df = _preprocess_dataframe(df_in)
     data_to_insert = df.to_dict(orient='records')
 
     if not data_to_insert:
         logging.warning("Converted data to insert is empty.")
         return
 
-    # Remove duplicates within the data_to_insert itself
-    seen_ids = set()
-    unique_data_to_insert = []
-    duplicates_count = 0
+    # Remove duplicates within the batch
+    data_to_insert = _remove_batch_duplicates(data_to_insert)
     
-    for record in data_to_insert:
-        record_id = record.get('id')
-        if record_id and record_id not in seen_ids:
-            seen_ids.add(record_id)
-            unique_data_to_insert.append(record)
-        elif record_id:
-            duplicates_count += 1
-    
-    if duplicates_count > 0:
-        logging.warning(f"Removed {duplicates_count} duplicate records within the same batch")
-    
-    data_to_insert = unique_data_to_insert
-
-    session = db.session # Use Flask-SQLAlchemy session directly
+    session = db.session
 
     try:
         # Extract all IDs from the data to insert
         ids_to_upsert = [record['id'] for record in data_to_insert if 'id' in record]
         
-        ai_safe_updates = 0
-        regular_inserts = 0
-        
         if ids_to_upsert and preserve_ai_data:
-            # Get existing AI-processed records
-            ai_processed_records = session.query(Prospect).filter(
-                Prospect.id.in_(ids_to_upsert),
-                Prospect.ollama_processed_at.isnot(None)
-            ).all()
-            
-            ai_processed_ids = {record.id for record in ai_processed_records}
-            logging.info(f"Found {len(ai_processed_ids)} AI-processed records to preserve")
-            
-            # AI-enhanced fields to preserve during updates
-            ai_fields = [
-                'naics', 'naics_description', 'naics_source',
-                'estimated_value_min', 'estimated_value_max', 'estimated_value_single',
-                'primary_contact_email', 'primary_contact_name',
-                'ollama_processed_at', 'ollama_model_version'
-            ]
-            
-            # Process records with AI preservation
-            for record in data_to_insert:
-                record_id = record.get('id')
-                if record_id in ai_processed_ids:
-                    # Update existing AI-processed record, preserving AI fields
-                    existing_record = session.query(Prospect).filter_by(id=record_id).first()
-                    if existing_record:
-                        # Update only source fields, preserve AI fields
-                        for key, value in record.items():
-                            if key not in ai_fields and hasattr(existing_record, key):
-                                setattr(existing_record, key, value)
-                        ai_safe_updates += 1
-                        logging.debug(f"AI-safe update for record {record_id}")
-                else:
-                    # Record either doesn't exist or isn't AI-processed
-                    # Delete and insert (regular upsert)
-                    session.query(Prospect).filter_by(id=record_id).delete()
-                    new_record = Prospect(**record)
-                    session.add(new_record)
-                    regular_inserts += 1
-            
-            logging.info(f"AI-safe processing: {ai_safe_updates} preserved, {regular_inserts} regular upserts")
-        
+            ai_safe_updates, regular_inserts = _process_ai_safe_upserts(
+                session, data_to_insert, ids_to_upsert
+            )
         elif ids_to_upsert:
-            # Original behavior: delete existing records and insert new ones
-            batch_size = 500  # SQLite has a limit on number of parameters
-            for i in range(0, len(ids_to_upsert), batch_size):
-                batch_ids = ids_to_upsert[i:i + batch_size]
-                delete_count = session.query(Prospect).filter(Prospect.id.in_(batch_ids)).delete(synchronize_session=False)
-                logging.info(f"Deleted {delete_count} existing records from batch {i//batch_size + 1}")
-            
-            # Insert all records in batches
-            batch_size = 1000
-            for i in range(0, len(data_to_insert), batch_size):
-                batch_data = data_to_insert[i:i + batch_size]
-                session.bulk_insert_mappings(Prospect, batch_data)
-                regular_inserts += len(batch_data)
-                logging.info(f"Inserted batch {i//batch_size + 1}: {len(batch_data)} records")
-            
-            logging.info(f"Standard upsert: {regular_inserts} records processed")
+            ai_safe_updates, regular_inserts = _process_standard_upserts(
+                session, data_to_insert, ids_to_upsert
+            )
+        else:
+            ai_safe_updates, regular_inserts = 0, 0
         
         # Commit all changes
         session.commit()

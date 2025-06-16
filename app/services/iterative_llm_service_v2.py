@@ -290,6 +290,147 @@ class IterativeLLMServiceV2:
             return db_session.query(Prospect).filter(filter_condition).order_by(Prospect.loaded_at.desc()).first()
         return None
     
+    def _ensure_extra_is_dict_iterative(self, prospect):
+        """Ensure prospect.extra is a dictionary for iterative processing."""
+        import json
+        if not prospect.extra:
+            prospect.extra = {}
+        elif isinstance(prospect.extra, str):
+            try:
+                prospect.extra = json.loads(prospect.extra)
+            except (json.JSONDecodeError, TypeError):
+                prospect.extra = {}
+        
+        if not isinstance(prospect.extra, dict):
+            prospect.extra = {}
+    
+    def _update_prospect_timestamps(self, prospect):
+        """Update prospect timestamps and model version."""
+        prospect.ollama_processed_at = datetime.now(timezone.utc)
+        prospect.ollama_model_version = self.llm_service.model_name
+    
+    def _process_values_for_iterative(self, prospect, enhancement_type):
+        """Process value parsing for iterative enhancement."""
+        if enhancement_type not in ["values", "all"]:
+            return False
+            
+        value_to_parse = None
+        if prospect.estimated_value_text and not prospect.estimated_value_single:
+            value_to_parse = prospect.estimated_value_text
+        elif prospect.estimated_value and not prospect.estimated_value_single:
+            # Convert numeric value to text for LLM processing
+            value_to_parse = str(prospect.estimated_value)
+        
+        if value_to_parse:
+            # Parse contract value
+            parsed_value = self.llm_service.parse_contract_value_with_llm(value_to_parse, prospect_id=prospect.id)
+            if parsed_value['single'] is not None:
+                prospect.estimated_value_single = float(parsed_value['single'])
+                prospect.estimated_value_min = float(parsed_value['min']) if parsed_value['min'] else float(parsed_value['single'])
+                prospect.estimated_value_max = float(parsed_value['max']) if parsed_value['max'] else float(parsed_value['single'])
+                # Store the text version if it didn't exist
+                if not prospect.estimated_value_text:
+                    prospect.estimated_value_text = value_to_parse
+                self._update_prospect_timestamps(prospect)
+                return True
+        
+        return False
+    
+    def _process_contacts_for_iterative(self, prospect, enhancement_type):
+        """Process contact extraction for iterative enhancement."""
+        if enhancement_type not in ["contacts", "all"]:
+            return False
+            
+        if prospect.extra and not prospect.primary_contact_name:
+            # Extract contact data from extra field
+            extra_data = prospect.extra
+            if isinstance(extra_data, str):
+                try:
+                    import json
+                    extra_data = json.loads(extra_data)
+                except (json.JSONDecodeError, TypeError):
+                    extra_data = {}
+            
+            # Get contact data from various possible locations
+            if extra_data and 'contacts' in extra_data:
+                contact_data = extra_data['contacts']
+            elif extra_data:
+                contact_data = {
+                    'email': extra_data.get('contact_email') or extra_data.get('poc_email'),
+                    'name': extra_data.get('contact_name') or extra_data.get('poc_name'),
+                    'phone': extra_data.get('contact_phone') or extra_data.get('poc_phone'),
+                }
+            else:
+                contact_data = {}
+            
+            if any(contact_data.values()):
+                extracted_contact = self.llm_service.extract_contact_with_llm(contact_data, prospect_id=prospect.id)
+                
+                if extracted_contact['email'] or extracted_contact['name']:
+                    prospect.primary_contact_email = extracted_contact['email']
+                    prospect.primary_contact_name = extracted_contact['name']
+                    self._update_prospect_timestamps(prospect)
+                    return True
+        
+        return False
+    
+    def _process_naics_for_iterative(self, prospect, enhancement_type):
+        """Process NAICS classification for iterative enhancement."""
+        if enhancement_type not in ["naics", "all"]:
+            return False
+            
+        if prospect.description and (not prospect.naics or prospect.naics_source != 'llm_inferred'):
+            # Classify NAICS
+            classification = self.llm_service.classify_naics_with_llm(prospect.title, prospect.description, prospect_id=prospect.id)
+            
+            if classification['code']:
+                prospect.naics = classification['code']
+                prospect.naics_description = classification['description']
+                prospect.naics_source = 'llm_inferred'
+                self._update_prospect_timestamps(prospect)
+                
+                # Add confidence to extras
+                self._ensure_extra_is_dict_iterative(prospect)
+                prospect.extra['llm_classification'] = {
+                    'naics_confidence': classification['confidence'],
+                    'model_used': self.llm_service.model_name,
+                    'classified_at': datetime.now(timezone.utc).isoformat()
+                }
+                return True
+        
+        return False
+    
+    def _process_titles_for_iterative(self, prospect, enhancement_type):
+        """Process title enhancement for iterative enhancement."""
+        if enhancement_type not in ["titles", "all"]:
+            return False
+            
+        if prospect.title and not prospect.ai_enhanced_title:
+            # Enhance title with LLM
+            enhanced_title = self.llm_service.enhance_title_with_llm(
+                prospect.title, 
+                prospect.description or "",
+                prospect.agency or "",
+                prospect_id=prospect.id
+            )
+            
+            if enhanced_title['enhanced_title']:
+                prospect.ai_enhanced_title = enhanced_title['enhanced_title']
+                self._update_prospect_timestamps(prospect)
+                
+                # Add confidence and reasoning to extras
+                self._ensure_extra_is_dict_iterative(prospect)
+                prospect.extra['llm_title_enhancement'] = {
+                    'confidence': enhanced_title['confidence'],
+                    'reasoning': enhanced_title.get('reasoning', ''),
+                    'original_title': prospect.title,
+                    'model_used': self.llm_service.model_name,
+                    'enhanced_at': datetime.now(timezone.utc).isoformat()
+                }
+                return True
+        
+        return False
+    
     def _process_single_prospect(
         self, 
         prospect: Prospect, 
@@ -300,132 +441,18 @@ class IterativeLLMServiceV2:
         try:
             processed = False
             
-            # Process based on type
-            if enhancement_type in ["values", "all"]:
-                value_to_parse = None
-                if prospect.estimated_value_text and not prospect.estimated_value_single:
-                    value_to_parse = prospect.estimated_value_text
-                elif prospect.estimated_value and not prospect.estimated_value_single:
-                    # Convert numeric value to text for LLM processing
-                    value_to_parse = str(prospect.estimated_value)
-                
-                if value_to_parse:
-                    # Parse contract value
-                    parsed_value = self.llm_service.parse_contract_value_with_llm(value_to_parse, prospect_id=prospect.id)
-                    if parsed_value['single'] is not None:
-                        prospect.estimated_value_single = float(parsed_value['single'])
-                        prospect.estimated_value_min = float(parsed_value['min']) if parsed_value['min'] else float(parsed_value['single'])
-                        prospect.estimated_value_max = float(parsed_value['max']) if parsed_value['max'] else float(parsed_value['single'])
-                        # Store the text version if it didn't exist
-                        if not prospect.estimated_value_text:
-                            prospect.estimated_value_text = value_to_parse
-                        prospect.ollama_processed_at = datetime.now(timezone.utc)
-                        prospect.ollama_model_version = self.llm_service.model_name
-                        processed = True
+            # Process each enhancement type
+            if self._process_values_for_iterative(prospect, enhancement_type):
+                processed = True
             
-            if enhancement_type in ["contacts", "all"]:
-                if prospect.extra and not prospect.primary_contact_name:
-                    # Extract contact data from extra field
-                    import json
-                    extra_data = prospect.extra
-                    if isinstance(extra_data, str):
-                        try:
-                            extra_data = json.loads(extra_data)
-                        except (json.JSONDecodeError, TypeError):
-                            extra_data = {}
-                    
-                    # Get contact data from various possible locations
-                    if extra_data and 'contacts' in extra_data:
-                        contact_data = extra_data['contacts']
-                    elif extra_data:
-                        contact_data = {
-                            'email': extra_data.get('contact_email') or extra_data.get('poc_email'),
-                            'name': extra_data.get('contact_name') or extra_data.get('poc_name'),
-                            'phone': extra_data.get('contact_phone') or extra_data.get('poc_phone'),
-                        }
-                    else:
-                        contact_data = {}
-                    
-                    if any(contact_data.values()):
-                        extracted_contact = self.llm_service.extract_contact_with_llm(contact_data, prospect_id=prospect.id)
-                        
-                        if extracted_contact['email'] or extracted_contact['name']:
-                            prospect.primary_contact_email = extracted_contact['email']
-                            prospect.primary_contact_name = extracted_contact['name']
-                            prospect.ollama_processed_at = datetime.now(timezone.utc)
-                            prospect.ollama_model_version = self.llm_service.model_name
-                            processed = True
+            if self._process_contacts_for_iterative(prospect, enhancement_type):
+                processed = True
             
-            if enhancement_type in ["naics", "all"]:
-                if prospect.description and (not prospect.naics or prospect.naics_source != 'llm_inferred'):
-                    # Classify NAICS
-                    classification = self.llm_service.classify_naics_with_llm(prospect.title, prospect.description, prospect_id=prospect.id)
-                    
-                    if classification['code']:
-                        prospect.naics = classification['code']
-                        prospect.naics_description = classification['description']
-                        prospect.naics_source = 'llm_inferred'
-                        prospect.ollama_processed_at = datetime.now(timezone.utc)
-                        prospect.ollama_model_version = self.llm_service.model_name
-                        
-                        # Add confidence to extras
-                        import json
-                        if not prospect.extra:
-                            prospect.extra = {}
-                        elif isinstance(prospect.extra, str):
-                            try:
-                                prospect.extra = json.loads(prospect.extra)
-                            except (json.JSONDecodeError, TypeError):
-                                prospect.extra = {}
-                        
-                        # Ensure extra is a dict before assignment
-                        if not isinstance(prospect.extra, dict):
-                            prospect.extra = {}
-                            
-                        prospect.extra['llm_classification'] = {
-                            'naics_confidence': classification['confidence'],
-                            'model_used': self.llm_service.model_name,
-                            'classified_at': datetime.now(timezone.utc).isoformat()
-                        }
-                        processed = True
+            if self._process_naics_for_iterative(prospect, enhancement_type):
+                processed = True
             
-            if enhancement_type in ["titles", "all"]:
-                if prospect.title and not prospect.ai_enhanced_title:
-                    # Enhance title with LLM
-                    enhanced_title = self.llm_service.enhance_title_with_llm(
-                        prospect.title, 
-                        prospect.description or "",
-                        prospect.agency or "",
-                        prospect_id=prospect.id
-                    )
-                    
-                    if enhanced_title['enhanced_title']:
-                        prospect.ai_enhanced_title = enhanced_title['enhanced_title']
-                        prospect.ollama_processed_at = datetime.now(timezone.utc)
-                        prospect.ollama_model_version = self.llm_service.model_name
-                        
-                        # Add confidence and reasoning to extras
-                        import json
-                        if not prospect.extra:
-                            prospect.extra = {}
-                        elif isinstance(prospect.extra, str):
-                            try:
-                                prospect.extra = json.loads(prospect.extra)
-                            except (json.JSONDecodeError, TypeError):
-                                prospect.extra = {}
-                        
-                        # Ensure extra is a dict before assignment
-                        if not isinstance(prospect.extra, dict):
-                            prospect.extra = {}
-                            
-                        prospect.extra['llm_title_enhancement'] = {
-                            'confidence': enhanced_title['confidence'],
-                            'reasoning': enhanced_title.get('reasoning', ''),
-                            'original_title': prospect.title,
-                            'model_used': self.llm_service.model_name,
-                            'enhanced_at': datetime.now(timezone.utc).isoformat()
-                        }
-                        processed = True
+            if self._process_titles_for_iterative(prospect, enhancement_type):
+                processed = True
             
             return processed
             
