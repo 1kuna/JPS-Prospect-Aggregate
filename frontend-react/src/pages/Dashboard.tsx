@@ -1,7 +1,7 @@
 import { PageLayout } from '@/components/layout';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { createColumnHelper, flexRender, getCoreRowModel, useReactTable } from '@tanstack/react-table';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/dialog";
 import { useSingleProspectEnhancement } from '@/hooks/api/useSingleProspectEnhancement';
 import { ReloadIcon } from '@radix-ui/react-icons';
+import { Switch } from '@/components/ui/switch';
 
 // Updated Prospect interface based on backend model
 interface Prospect {
@@ -122,138 +123,7 @@ const fetchProspects = async (page: number, limit: number, filters?: ProspectFil
 
 const columnHelper = createColumnHelper<Prospect>();
 
-const columns = [
-  columnHelper.accessor((row) => {
-    // Prioritize AI-enhanced title if available
-    if (row.ai_enhanced_title) return row.ai_enhanced_title;
-    // Try multiple sources for title
-    if (row.title) return row.title;
-    if (row.extra?.summary && typeof row.extra.summary === 'string') return row.extra.summary;
-    // Fallback: construct from agency and native_id
-    if (row.native_id) {
-      const agency = row.extra?.agency || row.agency || 'Unknown Agency';
-      return `${agency} - ${row.native_id}`;
-    }
-    return 'No Title';
-  }, {
-    id: 'title',
-    header: 'Title',
-    cell: info => {
-      const value = info.getValue();
-      const row = info.row.original;
-      const isAIEnhanced = !!row.ai_enhanced_title;
-      const title = isAIEnhanced 
-        ? `${value} (AI Enhanced)` 
-        : value || 'No Title';
-      
-      return (
-        <div className="w-full truncate" title={title}>
-          <span className={isAIEnhanced ? 'text-blue-700 font-medium' : ''}>
-            {value || 'No Title'}
-          </span>
-        </div>
-      );
-    },
-    size: 350,
-  }),
-  columnHelper.accessor((row) => row.extra?.agency || row.agency, {
-    id: 'agency',
-    header: 'Agency',
-    cell: info => {
-      const value = info.getValue();
-      return <div className="w-full truncate" title={value || 'N/A'}>{value || 'N/A'}</div>;
-    },
-    size: 200,
-  }),
-  columnHelper.accessor((row) => {
-    const naics = row.naics;
-    const description = row.naics_description;
-    
-    if (!naics) return 'N/A';
-    
-    const display = description ? `${naics} - ${description}` : naics;
-    
-    return display;
-  }, {
-    id: 'naics',
-    header: 'NAICS',
-    cell: info => {
-      const value = info.getValue();
-      const row = info.row.original;
-      const isAIEnhanced = row.naics_source === 'llm_inferred';
-      const title = isAIEnhanced 
-        ? `${value} (AI Classified)` 
-        : row.naics_source === 'original' 
-        ? `${value} (Original)` 
-        : value;
-      
-      return (
-        <div className="w-full truncate" title={title}>
-          <span className={isAIEnhanced ? 'text-blue-700 font-medium' : ''}>
-            {value}
-          </span>
-          {isAIEnhanced && (
-            <div className="w-2 h-2 bg-blue-500 rounded-full inline-block ml-2" title="AI Enhanced"></div>
-          )}
-        </div>
-      );
-    },
-    size: 200,
-  }),
-  columnHelper.accessor((row) => {
-    // Show enhanced estimated value if available, otherwise fall back to original
-    if (row.estimated_value_single) {
-      const single = parseFloat(row.estimated_value_single);
-      if (single >= 1000000) {
-        return `$${(single / 1000000).toFixed(1)}M`;
-      } else if (single >= 1000) {
-        return `$${(single / 1000).toFixed(0)}K`;
-      } else {
-        return `$${single.toFixed(0)}`;
-      }
-    }
-    
-    if (row.estimated_value_text) {
-      return row.estimated_value_text;
-    }
-    
-    if (row.estimated_value) {
-      return row.estimated_value;
-    }
-    
-    return 'N/A';
-  }, {
-    id: 'estimated_value',
-    header: 'Est. Value',
-    cell: info => {
-      const value = info.getValue();
-      const row = info.row.original;
-      const isAIProcessed = row.estimated_value_single !== null;
-      const title = isAIProcessed ? `${value} (AI Processed)` : value;
-      
-      return (
-        <div className="w-full truncate" title={title}>
-          <span className={isAIProcessed ? 'text-green-700 font-medium' : ''}>
-            {value}
-          </span>
-          {isAIProcessed && (
-            <div className="w-2 h-2 bg-green-500 rounded-full inline-block ml-2" title="AI Processed"></div>
-          )}
-        </div>
-      );
-    },
-    size: 120,
-  }),
-  columnHelper.accessor((row) => row.extra?.acquisition_phase || row.contract_type, {
-    id: 'status',
-    header: 'Status',
-    cell: info => {
-      const value = info.getValue();
-      return <div className="w-full truncate" title={value || 'N/A'}>{value || 'N/A'}</div>;
-    },
-    size: 150,
-  }),
-];
+// Column definitions moved inside the component to access showAIEnhancedInTable state
 
 export default function Dashboard() {
   console.log('Dashboard component loaded!');
@@ -261,6 +131,8 @@ export default function Dashboard() {
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [selectedProspect, setSelectedProspect] = useState<Prospect | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [showAIEnhanced, setShowAIEnhanced] = useState(true);
+  const [showAIEnhancedInTable, setShowAIEnhancedInTable] = useState(true);
   
   // Filter states
   const [filters, setFilters] = useState<ProspectFilters>({
@@ -288,6 +160,144 @@ export default function Dashboard() {
   });
   
   console.log('useQuery result:', { prospectsData, isLoadingProspects, isFetchingProspects });
+
+  // Define columns inside component to access showAIEnhancedInTable state
+  const columns = useMemo(() => [
+    columnHelper.accessor((row) => {
+      // Check if we should show AI enhanced title
+      if (showAIEnhancedInTable && row.ai_enhanced_title) {
+        return row.ai_enhanced_title;
+      }
+      // Otherwise show original title logic
+      if (row.title) return row.title;
+      if (row.extra?.summary && typeof row.extra.summary === 'string') return row.extra.summary;
+      // Fallback: construct from agency and native_id
+      if (row.native_id) {
+        const agency = row.extra?.agency || row.agency || 'Unknown Agency';
+        return `${agency} - ${row.native_id}`;
+      }
+      return 'No Title';
+    }, {
+      id: 'title',
+      header: 'Title',
+      cell: info => {
+        const value = info.getValue();
+        const row = info.row.original;
+        const isAIEnhanced = showAIEnhancedInTable && !!row.ai_enhanced_title && row.title !== row.ai_enhanced_title;
+        const title = isAIEnhanced 
+          ? `${value} (AI Enhanced)` 
+          : value || 'No Title';
+        
+        return (
+          <div className="w-full truncate" title={title}>
+            <span className={isAIEnhanced ? 'text-blue-700 font-medium' : ''}>
+              {value || 'No Title'}
+            </span>
+          </div>
+        );
+      },
+      size: 350,
+    }),
+    columnHelper.accessor((row) => row.extra?.agency || row.agency, {
+      id: 'agency',
+      header: 'Agency',
+      cell: info => {
+        const value = info.getValue();
+        return <div className="w-full truncate" title={value || 'N/A'}>{value || 'N/A'}</div>;
+      },
+      size: 200,
+    }),
+    columnHelper.accessor((row) => {
+      const naics = showAIEnhancedInTable ? row.naics : (row.naics_source === 'llm_inferred' ? null : row.naics);
+      const description = showAIEnhancedInTable ? row.naics_description : null;
+      
+      if (!naics) return 'N/A';
+      
+      const display = description ? `${naics} - ${description}` : naics;
+      
+      return display;
+    }, {
+      id: 'naics',
+      header: 'NAICS',
+      cell: info => {
+        const value = info.getValue();
+        const row = info.row.original;
+        const isAIEnhanced = row.naics_source === 'llm_inferred';
+        const title = isAIEnhanced 
+          ? `${value} (AI Classified)` 
+          : row.naics_source === 'original' 
+          ? `${value} (Original)` 
+          : value;
+        
+        return (
+          <div className="w-full truncate" title={title}>
+            <span className={isAIEnhanced && showAIEnhancedInTable ? 'text-blue-700 font-medium' : ''}>
+              {value}
+            </span>
+            {isAIEnhanced && showAIEnhancedInTable && (
+              <div className="w-2 h-2 bg-blue-500 rounded-full inline-block ml-2" title="AI Enhanced"></div>
+            )}
+          </div>
+        );
+      },
+      size: 200,
+    }),
+    columnHelper.accessor((row) => {
+      // Show enhanced estimated value if available and toggle is on, otherwise fall back to original
+      if (showAIEnhancedInTable && row.estimated_value_single) {
+        const single = parseFloat(row.estimated_value_single);
+        if (single >= 1000000) {
+          return `$${(single / 1000000).toFixed(1)}M`;
+        } else if (single >= 1000) {
+          return `$${(single / 1000).toFixed(0)}K`;
+        } else {
+          return `$${single.toFixed(0)}`;
+        }
+      }
+      
+      // Original value logic
+      if (row.estimated_value_text) {
+        return row.estimated_value_text;
+      } else if (row.estimated_value) {
+        const value = parseFloat(row.estimated_value);
+        if (value >= 1000000) {
+          return `$${(value / 1000000).toFixed(1)}M`;
+        } else if (value >= 1000) {
+          return `$${(value / 1000).toFixed(0)}K`;
+        } else {
+          return `$${value.toFixed(0)}`;
+        }
+      }
+      return 'N/A';
+    }, {
+      id: 'estimated_value',
+      header: 'Est. Value',
+      cell: info => {
+        const value = info.getValue();
+        const row = info.row.original;
+        const isAIEnhanced = showAIEnhancedInTable && !!row.estimated_value_single;
+        
+        return (
+          <div title={value} className={isAIEnhanced ? 'text-green-700 font-medium' : ''}>
+            {value}
+            {isAIEnhanced && (
+              <div className="w-2 h-2 bg-green-500 rounded-full inline-block ml-2" title="AI Parsed"></div>
+            )}
+          </div>
+        );
+      },
+      size: 120,
+    }),
+    columnHelper.accessor((row) => row.extra?.acquisition_phase || row.contract_type, {
+      id: 'contract_type',
+      header: 'Type',
+      cell: info => {
+        const value = info.getValue();
+        return <div className="w-full truncate" title={value || 'N/A'}>{value || 'N/A'}</div>;
+      },
+      size: 150,
+    }),
+  ], [showAIEnhancedInTable]);
 
   const table = useReactTable({
     data: prospectsData?.data || [],
@@ -547,6 +557,23 @@ export default function Dashboard() {
                     <SelectItem value="original">Original Data Only</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+              
+              {/* Show AI Enhancements Toggle */}
+              <div className="space-y-2 pt-2 border-t border-gray-200">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="show-ai-table" className="text-sm font-medium text-gray-700">
+                    Show AI Enhancements
+                  </Label>
+                  <Switch
+                    id="show-ai-table"
+                    checked={showAIEnhancedInTable}
+                    onCheckedChange={setShowAIEnhancedInTable}
+                  />
+                </div>
+                <p className="text-xs text-gray-500">
+                  {showAIEnhancedInTable ? 'Showing AI-enhanced data in table' : 'Showing original data only'}
+                </p>
               </div>
               
               {/* Filter Summary */}
@@ -833,12 +860,109 @@ export default function Dashboard() {
               {/* Enhancement Status */}
               {selectedProspect.ollama_processed_at && (
                 <div className="bg-blue-50 border border-blue-200 p-3 rounded-lg">
-                  <div className="flex items-center text-sm text-blue-800">
-                    <div className="w-2 h-2 bg-blue-500 rounded-full mr-2"></div>
-                    AI Enhanced on {new Date(selectedProspect.ollama_processed_at).toLocaleDateString()}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center text-sm text-blue-800">
+                      <div className="w-2 h-2 bg-blue-500 rounded-full mr-2"></div>
+                      AI Enhanced on {new Date(selectedProspect.ollama_processed_at).toLocaleDateString()}
+                    </div>
+                    <Button
+                      onClick={() => {
+                        if (selectedProspect) {
+                          enhanceMutation.mutate(
+                            { prospect_id: selectedProspect.id, force_redo: true },
+                            {
+                              onSuccess: (data) => {
+                                // Refresh the prospects data
+                                queryClient.invalidateQueries({ queryKey: ['prospects'] });
+                                
+                                // Show success toast with enhancement details
+                                const enhancements = data.enhancements || [];
+                                const prospectTitle = selectedProspect.title || selectedProspect.ai_enhanced_title || 'Prospect';
+                                const truncatedTitle = prospectTitle.length > 40 ? prospectTitle.substring(0, 40) + '...' : prospectTitle;
+                                
+                                if (enhancements.length > 0) {
+                                  const enhancementTypes = enhancements.map(e => {
+                                    switch(e) {
+                                      case 'values': return 'Value Parsing';
+                                      case 'contacts': return 'Contact Extraction';
+                                      case 'naics': return 'NAICS Classification';
+                                      case 'titles': return 'Title Enhancement';
+                                      default: return e;
+                                    }
+                                  });
+                                  
+                                  if (window.showToast) {
+                                    window.showToast({
+                                      title: 'AI Re-Enhancement Complete',
+                                      message: `Re-enhanced "${truncatedTitle}" with: ${enhancementTypes.join(', ')}`,
+                                      type: 'success',
+                                      duration: 5000
+                                    });
+                                  }
+                                } else {
+                                  if (window.showToast) {
+                                    window.showToast({
+                                      title: 'Re-Enhancement Complete',
+                                      message: `"${truncatedTitle}" has been re-processed`,
+                                      type: 'info',
+                                      duration: 3000
+                                    });
+                                  }
+                                }
+                              },
+                              onError: (error) => {
+                                const prospectTitle = selectedProspect?.title || selectedProspect?.ai_enhanced_title || 'Prospect';
+                                const truncatedTitle = prospectTitle.length > 40 ? prospectTitle.substring(0, 40) + '...' : prospectTitle;
+                                
+                                if (window.showToast) {
+                                  window.showToast({
+                                    title: 'Re-Enhancement Failed',
+                                    message: `Failed to re-enhance "${truncatedTitle}": ${error.message}`,
+                                    type: 'error',
+                                    duration: 5000
+                                  });
+                                }
+                              }
+                            }
+                          );
+                        }
+                      }}
+                      disabled={enhanceMutation.isPending}
+                      variant="outline"
+                      size="sm"
+                      className="text-blue-700 border-blue-300 hover:bg-blue-100"
+                    >
+                      {enhanceMutation.isPending ? (
+                        <>
+                          <ReloadIcon className="mr-2 h-3 w-3 animate-spin" />
+                          Re-enhancing...
+                        </>
+                      ) : (
+                        'Redo Enhancement'
+                      )}
+                    </Button>
                   </div>
                 </div>
               )}
+              
+              {/* AI Enhancement Toggle */}
+              <div className="bg-gray-50 border border-gray-200 p-3 rounded-lg">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <Label htmlFor="ai-toggle" className="text-sm font-medium text-gray-700">
+                      Show AI-Enhanced Fields
+                    </Label>
+                    <Switch
+                      id="ai-toggle"
+                      checked={showAIEnhanced}
+                      onCheckedChange={setShowAIEnhanced}
+                    />
+                  </div>
+                  <div className="text-xs text-gray-500">
+                    {showAIEnhanced ? 'Showing AI-enhanced data where available' : 'Showing original data only'}
+                  </div>
+                </div>
+              </div>
               {/* Basic Information */}
               <div>
                 <h3 className="text-lg font-semibold mb-3 text-gray-900">Basic Information</h3>
@@ -846,6 +970,11 @@ export default function Dashboard() {
                   <div>
                     <span className="font-medium text-gray-700">Title:</span>
                     <p className="mt-1 text-gray-900">{(() => {
+                      // Use AI-enhanced title if toggle is on and available
+                      if (showAIEnhanced && selectedProspect.ai_enhanced_title) {
+                        return selectedProspect.ai_enhanced_title;
+                      }
+                      // Otherwise use original logic
                       if (selectedProspect.title) return selectedProspect.title;
                       if (selectedProspect.extra?.summary && typeof selectedProspect.extra.summary === 'string') {
                         return selectedProspect.extra.summary;
@@ -855,7 +984,13 @@ export default function Dashboard() {
                         return `${agency} - ${selectedProspect.native_id}`;
                       }
                       return 'N/A';
-                    })()}</p>
+                    })()}
+                    {showAIEnhanced && selectedProspect.ai_enhanced_title && selectedProspect.title && (
+                      <span className="ml-2 text-xs px-2 py-1 rounded bg-green-100 text-green-700">
+                        AI Enhanced
+                      </span>
+                    )}
+                    </p>
                   </div>
                   {selectedProspect.description && (
                     <div>
@@ -871,8 +1006,14 @@ export default function Dashboard() {
                     <div>
                       <span className="font-medium text-gray-700">NAICS:</span>
                       <p className="mt-1 text-gray-900">
-                        {selectedProspect.naics || 'N/A'}
-                        {selectedProspect.naics_source && (
+                        {(() => {
+                          // Show AI NAICS only if toggle is on and it's AI classified
+                          if (!showAIEnhanced && selectedProspect.naics_source === 'llm_inferred') {
+                            return 'N/A (Original data not available)';
+                          }
+                          return selectedProspect.naics || 'N/A';
+                        })()}
+                        {showAIEnhanced && selectedProspect.naics_source && (
                           <span className={`ml-2 text-xs px-2 py-1 rounded ${
                             selectedProspect.naics_source === 'llm_inferred' 
                               ? 'bg-blue-100 text-blue-700' 
@@ -882,7 +1023,7 @@ export default function Dashboard() {
                           </span>
                         )}
                       </p>
-                      {selectedProspect.naics_description && (
+                      {showAIEnhanced && selectedProspect.naics_description && (
                         <p className="mt-1 text-sm text-gray-600">{selectedProspect.naics_description}</p>
                       )}
                     </div>
@@ -904,7 +1045,7 @@ export default function Dashboard() {
                   </div>
                   
                   {/* AI-parsed values */}
-                  {(selectedProspect.estimated_value_min || selectedProspect.estimated_value_max || selectedProspect.estimated_value_single) && (
+                  {showAIEnhanced && (selectedProspect.estimated_value_min || selectedProspect.estimated_value_max || selectedProspect.estimated_value_single) && (
                     <div className="bg-green-50 p-3 rounded-lg border border-green-200">
                       <div className="flex items-center mb-2">
                         <span className="font-medium text-green-800">AI-Processed Values</span>
@@ -992,7 +1133,7 @@ export default function Dashboard() {
               )}
 
               {/* Contact Information */}
-              {(selectedProspect.primary_contact_email || selectedProspect.primary_contact_name) && (
+              {showAIEnhanced && (selectedProspect.primary_contact_email || selectedProspect.primary_contact_name) && (
                 <div>
                   <div className="flex items-center mb-3">
                     <h3 className="text-lg font-semibold text-gray-900">Contact Information</h3>
