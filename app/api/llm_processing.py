@@ -358,6 +358,19 @@ def get_llm_outputs():
         logger.error(f"Error getting LLM outputs: {e}", exc_info=True)
         return jsonify({"error": "Failed to get outputs"}), 500
 
+def _ensure_extra_is_dict(prospect):
+    """Ensure prospect.extra is a dictionary, converting from JSON string if needed"""
+    if not prospect.extra:
+        prospect.extra = {}
+    elif isinstance(prospect.extra, str):
+        try:
+            prospect.extra = json.loads(prospect.extra)
+        except (json.JSONDecodeError, TypeError):
+            prospect.extra = {}
+    
+    if not isinstance(prospect.extra, dict):
+        prospect.extra = {}
+
 @llm_bp.route('/enhance-single', methods=['POST'])
 def enhance_single_prospect():
     """Enhance a single prospect with all AI enhancements"""
@@ -426,12 +439,8 @@ def enhance_single_prospect():
         # Process contacts
         if prospect.extra and (force_redo or not prospect.primary_contact_name):
             import json
+            _ensure_extra_is_dict(prospect)
             extra_data = prospect.extra
-            if isinstance(extra_data, str):
-                try:
-                    extra_data = json.loads(extra_data)
-                except (json.JSONDecodeError, TypeError):
-                    extra_data = {}
             
             # Get contact data
             if extra_data and 'contacts' in extra_data:
@@ -464,16 +473,7 @@ def enhance_single_prospect():
                 prospect.naics_source = 'llm_inferred'
                 
                 # Add confidence to extras
-                if not prospect.extra:
-                    prospect.extra = {}
-                elif isinstance(prospect.extra, str):
-                    try:
-                        prospect.extra = json.loads(prospect.extra)
-                    except (json.JSONDecodeError, TypeError):
-                        prospect.extra = {}
-                
-                if not isinstance(prospect.extra, dict):
-                    prospect.extra = {}
+                _ensure_extra_is_dict(prospect)
                     
                 prospect.extra['llm_classification'] = {
                     'naics_confidence': classification['confidence'],
@@ -496,16 +496,7 @@ def enhance_single_prospect():
                 prospect.ai_enhanced_title = enhanced_title['enhanced_title']
                 
                 # Add confidence and reasoning to extras
-                if not prospect.extra:
-                    prospect.extra = {}
-                elif isinstance(prospect.extra, str):
-                    try:
-                        prospect.extra = json.loads(prospect.extra)
-                    except (json.JSONDecodeError, TypeError):
-                        prospect.extra = {}
-                
-                if not isinstance(prospect.extra, dict):
-                    prospect.extra = {}
+                _ensure_extra_is_dict(prospect)
                     
                 prospect.extra['llm_title_enhancement'] = {
                     'confidence': enhanced_title['confidence'],

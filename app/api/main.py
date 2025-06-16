@@ -107,12 +107,36 @@ def get_dashboard():
         # db.session.rollback() # Removed
         return jsonify({"status": "error", "message": "An unexpected error occurred"}), 500
 
+def _execute_database_clear_operation(operation_name: str, clear_function):
+    """Common utility for database clearing operations."""
+    try:
+        logger.info(f"{operation_name} operation initiated")
+        
+        # Execute the specific clearing logic
+        result = clear_function()
+        
+        db.session.commit()
+        
+        logger.info(result['log_message'])
+        
+        return jsonify({
+            'status': 'success',
+            'message': result['response_message'],
+            'timestamp': datetime.datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in {operation_name.lower()}: {str(e)}", exc_info=True)
+        db.session.rollback()
+        return jsonify({
+            'status': 'error',
+            'message': f'Failed to {operation_name.lower()}: {str(e)}'
+        }), 500
+
 @main_bp.route('/database/clear', methods=['POST'])
 def clear_database():
     """Clear all data from the database."""
-    try:
-        logger.info("Database clear operation initiated")
-        
+    def _clear_all_data():
         # Delete all prospects first (due to foreign key constraints)
         prospect_count = db.session.query(func.count(Prospect.id)).scalar()
         db.session.query(Prospect).delete()
@@ -135,30 +159,17 @@ def clear_database():
         for ds in data_sources:
             ds.last_scraped = None
         
-        db.session.commit()
-        
-        logger.info(f"Database cleared successfully. Removed {prospect_count} prospects and {status_count} status records")
-        
-        return jsonify({
-            'status': 'success',
-            'message': f'Database cleared successfully. Removed {prospect_count} prospects and {status_count} status records.',
-            'timestamp': datetime.datetime.now().isoformat()
-        })
-        
-    except Exception as e:
-        logger.error(f"Error clearing database: {str(e)}", exc_info=True)
-        db.session.rollback()
-        return jsonify({
-            'status': 'error',
-            'message': f'Failed to clear database: {str(e)}'
-        }), 500
+        return {
+            'log_message': f"Database cleared successfully. Removed {prospect_count} prospects and {status_count} status records",
+            'response_message': f'Database cleared successfully. Removed {prospect_count} prospects and {status_count} status records.'
+        }
+    
+    return _execute_database_clear_operation("Database clear", _clear_all_data)
 
 @main_bp.route('/database/clear-ai', methods=['POST'])
 def clear_ai_entries():
     """Clear only AI-enriched entries from the database."""
-    try:
-        logger.info("AI entries clear operation initiated")
-        
+    def _clear_ai_data():
         # Count AI-enriched prospects
         ai_prospect_count = db.session.query(func.count(Prospect.id)).filter(
             Prospect.ollama_processed_at.isnot(None)
@@ -178,30 +189,17 @@ def clear_ai_entries():
         output_count = db.session.query(func.count(LLMOutput.id)).scalar()
         db.session.query(LLMOutput).delete()
         
-        db.session.commit()
-        
-        logger.info(f"AI entries cleared successfully. Removed {ai_prospect_count} AI-enriched prospects, {log_count} enrichment logs, and {output_count} LLM outputs")
-        
-        return jsonify({
-            'status': 'success',
-            'message': f'AI entries cleared successfully. Removed {ai_prospect_count} AI-enriched prospects, {log_count} enrichment logs, and {output_count} LLM outputs.',
-            'timestamp': datetime.datetime.now().isoformat()
-        })
-        
-    except Exception as e:
-        logger.error(f"Error clearing AI entries: {str(e)}", exc_info=True)
-        db.session.rollback()
-        return jsonify({
-            'status': 'error',
-            'message': f'Failed to clear AI entries: {str(e)}'
-        }), 500
+        return {
+            'log_message': f"AI entries cleared successfully. Removed {ai_prospect_count} AI-enriched prospects, {log_count} enrichment logs, and {output_count} LLM outputs",
+            'response_message': f'AI entries cleared successfully. Removed {ai_prospect_count} AI-enriched prospects, {log_count} enrichment logs, and {output_count} LLM outputs.'
+        }
+    
+    return _execute_database_clear_operation("AI entries clear", _clear_ai_data)
 
 @main_bp.route('/database/clear-original', methods=['POST'])
 def clear_original_entries():
     """Clear only non-AI-enriched (original) entries from the database."""
-    try:
-        logger.info("Original entries clear operation initiated")
-        
+    def _clear_original_data():
         # Count non-AI-enriched prospects
         original_prospect_count = db.session.query(func.count(Prospect.id)).filter(
             Prospect.ollama_processed_at.is_(None)
@@ -214,23 +212,12 @@ def clear_original_entries():
         
         # Note: We keep data sources and scraper status as they might be needed for future scraping
         
-        db.session.commit()
-        
-        logger.info(f"Original entries cleared successfully. Removed {original_prospect_count} non-AI-enriched prospects")
-        
-        return jsonify({
-            'status': 'success',
-            'message': f'Original entries cleared successfully. Removed {original_prospect_count} non-AI-enriched prospects.',
-            'timestamp': datetime.datetime.now().isoformat()
-        })
-        
-    except Exception as e:
-        logger.error(f"Error clearing original entries: {str(e)}", exc_info=True)
-        db.session.rollback()
-        return jsonify({
-            'status': 'error',
-            'message': f'Failed to clear original entries: {str(e)}'
-        }), 500
+        return {
+            'log_message': f"Original entries cleared successfully. Removed {original_prospect_count} non-AI-enriched prospects",
+            'response_message': f'Original entries cleared successfully. Removed {original_prospect_count} non-AI-enriched prospects.'
+        }
+    
+    return _execute_database_clear_operation("Original entries clear", _clear_original_data)
 
 @main_bp.route('/database/status', methods=['GET'])
 def database_status():

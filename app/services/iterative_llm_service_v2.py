@@ -120,10 +120,41 @@ class IterativeLLMServiceV2:
             "processed": self._progress["processed"]
         }
     
-    def _count_unprocessed(self, enhancement_type: EnhancementType, db_session: Session) -> int:
-        """Count prospects that need processing"""
+    def _build_enhancement_filter(self, enhancement_type: EnhancementType):
+        """Build SQLAlchemy filter conditions for enhancement types"""
         if enhancement_type == "values":
-            return db_session.query(Prospect).filter(
+            return or_(
+                and_(
+                    Prospect.estimated_value_text.isnot(None),
+                    Prospect.estimated_value_single.is_(None)
+                ),
+                and_(
+                    Prospect.estimated_value.isnot(None),
+                    Prospect.estimated_value_single.is_(None)
+                )
+            )
+        elif enhancement_type == "contacts":
+            return and_(
+                Prospect.extra.isnot(None),
+                Prospect.primary_contact_name.is_(None)
+            )
+        elif enhancement_type == "naics":
+            return and_(
+                Prospect.description.isnot(None),
+                or_(
+                    Prospect.naics.is_(None),
+                    Prospect.naics_source != 'llm_inferred'
+                )
+            )
+        elif enhancement_type == "titles":
+            return and_(
+                Prospect.title.isnot(None),
+                Prospect.ai_enhanced_title.is_(None)
+            )
+        elif enhancement_type == "all":
+            # Prospects that need ANY type of enhancement
+            return or_(
+                # Needs value parsing
                 or_(
                     and_(
                         Prospect.estimated_value_text.isnot(None),
@@ -133,62 +164,34 @@ class IterativeLLMServiceV2:
                         Prospect.estimated_value.isnot(None),
                         Prospect.estimated_value_single.is_(None)
                     )
-                )
-            ).count()
-        elif enhancement_type == "contacts":
-            return db_session.query(Prospect).filter(
-                Prospect.extra.isnot(None),
-                Prospect.primary_contact_name.is_(None)
-            ).count()
-        elif enhancement_type == "naics":
-            return db_session.query(Prospect).filter(
-                Prospect.description.isnot(None),
-                or_(
-                    Prospect.naics.is_(None),
-                    Prospect.naics_source != 'llm_inferred'
-                )
-            ).count()
-        elif enhancement_type == "titles":
-            return db_session.query(Prospect).filter(
-                Prospect.title.isnot(None),
-                Prospect.ai_enhanced_title.is_(None)
-            ).count()
-        elif enhancement_type == "all":
-            # Count prospects that need ANY type of enhancement
-            return db_session.query(Prospect).filter(
-                or_(
-                    # Needs value parsing
+                ),
+                # Needs contact extraction
+                and_(
+                    Prospect.extra.isnot(None),
+                    Prospect.primary_contact_name.is_(None)
+                ),
+                # Needs NAICS classification
+                and_(
+                    Prospect.description.isnot(None),
                     or_(
-                        and_(
-                            Prospect.estimated_value_text.isnot(None),
-                            Prospect.estimated_value_single.is_(None)
-                        ),
-                        and_(
-                            Prospect.estimated_value.isnot(None),
-                            Prospect.estimated_value_single.is_(None)
-                        )
-                    ),
-                    # Needs contact extraction
-                    and_(
-                        Prospect.extra.isnot(None),
-                        Prospect.primary_contact_name.is_(None)
-                    ),
-                    # Needs NAICS classification
-                    and_(
-                        Prospect.description.isnot(None),
-                        or_(
-                            Prospect.naics.is_(None),
-                            Prospect.naics_source != 'llm_inferred'
-                        )
-                    ),
-                    # Needs title enhancement
-                    and_(
-                        Prospect.title.isnot(None),
-                        Prospect.ai_enhanced_title.is_(None)
+                        Prospect.naics.is_(None),
+                        Prospect.naics_source != 'llm_inferred'
                     )
+                ),
+                # Needs title enhancement
+                and_(
+                    Prospect.title.isnot(None),
+                    Prospect.ai_enhanced_title.is_(None)
                 )
-            ).count()
+            )
         
+        return None
+    
+    def _count_unprocessed(self, enhancement_type: EnhancementType, db_session: Session) -> int:
+        """Count prospects that need processing"""
+        filter_condition = self._build_enhancement_filter(enhancement_type)
+        if filter_condition is not None:
+            return db_session.query(Prospect).filter(filter_condition).count()
         return 0
     
     def _process_iteratively(self, enhancement_type: EnhancementType, app):
@@ -282,66 +285,10 @@ class IterativeLLMServiceV2:
     
     def _get_next_prospect(self, enhancement_type: EnhancementType, db_session: Session) -> Optional[Prospect]:
         """Get the next unprocessed prospect"""
-        query = db_session.query(Prospect)
-        
-        if enhancement_type == "values":
-            query = query.filter(
-                or_(
-                    and_(
-                        Prospect.estimated_value_text.isnot(None),
-                        Prospect.estimated_value_single.is_(None)
-                    ),
-                    and_(
-                        Prospect.estimated_value.isnot(None),
-                        Prospect.estimated_value_single.is_(None)
-                    )
-                )
-            )
-        elif enhancement_type == "contacts":
-            query = query.filter(
-                Prospect.extra.isnot(None),
-                Prospect.primary_contact_name.is_(None)
-            )
-        elif enhancement_type == "naics":
-            query = query.filter(
-                Prospect.description.isnot(None),
-                or_(
-                    Prospect.naics.is_(None),
-                    Prospect.naics_source != 'llm_inferred'
-                )
-            )
-        elif enhancement_type == "titles":
-            query = query.filter(
-                Prospect.title.isnot(None),
-                Prospect.ai_enhanced_title.is_(None)
-            )
-        elif enhancement_type == "all":
-            # For "all", prioritize by type: values -> contacts -> naics -> titles
-            query = query.filter(
-                or_(
-                    and_(
-                        Prospect.estimated_value_text.isnot(None),
-                        Prospect.estimated_value_single.is_(None)
-                    ),
-                    and_(
-                        Prospect.extra.isnot(None),
-                        Prospect.primary_contact_name.is_(None)
-                    ),
-                    and_(
-                        Prospect.description.isnot(None),
-                        or_(
-                            Prospect.naics.is_(None),
-                            Prospect.naics_source != 'llm_inferred'
-                        )
-                    ),
-                    and_(
-                        Prospect.title.isnot(None),
-                        Prospect.ai_enhanced_title.is_(None)
-                    )
-                )
-            )
-        
-        return query.order_by(Prospect.loaded_at.desc()).first()
+        filter_condition = self._build_enhancement_filter(enhancement_type)
+        if filter_condition is not None:
+            return db_session.query(Prospect).filter(filter_condition).order_by(Prospect.loaded_at.desc()).first()
+        return None
     
     def _process_single_prospect(
         self, 

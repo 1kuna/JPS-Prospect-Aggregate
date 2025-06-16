@@ -219,47 +219,23 @@ class ContractLLMService:
             
             return error_result
     
-    def enhance_prospect_values(self, prospects: List[Prospect], commit_batch_size: int = 100) -> int:
+    def _process_enhancement_batch(self, prospects: List[Prospect], enhancement_name: str, 
+                                 processor_func, commit_batch_size: int = 100) -> int:
         """
-        Enhance prospects with parsed contract values.
-        Returns count of successfully processed prospects.
+        Template method for processing enhancement batches.
+        processor_func should take a prospect and return True if processed successfully.
         """
-        logger.info(f"Starting value parsing for {len(prospects)} prospects...")
+        logger.info(f"Starting {enhancement_name} for {len(prospects)} prospects...")
         processed_count = 0
         
         for i in range(0, len(prospects), self.batch_size):
             batch = prospects[i:i + self.batch_size]
-            logger.info(f"Processing value batch {i//self.batch_size + 1}/{(len(prospects) + self.batch_size - 1)//self.batch_size}")
+            logger.info(f"Processing {enhancement_name} batch {i//self.batch_size + 1}/{(len(prospects) + self.batch_size - 1)//self.batch_size}")
             
             for prospect in batch:
                 try:
-                    # Skip if already processed
-                    if prospect.estimated_value_min is not None:
-                        continue
-                    
-                    # Try to parse from estimated_value_text first, then extra data
-                    value_text = prospect.estimated_value_text
-                    if not value_text and prospect.extra:
-                        extra_data = prospect.extra
-                        if isinstance(extra_data, str):
-                            # Handle case where extra is stored as JSON string
-                            try:
-                                extra_data = json.loads(extra_data)
-                            except (json.JSONDecodeError, TypeError):
-                                extra_data = {}
-                        value_text = extra_data.get('estimated_value_text', '') if extra_data else ''
-                    
-                    if value_text:
-                        parsed_value = self.parse_contract_value_with_llm(value_text)
-                        
-                        if parsed_value['single'] is not None:
-                            prospect.estimated_value_min = Decimal(str(parsed_value['min'])) if parsed_value['min'] else None
-                            prospect.estimated_value_max = Decimal(str(parsed_value['max'])) if parsed_value['max'] else None
-                            prospect.estimated_value_single = Decimal(str(parsed_value['single']))
-                            prospect.ollama_processed_at = datetime.utcnow()
-                            prospect.ollama_model_version = self.model_name
-                            processed_count += 1
-                            
+                    if processor_func(prospect):
+                        processed_count += 1
                 except Exception as e:
                     logger.error(f"Error processing prospect {prospect.id}: {e}")
                     continue
@@ -268,7 +244,7 @@ class ContractLLMService:
             if processed_count > 0 and processed_count % commit_batch_size == 0:
                 try:
                     db.session.commit()
-                    logger.info(f"Committed {processed_count} value enhancements")
+                    logger.info(f"Committed {processed_count} {enhancement_name} enhancements")
                 except Exception as e:
                     logger.error(f"Error committing batch: {e}")
                     db.session.rollback()
@@ -276,84 +252,94 @@ class ContractLLMService:
         # Final commit
         try:
             db.session.commit()
-            logger.info(f"Completed value enhancement. Total processed: {processed_count}")
+            logger.info(f"Completed {enhancement_name} enhancement. Total processed: {processed_count}")
         except Exception as e:
             logger.error(f"Error in final commit: {e}")
             db.session.rollback()
             
         return processed_count
     
+    def enhance_prospect_values(self, prospects: List[Prospect], commit_batch_size: int = 100) -> int:
+        """
+        Enhance prospects with parsed contract values.
+        Returns count of successfully processed prospects.
+        """
+        def process_value_enhancement(prospect: Prospect) -> bool:
+            # Skip if already processed
+            if prospect.estimated_value_min is not None:
+                return False
+            
+            # Try to parse from estimated_value_text first, then extra data
+            value_text = prospect.estimated_value_text
+            if not value_text and prospect.extra:
+                extra_data = prospect.extra
+                if isinstance(extra_data, str):
+                    # Handle case where extra is stored as JSON string
+                    try:
+                        extra_data = json.loads(extra_data)
+                    except (json.JSONDecodeError, TypeError):
+                        extra_data = {}
+                value_text = extra_data.get('estimated_value_text', '') if extra_data else ''
+            
+            if value_text:
+                parsed_value = self.parse_contract_value_with_llm(value_text)
+                
+                if parsed_value['single'] is not None:
+                    prospect.estimated_value_min = Decimal(str(parsed_value['min'])) if parsed_value['min'] else None
+                    prospect.estimated_value_max = Decimal(str(parsed_value['max'])) if parsed_value['max'] else None
+                    prospect.estimated_value_single = Decimal(str(parsed_value['single']))
+                    prospect.ollama_processed_at = datetime.utcnow()
+                    prospect.ollama_model_version = self.model_name
+                    return True
+            
+            return False
+        
+        return self._process_enhancement_batch(prospects, "value parsing", process_value_enhancement, commit_batch_size)
+    
     def enhance_prospect_contacts(self, prospects: List[Prospect], commit_batch_size: int = 100) -> int:
         """
         Enhance prospects with extracted contact information.
         Returns count of successfully processed prospects.
         """
-        logger.info(f"Starting contact extraction for {len(prospects)} prospects...")
-        processed_count = 0
-        
-        for i in range(0, len(prospects), self.batch_size):
-            batch = prospects[i:i + self.batch_size]
-            logger.info(f"Processing contact batch {i//self.batch_size + 1}/{(len(prospects) + self.batch_size - 1)//self.batch_size}")
+        def process_contact_enhancement(prospect: Prospect) -> bool:
+            # Skip if already processed
+            if prospect.primary_contact_email is not None:
+                return False
             
-            for prospect in batch:
+            # Extract contact data from extra field
+            extra_data = prospect.extra
+            if isinstance(extra_data, str):
+                # Handle case where extra is stored as JSON string
                 try:
-                    # Skip if already processed
-                    if prospect.primary_contact_email is not None:
-                        continue
-                    
-                    # Extract contact data from extra field
-                    extra_data = prospect.extra
-                    if isinstance(extra_data, str):
-                        # Handle case where extra is stored as JSON string
-                        try:
-                            extra_data = json.loads(extra_data)
-                        except (json.JSONDecodeError, TypeError):
-                            extra_data = {}
-                    
-                    if extra_data and 'contacts' in extra_data:
-                        contact_data = extra_data['contacts']
-                    elif extra_data:
-                        # Try to find contact info in extra data
-                        contact_data = {
-                            'email': extra_data.get('contact_email') or extra_data.get('poc_email'),
-                            'name': extra_data.get('contact_name') or extra_data.get('poc_name'),
-                            'phone': extra_data.get('contact_phone') or extra_data.get('poc_phone'),
-                        }
-                    else:
-                        continue
-                    
-                    if any(contact_data.values()):
-                        extracted_contact = self.extract_contact_with_llm(contact_data)
-                        
-                        if extracted_contact['email'] or extracted_contact['name']:
-                            prospect.primary_contact_email = extracted_contact['email']
-                            prospect.primary_contact_name = extracted_contact['name']
-                            prospect.ollama_processed_at = datetime.utcnow()
-                            prospect.ollama_model_version = self.model_name
-                            processed_count += 1
-                            
-                except Exception as e:
-                    logger.error(f"Error processing prospect {prospect.id}: {e}")
-                    continue
+                    extra_data = json.loads(extra_data)
+                except (json.JSONDecodeError, TypeError):
+                    extra_data = {}
             
-            # Commit batch
-            if processed_count > 0 and processed_count % commit_batch_size == 0:
-                try:
-                    db.session.commit()
-                    logger.info(f"Committed {processed_count} contact enhancements")
-                except Exception as e:
-                    logger.error(f"Error committing batch: {e}")
-                    db.session.rollback()
+            if extra_data and 'contacts' in extra_data:
+                contact_data = extra_data['contacts']
+            elif extra_data:
+                # Try to find contact info in extra data
+                contact_data = {
+                    'email': extra_data.get('contact_email') or extra_data.get('poc_email'),
+                    'name': extra_data.get('contact_name') or extra_data.get('poc_name'),
+                    'phone': extra_data.get('contact_phone') or extra_data.get('poc_phone'),
+                }
+            else:
+                return False
+            
+            if any(contact_data.values()):
+                extracted_contact = self.extract_contact_with_llm(contact_data)
+                
+                if extracted_contact['email'] or extracted_contact['name']:
+                    prospect.primary_contact_email = extracted_contact['email']
+                    prospect.primary_contact_name = extracted_contact['name']
+                    prospect.ollama_processed_at = datetime.utcnow()
+                    prospect.ollama_model_version = self.model_name
+                    return True
+            
+            return False
         
-        # Final commit
-        try:
-            db.session.commit()
-            logger.info(f"Completed contact enhancement. Total processed: {processed_count}")
-        except Exception as e:
-            logger.error(f"Error in final commit: {e}")
-            db.session.rollback()
-            
-        return processed_count
+        return self._process_enhancement_batch(prospects, "contact extraction", process_contact_enhancement, commit_batch_size)
     
     def enhance_prospect_naics(self, prospects: List[Prospect], commit_batch_size: int = 100) -> int:
         """
@@ -371,66 +357,40 @@ class ContractLLMService:
             logger.info("All prospects already have NAICS codes - skipping LLM classification")
             return 0
         
-        processed_count = 0
+        def process_naics_enhancement(prospect: Prospect) -> bool:
+            if not prospect.title or not prospect.description:
+                return False
+            
+            classification = self.classify_naics_with_llm(prospect.title, prospect.description)
+            
+            if classification['code']:
+                prospect.naics = classification['code']
+                prospect.naics_description = classification['description']
+                prospect.naics_source = 'llm_inferred'
+                prospect.ollama_processed_at = datetime.utcnow()
+                prospect.ollama_model_version = self.model_name
+                
+                # Add confidence to extras
+                if not prospect.extra:
+                    prospect.extra = {}
+                elif isinstance(prospect.extra, str):
+                    # Handle case where extra is stored as JSON string
+                    try:
+                        prospect.extra = json.loads(prospect.extra)
+                    except (json.JSONDecodeError, TypeError):
+                        prospect.extra = {}
+                
+                prospect.extra['llm_classification'] = {
+                    'naics_confidence': classification['confidence'],
+                    'model_used': self.model_name,
+                    'classified_at': datetime.utcnow().isoformat()
+                }
+                
+                return True
+            
+            return False
         
-        for i in range(0, len(prospects_needing_naics), self.batch_size):
-            batch = prospects_needing_naics[i:i + self.batch_size]
-            logger.info(f"Processing NAICS batch {i//self.batch_size + 1}/{(len(prospects_needing_naics) + self.batch_size - 1)//self.batch_size}")
-            
-            for prospect in batch:
-                try:
-                    if not prospect.title or not prospect.description:
-                        continue
-                    
-                    classification = self.classify_naics_with_llm(prospect.title, prospect.description)
-                    
-                    if classification['code']:
-                        prospect.naics = classification['code']
-                        prospect.naics_description = classification['description']
-                        prospect.naics_source = 'llm_inferred'
-                        prospect.ollama_processed_at = datetime.utcnow()
-                        prospect.ollama_model_version = self.model_name
-                        
-                        # Add confidence to extras
-                        if not prospect.extra:
-                            prospect.extra = {}
-                        elif isinstance(prospect.extra, str):
-                            # Handle case where extra is stored as JSON string
-                            try:
-                                prospect.extra = json.loads(prospect.extra)
-                            except (json.JSONDecodeError, TypeError):
-                                prospect.extra = {}
-                        
-                        prospect.extra['llm_classification'] = {
-                            'naics_confidence': classification['confidence'],
-                            'model_used': self.model_name,
-                            'classified_at': datetime.utcnow().isoformat()
-                        }
-                        
-                        processed_count += 1
-                        
-                except Exception as e:
-                    logger.error(f"Error processing prospect {prospect.id}: {e}")
-                    continue
-            
-            # Commit batch
-            if processed_count > 0 and processed_count % commit_batch_size == 0:
-                try:
-                    db.session.commit()
-                    logger.info(f"Committed {processed_count} NAICS enhancements")
-                except Exception as e:
-                    logger.error(f"Error committing batch: {e}")
-                    db.session.rollback()
-        
-        # Final commit
-        try:
-            db.session.commit()
-            logger.info(f"Completed NAICS enhancement. Total processed: {processed_count}")
-        except Exception as e:
-            logger.error(f"Error in final commit: {e}")
-            db.session.rollback()
-            
-        return processed_count
+        return self._process_enhancement_batch(prospects_needing_naics, "NAICS classification", process_naics_enhancement, commit_batch_size)
     
     def enhance_all_prospects(self, limit: Optional[int] = None) -> Dict[str, int]:
         """
