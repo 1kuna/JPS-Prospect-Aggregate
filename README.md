@@ -99,6 +99,26 @@ The following agencies are configured through `populate_data_sources.py`:
 
 See `docs/scraper_architecture.md` and `docs/CONTRACT_MAPPING_LLM.md` for detailed implementation notes.
 
+## Data Retention
+
+A built-in utility manages raw data file storage with a rolling cleanup policy that prevents storage bloat by keeping only the most recent files per data source.
+
+**Current Impact**: Reduces storage from 86 files (84MB) to 43 files (~42MB) - **50% reduction**
+
+### Usage
+```bash
+# Preview what would be deleted (safe mode - keeps 3 most recent files per source)
+python app/utils/data_retention.py
+
+# Actually delete files
+python app/utils/data_retention.py --execute
+
+# Custom retention count
+python app/utils/data_retention.py --execute --retention-count 5
+```
+
+The utility scans `data/raw/` directories, parses timestamps from filenames (`prefix_YYYYMMDD_HHMMSS.ext`), sorts by newest first, and deletes older files beyond the retention limit. It includes safety features like dry-run mode by default, detailed logging, and error handling for invalid timestamps.
+
 ## Upcoming Features
 
 - Automated refresh schedule to keep data sources up to date
