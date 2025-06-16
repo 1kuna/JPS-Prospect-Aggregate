@@ -371,10 +371,150 @@ def _ensure_extra_is_dict(prospect):
     if not isinstance(prospect.extra, dict):
         prospect.extra = {}
 
+def _process_value_enhancement(prospect, llm_service, force_redo):
+    """Process value parsing enhancement for a prospect."""
+    value_to_parse = None
+    if force_redo or (prospect.estimated_value_text and not prospect.estimated_value_single):
+        value_to_parse = prospect.estimated_value_text
+    elif force_redo or (prospect.estimated_value and not prospect.estimated_value_single):
+        # Convert numeric value to text for LLM processing
+        value_to_parse = str(prospect.estimated_value)
+    
+    # If force_redo, try to get a value even if we already have parsed values
+    if force_redo and not value_to_parse:
+        if prospect.estimated_value_text:
+            value_to_parse = prospect.estimated_value_text
+        elif prospect.estimated_value:
+            value_to_parse = str(prospect.estimated_value)
+    
+    if value_to_parse:
+        parsed_value = llm_service.parse_contract_value_with_llm(value_to_parse, prospect_id=prospect.id)
+        if parsed_value['single'] is not None:
+            try:
+                # Safely convert to float with validation
+                single_val = float(parsed_value['single']) if parsed_value['single'] is not None else None
+                min_val = float(parsed_value['min']) if parsed_value['min'] is not None else single_val
+                max_val = float(parsed_value['max']) if parsed_value['max'] is not None else single_val
+                
+                # Only update if all conversions were successful
+                if single_val is not None:
+                    prospect.estimated_value_single = single_val
+                    prospect.estimated_value_min = min_val
+                    prospect.estimated_value_max = max_val
+                    # Store the text version if it didn't exist
+                    if not prospect.estimated_value_text:
+                        prospect.estimated_value_text = value_to_parse
+                    return True
+            except (ValueError, TypeError) as e:
+                logger.warning(f"Failed to convert LLM parsed values to float for prospect {prospect.id}: {e}")
+    
+    return False
+
+def _process_contact_enhancement(prospect, llm_service, force_redo):
+    """Process contact extraction enhancement for a prospect."""
+    if prospect.extra and (force_redo or not prospect.primary_contact_name):
+        import json
+        _ensure_extra_is_dict(prospect)
+        extra_data = prospect.extra
+        
+        # Get contact data
+        if extra_data and 'contacts' in extra_data:
+            contact_data = extra_data['contacts']
+        elif extra_data:
+            contact_data = {
+                'email': extra_data.get('contact_email') or extra_data.get('poc_email'),
+                'name': extra_data.get('contact_name') or extra_data.get('poc_name'),
+                'phone': extra_data.get('contact_phone') or extra_data.get('poc_phone'),
+            }
+        else:
+            contact_data = {}
+        
+        if any(contact_data.values()):
+            extracted_contact = llm_service.extract_contact_with_llm(contact_data, prospect_id=prospect.id)
+            
+            if extracted_contact['email'] or extracted_contact['name']:
+                prospect.primary_contact_email = extracted_contact['email']
+                prospect.primary_contact_name = extracted_contact['name']
+                return True
+    
+    return False
+
+def _process_naics_enhancement(prospect, llm_service, force_redo):
+    """Process NAICS classification enhancement for a prospect."""
+    if prospect.description and (force_redo or not prospect.naics or prospect.naics_source != 'llm_inferred'):
+        classification = llm_service.classify_naics_with_llm(prospect.title, prospect.description, prospect_id=prospect.id)
+        
+        if classification['code']:
+            prospect.naics = classification['code']
+            prospect.naics_description = classification['description']
+            prospect.naics_source = 'llm_inferred'
+            
+            # Add confidence to extras
+            _ensure_extra_is_dict(prospect)
+                
+            prospect.extra['llm_classification'] = {
+                'naics_confidence': classification['confidence'],
+                'model_used': llm_service.model_name,
+                'classified_at': datetime.now().isoformat()
+            }
+            return True
+    
+    return False
+
+def _process_title_enhancement(prospect, llm_service, force_redo):
+    """Process title enhancement for a prospect."""
+    if prospect.title and (force_redo or not prospect.ai_enhanced_title):
+        enhanced_title = llm_service.enhance_title_with_llm(
+            prospect.title, 
+            prospect.description or "",
+            prospect.agency or "",
+            prospect_id=prospect.id
+        )
+        
+        if enhanced_title['enhanced_title']:
+            prospect.ai_enhanced_title = enhanced_title['enhanced_title']
+            
+            # Add confidence and reasoning to extras
+            _ensure_extra_is_dict(prospect)
+                
+            prospect.extra['llm_title_enhancement'] = {
+                'confidence': enhanced_title['confidence'],
+                'reasoning': enhanced_title.get('reasoning', ''),
+                'original_title': prospect.title,
+                'model_used': llm_service.model_name,
+                'enhanced_at': datetime.now().isoformat()
+            }
+            return True
+    
+    return False
+
+def _finalize_enhancement(prospect, llm_service, processed, enhancements, force_redo):
+    """Finalize the enhancement process and return appropriate response."""
+    # Always update timestamp for force_redo, even if no new enhancements
+    if processed or force_redo:
+        prospect.ollama_processed_at = datetime.now()
+        prospect.ollama_model_version = llm_service.model_name
+        db.session.commit()
+        
+        return jsonify({
+            "status": "success",
+            "message": f"Successfully enhanced prospect with: {', '.join(enhancements)}",
+            "processed": True,
+            "enhancements": enhancements
+        }), 200
+    else:
+        return jsonify({
+            "status": "success",
+            "message": "Prospect already fully enhanced or no data to enhance",
+            "processed": False,
+            "enhancements": []
+        }), 200
+
 @llm_bp.route('/enhance-single', methods=['POST'])
 def enhance_single_prospect():
     """Enhance a single prospect with all AI enhancements"""
     try:
+        # Parse and validate request
         data = request.get_json()
         if not data:
             return jsonify({"error": "Request body required"}), 400
@@ -398,135 +538,25 @@ def enhance_single_prospect():
         processed = False
         enhancements = []
         
-        # Process values
-        value_to_parse = None
-        if force_redo or (prospect.estimated_value_text and not prospect.estimated_value_single):
-            value_to_parse = prospect.estimated_value_text
-        elif force_redo or (prospect.estimated_value and not prospect.estimated_value_single):
-            # Convert numeric value to text for LLM processing
-            value_to_parse = str(prospect.estimated_value)
+        # Process each enhancement type
+        if _process_value_enhancement(prospect, llm_service, force_redo):
+            processed = True
+            enhancements.append('values')
         
-        # If force_redo, try to get a value even if we already have parsed values
-        if force_redo and not value_to_parse:
-            if prospect.estimated_value_text:
-                value_to_parse = prospect.estimated_value_text
-            elif prospect.estimated_value:
-                value_to_parse = str(prospect.estimated_value)
+        if _process_contact_enhancement(prospect, llm_service, force_redo):
+            processed = True
+            enhancements.append('contacts')
         
-        if value_to_parse:
-            parsed_value = llm_service.parse_contract_value_with_llm(value_to_parse, prospect_id=prospect.id)
-            if parsed_value['single'] is not None:
-                try:
-                    # Safely convert to float with validation
-                    single_val = float(parsed_value['single']) if parsed_value['single'] is not None else None
-                    min_val = float(parsed_value['min']) if parsed_value['min'] is not None else single_val
-                    max_val = float(parsed_value['max']) if parsed_value['max'] is not None else single_val
-                    
-                    # Only update if all conversions were successful
-                    if single_val is not None:
-                        prospect.estimated_value_single = single_val
-                        prospect.estimated_value_min = min_val
-                        prospect.estimated_value_max = max_val
-                        # Store the text version if it didn't exist
-                        if not prospect.estimated_value_text:
-                            prospect.estimated_value_text = value_to_parse
-                        processed = True
-                        enhancements.append('values')
-                except (ValueError, TypeError) as e:
-                    logger.warning(f"Failed to convert LLM parsed values to float for prospect {prospect.id}: {e}")
-                    # Continue processing without raising an error
+        if _process_naics_enhancement(prospect, llm_service, force_redo):
+            processed = True
+            enhancements.append('naics')
         
-        # Process contacts
-        if prospect.extra and (force_redo or not prospect.primary_contact_name):
-            import json
-            _ensure_extra_is_dict(prospect)
-            extra_data = prospect.extra
-            
-            # Get contact data
-            if extra_data and 'contacts' in extra_data:
-                contact_data = extra_data['contacts']
-            elif extra_data:
-                contact_data = {
-                    'email': extra_data.get('contact_email') or extra_data.get('poc_email'),
-                    'name': extra_data.get('contact_name') or extra_data.get('poc_name'),
-                    'phone': extra_data.get('contact_phone') or extra_data.get('poc_phone'),
-                }
-            else:
-                contact_data = {}
-            
-            if any(contact_data.values()):
-                extracted_contact = llm_service.extract_contact_with_llm(contact_data, prospect_id=prospect.id)
-                
-                if extracted_contact['email'] or extracted_contact['name']:
-                    prospect.primary_contact_email = extracted_contact['email']
-                    prospect.primary_contact_name = extracted_contact['name']
-                    processed = True
-                    enhancements.append('contacts')
+        if _process_title_enhancement(prospect, llm_service, force_redo):
+            processed = True
+            enhancements.append('titles')
         
-        # Process NAICS
-        if prospect.description and (force_redo or not prospect.naics or prospect.naics_source != 'llm_inferred'):
-            classification = llm_service.classify_naics_with_llm(prospect.title, prospect.description, prospect_id=prospect.id)
-            
-            if classification['code']:
-                prospect.naics = classification['code']
-                prospect.naics_description = classification['description']
-                prospect.naics_source = 'llm_inferred'
-                
-                # Add confidence to extras
-                _ensure_extra_is_dict(prospect)
-                    
-                prospect.extra['llm_classification'] = {
-                    'naics_confidence': classification['confidence'],
-                    'model_used': llm_service.model_name,
-                    'classified_at': datetime.now().isoformat()
-                }
-                processed = True
-                enhancements.append('naics')
-        
-        # Process titles
-        if prospect.title and (force_redo or not prospect.ai_enhanced_title):
-            enhanced_title = llm_service.enhance_title_with_llm(
-                prospect.title, 
-                prospect.description or "",
-                prospect.agency or "",
-                prospect_id=prospect.id
-            )
-            
-            if enhanced_title['enhanced_title']:
-                prospect.ai_enhanced_title = enhanced_title['enhanced_title']
-                
-                # Add confidence and reasoning to extras
-                _ensure_extra_is_dict(prospect)
-                    
-                prospect.extra['llm_title_enhancement'] = {
-                    'confidence': enhanced_title['confidence'],
-                    'reasoning': enhanced_title.get('reasoning', ''),
-                    'original_title': prospect.title,
-                    'model_used': llm_service.model_name,
-                    'enhanced_at': datetime.now().isoformat()
-                }
-                processed = True
-                enhancements.append('titles')
-        
-        # Always update timestamp for force_redo, even if no new enhancements
-        if processed or force_redo:
-            prospect.ollama_processed_at = datetime.now()
-            prospect.ollama_model_version = llm_service.model_name
-            db.session.commit()
-            
-            return jsonify({
-                "status": "success",
-                "message": f"Successfully enhanced prospect with: {', '.join(enhancements)}",
-                "processed": True,
-                "enhancements": enhancements
-            }), 200
-        else:
-            return jsonify({
-                "status": "success",
-                "message": "Prospect already fully enhanced or no data to enhance",
-                "processed": False,
-                "enhancements": []
-            }), 200
+        # Finalize and return response
+        return _finalize_enhancement(prospect, llm_service, processed, enhancements, force_redo)
             
     except Exception as e:
         logger.error(f"Error enhancing single prospect: {e}", exc_info=True)
