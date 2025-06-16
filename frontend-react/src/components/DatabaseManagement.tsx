@@ -2,6 +2,11 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { formatDate } from '@/utils/dateUtils';
+import { get } from '@/utils/apiUtils';
+import { LoadingButton } from '@/components/ui/LoadingButton';
+import { ErrorDisplay } from '@/components/ui/ErrorDisplay';
+import { CenteredSpinner } from '@/components/ui/LoadingSpinner';
 
 interface DatabaseStatus {
   prospect_count: number;
@@ -28,25 +33,13 @@ export function DatabaseManagement() {
   // Fetch database status
   const { data: statusData, isLoading, error, refetch } = useQuery<{ status: string; data: DatabaseStatus }>({
     queryKey: ['databaseStatus'],
-    queryFn: async () => {
-      const response = await fetch('/api/database/status');
-      if (!response.ok) {
-        throw new Error('Failed to fetch database status');
-      }
-      return response.json();
-    },
+    queryFn: () => get<{ status: string; data: DatabaseStatus }>('/api/database/status'),
   });
 
   // Fetch AI preservation config
   const { data: aiConfigData, isLoading: isLoadingConfig } = useQuery<{ status: string; data: AIPreservationConfig }>({
     queryKey: ['aiPreservationConfig'],
-    queryFn: async () => {
-      const response = await fetch('/api/config/ai-preservation');
-      if (!response.ok) {
-        throw new Error('Failed to fetch AI preservation config');
-      }
-      return response.json();
-    },
+    queryFn: () => get<{ status: string; data: AIPreservationConfig }>('/api/config/ai-preservation'),
   });
 
   // Mutation for clearing all database
@@ -179,15 +172,6 @@ export function DatabaseManagement() {
     return `${size.toFixed(1)} ${units[unitIndex]}`;
   };
 
-  const formatDate = (dateString: string) => {
-    // The backend sends ISO format without Z, but it's UTC
-    // Add Z if not present to ensure proper UTC parsing
-    const dateStr = dateString.includes('Z') || dateString.includes('+') || dateString.includes('-') 
-      ? dateString 
-      : dateString + 'Z';
-    const date = new Date(dateStr);
-    return date.toLocaleString();
-  };
 
 
   if (isLoading) {
@@ -198,9 +182,7 @@ export function DatabaseManagement() {
             <CardTitle>Database Management</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex items-center justify-center h-32">
-              <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-600"></div>
-            </div>
+            <CenteredSpinner text="Loading database status..." />
           </CardContent>
         </Card>
       </div>
@@ -215,10 +197,11 @@ export function DatabaseManagement() {
             <CardTitle>Database Management</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-red-600">Error loading database status: {(error as Error).message}</div>
-            <Button onClick={() => refetch()} className="mt-4">
-              Retry
-            </Button>
+            <ErrorDisplay error={error as Error} title="Failed to load database status">
+              <Button onClick={() => refetch()} className="mt-4">
+                Retry
+              </Button>
+            </ErrorDisplay>
           </CardContent>
         </Card>
       </div>
@@ -294,9 +277,11 @@ export function DatabaseManagement() {
               <p className="text-sm text-gray-600 mb-3">
                 Remove all AI-enriched prospects, enrichment logs, and LLM outputs. Original scraped data will remain.
               </p>
-              <button 
-                className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 bg-purple-600 text-white shadow-xs hover:bg-purple-700 h-9 px-4 py-2"
-                disabled={isClearing}
+              <LoadingButton
+                variant="primary"
+                className="bg-purple-600 hover:bg-purple-700"
+                isLoading={clearAIMutation.isPending}
+                loadingText="Clearing AI Entries..."
                 onClick={() => {
                   if (window.confirm(
                     `Are you sure you want to clear all AI entries? This action cannot be undone.\n\n` +
@@ -309,15 +294,8 @@ export function DatabaseManagement() {
                   }
                 }}
               >
-                {clearAIMutation.isPending ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white mr-2"></div>
-                    Clearing AI Entries...
-                  </>
-                ) : (
-                  'Clear AI Entries'
-                )}
-              </button>
+                Clear AI Entries
+              </LoadingButton>
             </div>
 
             {/* Clear Original Entries */}
@@ -326,9 +304,11 @@ export function DatabaseManagement() {
               <p className="text-sm text-gray-600 mb-3">
                 Remove all non-AI-enriched (original scraped) prospects. AI-enriched data will remain.
               </p>
-              <button 
-                className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 bg-orange-600 text-white shadow-xs hover:bg-orange-700 h-9 px-4 py-2"
-                disabled={isClearing}
+              <LoadingButton
+                variant="primary"
+                className="bg-orange-600 hover:bg-orange-700"
+                isLoading={clearOriginalMutation.isPending}
+                loadingText="Clearing Original Entries..."
                 onClick={() => {
                   if (window.confirm(
                     `Are you sure you want to clear all original entries? This action cannot be undone.\n\n` +
@@ -339,15 +319,8 @@ export function DatabaseManagement() {
                   }
                 }}
               >
-                {clearOriginalMutation.isPending ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white mr-2"></div>
-                    Clearing Original Entries...
-                  </>
-                ) : (
-                  'Clear Original Entries'
-                )}
-              </button>
+                Clear Original Entries
+              </LoadingButton>
             </div>
 
             {/* Clear All */}
@@ -357,9 +330,10 @@ export function DatabaseManagement() {
                 This will permanently delete ALL prospects and scraper status records from the database. 
                 Data sources will remain but their last_scraped timestamps will be reset.
               </p>
-              <button 
-                className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 bg-red-600 text-white shadow-xs hover:bg-red-700 h-9 px-4 py-2"
-                disabled={isClearing}
+              <LoadingButton
+                variant="danger"
+                isLoading={clearDatabaseMutation.isPending}
+                loadingText="Clearing All..."
                 onClick={() => {
                   if (window.confirm(
                     `Are you sure you want to clear the ENTIRE database? This action cannot be undone.\n\n` +
@@ -372,15 +346,8 @@ export function DatabaseManagement() {
                   }
                 }}
               >
-                {clearDatabaseMutation.isPending ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white mr-2"></div>
-                    Clearing All...
-                  </>
-                ) : (
-                  'Clear All Database'
-                )}
-              </button>
+                Clear All Database
+              </LoadingButton>
             </div>
           </div>
         </CardContent>
@@ -392,9 +359,7 @@ export function DatabaseManagement() {
         </CardHeader>
         <CardContent>
           {isLoadingConfig ? (
-            <div className="flex items-center justify-center h-16">
-              <div className="animate-spin rounded-full h-6 w-6 border-t-2 border-b-2 border-blue-600"></div>
-            </div>
+            <CenteredSpinner text="Loading configuration..." height="h-16" />
           ) : (
             <div className="space-y-6">
               {/* AI Preservation Section */}

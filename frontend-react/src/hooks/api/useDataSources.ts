@@ -1,55 +1,23 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { DataSource } from '@/types';
+import { get, post, put, del } from '@/utils/apiUtils';
 
-// Placeholder API base URL - commented out to remove unused variable warning
-// const API_BASE_URL = '/api'; // Adjust as needed
-
-// --- API Call Functions (Placeholders) ---
-// Typically, these would use fetch or axios to interact with your backend
+// --- API Call Functions ---
 
 async function fetchDataSourcesAPI(): Promise<DataSource[]> {
-  const response = await fetch(`/api/data-sources`);
-  if (!response.ok) {
-    throw new Error('Network response was not ok while fetching data sources');
-  }
-  return response.json();
+  return get<DataSource[]>('/api/data-sources');
 }
 
 async function createDataSourceAPI(newDataSource: Omit<DataSource, 'id'>): Promise<DataSource> {
-  const response = await fetch(`/api/data-sources`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(newDataSource),
-  });
-  if (!response.ok) {
-    const errorBody = await response.text();
-    throw new Error(`Failed to create data source: ${response.status} ${errorBody}`);
-  }
-  return response.json();
+  return post<DataSource>('/api/data-sources', newDataSource);
 }
 
 async function updateDataSourceAPI({ id, ...updatedData }: Partial<DataSource> & { id: DataSource['id'] }): Promise<DataSource> {
-  const response = await fetch(`/api/data-sources/${id}`, {
-    method: 'PUT', // or 'PATCH'
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(updatedData),
-  });
-  if (!response.ok) {
-    const errorBody = await response.text();
-    throw new Error(`Failed to update data source ${id}: ${response.status} ${errorBody}`);
-  }
-  return response.json();
+  return put<DataSource>(`/api/data-sources/${id}`, updatedData);
 }
 
 async function deleteDataSourceAPI(dataSourceId: DataSource['id']): Promise<void> {
-  const response = await fetch(`/api/data-sources/${dataSourceId}`, {
-    method: 'DELETE',
-  });
-  if (!response.ok) {
-    const errorBody = await response.text();
-    throw new Error(`Failed to delete data source ${dataSourceId}: ${response.status} ${errorBody}`);
-  }
-  // No content typically, so no response.json()
+  return del<void>(`/api/data-sources/${dataSourceId}`);
 }
 
 // --- React Query Hooks ---

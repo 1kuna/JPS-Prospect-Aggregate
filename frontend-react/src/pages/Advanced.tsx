@@ -15,6 +15,11 @@ import {
 import { DatabaseManagement } from '@/components/DatabaseManagement';
 import { AIEnrichment } from '@/components/AIEnrichment';
 import { DuplicateReview } from '@/components/DuplicateReview';
+import { formatDate } from '@/utils/dateUtils';
+import { get, post } from '@/utils/apiUtils';
+import { LoadingButton } from '@/components/ui/LoadingButton';
+import { ErrorDisplay } from '@/components/ui/ErrorDisplay';
+import { CenteredSpinner } from '@/components/ui/LoadingSpinner';
 
 interface DataSource {
   id: number;
@@ -47,26 +52,12 @@ export default function Advanced() {
   // Fetch data sources
   const { data: sources, isLoading, error } = useQuery<{ status: string; data: DataSource[] }>({
     queryKey: ['dataSources'],
-    queryFn: async () => {
-      const response = await fetch('/api/data-sources/');
-      if (!response.ok) {
-        throw new Error('Failed to fetch data sources');
-      }
-      return response.json();
-    },
+    queryFn: () => get<{ status: string; data: DataSource[] }>('/api/data-sources/'),
   });
 
   // Mutation for running individual scraper
   const runScraperMutation = useMutation({
-    mutationFn: async (sourceId: number) => {
-      const response = await fetch(`/api/data-sources/${sourceId}/pull`, {
-        method: 'POST',
-      });
-      if (!response.ok) {
-        throw new Error('Failed to run scraper');
-      }
-      return response.json();
-    },
+    mutationFn: (sourceId: number) => post(`/api/data-sources/${sourceId}/pull`),
     onMutate: (sourceId) => {
       setRunningScrapers(prev => new Set(prev).add(sourceId));
     },
@@ -83,15 +74,7 @@ export default function Advanced() {
 
   // Mutation for running all scrapers
   const runAllScrapersMutation = useMutation({
-    mutationFn: async () => {
-      const response = await fetch('/api/data-sources/run-all', {
-        method: 'POST',
-      });
-      if (!response.ok) {
-        throw new Error('Failed to run all scrapers');
-      }
-      return response.json();
-    },
+    mutationFn: () => post('/api/data-sources/run-all'),
     onMutate: () => {
       setRunAllInProgress(true);
     },
@@ -131,16 +114,6 @@ export default function Advanced() {
     setSearchParams(params);
   };
 
-  const formatDate = (dateString: string | null) => {
-    if (!dateString) return 'Never';
-    // The backend sends ISO format without Z, but it's UTC
-    // Add Z if not present to ensure proper UTC parsing
-    const dateStr = dateString.includes('Z') || dateString.includes('+') || dateString.includes('-') 
-      ? dateString 
-      : dateString + 'Z';
-    const date = new Date(dateStr);
-    return date.toLocaleString();
-  };
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -223,17 +196,11 @@ export default function Advanced() {
 
   const renderDataSourcesTab = () => {
     if (isLoading) {
-      return (
-        <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-600"></div>
-        </div>
-      );
+      return <CenteredSpinner text="Loading data sources..." height="h-64" />;
     }
 
     if (error) {
-      return (
-        <div className="text-red-600">Error loading data sources: {(error as Error).message}</div>
-      );
+      return <ErrorDisplay error={error as Error} title="Failed to load data sources" />;
     }
 
     const dataSources = sources?.data || [];
@@ -243,20 +210,15 @@ export default function Advanced() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>Data Sources</CardTitle>
-            <Button
+            <LoadingButton
               onClick={handleRunAllScrapers}
-              disabled={runAllInProgress || dataSources.length === 0}
-              className="bg-blue-600 hover:bg-blue-700 text-white"
+              isLoading={runAllInProgress}
+              loadingText="Running All Scrapers..."
+              disabled={dataSources.length === 0}
+              className="bg-blue-600 hover:bg-blue-700"
             >
-              {runAllInProgress ? (
-                <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white mr-2"></div>
-                  Running All Scrapers...
-                </>
-              ) : (
-                'Pull All Sources'
-              )}
-            </Button>
+              Pull All Sources
+            </LoadingButton>
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
@@ -283,24 +245,19 @@ export default function Advanced() {
                             {source.status}
                           </span>
                         </TableCell>
-                        <TableCell className="text-sm">{formatDate(source.last_scraped)}</TableCell>
+                        <TableCell className="text-sm">{formatDate(source.last_scraped, { fallback: 'Never' })}</TableCell>
                         <TableCell>{source.prospectCount}</TableCell>
                         <TableCell>
-                          <Button
+                          <LoadingButton
                             size="sm"
                             onClick={() => handleRunScraper(source.id)}
-                            disabled={isRunning || runAllInProgress}
-                            className="bg-green-600 hover:bg-green-700 text-white"
+                            isLoading={isRunning}
+                            loadingText="Running..."
+                            disabled={runAllInProgress}
+                            className="bg-green-600 hover:bg-green-700"
                           >
-                            {isRunning ? (
-                              <>
-                                <div className="animate-spin rounded-full h-3 w-3 border-t-2 border-b-2 border-white mr-2"></div>
-                                Running...
-                              </>
-                            ) : (
-                              'Run Scraper'
-                            )}
-                          </Button>
+                            Run Scraper
+                          </LoadingButton>
                         </TableCell>
                       </TableRow>
                     );

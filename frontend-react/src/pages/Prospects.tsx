@@ -11,6 +11,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { formatDate } from '@/utils/dateUtils';
+import { LoadingButton } from '@/components/ui/LoadingButton';
+import { ErrorDisplay } from '@/components/ui/ErrorDisplay';
+import { CenteredSpinner } from '@/components/ui/LoadingSpinner';
 
 export default function Prospects() {
   const [filters] = useState<ProspectFilters>({});
@@ -64,8 +68,14 @@ export default function Prospects() {
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="h-24 text-center">
-                    Loading...
+                  <TableCell colSpan={5} className="h-24">
+                    <CenteredSpinner text="Loading prospects..." />
+                  </TableCell>
+                </TableRow>
+              ) : isError ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="h-24">
+                    <ErrorDisplay error={error as Error} />
                   </TableCell>
                 </TableRow>
               ) : !prospects || prospects.length === 0 ? (
@@ -85,7 +95,7 @@ export default function Prospects() {
                       {prospect.dataSource?.name || 'N/A'}
                     </TableCell>
                     <TableCell>
-                      {new Date(prospect.createdAt).toLocaleDateString()}
+                      {formatDate(prospect.createdAt, { format: 'date' })}
                     </TableCell>
                     <TableCell>
                       <Button
@@ -105,12 +115,13 @@ export default function Prospects() {
         
         {hasNextPage && (
           <div className="flex justify-center">
-            <Button
+            <LoadingButton
               onClick={handleLoadMore}
-              disabled={isFetchingNextPage}
+              isLoading={isFetchingNextPage}
+              loadingText="Loading..."
             >
-              {isFetchingNextPage ? 'Loading...' : 'Load More'}
-            </Button>
+              Load More
+            </LoadingButton>
           </div>
         )}
       </div>
