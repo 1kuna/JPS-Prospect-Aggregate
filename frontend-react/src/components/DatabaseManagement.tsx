@@ -69,7 +69,7 @@ export function DatabaseManagement() {
       queryClient.invalidateQueries({ queryKey: ['databaseStatus'] });
       queryClient.invalidateQueries({ queryKey: ['dataSources'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['proposals'] });
+      queryClient.invalidateQueries({ queryKey: ['prospects'] });
       queryClient.invalidateQueries({ queryKey: ['prospects'] });
     },
     onError: (error: Error) => {
@@ -99,7 +99,7 @@ export function DatabaseManagement() {
       // Refetch all relevant data
       queryClient.invalidateQueries({ queryKey: ['databaseStatus'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['proposals'] });
+      queryClient.invalidateQueries({ queryKey: ['prospects'] });
       queryClient.invalidateQueries({ queryKey: ['prospects'] });
       queryClient.invalidateQueries({ queryKey: ['ai-enrichment-status'] });
     },
@@ -130,7 +130,7 @@ export function DatabaseManagement() {
       // Refetch all relevant data
       queryClient.invalidateQueries({ queryKey: ['databaseStatus'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['proposals'] });
+      queryClient.invalidateQueries({ queryKey: ['prospects'] });
       queryClient.invalidateQueries({ queryKey: ['prospects'] });
     },
     onError: (error: Error) => {

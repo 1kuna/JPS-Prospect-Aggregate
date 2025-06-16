@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { DataPageLayout } from '@/components/layout';
-import { useInfiniteProposals, useProposalStatistics } from '@/hooks/api/useProposals';
-import { ProposalFilters } from '@/types/proposals';
+import { useInfiniteProspects, useProspectStatistics } from '@/hooks/api/useProspects';
+import { ProspectFilters } from '@/types/prospects';
 import { Button } from '@/components/ui';
 import {
   Table,
@@ -12,24 +12,24 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-export default function Proposals() {
-  const [filters] = useState<ProposalFilters>({});
+export default function Prospects() {
+  const [filters] = useState<ProspectFilters>({});
   
   const {
-    data: proposals,
+    data: prospects,
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
     isLoading,
     isError,
     error
-  } = useInfiniteProposals(filters);
+  } = useInfiniteProspects(filters);
 
-  // Log proposals data in Proposals.tsx
-  console.log('[Proposals.tsx] proposals data from useInfiniteProposals:', proposals);
-  console.log('[Proposals.tsx] isLoading:', isLoading, 'isError:', isError, 'error:', error);
+  // Log prospects data in Prospects.tsx
+  console.log('[Prospects.tsx] prospects data from useInfiniteProspects:', prospects);
+  console.log('[Prospects.tsx] isLoading:', isLoading, 'isError:', isError, 'error:', error);
 
-  const { data: statisticsData, isLoading: isLoadingStats } = useProposalStatistics();
+  const { data: statisticsData, isLoading: isLoadingStats } = useProspectStatistics();
 
   const handleLoadMore = () => {
     if (hasNextPage && !isFetchingNextPage) {
@@ -39,13 +39,13 @@ export default function Proposals() {
 
 
   const pageError = isError ? (error as Error) : null;
-  const totalProposals = statisticsData?.data?.total ?? 0;
+  const totalProspects = statisticsData?.data?.total ?? 0;
 
   return (
     <DataPageLayout
-      title="Proposals"
-      subtitle={`Total: ${totalProposals} proposals`}
-      data={proposals ?? []}
+      title="Prospects"
+      subtitle={`Total: ${totalProspects} prospects`}
+      data={prospects ?? []}
       loading={isLoading || isLoadingStats}
       error={pageError}
     >
@@ -68,30 +68,30 @@ export default function Proposals() {
                     Loading...
                   </TableCell>
                 </TableRow>
-              ) : !proposals || proposals.length === 0 ? (
+              ) : !prospects || prospects.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={5} className="h-24 text-center">
-                    No proposals found.
+                    No prospects found.
                   </TableCell>
                 </TableRow>
               ) : (
-                proposals.map((proposal) => (
-                  <TableRow key={proposal.id}>
+                prospects.map((prospect) => (
+                  <TableRow key={prospect.id}>
                     <TableCell className="font-medium">
-                      {proposal.title || 'Untitled'}
+                      {prospect.title || 'Untitled'}
                     </TableCell>
-                    <TableCell>{proposal.status || 'N/A'}</TableCell>
+                    <TableCell>{prospect.status || 'N/A'}</TableCell>
                     <TableCell>
-                      {proposal.dataSource?.name || 'N/A'}
+                      {prospect.dataSource?.name || 'N/A'}
                     </TableCell>
                     <TableCell>
-                      {new Date(proposal.createdAt).toLocaleDateString()}
+                      {new Date(prospect.createdAt).toLocaleDateString()}
                     </TableCell>
                     <TableCell>
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => alert('View proposal details')}
+                        onClick={() => alert('View prospect details')}
                       >
                         View
                       </Button>
@@ -116,4 +116,4 @@ export default function Proposals() {
       </div>
     </DataPageLayout>
   );
-} 
+}

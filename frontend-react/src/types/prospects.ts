@@ -1,7 +1,7 @@
-export interface Proposal {
+export interface Prospect {
   id: string | number;
   title: string;
-  status: ProposalStatus;
+  status: ProspectStatus;
   dataSource?: {
     id: string | number;
     name: string;
@@ -13,7 +13,7 @@ export interface Proposal {
   search?: string;
 }
 
-export enum ProposalStatus {
+export enum ProspectStatus {
   DRAFT = 'Draft',
   SUBMITTED = 'Submitted',
   REVIEW = 'In Review',
@@ -21,7 +21,7 @@ export enum ProposalStatus {
   REJECTED = 'Rejected',
 }
 
-export interface ProposalStatistics {
+export interface ProspectStatistics {
   data: {
     total: number;
     approved: number;
@@ -30,8 +30,8 @@ export interface ProposalStatistics {
   };
 }
 
-export interface ProposalFilters {
-  status?: ProposalStatus;
+export interface ProspectFilters {
+  status?: ProspectStatus;
   dataSourceId?: number;
   startDate?: string;
   endDate?: string;

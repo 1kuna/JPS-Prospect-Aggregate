@@ -20,12 +20,12 @@ export {
 } from './api/useDataSources';
 
 export {
-  useInfiniteProposals,
-  useProposalStatistics,
-  useCreateProposal,
-  useUpdateProposal,
-  useDeleteProposal,
-} from './api/useProposals';
+  useInfiniteProspects,
+  useProspectStatistics,
+  useCreateProspect,
+  useUpdateProspect,
+  useDeleteProspect,
+} from './api/useProspects';
 
 // Explicitly export from App-specific hooks
 // ... existing code ...
