@@ -1,15 +1,12 @@
 """Social Security Administration Opportunity Forecast scraper."""
 
 import os
-# import traceback # No longer directly used
 from typing import Optional, List 
 
 import pandas as pd
-# from playwright.sync_api import TimeoutError as PlaywrightTimeoutError # Handled by mixins
 from playwright.sync_api import ElementHandle # Used in _find_excel_link
 
 from app.core.specialized_scrapers import PageInteractionScraper
-# from app.models import Prospect # Data model, not directly used by scraper logic itself
 from app.config import active_config 
 from app.exceptions import ScraperError
 # Logger instance is self.logger from BaseScraper

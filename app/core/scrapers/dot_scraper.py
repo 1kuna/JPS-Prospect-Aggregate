@@ -1,7 +1,6 @@
 """Department of Transportation (DOT) Forecast scraper."""
 
 import os
-# import traceback # No longer directly used
 import time # For custom navigation delays
 import shutil # For fallback file copy
 from typing import Optional
@@ -19,10 +18,11 @@ class DotScraper(PageInteractionScraper):
     """Scraper for the DOT Forecast site."""
 
     def __init__(self, config: DOTConfig, debug_mode: bool = False):
-        if config.base_url is None:
-            config.base_url = active_config.DOT_FORECAST_URL
-            print(f"Warning: DOTConfig.base_url was None, set from active_config: {config.base_url}")
         super().__init__(config=config, debug_mode=debug_mode)
+    
+    def _get_default_url(self) -> str:
+        """Return default URL for DOT scraper."""
+        return active_config.DOT_FORECAST_URL
 
     def _setup_method(self) -> None:
         """Navigates to the DOT forecast page using custom retry logic and clicks 'Apply'."""
