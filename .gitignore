@@ -94,3 +94,16 @@ frontend-react/*.tsbuildinfo
 frontend-react/tsconfig.*.tsbuildinfo
 frontend-react/node_modules/ 
 frontend-react/src/tailwind-output.css
+
+# MyPy cache
+.mypy_cache/
+
+# Build artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Editor files
+*~
+.#*
+\#*#
