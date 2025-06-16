@@ -1,6 +1,11 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { formatDate } from '@/utils/dateUtils';
+import { get, post } from '@/utils/apiUtils';
+import { LoadingButton } from '@/components/ui/LoadingButton';
+import { ErrorDisplay } from '@/components/ui/ErrorDisplay';
+import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 
 interface DataSource {
   id: number;
@@ -55,26 +60,13 @@ export function DuplicateReview() {
   // Fetch data sources for filtering
   const { data: sourcesData } = useQuery<{ status: string; data: { sources: DataSource[] } }>({
     queryKey: ['duplicateSources'],
-    queryFn: async () => {
-      const response = await fetch('/api/duplicates/sources');
-      if (!response.ok) {
-        throw new Error('Failed to fetch data sources');
-      }
-      return response.json();
-    },
+    queryFn: () => get<{ status: string; data: { sources: DataSource[] } }>('/api/duplicates/sources'),
   });
 
   // Progress polling query
   const { data: progressData } = useQuery({
     queryKey: ['duplicateProgress', currentScanId],
-    queryFn: async () => {
-      if (!currentScanId) return null;
-      const response = await fetch(`/api/duplicates/progress/${currentScanId}`);
-      if (!response.ok) {
-        throw new Error('Failed to get progress');
-      }
-      return response.json();
-    },
+    queryFn: () => currentScanId ? get(`/api/duplicates/progress/${currentScanId}`) : null,
     enabled: !!currentScanId,
     refetchInterval: currentScanId ? 1000 : false, // Poll every second when scanning
   });
@@ -91,21 +83,11 @@ export function DuplicateReview() {
       setScanProgress(null);
       setCurrentScanId(null);
       
-      const response = await fetch('/api/duplicates/detect', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          source_id: selectedSourceId,
-          min_confidence: minConfidence,
-          limit: scanLimit || 10000, // Use a high number when "All" is selected
-        }),
+      const result = await post('/api/duplicates/detect', {
+        source_id: selectedSourceId,
+        min_confidence: minConfidence,
+        limit: scanLimit || 10000, // Use a high number when "All" is selected
       });
-      if (!response.ok) {
-        throw new Error('Failed to detect duplicates');
-      }
-      const result = await response.json();
       
       // Set scan ID for progress tracking if provided
       if (result.data?.scan_id) {
@@ -338,7 +320,7 @@ export function DuplicateReview() {
     return (
       <div className="bg-blue-50 border border-blue-200 rounded-md p-4 mb-4">
         <div className="flex items-center">
-          <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-blue-600 mr-3"></div>
+          <LoadingSpinner size="sm" inline className="mr-3" />
           <span className="text-sm font-medium text-blue-800">
             Scanning for duplicates... This may take a few minutes for large datasets.
           </span>
@@ -577,7 +559,7 @@ export function DuplicateReview() {
                         <div><strong>Description:</strong> {group.original.description}</div>
                       </div>
                       <div className="text-xs text-gray-500 mt-2">
-                        Loaded: {new Date(group.original.loaded_at).toLocaleString()}
+                        Loaded: {formatDate(group.original.loaded_at)}
                       </div>
                     </div>
                   </div>
@@ -637,7 +619,7 @@ export function DuplicateReview() {
                             <div><strong>Description:</strong> {match.description}</div>
                           </div>
                           <div className="text-xs text-gray-500 mt-2">
-                            Loaded: {new Date(match.loaded_at).toLocaleString()}
+                            Loaded: {formatDate(match.loaded_at)}
                           </div>
                         </div>
                       ))}

@@ -1,5 +1,6 @@
 import { useQuery, useInfiniteQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { Prospect, ProspectFilters, ProspectStatistics, ProspectStatus } from '@/types/prospects';
+import { get, buildQueryString } from '@/utils/apiUtils';
 
 // Placeholder API base URL - commented out to remove unused variable warning
 // const API_BASE_URL = '/api'; // Adjust as needed
@@ -17,21 +18,18 @@ async function fetchProspectsAPI(
   { pageParam = 0, filters }: { pageParam?: number; filters?: ProspectFilters }
 ): Promise<PaginatedProspectsResponse> {
   console.log(`Fetching prospects... pageParam (0-indexed): ${pageParam}, filters:`, filters);
-  const queryParams = new URLSearchParams();
-  if (filters) {
-    Object.entries(filters).forEach(([key, value]) => queryParams.append(key, String(value)));
-  }
-  const backendPageToFetch = pageParam + 1; // Backend is 1-indexed
-  queryParams.append('page', String(backendPageToFetch));
-  queryParams.append('limit', '10');
-  console.log(`Requesting backend page: ${backendPageToFetch}`);
-
-  const response = await fetch(`/api/prospects?${queryParams.toString()}`);
-  if (!response.ok) {
-    console.error('Network response was not ok', response);
-    throw new Error('Network response was not ok');
-  }
-  const responseJson = await response.json();
+  
+  const params: Record<string, any> = {
+    page: pageParam + 1, // Backend is 1-indexed
+    limit: 10,
+    ...filters
+  };
+  
+  console.log(`Requesting backend page: ${params.page}`);
+  
+  const url = `/api/prospects${buildQueryString(params)}`;
+  const responseJson = await get(url);
+  
   console.log('[useProspects.ts] Raw responseJson from backend:', responseJson);
 
   const transformedData = {

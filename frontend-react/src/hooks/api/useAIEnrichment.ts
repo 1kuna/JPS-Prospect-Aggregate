@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { get, post } from '@/utils/apiUtils';
 
 // Types
 interface AIEnrichmentStatus {
@@ -50,25 +51,11 @@ interface AIEnrichmentLogEntry {
 
 // API functions
 const fetchAIEnrichmentStatus = async (): Promise<AIEnrichmentStatus> => {
-  const response = await fetch('/api/llm/status');
-  if (!response.ok) {
-    throw new Error('Failed to fetch AI enrichment status');
-  }
-  return response.json();
+  return get<AIEnrichmentStatus>('/api/llm/status');
 };
 
 const triggerAIEnrichment = async (request: AIEnrichmentRequest): Promise<AIEnrichmentResult> => {
-  const response = await fetch('/api/llm/enhance', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(request),
-  });
-  if (!response.ok) {
-    throw new Error('Failed to trigger AI enrichment');
-  }
-  return response.json();
+  return post<AIEnrichmentResult>('/api/llm/enhance', request);
 };
 
 const fetchAIEnrichmentLogs = async (): Promise<AIEnrichmentLogEntry[]> => {
