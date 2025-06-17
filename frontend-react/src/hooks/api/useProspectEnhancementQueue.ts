@@ -34,6 +34,20 @@ export function useProspectEnhancementQueue() {
   const addToQueue = useCallback(async (request: EnhanceSingleProspectRequest) => {
     const { prospect_id } = request;
     
+    // Check if already queued or processing
+    const existing = queue[prospect_id];
+    if (existing && (existing.status === 'queued' || existing.status === 'processing')) {
+      if (window.showToast) {
+        window.showToast({
+          title: 'Already Queued',
+          message: `Prospect is already being enhanced`,
+          type: 'info',
+          duration: 2000
+        });
+      }
+      return existing.queue_item_id;
+    }
+    
     try {
       // Add to backend queue
       const response = await axios.post('/api/llm/enhance-single', {
@@ -103,7 +117,30 @@ export function useProspectEnhancementQueue() {
     setQueue(prev => {
       const newQueue = { ...prev };
 
-      // Check each local queue item against backend status
+      // First, sync any backend queue items that aren't in local state yet
+      queueStatus.pending_items.forEach(backendItem => {
+        if (backendItem.type === 'individual' && backendItem.prospect_id) {
+          const prospectId = backendItem.prospect_id.toString();
+          const existingLocal = newQueue[prospectId];
+          
+          // If not in local state, add it
+          if (!existingLocal) {
+            const backendStatus = backendItem.status;
+            const mappedStatus = backendStatus === 'pending' ? 'queued' : 
+                                backendStatus === 'processing' ? 'processing' : 
+                                backendStatus as 'queued' | 'processing' | 'completed' | 'failed';
+            
+            newQueue[prospectId] = {
+              prospect_id: prospectId,
+              status: mappedStatus,
+              queue_item_id: backendItem.id,
+              position: queueStatus.pending_items.indexOf(backendItem) + 1
+            };
+          }
+        }
+      });
+
+      // Then, check each local queue item against backend status
       Object.entries(newQueue).forEach(([prospectId, localItem]) => {
         if (!localItem.queue_item_id) return;
 
@@ -114,9 +151,14 @@ export function useProspectEnhancementQueue() {
 
         if (backendItem) {
           // Update status and position from backend
+          const backendStatus = backendItem.status;
+          const mappedStatus = backendStatus === 'pending' ? 'queued' : 
+                              backendStatus === 'processing' ? 'processing' : 
+                              backendStatus as 'queued' | 'processing' | 'completed' | 'failed';
+          
           newQueue[prospectId] = {
             ...localItem,
-            status: backendItem.status as 'queued' | 'processing' | 'completed' | 'failed',
+            status: mappedStatus,
             position: queueStatus.pending_items.indexOf(backendItem) + 1
           };
         } else {
