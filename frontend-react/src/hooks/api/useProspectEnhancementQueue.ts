@@ -1,6 +1,7 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
+import { useEnhancementQueueStatus } from './useEnhancementQueue';
 
 interface QueuedEnhancement {
   prospect_id: string;
@@ -9,6 +10,7 @@ interface QueuedEnhancement {
   status: 'queued' | 'processing' | 'completed' | 'failed';
   position?: number;
   error?: string;
+  queue_item_id?: string;
 }
 
 interface EnhancementQueue {
@@ -21,169 +23,176 @@ interface EnhanceSingleProspectRequest {
   user_id?: number;
 }
 
-interface EnhanceSingleProspectResponse {
-  status: string;
-  message: string;
-  processed: boolean;
-  enhancements: string[];
-}
-
 export function useProspectEnhancementQueue() {
   const [queue, setQueue] = useState<EnhancementQueue>({});
   const [isProcessing, setIsProcessing] = useState(false);
   const queryClient = useQueryClient();
-  const processingRef = useRef(false);
+  
+  // Get queue status from backend
+  const { data: queueStatus } = useEnhancementQueueStatus(2000);
 
-  const addToQueue = useCallback((request: EnhanceSingleProspectRequest) => {
+  const addToQueue = useCallback(async (request: EnhanceSingleProspectRequest) => {
     const { prospect_id } = request;
     
-    setQueue(prev => {
-      const newQueue = { ...prev };
-      
-      // Add to queue with queued status
-      newQueue[prospect_id] = {
-        ...request,
-        status: 'queued',
-        position: Object.values(newQueue).filter(item => item.status === 'queued').length + 1
-      };
-      
-      return newQueue;
-    });
-  }, []);
+    try {
+      // Add to backend queue
+      const response = await axios.post('/api/llm/enhance-single', {
+        prospect_id: request.prospect_id,
+        enhancement_type: 'all',
+        force_redo: request.force_redo,
+        user_id: request.user_id
+      });
 
-  // Process queue when items are added
-  useEffect(() => {
-    const processNext = async () => {
-      if (processingRef.current) return;
-      
-      const queuedItems = Object.entries(queue).filter(([_, item]) => item.status === 'queued');
-      if (queuedItems.length === 0) return;
-
-      processingRef.current = true;
-      setIsProcessing(true);
-
-      const [prospectId, queuedItem] = queuedItems[0];
-
-      try {
-        // Update status to processing
-        setQueue(prev => ({
-          ...prev,
-          [prospectId]: { ...prev[prospectId], status: 'processing' }
-        }));
-
-        // Make the API call
-        const response = await axios.post('/api/llm/enhance-single', {
-          prospect_id: queuedItem.prospect_id,
-          enhancement_type: 'all',
-          force_redo: queuedItem.force_redo,
-          user_id: queuedItem.user_id
-        });
-
-        // Mark as completed
-        setQueue(prev => ({
-          ...prev,
-          [prospectId]: { ...prev[prospectId], status: 'completed' }
-        }));
-
-        // Show success toast
-        if (window.showToast) {
-          const enhancements = response.data.enhancements || [];
-          if (enhancements.length > 0) {
-            const enhancementTypes = enhancements.map((e: string) => {
-              switch(e) {
-                case 'values': return 'Value Parsing';
-                case 'contacts': return 'Contact Extraction';
-                case 'naics': return 'NAICS Classification';
-                case 'titles': return 'Title Enhancement';
-                default: return e;
-              }
-            });
-            
-            window.showToast({
-              title: 'AI Enhancement Complete',
-              message: `Enhanced prospect with: ${enhancementTypes.join(', ')}`,
-              type: 'success',
-              duration: 3000
-            });
-          } else {
-            window.showToast({
-              title: 'Enhancement Complete',
-              message: 'Prospect was already fully enhanced',
-              type: 'info',
-              duration: 2000
-            });
-          }
+      // Add to local state for immediate UI feedback
+      setQueue(prev => ({
+        ...prev,
+        [prospect_id]: {
+          ...request,
+          status: 'queued',
+          queue_item_id: response.data.queue_item_id,
+          position: (queueStatus?.queue_size || 0) + 1
         }
+      }));
 
-        // Invalidate queries to refresh data
-        queryClient.invalidateQueries({ queryKey: ['prospects'] });
-        queryClient.invalidateQueries({ queryKey: ['ai-enrichment-status'] });
-        queryClient.invalidateQueries({ queryKey: ['llm-outputs'] });
-
-        // Remove from queue after a delay to show success
-        setTimeout(() => {
-          setQueue(prev => {
-            const newQueue = { ...prev };
-            delete newQueue[prospectId];
-            return newQueue;
-          });
-        }, 2000);
-
-      } catch (error: any) {
-        // Mark as failed
-        const errorMessage = error.response?.status === 409 
-          ? `Enhancement blocked: ${error.response.data.error}` 
-          : `Failed to enhance prospect: ${error.message}`;
-
-        setQueue(prev => ({
-          ...prev,
-          [prospectId]: { 
-            ...prev[prospectId], 
-            status: 'failed',
-            error: errorMessage
-          }
-        }));
-
-        // Show error toast
-        if (window.showToast) {
-          window.showToast({
-            title: 'Enhancement Failed',
-            message: errorMessage,
-            type: 'error',
-            duration: 5000
-          });
-        }
-
-        // Remove from queue after showing error
-        setTimeout(() => {
-          setQueue(prev => {
-            const newQueue = { ...prev };
-            delete newQueue[prospectId];
-            return newQueue;
-          });
-        }, 5000);
-      } finally {
-        processingRef.current = false;
-        setIsProcessing(false);
-        
-        // Update queue positions for remaining items
-        setQueue(prev => {
-          const newQueue = { ...prev };
-          const remaining = Object.entries(newQueue)
-            .filter(([_, item]) => item.status === 'queued')
-            .sort((a, b) => (a[1].position || 0) - (b[1].position || 0));
-
-          remaining.forEach(([id, item], index) => {
-            newQueue[id] = { ...item, position: index + 1 };
-          });
-
-          return newQueue;
+      // Show queued toast
+      if (window.showToast) {
+        window.showToast({
+          title: 'Enhancement Queued',
+          message: `Prospect enhancement request added to priority queue`,
+          type: 'info',
+          duration: 2000
         });
       }
-    };
 
-    processNext();
-  }, [queue, queryClient]);
+      return response.data.queue_item_id;
+    } catch (error: unknown) {
+      // Handle error
+      const errorResponse = error as { response?: { status: number; data: { error: string } }; message?: string };
+      const errorMessage = errorResponse.response?.status === 409 
+        ? `Enhancement blocked: ${errorResponse.response.data.error}` 
+        : `Failed to queue enhancement: ${errorResponse.message || 'Unknown error'}`;
+
+      setQueue(prev => ({
+        ...prev,
+        [prospect_id]: {
+          ...request,
+          status: 'failed',
+          error: errorMessage
+        }
+      }));
+
+      // Show error toast
+      if (window.showToast) {
+        window.showToast({
+          title: 'Enhancement Failed',
+          message: errorMessage,
+          type: 'error',
+          duration: 5000
+        });
+      }
+
+      throw error;
+    }
+  }, [queueStatus]);
+
+  // Monitor backend queue and update local state
+  useEffect(() => {
+    if (!queueStatus) return;
+
+    // Update local queue based on backend status
+    setQueue(prev => {
+      const newQueue = { ...prev };
+
+      // Check each local queue item against backend status
+      Object.entries(newQueue).forEach(([prospectId, localItem]) => {
+        if (!localItem.queue_item_id) return;
+
+        // Find corresponding backend item
+        const backendItem = queueStatus.pending_items.find(item => 
+          item.id === localItem.queue_item_id
+        );
+
+        if (backendItem) {
+          // Update status and position from backend
+          newQueue[prospectId] = {
+            ...localItem,
+            status: backendItem.status as 'queued' | 'processing' | 'completed' | 'failed',
+            position: queueStatus.pending_items.indexOf(backendItem) + 1
+          };
+        } else {
+          // Check if completed
+          const completedItem = queueStatus.recent_completed.find(item => 
+            item.id === localItem.queue_item_id
+          );
+
+          if (completedItem) {
+            if (completedItem.status === 'completed') {
+              // Mark as completed and show success
+              newQueue[prospectId] = {
+                ...localItem,
+                status: 'completed'
+              };
+
+              // Show success toast
+              if (window.showToast) {
+                window.showToast({
+                  title: 'AI Enhancement Complete',
+                  message: `Successfully enhanced prospect`,
+                  type: 'success',
+                  duration: 3000
+                });
+              }
+
+              // Invalidate queries to refresh data
+              queryClient.invalidateQueries({ queryKey: ['prospects'] });
+              queryClient.invalidateQueries({ queryKey: ['ai-enrichment-status'] });
+              queryClient.invalidateQueries({ queryKey: ['llm-outputs'] });
+
+              // Remove from queue after delay
+              setTimeout(() => {
+                setQueue(prev => {
+                  const updatedQueue = { ...prev };
+                  delete updatedQueue[prospectId];
+                  return updatedQueue;
+                });
+              }, 2000);
+            } else if (completedItem.status === 'failed') {
+              // Mark as failed and show error
+              newQueue[prospectId] = {
+                ...localItem,
+                status: 'failed',
+                error: completedItem.error_message || 'Enhancement failed'
+              };
+
+              // Show error toast
+              if (window.showToast) {
+                window.showToast({
+                  title: 'Enhancement Failed',
+                  message: completedItem.error_message || 'Enhancement failed',
+                  type: 'error',
+                  duration: 5000
+                });
+              }
+
+              // Remove from queue after delay
+              setTimeout(() => {
+                setQueue(prev => {
+                  const updatedQueue = { ...prev };
+                  delete updatedQueue[prospectId];
+                  return updatedQueue;
+                });
+              }, 5000);
+            }
+          }
+        }
+      });
+
+      return newQueue;
+    });
+
+    // Update processing status
+    setIsProcessing(queueStatus.current_item !== null);
+  }, [queueStatus, queryClient]);
 
   const getProspectStatus = useCallback((prospect_id: string) => {
     return queue[prospect_id] || null;

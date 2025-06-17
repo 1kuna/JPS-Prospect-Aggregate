@@ -3,6 +3,7 @@ from app.database.models import Prospect, db, AIEnrichmentLog, LLMOutput
 from app.utils.logger import logger
 from app.services.contract_llm_service import ContractLLMService
 from app.services.iterative_llm_service_v2 import iterative_service_v2 as iterative_service
+from app.services.enhancement_queue_service import enhancement_queue_service
 from sqlalchemy import func
 from datetime import datetime, timedelta
 import time
@@ -517,7 +518,61 @@ def _finalize_enhancement(prospect, llm_service, processed, enhancements, force_
 
 @llm_bp.route('/enhance-single', methods=['POST'])
 def enhance_single_prospect():
-    """Enhance a single prospect with all AI enhancements"""
+    """Enhance a single prospect with all AI enhancements using the priority queue system"""
+    try:
+        # Parse and validate request
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "Request body required"}), 400
+            
+        prospect_id = data.get('prospect_id')
+        if not prospect_id:
+            return jsonify({"error": "prospect_id is required"}), 400
+            
+        force_redo = data.get('force_redo', False)
+        user_id = data.get('user_id', 1)  # Default to 1 if no user provided
+        enhancement_type = data.get('enhancement_type', 'all')
+            
+        # Get the prospect
+        prospect = Prospect.query.get(prospect_id)
+        if not prospect:
+            return jsonify({"error": "Prospect not found"}), 404
+        
+        # Check if prospect is already being enhanced by another user
+        if prospect.enhancement_status == 'in_progress':
+            if prospect.enhancement_user_id != user_id:
+                return jsonify({
+                    "error": "Prospect is currently being enhanced by another user",
+                    "status": "blocked",
+                    "enhancement_status": "in_progress",
+                    "enhancement_user_id": prospect.enhancement_user_id
+                }), 409
+                
+        # Add to priority queue
+        queue_item_id = enhancement_queue_service.add_individual_enhancement(
+            prospect_id=prospect_id,
+            enhancement_type=enhancement_type,
+            user_id=user_id,
+            force_redo=force_redo
+        )
+        
+        logger.info(f"Added individual enhancement for prospect {prospect_id} to queue with ID {queue_item_id}")
+        
+        return jsonify({
+            "status": "queued",
+            "message": f"Enhancement request queued for prospect {prospect_id}",
+            "queue_item_id": queue_item_id,
+            "prospect_id": prospect_id,
+            "priority": "high"
+        }), 200
+            
+    except Exception as e:
+        logger.error(f"Error queueing single prospect enhancement: {e}", exc_info=True)
+        return jsonify({"error": f"Failed to queue prospect enhancement: {str(e)}"}), 500
+
+@llm_bp.route('/enhance-single-direct', methods=['POST'])
+def enhance_single_prospect_direct():
+    """Enhance a single prospect directly (original implementation) - for backward compatibility"""
     try:
         # Parse and validate request
         data = request.get_json()
@@ -552,7 +607,7 @@ def enhance_single_prospect():
         prospect.enhancement_user_id = user_id
         db.session.commit()
             
-        logger.info(f"Starting single prospect enhancement for prospect {prospect_id} by user {user_id}")
+        logger.info(f"Starting direct single prospect enhancement for prospect {prospect_id} by user {user_id}")
         
         try:
             # Initialize the LLM service
@@ -595,7 +650,7 @@ def enhance_single_prospect():
             raise enhancement_error
             
     except Exception as e:
-        logger.error(f"Error enhancing single prospect: {e}", exc_info=True)
+        logger.error(f"Error enhancing single prospect directly: {e}", exc_info=True)
         db.session.rollback()
         return jsonify({"error": f"Failed to enhance prospect: {str(e)}"}), 500
 
@@ -631,3 +686,58 @@ def cleanup_stale_enhancement_locks():
         logger.error(f"Error cleaning up stale locks: {e}", exc_info=True)
         db.session.rollback()
         return jsonify({"error": f"Failed to cleanup stale locks: {str(e)}"}), 500
+
+@llm_bp.route('/queue/status', methods=['GET'])
+def get_queue_status():
+    """Get current enhancement queue status"""
+    try:
+        status = enhancement_queue_service.get_queue_status()
+        return jsonify(status), 200
+    except Exception as e:
+        logger.error(f"Error getting queue status: {e}", exc_info=True)
+        return jsonify({"error": f"Failed to get queue status: {str(e)}"}), 500
+
+@llm_bp.route('/queue/item/<item_id>', methods=['GET'])
+def get_queue_item_status(item_id):
+    """Get status of a specific queue item"""
+    try:
+        item_status = enhancement_queue_service.get_item_status(item_id)
+        if not item_status:
+            return jsonify({"error": "Queue item not found"}), 404
+        return jsonify(item_status), 200
+    except Exception as e:
+        logger.error(f"Error getting queue item status: {e}", exc_info=True)
+        return jsonify({"error": f"Failed to get queue item status: {str(e)}"}), 500
+
+@llm_bp.route('/queue/item/<item_id>/cancel', methods=['POST'])
+def cancel_queue_item(item_id):
+    """Cancel a specific queue item"""
+    try:
+        success = enhancement_queue_service.cancel_item(item_id)
+        if success:
+            return jsonify({"message": f"Queue item {item_id} cancelled successfully"}), 200
+        else:
+            return jsonify({"error": "Cannot cancel item (not found or already processing)"}), 400
+    except Exception as e:
+        logger.error(f"Error cancelling queue item: {e}", exc_info=True)
+        return jsonify({"error": f"Failed to cancel queue item: {str(e)}"}), 500
+
+@llm_bp.route('/queue/start-worker', methods=['POST'])
+def start_queue_worker():
+    """Start the enhancement queue worker"""
+    try:
+        enhancement_queue_service.start_worker()
+        return jsonify({"message": "Queue worker started successfully"}), 200
+    except Exception as e:
+        logger.error(f"Error starting queue worker: {e}", exc_info=True)
+        return jsonify({"error": f"Failed to start queue worker: {str(e)}"}), 500
+
+@llm_bp.route('/queue/stop-worker', methods=['POST'])
+def stop_queue_worker():
+    """Stop the enhancement queue worker"""
+    try:
+        enhancement_queue_service.stop_worker()
+        return jsonify({"message": "Queue worker stopped successfully"}), 200
+    except Exception as e:
+        logger.error(f"Error stopping queue worker: {e}", exc_info=True)
+        return jsonify({"error": f"Failed to stop queue worker: {str(e)}"}), 500

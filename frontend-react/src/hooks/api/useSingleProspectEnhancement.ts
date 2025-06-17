@@ -10,8 +10,11 @@ interface EnhanceSingleProspectRequest {
 interface EnhanceSingleProspectResponse {
   status: string;
   message: string;
-  processed: boolean;
-  enhancements: string[];
+  processed?: boolean;
+  enhancements?: string[];
+  queue_item_id?: string;
+  prospect_id?: string;
+  priority?: string;
 }
 
 interface EnhancementBlockedResponse {
