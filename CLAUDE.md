@@ -2,12 +2,38 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Setup
+
+1. Create and activate Python virtual environment (Python 3.11 recommended):
+   ```bash
+   python3 -m venv venv
+   source venv/bin/activate
+   ```
+2. Install dependencies and browsers:
+   ```bash
+   pip install -r requirements.txt
+   playwright install
+   ```
+3. Copy `.env.example` to `.env` and adjust settings if needed
+4. Initialize database:
+   ```bash
+   flask db upgrade
+   python scripts/populate_data_sources.py
+   ```
+5. Install frontend dependencies:
+   ```bash
+   cd frontend-react && npm install && cd ..
+   ```
+
 ## Commands
 
 ### Backend Development
 ```bash
-# Start development server
+# Start development server (Waitress + Flask)
 python run.py
+
+# Run all scrapers
+python scripts/run_all_scrapers.py
 
 # Run specific scraper
 python -m scripts.run_scraper --source "DHS"
@@ -22,33 +48,38 @@ python -m pytest tests/ -v --cov=app --cov-report=html
 # Run single test
 python -m pytest tests/test_specific.py::test_function -v
 
-# LLM enhancement
-python -m scripts.enhance_with_llm
-
-# Data retention cleanup
-python -m scripts.data_retention
+# LLM enhancement (requires Ollama)
+python scripts/enrichment/enhance_prospects_with_llm.py values --limit 100
 ```
 
 ### Frontend Development
 ```bash
 cd frontend-react
 
-# Development with CSS watching
+# Development with CSS watching (uses concurrently)
 npm run dev
 
 # Build for production
 npm run build
 
-# Lint and type check
+# Lint TypeScript
 npm run lint
-npm run type-check
 
 # Preview production build
 npm run preview
 ```
 
-### Health and Maintenance
+### Maintenance
 ```bash
+# Data retention cleanup (preview mode by default)
+python app/utils/data_retention.py
+
+# Execute cleanup (keeps 3 most recent files per source)
+python app/utils/data_retention.py --execute
+
+# Custom retention count
+python app/utils/data_retention.py --execute --retention-count 5
+
 # Database health check
 python -m scripts.health_check
 
@@ -131,3 +162,20 @@ LLM services are in `app/services/llm_service.py` with comprehensive logging and
 - **Coverage Reporting**: HTML reports for test coverage analysis
 
 Run `python -m pytest tests/ -v --cov=app --cov-report=html` for full test suite with coverage.
+
+## Data Sources
+
+System currently scrapes 14+ federal agencies including:
+
+- Acquisition Gateway, Social Security Administration, Department of Commerce
+- Health and Human Services, Homeland Security, Justice
+- Labor, State, Interior, Treasury, Transportation, Veterans Affairs
+- General Services Administration, Nuclear Regulatory Commission
+
+## Data Retention
+
+Built-in utility manages storage with rolling cleanup policy:
+
+- **Current Impact**: 50% storage reduction (86 files/84MB → 43 files/42MB)
+- **Default**: Keeps 3 most recent files per data source
+- **Safety**: Dry-run mode by default with detailed logging
