@@ -28,8 +28,8 @@ export function useProspectEnhancementQueue() {
   const [isProcessing, setIsProcessing] = useState(false);
   const queryClient = useQueryClient();
   
-  // Get queue status from backend
-  const { data: queueStatus } = useEnhancementQueueStatus(2000);
+  // Get queue status from backend (poll every 1 second for fast updates)
+  const { data: queueStatus } = useEnhancementQueueStatus(1000);
 
   const addToQueue = useCallback(async (request: EnhanceSingleProspectRequest) => {
     const { prospect_id } = request;
@@ -144,7 +144,17 @@ export function useProspectEnhancementQueue() {
       Object.entries(newQueue).forEach(([prospectId, localItem]) => {
         if (!localItem.queue_item_id) return;
 
-        // Find corresponding backend item
+        // Check if this item is currently being processed
+        if (queueStatus.current_item === localItem.queue_item_id) {
+          newQueue[prospectId] = {
+            ...localItem,
+            status: 'processing',
+            position: 1 // First in line when processing
+          };
+          return;
+        }
+
+        // Find corresponding backend item in pending items
         const backendItem = queueStatus.pending_items.find(item => 
           item.id === localItem.queue_item_id
         );
@@ -248,8 +258,15 @@ export function useProspectEnhancementQueue() {
     });
   }, []);
 
+  // Wrap async addToQueue to handle errors
+  const addToQueueSync = useCallback((request: EnhanceSingleProspectRequest) => {
+    addToQueue(request).catch(error => {
+      console.error('Failed to add to queue:', error);
+    });
+  }, [addToQueue]);
+
   return {
-    addToQueue,
+    addToQueue: addToQueueSync,
     getProspectStatus,
     removeFromQueue,
     queueLength: Object.keys(queue).length,
