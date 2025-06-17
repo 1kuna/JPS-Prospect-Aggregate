@@ -2,14 +2,14 @@
 Optimized prompts for LLM enhancement operations
 """
 
-NAICS_CLASSIFICATION_PROMPT = """You are a NAICS classification expert. Analyze the contract title and description to determine the most appropriate NAICS code.
+NAICS_CLASSIFICATION_PROMPT = """You are a NAICS classification expert. Analyze the contract title and description to determine the TOP 3 most appropriate NAICS codes.
 
 Title: "{title}"
 Description: "{description}"
 
 Important Guidelines:
 1. Use NAICS 2022 edition codes (6-digit)
-2. Focus on the PRIMARY service/product being procured
+2. Provide up to 3 relevant codes, ranked by confidence
 3. Common government categories:
    - IT Services: 541511, 541512, 541513, 541519
    - Construction: 236xxx, 237xxx
@@ -18,15 +18,20 @@ Important Guidelines:
    - Healthcare: 621xxx, 622xxx
 4. Consider the procuring agency context
 5. Be specific - use 6-digit codes, not 2-4 digit categories
+6. Many contracts involve multiple services - capture all relevant codes
 
-Return ONLY valid JSON:
-{{"code": "541511", "description": "Custom Computer Programming Services", "confidence": 0.85}}
+Return ONLY valid JSON array with up to 3 codes:
+[
+  {{"code": "541511", "description": "Custom Computer Programming Services", "confidence": 0.85}},
+  {{"code": "541512", "description": "Computer Systems Design Services", "confidence": 0.70}},
+  {{"code": "541519", "description": "Other Computer Related Services", "confidence": 0.60}}
+]
 
 Your confidence should reflect:
 - 0.9-1.0: Clear industry match with specific keywords
 - 0.7-0.89: Good match but some ambiguity
-- 0.5-0.69: Multiple possible industries
-- <0.5: Insufficient information"""
+- 0.5-0.69: Possible match, secondary service
+- <0.5: Weak match but potentially relevant"""
 
 VALUE_PARSING_PROMPT = """You are a contract value parser. Extract and normalize the monetary value from the given text.
 

@@ -449,11 +449,12 @@ def _process_naics_enhancement(prospect, llm_service, force_redo):
             prospect.naics_description = classification['description']
             prospect.naics_source = 'llm_inferred'
             
-            # Add confidence to extras
+            # Add confidence and all codes to extras
             _ensure_extra_is_dict(prospect)
                 
             prospect.extra['llm_classification'] = {
                 'naics_confidence': classification['confidence'],
+                'all_naics_codes': classification.get('all_codes', []),
                 'model_used': llm_service.model_name,
                 'classified_at': datetime.now().isoformat()
             }

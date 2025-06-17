@@ -73,7 +73,7 @@ class ContractLLMService:
             db.session.rollback()
     
     def classify_naics_with_llm(self, title: str, description: str, prospect_id: str = None) -> Dict:
-        """NAICS Classification using qwen3:8b"""
+        """NAICS Classification using qwen3:8b - returns multiple codes"""
         prompt = get_naics_prompt(title, description)
         start_time = time.time()
         response = call_ollama(prompt, self.model_name)
@@ -86,11 +86,27 @@ class ContractLLMService:
                 cleaned_response = re.sub(r'<think>.*?</think>', '', response, flags=re.DOTALL | re.IGNORECASE).strip()
             
             parsed = json.loads(cleaned_response)
-            result = {
-                'code': parsed.get('code'),
-                'description': parsed.get('description'),
-                'confidence': parsed.get('confidence', 0.8)
-            }
+            
+            # Handle both array response (new) and single object (backward compatibility)
+            if isinstance(parsed, list):
+                # Sort by confidence descending
+                codes = sorted(parsed, key=lambda x: x.get('confidence', 0), reverse=True)
+                # Primary code is the highest confidence one
+                primary = codes[0] if codes else {'code': None, 'description': None, 'confidence': 0.0}
+                result = {
+                    'code': primary.get('code'),
+                    'description': primary.get('description'),
+                    'confidence': primary.get('confidence', 0.8),
+                    'all_codes': codes[:3]  # Store up to 3 codes
+                }
+            else:
+                # Backward compatibility for single code response
+                result = {
+                    'code': parsed.get('code'),
+                    'description': parsed.get('description'),
+                    'confidence': parsed.get('confidence', 0.8),
+                    'all_codes': [parsed] if parsed.get('code') else []
+                }
             
             # Log successful output
             if prospect_id:
@@ -99,7 +115,7 @@ class ContractLLMService:
             return result
         except (json.JSONDecodeError, TypeError) as e:
             logger.warning(f"Error parsing NAICS response: {e}")
-            error_result = {'code': None, 'description': None, 'confidence': 0.0}
+            error_result = {'code': None, 'description': None, 'confidence': 0.0, 'all_codes': []}
             
             # Log failed output
             if prospect_id:

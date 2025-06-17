@@ -11,10 +11,10 @@ class Prospect(db.Model): # Renamed back to Prospect
 
     id = Column(String, primary_key=True)  # Generated MD5 hash
     native_id = Column(String, index=True)
-    title = Column(Text)
+    title = Column(Text, index=True)  # Added index for search
     ai_enhanced_title = Column(Text)  # New: LLM-enhanced title for better clarity
-    description = Column(Text)
-    agency = Column(Text)
+    description = Column(Text, index=True)  # Added index for search
+    agency = Column(Text, index=True)  # Added index for search
     naics = Column(String, index=True)
     naics_description = Column(String(200))  # New: NAICS description
     naics_source = Column(String(20), index=True)  # New: 'original', 'llm_inferred', 'llm_enhanced'
@@ -27,8 +27,8 @@ class Prospect(db.Model): # Renamed back to Prospect
     release_date = Column(Date, index=True)
     award_date = Column(Date, index=True)
     award_fiscal_year = Column(Integer, index=True, nullable=True)
-    place_city = Column(Text)
-    place_state = Column(Text)
+    place_city = Column(Text, index=True)  # Added index for location search
+    place_state = Column(Text, index=True)  # Added index for location search
     place_country = Column(Text)
     contract_type = Column(Text)
     set_aside = Column(Text)
