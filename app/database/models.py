@@ -250,4 +250,25 @@ class LLMOutput(db.Model):
             "processing_time": self.processing_time
         }
 
+class Settings(db.Model):
+    __tablename__ = 'settings'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    key = Column(String(100), nullable=False, unique=True, index=True)
+    value = Column(String(500), nullable=False)
+    description = Column(Text, nullable=True)
+    updated_at = Column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+    def __repr__(self):
+        return f"<Settings(key='{self.key}', value='{self.value}')>"
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "key": self.key,
+            "value": self.value,
+            "description": self.description,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None
+        }
+
 # Removed Index definitions as index=True is used inline.

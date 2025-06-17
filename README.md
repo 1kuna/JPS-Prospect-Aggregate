@@ -26,6 +26,7 @@ Additional design notes are located in `docs/`.
 - Script for basic scraper health checks
 - Database migrations handled with Alembic
 - Helper scripts for running scrapers and LLM enrichment
+- Real-time maintenance mode for emergency site disabling
 
 ## Setup
 
@@ -118,6 +119,44 @@ python app/utils/data_retention.py --execute --retention-count 5
 ```
 
 The utility scans `data/raw/` directories, parses timestamps from filenames (`prefix_YYYYMMDD_HHMMSS.ext`), sorts by newest first, and deletes older files beyond the retention limit. It includes safety features like dry-run mode by default, detailed logging, and error handling for invalid timestamps.
+
+## Maintenance Mode
+
+The system includes a real-time maintenance mode that can instantly disable the entire site during emergencies or critical issues. This is particularly useful in Docker deployments where you need immediate control without container restarts.
+
+### Features
+- **Real-time toggling** - Enable/disable instantly without restarts
+- **Database-persisted** - Survives deployments and container restarts  
+- **Admin access preserved** - Admin endpoints remain accessible during maintenance
+- **Clean user experience** - Shows professional maintenance page (HTTP 503)
+
+### Usage
+
+**Enable maintenance mode:**
+```bash
+curl -X POST http://localhost:5000/api/admin/maintenance \
+  -H "Content-Type: application/json" \
+  -d '{"enabled": true}'
+```
+
+**Disable maintenance mode:**
+```bash
+curl -X POST http://localhost:5000/api/admin/maintenance \
+  -H "Content-Type: application/json" \
+  -d '{"enabled": false}'
+```
+
+**Check current status:**
+```bash
+curl http://localhost:5000/api/admin/maintenance
+```
+
+**Health check (works during maintenance):**
+```bash
+curl http://localhost:5000/api/admin/health
+```
+
+When enabled, all user-facing endpoints return a maintenance page while admin endpoints remain functional for system management.
 
 ## Upcoming Features
 
