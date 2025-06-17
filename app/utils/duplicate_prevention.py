@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from sqlalchemy.orm import Session
 from app.models import Prospect
 from app.utils.logger import logger
+from functools import lru_cache
 
 logger = logger.bind(name="utils.duplicate_prevention")
 
@@ -40,6 +41,8 @@ class DuplicateDetector:
     """
     
     def __init__(self):
+        self._prospects_cache = None
+        self._cache_source_id = None
         self.strategies = [
             # Strategy 1: Exact native_id + source match (highest confidence)
             MatchingStrategy(
@@ -86,6 +89,48 @@ class DuplicateDetector:
                 optional_fields=["description", "agency"]
             )
         ]
+    
+    def preload_source_prospects(self, session: Session, source_id: int):
+        """Pre-load all prospects for a source to optimize batch processing."""
+        if self._cache_source_id != source_id:
+            # Load all prospects for this source into memory
+            self._prospects_cache = {}
+            prospects = session.query(Prospect).filter(
+                Prospect.source_id == source_id
+            ).all()
+            
+            # Create indexes for fast lookup
+            self._prospects_cache['by_native_id'] = {}
+            self._prospects_cache['by_naics_location'] = {}
+            self._prospects_cache['by_agency_location'] = {}
+            self._prospects_cache['all'] = []
+            
+            for p in prospects:
+                # Index by native_id
+                if p.native_id:
+                    if p.native_id not in self._prospects_cache['by_native_id']:
+                        self._prospects_cache['by_native_id'][p.native_id] = []
+                    self._prospects_cache['by_native_id'][p.native_id].append(p)
+                
+                # Index by NAICS + location
+                if p.naics and p.place_city and p.place_state:
+                    key = f"{p.naics}|{p.place_city.lower()}|{p.place_state.lower()}"
+                    if key not in self._prospects_cache['by_naics_location']:
+                        self._prospects_cache['by_naics_location'][key] = []
+                    self._prospects_cache['by_naics_location'][key].append(p)
+                
+                # Index by agency + location
+                if p.agency and p.place_city and p.place_state:
+                    key = f"{p.agency}|{p.place_city.lower()}|{p.place_state.lower()}"
+                    if key not in self._prospects_cache['by_agency_location']:
+                        self._prospects_cache['by_agency_location'][key] = []
+                    self._prospects_cache['by_agency_location'][key].append(p)
+                
+                # Store all prospects for fuzzy matching
+                self._prospects_cache['all'].append(p)
+            
+            self._cache_source_id = source_id
+            logger.info(f"Pre-loaded {len(prospects)} prospects for source {source_id}")
     
     def find_potential_matches(self, session: Session, new_record: Dict, 
                              source_id: int) -> List[MatchCandidate]:
@@ -162,7 +207,11 @@ class DuplicateDetector:
         if not native_id:
             return []
         
-        matches = query.filter(Prospect.native_id == native_id).all()
+        # Use cache if available
+        if self._prospects_cache and 'by_native_id' in self._prospects_cache:
+            matches = self._prospects_cache['by_native_id'].get(native_id, [])
+        else:
+            matches = query.filter(Prospect.native_id == native_id).all()
         candidates = []
         
         for match in matches:
@@ -283,7 +332,11 @@ class DuplicateDetector:
         if not native_id or not new_title:
             return []
         
-        matches = query.filter(Prospect.native_id == native_id).all()
+        # Use cache if available
+        if self._prospects_cache and 'by_native_id' in self._prospects_cache:
+            matches = self._prospects_cache['by_native_id'].get(native_id, [])
+        else:
+            matches = query.filter(Prospect.native_id == native_id).all()
         candidates = []
         
         for match in matches:
@@ -319,12 +372,17 @@ class DuplicateDetector:
         if not all([naics, city, state, new_title]):
             return []
         
-        # Use case-insensitive matching for location
-        matches = query.filter(
-            Prospect.naics == naics,
-            Prospect.place_city.ilike(city),
-            Prospect.place_state.ilike(state)
-        ).all()
+        # Use cache if available
+        if self._prospects_cache and 'by_naics_location' in self._prospects_cache:
+            key = f"{naics}|{city.lower()}|{state.lower()}"
+            matches = self._prospects_cache['by_naics_location'].get(key, [])
+        else:
+            # Use case-insensitive matching for location
+            matches = query.filter(
+                Prospect.naics == naics,
+                Prospect.place_city.ilike(city),
+                Prospect.place_state.ilike(state)
+            ).all()
         
         candidates = []
         for match in matches:
@@ -361,12 +419,17 @@ class DuplicateDetector:
         if not all([agency, city, state]) or not (new_title or new_desc):
             return []
         
-        # Use case-insensitive matching for location
-        matches = query.filter(
-            Prospect.agency == agency,
-            Prospect.place_city.ilike(city),
-            Prospect.place_state.ilike(state)
-        ).all()
+        # Use cache if available
+        if self._prospects_cache and 'by_agency_location' in self._prospects_cache:
+            key = f"{agency}|{city.lower()}|{state.lower()}"
+            matches = self._prospects_cache['by_agency_location'].get(key, [])
+        else:
+            # Use case-insensitive matching for location
+            matches = query.filter(
+                Prospect.agency == agency,
+                Prospect.place_city.ilike(city),
+                Prospect.place_state.ilike(state)
+            ).all()
         
         candidates = []
         for match in matches:
@@ -412,8 +475,13 @@ class DuplicateDetector:
         if not new_title:
             return []
         
-        # Limit to recent records to avoid false positives
-        matches = query.filter(Prospect.title.isnot(None)).limit(1000).all()
+        # Use cache if available, otherwise limit query
+        if self._prospects_cache and 'all' in self._prospects_cache:
+            # Use first 1000 cached prospects to avoid O(n^2) complexity
+            matches = self._prospects_cache['all'][:1000]
+        else:
+            # Limit to recent records to avoid false positives
+            matches = query.filter(Prospect.title.isnot(None)).limit(1000).all()
         
         candidates = []
         for match in matches:
@@ -447,8 +515,9 @@ class DuplicateDetector:
         
         return candidates
     
+    @lru_cache(maxsize=10000)
     def _calculate_text_similarity(self, text1: str, text2: str) -> float:
-        """Calculate similarity between two text strings."""
+        """Calculate similarity between two text strings with caching."""
         # Handle None values explicitly
         if text1 is None or text2 is None:
             return 0.0
