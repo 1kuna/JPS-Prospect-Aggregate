@@ -38,9 +38,15 @@ TREASURY_FORECAST_URL = "https://osdbu.forecast.treasury.gov/"
 DOT_FORECAST_URL = "https://www.transportation.gov/osdbu/procurement-assistance/summary-forecast"
 
 # Database configuration
-# Use an absolute path for the SQLite database
-DEFAULT_DB_PATH = os.path.join(DATA_DIR, 'jps_aggregate.db')
-DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{DEFAULT_DB_PATH}")
+# Use separate databases for security isolation
+DEFAULT_BUSINESS_DB_PATH = os.path.join(DATA_DIR, 'jps_aggregate.db')
+DEFAULT_USER_DB_PATH = os.path.join(DATA_DIR, 'jps_users.db')
+
+# Primary business database (prospects, decisions, etc.)
+DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{DEFAULT_BUSINESS_DB_PATH}")
+
+# Separate user/auth database for security isolation
+USER_DATABASE_URL = os.getenv("USER_DATABASE_URL", f"sqlite:///{DEFAULT_USER_DB_PATH}")
 
 # Redis configuration
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
@@ -66,8 +72,8 @@ DOWNLOAD_TIMEOUT = int(os.getenv("DOWNLOAD_TIMEOUT", 60000))         # 60 second
 # Application configuration
 class Config:
     """Base configuration class with common settings."""
-    # Flask settings
-    SECRET_KEY: str = os.getenv("SECRET_KEY", os.urandom(24).hex())
+    # Flask settings - Use fixed fallback for development, require env var for production
+    SECRET_KEY: str = os.getenv("SECRET_KEY", "dev-secret-key-change-in-production-4f8a5c6e9b1d3a7f")
     DEBUG: bool = os.getenv("DEBUG", "False").lower() == "true"
     HOST: str = os.getenv("HOST", "0.0.0.0")
     PORT: int = int(os.getenv("PORT", 5001))
@@ -110,6 +116,7 @@ class Config:
 
     # Database configuration
     SQLALCHEMY_DATABASE_URI: str = DATABASE_URL
+    USER_DATABASE_URI: str = USER_DATABASE_URL
 
     # Scheduler configuration
     SCRAPE_INTERVAL_HOURS: int = SCRAPE_INTERVAL_HOURS
