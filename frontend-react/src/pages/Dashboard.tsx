@@ -22,7 +22,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useSingleProspectEnhancement } from '@/hooks/api/useSingleProspectEnhancement';
+import { useProspectEnhancement } from '@/contexts/ProspectEnhancementContext';
 import { ReloadIcon } from '@radix-ui/react-icons';
 import { Switch } from '@/components/ui/switch';
 
@@ -56,6 +56,9 @@ interface Prospect {
   loaded_at: string | null; // ISO datetime string
   ollama_processed_at: string | null; // NEW: When LLM processing completed
   ollama_model_version: string | null; // NEW: Which LLM version was used
+  enhancement_status: string | null; // NEW: 'idle', 'in_progress', 'failed'
+  enhancement_started_at: string | null; // NEW: When enhancement started
+  enhancement_user_id: number | null; // NEW: User ID who started enhancement
   extra: Record<string, any> | null; // JSON object
   source_id: number | null;
   source_name: string | null; // Name of the data source
@@ -143,7 +146,7 @@ export default function Dashboard() {
 
   // Enhancement hook
   const queryClient = useQueryClient();
-  const enhanceMutation = useSingleProspectEnhancement();
+  const { addToQueue, getProspectStatus } = useProspectEnhancement();
 
   // const { data: countData, isLoading: isLoadingCount } = useQuery({
   //   queryKey: ['prospectCount'],
@@ -156,6 +159,7 @@ export default function Dashboard() {
     queryKey: ['prospects', currentPage, itemsPerPage, filters],
     queryFn: () => fetchProspects(currentPage, itemsPerPage, filters),
     placeholderData: keepPreviousData,
+    refetchInterval: 5000, // Refetch every 5 seconds to pick up enhancement status changes
   });
   
   console.log('useQuery result:', { prospectsData, isLoadingProspects, isFetchingProspects });
@@ -768,6 +772,12 @@ export default function Dashboard() {
                   return 'Prospect Details';
                 })()}
               </span>
+              {selectedProspect?.enhancement_status === 'in_progress' && (
+                <div className="inline-flex items-center ml-3 px-2 py-1 text-xs font-medium bg-yellow-100 text-yellow-800 rounded-full">
+                  <ReloadIcon className="mr-1 h-3 w-3 animate-spin" />
+                  Being Enhanced
+                </div>
+              )}
             </DialogTitle>
             <DialogDescription>
               Full details for this prospect opportunity
@@ -782,85 +792,47 @@ export default function Dashboard() {
                   <Button
                     onClick={() => {
                       if (selectedProspect) {
-                        enhanceMutation.mutate(
-                          { prospect_id: selectedProspect.id },
-                          {
-                            onSuccess: async (data) => {
-                              // Refresh the prospects data
-                              await queryClient.invalidateQueries({ queryKey: ['prospects'] });
-                              
-                              // Fetch the updated prospect data to refresh the dialog
-                              const updatedData = queryClient.getQueryData(['prospects', currentPage, itemsPerPage, filters]) as any;
-                              if (updatedData?.data) {
-                                const updatedProspect = updatedData.data.find((p: Prospect) => p.id === selectedProspect.id);
-                                if (updatedProspect) {
-                                  setSelectedProspect(updatedProspect);
-                                }
-                              }
-                              
-                              // Show success toast with enhancement details
-                              const enhancements = data.enhancements || [];
-                              const prospectTitle = selectedProspect.title || selectedProspect.ai_enhanced_title || 'Prospect';
-                              const truncatedTitle = prospectTitle.length > 40 ? prospectTitle.substring(0, 40) + '...' : prospectTitle;
-                              
-                              if (enhancements.length > 0) {
-                                const enhancementTypes = enhancements.map(e => {
-                                  switch(e) {
-                                    case 'values': return 'Value Parsing';
-                                    case 'contacts': return 'Contact Extraction';
-                                    case 'naics': return 'NAICS Classification';
-                                    case 'titles': return 'Title Enhancement';
-                                    default: return e;
-                                  }
-                                });
-                                
-                                if (window.showToast) {
-                                  window.showToast({
-                                    title: 'AI Enhancement Complete',
-                                    message: `Enhanced "${truncatedTitle}" with: ${enhancementTypes.join(', ')}`,
-                                    type: 'success',
-                                    duration: 5000
-                                  });
-                                }
-                              } else {
-                                if (window.showToast) {
-                                  window.showToast({
-                                    title: 'Enhancement Skipped',
-                                    message: `"${truncatedTitle}" was already fully enhanced`,
-                                    type: 'info',
-                                    duration: 3000
-                                  });
-                                }
-                              }
-                            },
-                            onError: (error) => {
-                              const prospectTitle = selectedProspect?.title || selectedProspect?.ai_enhanced_title || 'Prospect';
-                              const truncatedTitle = prospectTitle.length > 40 ? prospectTitle.substring(0, 40) + '...' : prospectTitle;
-                              
-                              if (window.showToast) {
-                                window.showToast({
-                                  title: 'Enhancement Failed',
-                                  message: `Failed to enhance "${truncatedTitle}": ${error.message}`,
-                                  type: 'error',
-                                  duration: 5000
-                                });
-                              }
-                            }
-                          }
-                        );
+                        addToQueue({
+                          prospect_id: selectedProspect.id,
+                          user_id: 1
+                        });
                       }
                     }}
-                    disabled={enhanceMutation.isPending}
-                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                    disabled={(() => {
+                      const queueStatus = getProspectStatus(selectedProspect.id);
+                      return queueStatus?.status === 'processing' || 
+                             queueStatus?.status === 'queued' || 
+                             selectedProspect.enhancement_status === 'in_progress';
+                    })()}
+                    className="bg-blue-600 hover:bg-blue-700 text-white disabled:bg-gray-400"
                   >
-                    {enhanceMutation.isPending ? (
-                      <>
-                        <ReloadIcon className="mr-2 h-4 w-4 animate-spin" />
-                        Enhancing...
-                      </>
-                    ) : (
-                      'Enhance with AI'
-                    )}
+                    {(() => {
+                      const queueStatus = getProspectStatus(selectedProspect.id);
+                      if (queueStatus?.status === 'processing') {
+                        return (
+                          <>
+                            <ReloadIcon className="mr-2 h-4 w-4 animate-spin" />
+                            Enhancing...
+                          </>
+                        );
+                      } else if (queueStatus?.status === 'queued') {
+                        return (
+                          <>
+                            <ReloadIcon className="mr-2 h-4 w-4 animate-spin" />
+                            Queued (#{queueStatus.position})
+                          </>
+                        );
+                      } else if (selectedProspect.enhancement_status === 'in_progress') {
+                        return (
+                          <>
+                            <ReloadIcon className="mr-2 h-4 w-4 animate-spin" />
+                            Being Enhanced by Another User...
+                          </>
+                        );
+                      } else {
+                        return 'Enhance with AI';
+                      }
+                    })()}
                   </Button>
                 </div>
               )}
@@ -876,87 +848,50 @@ export default function Dashboard() {
                     <Button
                       onClick={() => {
                         if (selectedProspect) {
-                          enhanceMutation.mutate(
-                            { prospect_id: selectedProspect.id, force_redo: true },
-                            {
-                              onSuccess: async (data) => {
-                                // Refresh the prospects data
-                                await queryClient.invalidateQueries({ queryKey: ['prospects'] });
-                                
-                                // Fetch the updated prospect data to refresh the dialog
-                                const updatedData = queryClient.getQueryData(['prospects', currentPage, itemsPerPage, filters]) as any;
-                                if (updatedData?.data) {
-                                  const updatedProspect = updatedData.data.find((p: Prospect) => p.id === selectedProspect.id);
-                                  if (updatedProspect) {
-                                    setSelectedProspect(updatedProspect);
-                                  }
-                                }
-                                
-                                // Show success toast with enhancement details
-                                const enhancements = data.enhancements || [];
-                                const prospectTitle = selectedProspect.title || selectedProspect.ai_enhanced_title || 'Prospect';
-                                const truncatedTitle = prospectTitle.length > 40 ? prospectTitle.substring(0, 40) + '...' : prospectTitle;
-                                
-                                if (enhancements.length > 0) {
-                                  const enhancementTypes = enhancements.map(e => {
-                                    switch(e) {
-                                      case 'values': return 'Value Parsing';
-                                      case 'contacts': return 'Contact Extraction';
-                                      case 'naics': return 'NAICS Classification';
-                                      case 'titles': return 'Title Enhancement';
-                                      default: return e;
-                                    }
-                                  });
-                                  
-                                  if (window.showToast) {
-                                    window.showToast({
-                                      title: 'AI Re-Enhancement Complete',
-                                      message: `Re-enhanced "${truncatedTitle}" with: ${enhancementTypes.join(', ')}`,
-                                      type: 'success',
-                                      duration: 5000
-                                    });
-                                  }
-                                } else {
-                                  if (window.showToast) {
-                                    window.showToast({
-                                      title: 'Re-Enhancement Complete',
-                                      message: `"${truncatedTitle}" has been re-processed`,
-                                      type: 'info',
-                                      duration: 3000
-                                    });
-                                  }
-                                }
-                              },
-                              onError: (error) => {
-                                const prospectTitle = selectedProspect?.title || selectedProspect?.ai_enhanced_title || 'Prospect';
-                                const truncatedTitle = prospectTitle.length > 40 ? prospectTitle.substring(0, 40) + '...' : prospectTitle;
-                                
-                                if (window.showToast) {
-                                  window.showToast({
-                                    title: 'Re-Enhancement Failed',
-                                    message: `Failed to re-enhance "${truncatedTitle}": ${error.message}`,
-                                    type: 'error',
-                                    duration: 5000
-                                  });
-                                }
-                              }
-                            }
-                          );
+                          addToQueue({
+                            prospect_id: selectedProspect.id,
+                            force_redo: true,
+                            user_id: 1
+                          });
                         }
                       }}
-                      disabled={enhanceMutation.isPending}
+                      disabled={(() => {
+                        const queueStatus = getProspectStatus(selectedProspect.id);
+                        return queueStatus?.status === 'processing' || 
+                               queueStatus?.status === 'queued' || 
+                               selectedProspect.enhancement_status === 'in_progress';
+                      })()}
                       variant="outline"
                       size="sm"
-                      className="text-blue-700 border-blue-300 hover:bg-blue-100"
+                      className="text-blue-700 border-blue-300 hover:bg-blue-100 disabled:bg-gray-100 disabled:text-gray-400"
                     >
-                      {enhanceMutation.isPending ? (
-                        <>
-                          <ReloadIcon className="mr-2 h-3 w-3 animate-spin" />
-                          Re-enhancing...
-                        </>
-                      ) : (
-                        'Redo Enhancement'
-                      )}
+                      {(() => {
+                        const queueStatus = getProspectStatus(selectedProspect.id);
+                        if (queueStatus?.status === 'processing') {
+                          return (
+                            <>
+                              <ReloadIcon className="mr-2 h-3 w-3 animate-spin" />
+                              Re-enhancing...
+                            </>
+                          );
+                        } else if (queueStatus?.status === 'queued') {
+                          return (
+                            <>
+                              <ReloadIcon className="mr-2 h-3 w-3 animate-spin" />
+                              Queued (#{queueStatus.position})
+                            </>
+                          );
+                        } else if (selectedProspect.enhancement_status === 'in_progress') {
+                          return (
+                            <>
+                              <ReloadIcon className="mr-2 h-3 w-3 animate-spin" />
+                              Being Enhanced...
+                            </>
+                          );
+                        } else {
+                          return 'Redo Enhancement';
+                        }
+                      })()}
                     </Button>
                   </div>
                 </div>
