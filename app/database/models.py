@@ -37,6 +37,9 @@ class Prospect(db.Model): # Renamed back to Prospect
     loaded_at = Column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now(), index=True)
     ollama_processed_at = Column(TIMESTAMP(timezone=True), index=True)  # New: When LLM processing completed
     ollama_model_version = Column(String(50))  # New: Which LLM version was used
+    enhancement_status = Column(String(20), index=True, default='idle')  # New: 'idle', 'in_progress', 'failed'
+    enhancement_started_at = Column(TIMESTAMP(timezone=True), index=True)  # New: When enhancement started
+    enhancement_user_id = Column(Integer, index=True)  # New: User ID who started enhancement
     extra = Column(JSON)
 
     # Foreign Key to DataSource
@@ -97,6 +100,9 @@ class Prospect(db.Model): # Renamed back to Prospect
             "loaded_at": self.loaded_at.isoformat() if self.loaded_at else None,
             "ollama_processed_at": self.ollama_processed_at.isoformat() if self.ollama_processed_at else None,
             "ollama_model_version": self.ollama_model_version,
+            "enhancement_status": self.enhancement_status,
+            "enhancement_started_at": self.enhancement_started_at.isoformat() if self.enhancement_started_at else None,
+            "enhancement_user_id": self.enhancement_user_id,
             "extra": clean_value(self.extra) if self.extra else None,
             "source_id": self.source_id,
             "source_name": self.data_source.name if self.data_source else None,
@@ -272,3 +278,38 @@ class Settings(db.Model):
         }
 
 # Removed Index definitions as index=True is used inline.
+
+class GoNoGoDecision(db.Model):
+    __tablename__ = 'go_no_go_decisions'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    prospect_id = Column(String, ForeignKey('prospects.id'), nullable=False, index=True)
+    user_id = Column(Integer, nullable=False, index=True)  # No FK since user is in separate DB
+    decision = Column(String(10), nullable=False, index=True)  # 'go' or 'no-go'
+    reason = Column(Text, nullable=True)
+    created_at = Column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+    # Relationship to prospect only (user data is in separate database)
+    prospect = relationship("Prospect", backref="go_no_go_decisions")
+
+    def __repr__(self):
+        return f"<GoNoGoDecision(id={self.id}, prospect_id='{self.prospect_id}', user_id={self.user_id}, decision='{self.decision}')>"
+
+    def to_dict(self, include_user=False, user_data=None):
+        result = {
+            "id": self.id,
+            "prospect_id": self.prospect_id,
+            "user_id": self.user_id,
+            "decision": self.decision,
+            "reason": self.reason,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "prospect_title": self.prospect.title if self.prospect else None
+        }
+        
+        # Optionally include user data if provided (from separate query)
+        if include_user and user_data:
+            result["user"] = user_data
+            
+        return result

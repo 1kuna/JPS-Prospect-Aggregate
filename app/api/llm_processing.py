@@ -4,9 +4,10 @@ from app.utils.logger import logger
 from app.services.contract_llm_service import ContractLLMService
 from app.services.iterative_llm_service_v2 import iterative_service_v2 as iterative_service
 from sqlalchemy import func
-from datetime import datetime
+from datetime import datetime, timedelta
 import time
 import asyncio
+import json
 
 llm_bp = Blueprint('llm_api', __name__, url_prefix='/api/llm')
 
@@ -374,17 +375,15 @@ def _ensure_extra_is_dict(prospect):
 def _process_value_enhancement(prospect, llm_service, force_redo):
     """Process value parsing enhancement for a prospect."""
     value_to_parse = None
-    if force_redo or (prospect.estimated_value_text and not prospect.estimated_value_single):
-        value_to_parse = prospect.estimated_value_text
-    elif force_redo or (prospect.estimated_value and not prospect.estimated_value_single):
-        # Convert numeric value to text for LLM processing
-        value_to_parse = str(prospect.estimated_value)
     
-    # If force_redo, try to get a value even if we already have parsed values
-    if force_redo and not value_to_parse:
+    # Check if we should process values
+    should_process = force_redo or not prospect.estimated_value_single
+    
+    if should_process:
         if prospect.estimated_value_text:
             value_to_parse = prospect.estimated_value_text
         elif prospect.estimated_value:
+            # Convert numeric value to text for LLM processing
             value_to_parse = str(prospect.estimated_value)
     
     if value_to_parse:
@@ -412,8 +411,10 @@ def _process_value_enhancement(prospect, llm_service, force_redo):
 
 def _process_contact_enhancement(prospect, llm_service, force_redo):
     """Process contact extraction enhancement for a prospect."""
-    if prospect.extra and (force_redo or not prospect.primary_contact_name):
-        import json
+    # Check if we should process contacts
+    should_process = force_redo or (not prospect.primary_contact_name and not prospect.primary_contact_email)
+    
+    if prospect.extra and should_process:
         _ensure_extra_is_dict(prospect)
         extra_data = prospect.extra
         
@@ -441,7 +442,10 @@ def _process_contact_enhancement(prospect, llm_service, force_redo):
 
 def _process_naics_enhancement(prospect, llm_service, force_redo):
     """Process NAICS classification enhancement for a prospect."""
-    if prospect.description and (force_redo or not prospect.naics or prospect.naics_source != 'llm_inferred'):
+    # Check if we should process NAICS
+    should_process = force_redo or not prospect.naics
+    
+    if prospect.description and should_process:
         classification = llm_service.classify_naics_with_llm(prospect.title, prospect.description, prospect_id=prospect.id)
         
         if classification['code']:
@@ -525,41 +529,105 @@ def enhance_single_prospect():
             return jsonify({"error": "prospect_id is required"}), 400
             
         force_redo = data.get('force_redo', False)
+        user_id = data.get('user_id', 1)  # Default to 1 if no user provided
             
         # Get the prospect
         prospect = Prospect.query.get(prospect_id)
         if not prospect:
             return jsonify({"error": "Prospect not found"}), 404
+        
+        # Check if prospect is already being enhanced by another user
+        if prospect.enhancement_status == 'in_progress':
+            if prospect.enhancement_user_id != user_id:
+                return jsonify({
+                    "error": "Prospect is currently being enhanced by another user",
+                    "status": "blocked",
+                    "enhancement_status": "in_progress",
+                    "enhancement_user_id": prospect.enhancement_user_id
+                }), 409
+                
+        # Set prospect as being enhanced
+        prospect.enhancement_status = 'in_progress'
+        prospect.enhancement_started_at = datetime.now()
+        prospect.enhancement_user_id = user_id
+        db.session.commit()
             
-        logger.info(f"Starting single prospect enhancement for prospect {prospect_id}")
+        logger.info(f"Starting single prospect enhancement for prospect {prospect_id} by user {user_id}")
         
-        # Initialize the LLM service
-        llm_service = ContractLLMService(model_name='qwen3:latest')
-        
-        processed = False
-        enhancements = []
-        
-        # Process each enhancement type
-        if _process_value_enhancement(prospect, llm_service, force_redo):
-            processed = True
-            enhancements.append('values')
-        
-        if _process_contact_enhancement(prospect, llm_service, force_redo):
-            processed = True
-            enhancements.append('contacts')
-        
-        if _process_naics_enhancement(prospect, llm_service, force_redo):
-            processed = True
-            enhancements.append('naics')
-        
-        if _process_title_enhancement(prospect, llm_service, force_redo):
-            processed = True
-            enhancements.append('titles')
-        
-        # Finalize and return response
-        return _finalize_enhancement(prospect, llm_service, processed, enhancements, force_redo)
+        try:
+            # Initialize the LLM service
+            llm_service = ContractLLMService(model_name='qwen3:latest')
+            
+            processed = False
+            enhancements = []
+            
+            # Process each enhancement type
+            if _process_value_enhancement(prospect, llm_service, force_redo):
+                processed = True
+                enhancements.append('values')
+            
+            if _process_contact_enhancement(prospect, llm_service, force_redo):
+                processed = True
+                enhancements.append('contacts')
+            
+            if _process_naics_enhancement(prospect, llm_service, force_redo):
+                processed = True
+                enhancements.append('naics')
+            
+            if _process_title_enhancement(prospect, llm_service, force_redo):
+                processed = True
+                enhancements.append('titles')
+            
+            # Mark as completed
+            prospect.enhancement_status = 'idle'
+            prospect.enhancement_started_at = None
+            prospect.enhancement_user_id = None
+            
+            # Finalize and return response
+            return _finalize_enhancement(prospect, llm_service, processed, enhancements, force_redo)
+            
+        except Exception as enhancement_error:
+            # Mark enhancement as failed and clear lock
+            prospect.enhancement_status = 'failed'
+            prospect.enhancement_started_at = None
+            prospect.enhancement_user_id = None
+            db.session.commit()
+            raise enhancement_error
             
     except Exception as e:
         logger.error(f"Error enhancing single prospect: {e}", exc_info=True)
         db.session.rollback()
         return jsonify({"error": f"Failed to enhance prospect: {str(e)}"}), 500
+
+@llm_bp.route('/cleanup-stale-locks', methods=['POST'])
+def cleanup_stale_enhancement_locks():
+    """Clean up enhancement locks that are older than 10 minutes"""
+    try:
+        # Calculate cutoff time (10 minutes ago)
+        cutoff_time = datetime.now() - timedelta(minutes=10)
+        
+        # Find prospects with stale locks
+        stale_prospects = db.session.query(Prospect).filter(
+            Prospect.enhancement_status == 'in_progress',
+            Prospect.enhancement_started_at < cutoff_time
+        ).all()
+        
+        cleanup_count = 0
+        for prospect in stale_prospects:
+            prospect.enhancement_status = 'idle'
+            prospect.enhancement_started_at = None
+            prospect.enhancement_user_id = None
+            cleanup_count += 1
+        
+        db.session.commit()
+        
+        logger.info(f"Cleaned up {cleanup_count} stale enhancement locks")
+        return jsonify({
+            "message": f"Cleaned up {cleanup_count} stale enhancement locks",
+            "cleanup_count": cleanup_count
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Error cleaning up stale locks: {e}", exc_info=True)
+        db.session.rollback()
+        return jsonify({"error": f"Failed to cleanup stale locks: {str(e)}"}), 500
