@@ -1,13 +1,26 @@
 import { Link, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
+import { useAuth } from '../AuthProvider';
+import { useSignOut } from '../../hooks/api';
+import { Button } from '../ui/button';
 
 export function Navigation() {
   const location = useLocation();
+  const { user } = useAuth();
+  const signOutMutation = useSignOut();
   
   const navItems = [
     { path: '/', label: 'Dashboard' },
     { path: '/advanced', label: 'Advanced' },
   ];
+
+  const handleSignOut = async () => {
+    try {
+      await signOutMutation.mutateAsync();
+    } catch (error) {
+      console.error('Sign out failed:', error);
+    }
+  };
   
   return (
     <nav className="bg-white shadow-sm border-b border-gray-200">
@@ -33,6 +46,25 @@ export function Navigation() {
                 </Link>
               ))}
             </div>
+          </div>
+          
+          {/* User menu */}
+          <div className="flex items-center space-x-4">
+            {user && (
+              <>
+                <div className="text-sm text-gray-700">
+                  Welcome, <span className="font-medium">{user.first_name}</span>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleSignOut}
+                  disabled={signOutMutation.isPending}
+                >
+                  {signOutMutation.isPending ? 'Signing out...' : 'Sign Out'}
+                </Button>
+              </>
+            )}
           </div>
         </div>
       </div>

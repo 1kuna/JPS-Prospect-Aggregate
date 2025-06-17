@@ -1,5 +1,5 @@
 import { PageLayout } from '@/components/layout';
-import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { createColumnHelper, flexRender, getCoreRowModel, useReactTable } from '@tanstack/react-table';
 import { useState, useCallback, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -145,7 +145,6 @@ export default function Dashboard() {
   });
 
   // Enhancement hook
-  const queryClient = useQueryClient();
   const { addToQueue, getProspectStatus } = useProspectEnhancement();
 
   // const { data: countData, isLoading: isLoadingCount } = useQuery({
