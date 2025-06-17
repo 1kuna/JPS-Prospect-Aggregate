@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -28,7 +27,6 @@ interface AIPreservationConfig {
 
 export function DatabaseManagement() {
   const queryClient = useQueryClient();
-  const [isClearing, setIsClearing] = useState(false);
 
   // Fetch database status
   const { data: statusData, isLoading, error, refetch } = useQuery<{ status: string; data: DatabaseStatus }>({
@@ -54,7 +52,7 @@ export function DatabaseManagement() {
       return response.json();
     },
     onMutate: () => {
-      setIsClearing(true);
+      // Loading state handled by mutation.isPending(true);
     },
     onSuccess: (data) => {
       alert(`Database cleared successfully!\n\n${data.message}`);
@@ -69,7 +67,7 @@ export function DatabaseManagement() {
       alert(`Failed to clear database: ${error.message}`);
     },
     onSettled: () => {
-      setIsClearing(false);
+      // Loading state handled by mutation.isPending(false);
     },
   });
 
@@ -85,7 +83,7 @@ export function DatabaseManagement() {
       return response.json();
     },
     onMutate: () => {
-      setIsClearing(true);
+      // Loading state handled by mutation.isPending(true);
     },
     onSuccess: (data) => {
       alert(`AI entries cleared successfully!\n\n${data.message}`);
@@ -100,7 +98,7 @@ export function DatabaseManagement() {
       alert(`Failed to clear AI entries: ${error.message}`);
     },
     onSettled: () => {
-      setIsClearing(false);
+      // Loading state handled by mutation.isPending(false);
     },
   });
 
@@ -116,7 +114,7 @@ export function DatabaseManagement() {
       return response.json();
     },
     onMutate: () => {
-      setIsClearing(true);
+      // Loading state handled by mutation.isPending(true);
     },
     onSuccess: (data) => {
       alert(`Original entries cleared successfully!\n\n${data.message}`);
@@ -130,7 +128,7 @@ export function DatabaseManagement() {
       alert(`Failed to clear original entries: ${error.message}`);
     },
     onSettled: () => {
-      setIsClearing(false);
+      // Loading state handled by mutation.isPending(false);
     },
   });
 

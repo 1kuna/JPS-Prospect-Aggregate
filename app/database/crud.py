@@ -212,7 +212,7 @@ def _process_standard_upserts(session, data_to_insert, ids_to_upsert):
     logging.info(f"Standard upsert: {regular_inserts} records processed")
     return 0, regular_inserts  # 0 ai_safe_updates, regular_inserts
 
-def bulk_upsert_prospects(df_in: pd.DataFrame, preserve_ai_data: bool = True, enable_smart_matching: bool = False)
+def bulk_upsert_prospects(df_in: pd.DataFrame, preserve_ai_data: bool = True, enable_smart_matching: bool = False):
     """
     Performs a bulk UPSERT (INSERT ON CONFLICT DO UPDATE) of prospect data 
     from a Pandas DataFrame into the prospects table.

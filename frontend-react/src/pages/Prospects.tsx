@@ -1,23 +1,17 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { DataPageLayout } from '@/components/layout';
 import { useInfiniteProspects, useProspectStatistics } from '@/hooks/api/useProspects';
 import { ProspectFilters } from '@/types/prospects';
 import { Button } from '@/components/ui';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { formatDate } from '@/utils/dateUtils';
 import { LoadingButton } from '@/components/ui/LoadingButton';
 import { ErrorDisplay } from '@/components/ui/ErrorDisplay';
 import { CenteredSpinner } from '@/components/ui/LoadingSpinner';
+import { useVirtualizer } from '@tanstack/react-virtual';
 
 export default function Prospects() {
   const [filters] = useState<ProspectFilters>({});
+  const parentRef = useRef<HTMLDivElement>(null);
   
   const {
     data: prospects,
@@ -35,11 +29,34 @@ export default function Prospects() {
 
   const { data: statisticsData, isLoading: isLoadingStats } = useProspectStatistics();
 
+  // Set up virtualization
+  const virtualizer = useVirtualizer({
+    count: prospects?.length || 0,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 60, // Estimated row height in pixels
+    overscan: 10, // Render 10 extra items above/below viewport for smooth scrolling
+  });
+
   const handleLoadMore = () => {
     if (hasNextPage && !isFetchingNextPage) {
       fetchNextPage();
     }
   };
+
+  // Auto-load more data when scrolling near the end
+  useEffect(() => {
+    const [lastItem] = [...virtualizer.getVirtualItems()].reverse();
+    
+    if (!lastItem) return;
+    
+    if (
+      lastItem.index >= prospects.length - 1 - 5 && // Load when 5 items from the end
+      hasNextPage &&
+      !isFetchingNextPage
+    ) {
+      fetchNextPage();
+    }
+  }, [hasNextPage, fetchNextPage, isFetchingNextPage, virtualizer.getVirtualItems(), prospects.length]);
 
 
   const pageError = isError ? (error as Error) : null;
@@ -54,64 +71,85 @@ export default function Prospects() {
       error={pageError}
     >
       <div className="space-y-4">
-        <div className="rounded-md border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Title</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Data Source</TableHead>
-                <TableHead>Created</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="h-24">
-                    <CenteredSpinner text="Loading prospects..." />
-                  </TableCell>
-                </TableRow>
-              ) : isError ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="h-24">
-                    <ErrorDisplay error={error as Error} />
-                  </TableCell>
-                </TableRow>
-              ) : !prospects || prospects.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="h-24 text-center">
-                    No prospects found.
-                  </TableCell>
-                </TableRow>
-              ) : (
-                prospects.map((prospect) => (
-                  <TableRow key={prospect.id}>
-                    <TableCell className="font-medium">
-                      {prospect.title || 'Untitled'}
-                    </TableCell>
-                    <TableCell>{prospect.status || 'N/A'}</TableCell>
-                    <TableCell>
-                      {prospect.dataSource?.name || 'N/A'}
-                    </TableCell>
-                    <TableCell>
-                      {formatDate(prospect.createdAt, { format: 'date' })}
-                    </TableCell>
-                    <TableCell>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => alert('View prospect details')}
-                      >
-                        View
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </div>
+        {isLoading ? (
+          <div className="flex justify-center py-8">
+            <CenteredSpinner text="Loading prospects..." />
+          </div>
+        ) : isError ? (
+          <ErrorDisplay error={error as Error} />
+        ) : !prospects || prospects.length === 0 ? (
+          <div className="text-center py-8 text-gray-500">
+            No prospects found.
+          </div>
+        ) : (
+          <div className="rounded-md border">
+            {/* Table Header */}
+            <div className="grid grid-cols-5 gap-4 p-4 bg-gray-50 border-b font-medium text-sm text-gray-700">
+              <div>Title</div>
+              <div>Status</div>
+              <div>Data Source</div>
+              <div>Created</div>
+              <div>Actions</div>
+            </div>
+            
+            {/* Virtualized Table Body */}
+            <div
+              ref={parentRef}
+              className="h-[600px] overflow-auto"
+              style={{
+                contain: 'strict',
+              }}
+            >
+              <div
+                style={{
+                  height: `${virtualizer.getTotalSize()}px`,
+                  width: '100%',
+                  position: 'relative',
+                }}
+              >
+                {virtualizer.getVirtualItems().map((virtualItem) => {
+                  const prospect = prospects[virtualItem.index];
+                  return (
+                    <div
+                      key={virtualItem.key}
+                      style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        width: '100%',
+                        height: `${virtualItem.size}px`,
+                        transform: `translateY(${virtualItem.start}px)`,
+                      }}
+                      className="grid grid-cols-5 gap-4 p-4 border-b hover:bg-gray-50 items-center"
+                    >
+                      <div className="font-medium truncate">
+                        {prospect?.title || 'Untitled'}
+                      </div>
+                      <div className="truncate">
+                        {prospect?.status || 'N/A'}
+                      </div>
+                      <div className="truncate">
+                        {prospect?.dataSource?.name || 'N/A'}
+                      </div>
+                      <div className="text-sm text-gray-600">
+                        {formatDate(prospect?.createdAt, { format: 'date' })}
+                      </div>
+                      <div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => alert('View prospect details')}
+                        >
+                          View
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
         
         {hasNextPage && (
           <div className="flex justify-center">
