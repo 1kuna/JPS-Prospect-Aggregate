@@ -1,8 +1,10 @@
 from flask import Blueprint, jsonify
 from sqlalchemy import func, desc
+from sqlalchemy.orm import joinedload, selectinload
 from app.models import db, Prospect, DataSource, ScraperStatus # Added ScraperStatus
 from app.utils.logger import logger
 import datetime
+from functools import lru_cache
 
 main_bp = Blueprint('main', __name__)
 
@@ -399,17 +401,21 @@ def _format_prospect_for_api(prospect):
         'loaded_at': prospect.loaded_at.isoformat() if prospect.loaded_at else None
     }
 
-def _create_duplicate_group(prospect, high_confidence_matches):
+def _create_duplicate_group(prospect, high_confidence_matches, matched_prospects_cache=None):
     """Create a duplicate group from a prospect and its matches."""
     from app.models import Prospect
     
-    # Get prospect details for the matches
-    match_ids = [m.prospect_id for m in high_confidence_matches]
-    matched_prospects = db.session.query(Prospect).filter(
-        Prospect.id.in_(match_ids)
-    ).all()
-    
-    matched_prospects_dict = {p.id: p for p in matched_prospects}
+    # Use cache if provided, otherwise fetch
+    if matched_prospects_cache is None:
+        # Get prospect details for the matches
+        match_ids = [m.prospect_id for m in high_confidence_matches]
+        matched_prospects = db.session.query(Prospect).filter(
+            Prospect.id.in_(match_ids)
+        ).all()
+        
+        matched_prospects_dict = {p.id: p for p in matched_prospects}
+    else:
+        matched_prospects_dict = matched_prospects_cache
     
     duplicate_group = {
         'original': _format_prospect_for_api(prospect),
@@ -445,40 +451,82 @@ def _process_prospects_for_duplicates(prospects_to_process, scan_id, min_confide
     
     logger.info(f"Processing {len(prospects_to_process)} prospects for scan {scan_id}")
     
-    for index, prospect in enumerate(prospects_to_process):
-        # Update progress every 25 records or on last record for better performance
-        if index % 25 == 0 or index == len(prospects_to_process) - 1:
-            detect_duplicates.progress_store[scan_id].update({
-                'current': index + 1,
-                'message': f'Processing prospect {index + 1} of {len(prospects_to_process)}...'
-            })
-            logger.debug(f"Scan {scan_id} progress: {index + 1}/{len(prospects_to_process)}")
+    # Group prospects by source_id and preload data for each source
+    prospects_by_source = {}
+    for prospect in prospects_to_process:
+        source_id = prospect.source_id or 0
+        if source_id not in prospects_by_source:
+            prospects_by_source[source_id] = []
+        prospects_by_source[source_id].append(prospect)
+    
+    # Pre-fetch all prospects that might be needed for matching
+    # This prevents N+1 queries in the duplicate detection logic
+    all_prospect_ids = set()
+    all_matches_by_prospect = {}
+    
+    # Process all prospects with progress tracking
+    processed_count = 0
+    for source_id, source_prospects in prospects_by_source.items():
+        # Preload all prospects for this source to optimize matching
+        detector.preload_source_prospects(db.session, source_id)
         
-        # Convert prospect to dict for matching
-        prospect_data = {
-            'native_id': prospect.native_id,
-            'title': prospect.title,
-            'description': prospect.description,
-            'naics': prospect.naics,
-            'agency': prospect.agency,
-            'place_city': prospect.place_city,
-            'place_state': prospect.place_state
-        }
-        
-        # Find potential matches
-        matches = detector.find_potential_matches(
-            db.session, prospect_data, prospect.source_id or 0
-        )
-        
-        # Filter by confidence and exclude self-matches
-        high_confidence_matches = [
-            match for match in matches 
-            if match.confidence_score >= min_confidence 
-            and match.prospect_id != prospect.id
-        ]
-        
-        if high_confidence_matches:
-            duplicate_group = _create_duplicate_group(prospect, high_confidence_matches)
+        # Process prospects from this source
+        for prospect in source_prospects:
+            # Update progress every 25 records or on last record for better performance
+            if processed_count % 25 == 0 or processed_count == len(prospects_to_process) - 1:
+                detect_duplicates.progress_store[scan_id].update({
+                    'current': processed_count + 1,
+                    'message': f'Processing prospect {processed_count + 1} of {len(prospects_to_process)}...'
+                })
+                logger.debug(f"Scan {scan_id} progress: {processed_count + 1}/{len(prospects_to_process)}")
+            
+            # Convert prospect to dict for matching
+            prospect_data = {
+                'native_id': prospect.native_id,
+                'title': prospect.title,
+                'description': prospect.description,
+                'naics': prospect.naics,
+                'agency': prospect.agency,
+                'place_city': prospect.place_city,
+                'place_state': prospect.place_state,
+                'source_id': prospect.source_id  # Add source_id for cache lookup
+            }
+            
+            # Find potential matches
+            matches = detector.find_potential_matches(
+                db.session, prospect_data, prospect.source_id or 0
+            )
+            
+            # Filter by confidence and exclude self-matches
+            high_confidence_matches = [
+                match for match in matches 
+                if match.confidence_score >= min_confidence 
+                and match.prospect_id != prospect.id
+            ]
+            
+            if high_confidence_matches:
+                all_matches_by_prospect[prospect.id] = high_confidence_matches
+                # Collect all prospect IDs that will be needed
+                for match in high_confidence_matches:
+                    all_prospect_ids.add(match.prospect_id)
+            
+            processed_count += 1
+    
+    # Pre-fetch all needed prospects in a single query
+    matched_prospects_cache = {}
+    if all_prospect_ids:
+        all_matched_prospects = db.session.query(Prospect).filter(
+            Prospect.id.in_(list(all_prospect_ids))
+        ).all()
+        matched_prospects_cache = {p.id: p for p in all_matched_prospects}
+    
+    # Second pass: create duplicate groups using cached data
+    for prospect in prospects_to_process:
+        if prospect.id in all_matches_by_prospect:
+            high_confidence_matches = all_matches_by_prospect[prospect.id]
+            duplicate_group = _create_duplicate_group(
+                prospect, high_confidence_matches, matched_prospects_cache
+            )
             potential_duplicates.append(duplicate_group)
     
     return potential_duplicates
@@ -724,20 +772,29 @@ def get_data_sources_for_duplicates():
     try:
         from app.models import DataSource
         
-        sources = db.session.query(DataSource).order_by(DataSource.name).all()
+        # Use a single query with a subquery to get counts
+        sources_with_counts = db.session.query(
+            DataSource.id,
+            DataSource.name,
+            func.count(Prospect.id).label('prospect_count')
+        ).outerjoin(
+            Prospect, DataSource.id == Prospect.source_id
+        ).group_by(
+            DataSource.id, DataSource.name
+        ).order_by(
+            DataSource.name
+        ).all()
         
         return jsonify({
             'status': 'success',
             'data': {
                 'sources': [
                     {
-                        'id': source.id,
-                        'name': source.name,
-                        'prospect_count': db.session.query(func.count(Prospect.id)).filter(
-                            Prospect.source_id == source.id
-                        ).scalar()
+                        'id': source_id,
+                        'name': name,
+                        'prospect_count': count or 0
                     }
-                    for source in sources
+                    for source_id, name, count in sources_with_counts
                 ]
             }
         })
