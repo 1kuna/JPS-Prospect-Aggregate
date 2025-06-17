@@ -785,9 +785,18 @@ export default function Dashboard() {
                         enhanceMutation.mutate(
                           { prospect_id: selectedProspect.id },
                           {
-                            onSuccess: (data) => {
+                            onSuccess: async (data) => {
                               // Refresh the prospects data
-                              queryClient.invalidateQueries({ queryKey: ['prospects'] });
+                              await queryClient.invalidateQueries({ queryKey: ['prospects'] });
+                              
+                              // Fetch the updated prospect data to refresh the dialog
+                              const updatedData = queryClient.getQueryData(['prospects', currentPage, itemsPerPage, filters]) as any;
+                              if (updatedData?.data) {
+                                const updatedProspect = updatedData.data.find((p: Prospect) => p.id === selectedProspect.id);
+                                if (updatedProspect) {
+                                  setSelectedProspect(updatedProspect);
+                                }
+                              }
                               
                               // Show success toast with enhancement details
                               const enhancements = data.enhancements || [];
@@ -870,9 +879,18 @@ export default function Dashboard() {
                           enhanceMutation.mutate(
                             { prospect_id: selectedProspect.id, force_redo: true },
                             {
-                              onSuccess: (data) => {
+                              onSuccess: async (data) => {
                                 // Refresh the prospects data
-                                queryClient.invalidateQueries({ queryKey: ['prospects'] });
+                                await queryClient.invalidateQueries({ queryKey: ['prospects'] });
+                                
+                                // Fetch the updated prospect data to refresh the dialog
+                                const updatedData = queryClient.getQueryData(['prospects', currentPage, itemsPerPage, filters]) as any;
+                                if (updatedData?.data) {
+                                  const updatedProspect = updatedData.data.find((p: Prospect) => p.id === selectedProspect.id);
+                                  if (updatedProspect) {
+                                    setSelectedProspect(updatedProspect);
+                                  }
+                                }
                                 
                                 // Show success toast with enhancement details
                                 const enhancements = data.enhancements || [];

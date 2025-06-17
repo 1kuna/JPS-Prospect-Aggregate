@@ -34,15 +34,17 @@ Value Text: "{value_text}"
 
 Parsing Rules:
 1. Common patterns to recognize:
-   - Ranges: "$1M-$5M", ">$250K to <$750K", "between $X and $Y"
+   - Ranges: "$1M-$5M", ">$250K to <$750K", "between $X and $Y", "$250,000 to $700,000"
    - Single values: "$2.5 million", "NTE $500K", "up to $10M"
    - Abbreviations: K=thousand, M/MM=million, B=billion
    - Multi-year: "5-year $10M" = $10M total (not $50M)
    
 2. For ranges:
    - min: lower bound
-   - max: upper bound
+   - max: upper bound  
    - single: midpoint or best estimate
+   - IMPORTANT: ">$250K to <$750K" means min=250000, max=750000
+   - IMPORTANT: "$250,000 to $700,000" means min=250000, max=700000
    
 3. For single values:
    - Use the same value for min, max, and single
@@ -51,6 +53,7 @@ Parsing Rules:
    - "Greater than X": min=X, max=X*2, single=X*1.5
    - "Less than X": min=X*0.5, max=X, single=X*0.75
    - "Up to X" or "NTE X": min=X*0.5, max=X, single=X*0.75
+   - IMPORTANT: Parse each number in a range separately - don't repeat the first number
 
 Return ONLY valid JSON (numbers only, no formatting):
 {{"min": 1000000, "max": 5000000, "single": 3000000}}"""
