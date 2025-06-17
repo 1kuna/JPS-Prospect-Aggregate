@@ -23,7 +23,7 @@ def upgrade():
         sa.Column('key', sa.String(length=100), nullable=False),
         sa.Column('value', sa.String(length=500), nullable=False),
         sa.Column('description', sa.Text(), nullable=True),
-        sa.Column('updated_at', sa.TIMESTAMP(timezone=True), server_default=sa.text('now()'), nullable=False),
+        sa.Column('updated_at', sa.TIMESTAMP(timezone=True), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=False),
         sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_settings_key'), 'settings', ['key'], unique=True)

@@ -549,7 +549,8 @@ class BaseScraper(ABC):
                 trigger_element.dispatch_event('click')
             elif click_method == "js_click":
                 # Ensure page.evaluate can find the selector if it's complex; might need refinement
-                self.page.evaluate(f"document.querySelector('{download_trigger_selector.replace("'", "\\'")}').click();") # Make sure querySelector is robust
+                escaped_selector = download_trigger_selector.replace("'", "\\'")
+                self.page.evaluate(f"document.querySelector('{escaped_selector}').click();")
             else: # Default "click"
                 trigger_element.click()
 

@@ -4,10 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Setup
 
-1. Create and activate Python virtual environment (Python 3.11 recommended):
+1. Activate your conda environment (Python 3.11 recommended):
    ```bash
-   python3 -m venv venv
-   source venv/bin/activate
+   conda activate your_environment_name
    ```
 2. Install dependencies and browsers:
    ```bash
