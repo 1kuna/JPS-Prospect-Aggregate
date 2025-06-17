@@ -61,6 +61,18 @@ def create_app(config_name='default'): # config_name is no longer used but kept 
     # Register maintenance middleware
     maintenance_middleware(app)
 
+    # Initialize enhancement queue service and set up cross-references
+    with app.app_context():
+        from app.services.enhancement_queue_service import enhancement_queue_service
+        from app.services.iterative_llm_service_v2 import iterative_service_v2
+        
+        # Set up cross-references between services
+        enhancement_queue_service.set_bulk_service(iterative_service_v2)
+        iterative_service_v2.set_queue_service(enhancement_queue_service)
+        
+        # Start the queue worker
+        enhancement_queue_service.start_worker()
+
     # Register error handlers if defined in api.errors
     try:
         from .api.errors import register_error_handlers
