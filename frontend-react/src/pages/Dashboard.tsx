@@ -123,7 +123,7 @@ const fetchProspects = async (page: number, limit: number, filters?: ProspectFil
 
 const columnHelper = createColumnHelper<Prospect>();
 
-// Column definitions moved inside the component to access showAIEnhancedInTable state
+// Column definitions moved inside the component to access showAIEnhanced state
 
 export default function Dashboard() {
   console.log('Dashboard component loaded!');
@@ -132,7 +132,6 @@ export default function Dashboard() {
   const [selectedProspect, setSelectedProspect] = useState<Prospect | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [showAIEnhanced, setShowAIEnhanced] = useState(true);
-  const [showAIEnhancedInTable, setShowAIEnhancedInTable] = useState(true);
   
   // Filter states
   const [filters, setFilters] = useState<ProspectFilters>({
@@ -161,11 +160,11 @@ export default function Dashboard() {
   
   console.log('useQuery result:', { prospectsData, isLoadingProspects, isFetchingProspects });
 
-  // Define columns inside component to access showAIEnhancedInTable state
+  // Define columns inside component to access showAIEnhanced state
   const columns = useMemo(() => [
     columnHelper.accessor((row) => {
       // Check if we should show AI enhanced title
-      if (showAIEnhancedInTable && row.ai_enhanced_title) {
+      if (showAIEnhanced && row.ai_enhanced_title) {
         return row.ai_enhanced_title;
       }
       // Otherwise show original title logic
@@ -183,7 +182,7 @@ export default function Dashboard() {
       cell: info => {
         const value = info.getValue();
         const row = info.row.original;
-        const isAIEnhanced = showAIEnhancedInTable && !!row.ai_enhanced_title && row.title !== row.ai_enhanced_title;
+        const isAIEnhanced = showAIEnhanced && !!row.ai_enhanced_title && row.title !== row.ai_enhanced_title;
         const title = isAIEnhanced 
           ? `${value} (AI Enhanced)` 
           : value || 'No Title';
@@ -208,8 +207,8 @@ export default function Dashboard() {
       size: 200,
     }),
     columnHelper.accessor((row) => {
-      const naics = showAIEnhancedInTable ? row.naics : (row.naics_source === 'llm_inferred' ? null : row.naics);
-      const description = showAIEnhancedInTable ? row.naics_description : null;
+      const naics = showAIEnhanced ? row.naics : (row.naics_source === 'llm_inferred' ? null : row.naics);
+      const description = showAIEnhanced ? row.naics_description : null;
       
       if (!naics) return 'N/A';
       
@@ -231,10 +230,10 @@ export default function Dashboard() {
         
         return (
           <div className="w-full truncate" title={title}>
-            <span className={isAIEnhanced && showAIEnhancedInTable ? 'text-blue-700 font-medium' : ''}>
+            <span className={isAIEnhanced && showAIEnhanced ? 'text-blue-700 font-medium' : ''}>
               {value}
             </span>
-            {isAIEnhanced && showAIEnhancedInTable && (
+            {isAIEnhanced && showAIEnhanced && (
               <div className="w-2 h-2 bg-blue-500 rounded-full inline-block ml-2" title="AI Enhanced"></div>
             )}
           </div>
@@ -244,7 +243,7 @@ export default function Dashboard() {
     }),
     columnHelper.accessor((row) => {
       // Show enhanced estimated value if available and toggle is on, otherwise fall back to original
-      if (showAIEnhancedInTable && row.estimated_value_single) {
+      if (showAIEnhanced && row.estimated_value_single) {
         const single = parseFloat(row.estimated_value_single);
         if (single >= 1000000) {
           return `$${(single / 1000000).toFixed(1)}M`;
@@ -275,7 +274,7 @@ export default function Dashboard() {
       cell: info => {
         const value = info.getValue();
         const row = info.row.original;
-        const isAIEnhanced = showAIEnhancedInTable && !!row.estimated_value_single;
+        const isAIEnhanced = showAIEnhanced && !!row.estimated_value_single;
         
         return (
           <div title={value} className={isAIEnhanced ? 'text-green-700 font-medium' : ''}>
@@ -297,7 +296,7 @@ export default function Dashboard() {
       },
       size: 150,
     }),
-  ], [showAIEnhancedInTable]);
+  ], [showAIEnhanced]);
 
   const table = useReactTable({
     data: prospectsData?.data || [],
@@ -567,12 +566,12 @@ export default function Dashboard() {
                   </Label>
                   <Switch
                     id="show-ai-table"
-                    checked={showAIEnhancedInTable}
-                    onCheckedChange={setShowAIEnhancedInTable}
+                    checked={showAIEnhanced}
+                    onCheckedChange={setShowAIEnhanced}
                   />
                 </div>
                 <p className="text-xs text-gray-500">
-                  {showAIEnhancedInTable ? 'Showing AI-enhanced data in table' : 'Showing original data only'}
+                  {showAIEnhanced ? 'Showing AI-enhanced data in table' : 'Showing original data only'}
                 </p>
               </div>
               
