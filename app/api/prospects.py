@@ -1,5 +1,6 @@
 from flask import Blueprint, jsonify, request
-from sqlalchemy import desc, asc # Added for sorting
+from sqlalchemy import desc, asc, or_, cast, String # Added for sorting and JSON queries
+from sqlalchemy.sql import func
 from app.database.crud import paginate_sqlalchemy_query
 from app.models import Prospect, db # Added db for session access in new route
 from app.exceptions import ValidationError, NotFoundError # Added NotFoundError
@@ -43,9 +44,15 @@ def get_prospects_route():
             )
             base_query = base_query.filter(search_filter)
             
-        # Apply NAICS filter
+        # Apply NAICS filter - check both primary and all alternate codes
         if naics_filter:
-            base_query = base_query.filter(Prospect.naics.ilike(f'%{naics_filter}%'))
+            # Check primary NAICS code OR any alternate codes in extra JSON
+            # Use cast to convert JSON to string for searching
+            naics_condition = or_(
+                Prospect.naics.ilike(f'%{naics_filter}%'),
+                cast(Prospect.extra, String).ilike(f'%{naics_filter}%')  # Search entire extra JSON
+            )
+            base_query = base_query.filter(naics_condition)
             
         # Apply keywords filter (search in title and description)
         if keywords_filter:
