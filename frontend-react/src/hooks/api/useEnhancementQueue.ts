@@ -44,7 +44,7 @@ interface QueueStatus {
   }>;
 }
 
-export function useEnhancementQueueStatus(refetchInterval: number = 2000) {
+export function useEnhancementQueueStatus(refetchInterval: number = 1000) {
   return useQuery<QueueStatus>({
     queryKey: ['enhancement-queue-status'],
     queryFn: async () => {
@@ -52,7 +52,8 @@ export function useEnhancementQueueStatus(refetchInterval: number = 2000) {
       return response.data;
     },
     refetchInterval,
-    staleTime: 1000
+    staleTime: 500,
+    refetchOnWindowFocus: true
   });
 }
 
