@@ -8,6 +8,7 @@ import { LoadingButton } from '@/components/ui/LoadingButton';
 import { ErrorDisplay } from '@/components/ui/ErrorDisplay';
 import { CenteredSpinner } from '@/components/ui/LoadingSpinner';
 import { useVirtualizer } from '@tanstack/react-virtual';
+import { GoNoGoDecision } from '@/components/GoNoGoDecision';
 
 export default function Prospects() {
   const [filters] = useState<ProspectFilters>({});
@@ -84,11 +85,12 @@ export default function Prospects() {
         ) : (
           <div className="rounded-md border">
             {/* Table Header */}
-            <div className="grid grid-cols-5 gap-4 p-4 bg-gray-50 border-b font-medium text-sm text-gray-700">
+            <div className="grid grid-cols-6 gap-4 p-4 bg-gray-50 border-b font-medium text-sm text-gray-700">
               <div>Title</div>
               <div>Status</div>
               <div>Data Source</div>
               <div>Created</div>
+              <div>Decision</div>
               <div>Actions</div>
             </div>
             
@@ -120,7 +122,7 @@ export default function Prospects() {
                         height: `${virtualItem.size}px`,
                         transform: `translateY(${virtualItem.start}px)`,
                       }}
-                      className="grid grid-cols-5 gap-4 p-4 border-b hover:bg-gray-50 items-center"
+                      className="grid grid-cols-6 gap-4 p-4 border-b hover:bg-gray-50 items-center"
                     >
                       <div className="font-medium truncate">
                         {prospect?.title || 'Untitled'}
@@ -133,6 +135,13 @@ export default function Prospects() {
                       </div>
                       <div className="text-sm text-gray-600">
                         {formatDate(prospect?.createdAt, { format: 'date' })}
+                      </div>
+                      <div>
+                        <GoNoGoDecision 
+                          prospectId={prospect?.id} 
+                          prospectTitle={prospect?.title}
+                          compact={true} 
+                        />
                       </div>
                       <div>
                         <Button

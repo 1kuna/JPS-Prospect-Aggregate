@@ -367,7 +367,7 @@ export function AIEnrichment() {
                           {output.processing_time && (
                             <span className="text-xs text-gray-500">{output.processing_time.toFixed(2)}s</span>
                           )}
-                          <span className="text-xs text-gray-500">{new Date(output.timestamp).toLocaleTimeString()}</span>
+                          <span className="text-xs text-gray-500">{formatDate(output.timestamp)}</span>
                         </div>
                       </div>
                       
