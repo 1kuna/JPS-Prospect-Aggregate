@@ -540,13 +540,45 @@ def enhance_single_prospect():
         
         # Check if prospect is already being enhanced by another user
         if prospect.enhancement_status == 'in_progress':
+            logger.info(f"Prospect {prospect_id} is in_progress: user_id={user_id}, enhancement_user_id={prospect.enhancement_user_id}")
             if prospect.enhancement_user_id != user_id:
+                logger.warning(f"User conflict for prospect {prospect_id}: requesting user={user_id}, locked by user={prospect.enhancement_user_id}")
                 return jsonify({
                     "error": "Prospect is currently being enhanced by another user",
                     "status": "blocked",
                     "enhancement_status": "in_progress",
                     "enhancement_user_id": prospect.enhancement_user_id
                 }), 409
+                
+        # Also check if prospect is already in the queue with a different user
+        # This prevents race conditions between queue processing and database locking
+        existing_queue_items = [
+            item for item in enhancement_queue_service._queue_items.values()
+            if (str(item.prospect_id) == str(prospect_id) and 
+                item.type.value == 'individual' and
+                item.status.value in ['pending', 'processing'])
+        ]
+        
+        if existing_queue_items:
+            existing_item = existing_queue_items[0]
+            if existing_item.user_id != user_id:
+                return jsonify({
+                    "error": "Prospect is currently being enhanced by another user (queued)",
+                    "status": "blocked", 
+                    "enhancement_status": "queued",
+                    "queue_user_id": existing_item.user_id
+                }), 409
+            else:
+                # Same user, return existing queue item
+                logger.info(f"Returning existing queue item {existing_item.id} for same user {user_id}")
+                return jsonify({
+                    "status": "queued",
+                    "message": f"Enhancement request already queued for prospect {prospect_id}",
+                    "queue_item_id": existing_item.id,
+                    "prospect_id": prospect_id,
+                    "priority": "high",
+                    "was_existing": True
+                }), 200
                 
         # Add to priority queue (returns existing ID if already queued)
         queue_item_id = enhancement_queue_service.add_individual_enhancement(
