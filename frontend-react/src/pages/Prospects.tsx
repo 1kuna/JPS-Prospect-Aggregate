@@ -3,7 +3,6 @@ import { DataPageLayout } from '@/components/layout';
 import { useInfiniteProspects, useProspectStatistics } from '@/hooks/api/useProspects';
 import { ProspectFilters } from '@/types/prospects';
 import { Button } from '@/components/ui';
-import { formatDate } from '@/utils/dateUtils';
 import { useTimezoneDate } from '@/hooks/useTimezoneDate';
 import { LoadingButton } from '@/components/ui/LoadingButton';
 import { ErrorDisplay } from '@/components/ui/ErrorDisplay';
