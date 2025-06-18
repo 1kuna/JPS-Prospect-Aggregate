@@ -1,26 +1,35 @@
 /**
  * Date formatting utilities for consistent date display across the application
+ * Now supports user-specific timezones and enhanced formatting options
  */
 
-export type DateFormat = 'date' | 'datetime' | 'time' | 'relative';
+export type DateFormat = 'date' | 'datetime' | 'time' | 'relative' | 'datetime-with-tz' | 'date-with-time';
 
 export interface DateFormatOptions {
   fallback?: string;
   format?: DateFormat;
   locale?: string;
+  timezone?: string;
+  showTimezone?: boolean;
 }
 
 /**
- * Formats a date string consistently across the application
+ * Formats a date string consistently across the application with timezone support
  * @param dateString - ISO date string or null
- * @param options - Formatting options
+ * @param options - Formatting options including timezone
  * @returns Formatted date string
  */
 export const formatDate = (
   dateString: string | null | undefined,
   options: DateFormatOptions = {}
 ): string => {
-  const { fallback = 'N/A', format = 'datetime', locale = 'en-US' } = options;
+  const { 
+    fallback = 'N/A', 
+    format = 'datetime', 
+    locale = 'en-US',
+    timezone,
+    showTimezone = false
+  } = options;
 
   if (!dateString) return fallback;
 
@@ -38,18 +47,65 @@ export const formatDate = (
       return fallback;
     }
 
+    // Create formatting options with timezone support
+    const formatOptions: Intl.DateTimeFormatOptions = {};
+    
+    if (timezone) {
+      formatOptions.timeZone = timezone;
+    }
+
     switch (format) {
       case 'date':
-        return date.toLocaleDateString(locale);
+        formatOptions.year = 'numeric';
+        formatOptions.month = 'numeric';
+        formatOptions.day = 'numeric';
+        break;
       case 'time':
-        return date.toLocaleTimeString(locale);
+        formatOptions.hour = 'numeric';
+        formatOptions.minute = '2-digit';
+        formatOptions.hour12 = true;
+        if (showTimezone) formatOptions.timeZoneName = 'short';
+        break;
       case 'datetime':
-        return date.toLocaleString(locale);
+        formatOptions.year = 'numeric';
+        formatOptions.month = 'numeric';
+        formatOptions.day = 'numeric';
+        formatOptions.hour = 'numeric';
+        formatOptions.minute = '2-digit';
+        formatOptions.hour12 = true;
+        if (showTimezone) formatOptions.timeZoneName = 'short';
+        break;
+      case 'datetime-with-tz':
+        formatOptions.year = 'numeric';
+        formatOptions.month = 'numeric';
+        formatOptions.day = 'numeric';
+        formatOptions.hour = 'numeric';
+        formatOptions.minute = '2-digit';
+        formatOptions.hour12 = true;
+        formatOptions.timeZoneName = 'short';
+        break;
+      case 'date-with-time':
+        formatOptions.year = 'numeric';
+        formatOptions.month = 'short';
+        formatOptions.day = 'numeric';
+        formatOptions.hour = 'numeric';
+        formatOptions.minute = '2-digit';
+        formatOptions.hour12 = true;
+        if (showTimezone) formatOptions.timeZoneName = 'short';
+        break;
       case 'relative':
-        return formatRelativeTime(date);
+        return formatRelativeTime(date, timezone);
       default:
-        return date.toLocaleString(locale);
+        formatOptions.year = 'numeric';
+        formatOptions.month = 'numeric';
+        formatOptions.day = 'numeric';
+        formatOptions.hour = 'numeric';
+        formatOptions.minute = '2-digit';
+        formatOptions.hour12 = true;
+        break;
     }
+
+    return new Intl.DateTimeFormat(locale, formatOptions).format(date);
   } catch (error) {
     console.warn(`Error formatting date: ${dateString}`, error);
     return fallback;
@@ -59,9 +115,10 @@ export const formatDate = (
 /**
  * Formats a date as relative time (e.g., "2 hours ago", "3 days ago")
  * @param date - Date object
+ * @param timezone - Optional timezone for fallback formatting
  * @returns Relative time string
  */
-export const formatRelativeTime = (date: Date): string => {
+export const formatRelativeTime = (date: Date, timezone?: string): string => {
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffSeconds = Math.floor(diffMs / 1000);
@@ -78,6 +135,15 @@ export const formatRelativeTime = (date: Date): string => {
   } else if (diffDays < 7) {
     return `${diffDays} day${diffDays !== 1 ? 's' : ''} ago`;
   } else {
+    // For older dates, show formatted date in user's timezone
+    if (timezone) {
+      return new Intl.DateTimeFormat('en-US', {
+        timeZone: timezone,
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      }).format(date);
+    }
     return date.toLocaleDateString();
   }
 };
@@ -117,4 +183,21 @@ export const isFuture = (dateString: string | null): boolean => {
   } catch {
     return false;
   }
+};
+
+/**
+ * Creates a timezone-aware date formatter function
+ * @param timezone - User's timezone
+ * @param locale - User's locale
+ * @returns Function that formats dates with user's timezone/locale
+ */
+export const createTimezoneFormatter = (timezone: string, locale: string = 'en-US') => {
+  return (dateString: string | null | undefined, format: DateFormat = 'datetime', options: Partial<DateFormatOptions> = {}) => {
+    return formatDate(dateString, {
+      timezone,
+      locale,
+      format,
+      ...options
+    });
+  };
 };
