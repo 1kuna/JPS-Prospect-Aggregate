@@ -498,7 +498,29 @@ class IterativeLLMServiceV2:
             return False
             
         if prospect.description and (not prospect.naics or prospect.naics_source != 'llm_inferred'):
-            # Classify NAICS
+            # First check extra field for existing NAICS data
+            extra_naics = self.llm_service.extract_naics_from_extra_field(prospect.extra)
+            
+            if extra_naics['found_in_extra'] and extra_naics['code']:
+                # Found NAICS in extra field - populate main fields
+                prospect.naics = extra_naics['code']
+                prospect.naics_description = extra_naics['description']
+                prospect.naics_source = 'original'  # Mark as original since it was in source data
+                self._update_prospect_timestamps(prospect)
+                
+                # Mark in extra field to prevent future AI enhancement
+                self._ensure_extra_is_dict_iterative(prospect)
+                prospect.extra['naics_extracted_from_extra'] = {
+                    'extracted_at': datetime.now(timezone.utc).isoformat(),
+                    'extracted_by': 'iterative_llm_service_extra_field_check',
+                    'original_code': extra_naics['code'],
+                    'original_description': extra_naics['description']
+                }
+                
+                logger.info(f"Found NAICS {extra_naics['code']} in extra field for prospect {prospect.id[:8]}...")
+                return True
+            
+            # No NAICS in extra field, proceed with LLM classification
             classification = self.llm_service.classify_naics_with_llm(prospect.title, prospect.description, prospect_id=prospect.id)
             
             if classification['code']:
