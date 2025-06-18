@@ -154,7 +154,14 @@ export default function Dashboard() {
     queryKey: ['prospects', currentPage, itemsPerPage, filters],
     queryFn: () => fetchProspects(currentPage, itemsPerPage, filters),
     placeholderData: keepPreviousData,
-    refetchInterval: 5000, // Refetch every 5 seconds to pick up enhancement status changes
+    refetchInterval: (query) => {
+      // Only refetch if there are prospects being enhanced
+      const hasInProgress = query.state.data?.data?.some((prospect: Prospect) => prospect.enhancement_status === 'in_progress');
+      return hasInProgress ? 3000 : 30000; // 3s if enhancing, 30s otherwise
+    },
+    refetchOnWindowFocus: false, // Prevent refetch when window gains focus
+    staleTime: 2000, // Consider data fresh for 2 seconds to reduce flicker
+    refetchIntervalInBackground: false, // Don't refetch when tab is not active
   });
   
 
@@ -296,37 +303,47 @@ export default function Dashboard() {
     }),
   ], [showAIEnhanced]);
 
+  // Memoize table data to prevent unnecessary re-renders
+  const tableData = useMemo(() => prospectsData?.data || [], [prospectsData?.data]);
+  
   const table = useReactTable({
-    data: prospectsData?.data || [],
+    data: tableData,
     columns,
     getCoreRowModel: getCoreRowModel(),
     manualPagination: true,
     rowCount: prospectsData?.total || 0,
+    // Add stable key to prevent unnecessary re-renders
+    getRowId: (row) => row.id,
   });
 
   const totalPages = prospectsData?.totalPages || 0;
 
-  const handlePageChange = (page: number) => {
+  const handlePageChange = useCallback((page: number) => {
     if (page < 1 || page > totalPages) return;
     setCurrentPage(page);
-  }
+  }, [totalPages]);
 
-  const handlePreviousPage = () => {
+  const handlePreviousPage = useCallback(() => {
     setCurrentPage((prev) => Math.max(prev - 1, 1));
-  };
+  }, []);
 
-  const handleNextPage = () => {
+  const handleNextPage = useCallback(() => {
     setCurrentPage((prev) => Math.min(prev + 1, totalPages));
-  };
+  }, [totalPages]);
 
-  const handleItemsPerPageChange = (value: string) => {
+  const handleItemsPerPageChange = useCallback((value: string) => {
     setItemsPerPage(Number(value));
     setCurrentPage(1);
-  };
+  }, []);
   
   const handleFilterChange = useCallback((filterKey: keyof ProspectFilters, value: string) => {
     setFilters(prev => ({ ...prev, [filterKey]: value }));
     setCurrentPage(1); // Reset to first page when filters change
+  }, []);
+  
+  const handleRowClick = useCallback((prospect: Prospect) => {
+    setSelectedProspect(prospect);
+    setIsDialogOpen(true);
   }, []);
   
   const clearFilters = useCallback(() => {
@@ -699,10 +716,7 @@ export default function Dashboard() {
                           <TableRow 
                             key={row.id} 
                             className={`transition-colors duration-150 ease-in-out hover:bg-gray-100 cursor-pointer ${rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'} data-[state=selected]:bg-blue-50 data-[state=selected]:hover:bg-blue-100`}
-                            onClick={() => {
-                              setSelectedProspect(row.original);
-                              setIsDialogOpen(true);
-                            }}
+                            onClick={() => handleRowClick(row.original)}
                           >
                             {row.getVisibleCells().map(cell => (
                               <TableCell 
@@ -733,10 +747,10 @@ export default function Dashboard() {
                   )}
                 </>
               )}
-               {(isLoadingProspects || isFetchingProspects) && prospectsData && prospectsData.data.length > 0 && (
-                   <div className="absolute inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center rounded-md z-10">
-                      <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-blue-600"></div>
-                      <p className="ml-3 text-base font-medium text-gray-700">Updating data...</p>
+               {isFetchingProspects && !isLoadingProspects && prospectsData && prospectsData.data.length > 0 && (
+                   <div className="absolute top-0 right-0 m-4 bg-white/90 backdrop-blur-sm rounded-full px-3 py-2 shadow-lg border flex items-center gap-2 z-10">
+                      <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-blue-500"></div>
+                      <p className="text-sm font-medium text-gray-600">Refreshing...</p>
                   </div>
               )}
             </CardContent>
