@@ -24,6 +24,7 @@ export interface IterativeProgress {
 
 export interface StartEnhancementRequest {
   enhancement_type: EnhancementType;
+  skip_existing?: boolean;
 }
 
 export interface OperationResult {
