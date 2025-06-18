@@ -3,7 +3,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 
 import { 
   useAIEnrichmentStatus
@@ -220,25 +219,36 @@ export function AIEnrichment() {
               {/* Skip Existing Selection */}
               <div className="space-y-2">
                 <Label>Processing Mode</Label>
-                <RadioGroup 
-                  value={skipExisting} 
-                  onValueChange={(value: 'skip' | 'fill') => setSkipExisting(value)}
-                  disabled={isProcessing}
-                  className="space-y-2"
-                >
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="skip" id="skip" />
-                    <Label htmlFor="skip" className="text-sm font-normal cursor-pointer">
+                <div className="space-y-2">
+                  <label className="flex items-center space-x-2">
+                    <input
+                      type="radio"
+                      name="processing-mode"
+                      value="skip"
+                      checked={skipExisting === 'skip'}
+                      onChange={(e) => setSkipExisting(e.target.value as 'skip' | 'fill')}
+                      disabled={isProcessing}
+                      className="h-4 w-4 text-blue-600"
+                    />
+                    <span className="text-sm font-normal cursor-pointer">
                       Skip existing AI data
-                    </Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="fill" id="fill" />
-                    <Label htmlFor="fill" className="text-sm font-normal cursor-pointer">
+                    </span>
+                  </label>
+                  <label className="flex items-center space-x-2">
+                    <input
+                      type="radio"
+                      name="processing-mode"
+                      value="fill"
+                      checked={skipExisting === 'fill'}
+                      onChange={(e) => setSkipExisting(e.target.value as 'skip' | 'fill')}
+                      disabled={isProcessing}
+                      className="h-4 w-4 text-blue-600"
+                    />
+                    <span className="text-sm font-normal cursor-pointer">
                       Replace existing AI data
-                    </Label>
-                  </div>
-                </RadioGroup>
+                    </span>
+                  </label>
+                </div>
               </div>
 
               <div className="space-y-2">
