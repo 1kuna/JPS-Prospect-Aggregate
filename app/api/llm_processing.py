@@ -257,6 +257,7 @@ def start_iterative_enhancement():
             return jsonify({"error": "Request body required"}), 400
             
         enhancement_type = data.get('enhancement_type', 'all')
+        skip_existing = data.get('skip_existing', True)
         
         # Validate enhancement type
         valid_types = ['values', 'contacts', 'naics', 'titles', 'all']
@@ -264,9 +265,9 @@ def start_iterative_enhancement():
             return jsonify({"error": f"Invalid enhancement type. Must be one of: {valid_types}"}), 400
         
         # Start enhancement (runs in background thread)
-        result = iterative_service.start_enhancement(enhancement_type)
+        result = iterative_service.start_enhancement(enhancement_type, skip_existing)
         
-        logger.info(f"Started iterative LLM enhancement: type={enhancement_type}")
+        logger.info(f"Started iterative LLM enhancement: type={enhancement_type}, skip_existing={skip_existing}")
         return jsonify(result), 200
         
     except Exception as e:

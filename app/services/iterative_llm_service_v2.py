@@ -51,7 +51,7 @@ class IterativeLLMServiceV2:
         """Set reference to the queue service for coordination"""
         self._queue_service = queue_service
 
-    def start_enhancement(self, enhancement_type: EnhancementType) -> Dict[str, any]:
+    def start_enhancement(self, enhancement_type: EnhancementType, skip_existing: bool = True) -> Dict[str, any]:
         """Start iterative enhancement processing using the queue system"""
         if self._processing:
             return {"status": "error", "message": "Enhancement already in progress"}
@@ -68,7 +68,7 @@ class IterativeLLMServiceV2:
             
             try:
                 # Get all prospects that need processing
-                prospects_to_process = self._get_prospects_to_process(enhancement_type, db_session)
+                prospects_to_process = self._get_prospects_to_process(enhancement_type, db_session, skip_existing)
                 prospect_ids = [p.id for p in prospects_to_process]
                 
                 if not prospect_ids:
@@ -145,42 +145,11 @@ class IterativeLLMServiceV2:
             "processed": self._progress["processed"]
         }
     
-    def _build_enhancement_filter(self, enhancement_type: EnhancementType):
+    def _build_enhancement_filter(self, enhancement_type: EnhancementType, skip_existing: bool = True):
         """Build SQLAlchemy filter conditions for enhancement types"""
         if enhancement_type == "values":
-            return or_(
-                and_(
-                    Prospect.estimated_value_text.isnot(None),
-                    Prospect.estimated_value_single.is_(None)
-                ),
-                and_(
-                    Prospect.estimated_value.isnot(None),
-                    Prospect.estimated_value_single.is_(None)
-                )
-            )
-        elif enhancement_type == "contacts":
-            return and_(
-                Prospect.extra.isnot(None),
-                Prospect.primary_contact_name.is_(None)
-            )
-        elif enhancement_type == "naics":
-            return and_(
-                Prospect.description.isnot(None),
-                or_(
-                    Prospect.naics.is_(None),
-                    Prospect.naics_source != 'llm_inferred'
-                )
-            )
-        elif enhancement_type == "titles":
-            return and_(
-                Prospect.title.isnot(None),
-                Prospect.ai_enhanced_title.is_(None)
-            )
-        elif enhancement_type == "all":
-            # Prospects that need ANY type of enhancement
-            return or_(
-                # Needs value parsing
-                or_(
+            if skip_existing:
+                return or_(
                     and_(
                         Prospect.estimated_value_text.isnot(None),
                         Prospect.estimated_value_single.is_(None)
@@ -189,32 +158,88 @@ class IterativeLLMServiceV2:
                         Prospect.estimated_value.isnot(None),
                         Prospect.estimated_value_single.is_(None)
                     )
-                ),
-                # Needs contact extraction
-                and_(
+                )
+            else:
+                return or_(
+                    Prospect.estimated_value_text.isnot(None),
+                    Prospect.estimated_value.isnot(None)
+                )
+        elif enhancement_type == "contacts":
+            if skip_existing:
+                return and_(
                     Prospect.extra.isnot(None),
                     Prospect.primary_contact_name.is_(None)
-                ),
-                # Needs NAICS classification
-                and_(
+                )
+            else:
+                return Prospect.extra.isnot(None)
+        elif enhancement_type == "naics":
+            if skip_existing:
+                return and_(
                     Prospect.description.isnot(None),
                     or_(
                         Prospect.naics.is_(None),
                         Prospect.naics_source != 'llm_inferred'
                     )
-                ),
-                # Needs title enhancement
-                and_(
+                )
+            else:
+                return Prospect.description.isnot(None)
+        elif enhancement_type == "titles":
+            if skip_existing:
+                return and_(
                     Prospect.title.isnot(None),
                     Prospect.ai_enhanced_title.is_(None)
                 )
-            )
+            else:
+                return Prospect.title.isnot(None)
+        elif enhancement_type == "all":
+            if skip_existing:
+                # Prospects that need ANY type of enhancement
+                return or_(
+                    # Needs value parsing
+                    or_(
+                        and_(
+                            Prospect.estimated_value_text.isnot(None),
+                            Prospect.estimated_value_single.is_(None)
+                        ),
+                        and_(
+                            Prospect.estimated_value.isnot(None),
+                            Prospect.estimated_value_single.is_(None)
+                        )
+                    ),
+                    # Needs contact extraction
+                    and_(
+                        Prospect.extra.isnot(None),
+                        Prospect.primary_contact_name.is_(None)
+                    ),
+                    # Needs NAICS classification
+                    and_(
+                        Prospect.description.isnot(None),
+                        or_(
+                            Prospect.naics.is_(None),
+                            Prospect.naics_source != 'llm_inferred'
+                        )
+                    ),
+                    # Needs title enhancement
+                    and_(
+                        Prospect.title.isnot(None),
+                        Prospect.ai_enhanced_title.is_(None)
+                    )
+                )
+            else:
+                # Process all prospects that have any data for enhancement
+                return or_(
+                    Prospect.estimated_value_text.isnot(None),
+                    Prospect.estimated_value.isnot(None),
+                    Prospect.extra.isnot(None),
+                    Prospect.description.isnot(None),
+                    Prospect.title.isnot(None)
+                )
         
         return None
 
-    def _get_prospects_to_process(self, enhancement_type: EnhancementType, db_session: Session):
+    def _get_prospects_to_process(self, enhancement_type: EnhancementType, db_session: Session, skip_existing: bool = True):
         """Get all prospects that need processing for the given enhancement type"""
-        filter_condition = self._build_enhancement_filter(enhancement_type)
+        filter_condition = self._build_enhancement_filter(enhancement_type, skip_existing)
         if filter_condition is not None:
             return db_session.query(Prospect).filter(filter_condition).order_by(Prospect.loaded_at.desc()).all()
         return []

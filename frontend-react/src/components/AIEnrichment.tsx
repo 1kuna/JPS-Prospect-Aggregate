@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 
 import { 
   useAIEnrichmentStatus
@@ -18,6 +19,7 @@ import { PlayIcon, StopIcon, ChevronDownIcon, ChevronRightIcon } from '@radix-ui
 
 export function AIEnrichment() {
   const [enhancementType, setEnhancementType] = useState<EnhancementType>('all');
+  const [skipExisting, setSkipExisting] = useState<'skip' | 'fill'>('skip');
   const [expandedOutputs, setExpandedOutputs] = useState<Set<number>>(new Set());
   
   const { data: status, isLoading: isLoadingStatus } = useAIEnrichmentStatus();
@@ -34,7 +36,10 @@ export function AIEnrichment() {
   console.log('Is Processing:', isProcessing);
 
   const handleStart = () => {
-    startMutation.mutate({ enhancement_type: enhancementType });
+    startMutation.mutate({ 
+      enhancement_type: enhancementType,
+      skip_existing: skipExisting === 'skip'
+    });
   };
 
   const handleStop = () => {
@@ -210,6 +215,30 @@ export function AIEnrichment() {
                     <SelectItem value="titles">Title Enhancement</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+
+              {/* Skip Existing Selection */}
+              <div className="space-y-2">
+                <Label>Processing Mode</Label>
+                <RadioGroup 
+                  value={skipExisting} 
+                  onValueChange={(value: 'skip' | 'fill') => setSkipExisting(value)}
+                  disabled={isProcessing}
+                  className="space-y-2"
+                >
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="skip" id="skip" />
+                    <Label htmlFor="skip" className="text-sm font-normal cursor-pointer">
+                      Skip existing AI data
+                    </Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="fill" id="fill" />
+                    <Label htmlFor="fill" className="text-sm font-normal cursor-pointer">
+                      Replace existing AI data
+                    </Label>
+                  </div>
+                </RadioGroup>
               </div>
 
               <div className="space-y-2">
