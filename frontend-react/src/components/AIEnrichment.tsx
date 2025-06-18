@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
+import { useTimezoneDate } from '@/hooks/useTimezoneDate';
 
 import { 
   useAIEnrichmentStatus
@@ -20,6 +21,8 @@ export function AIEnrichment() {
   const [enhancementType, setEnhancementType] = useState<EnhancementType>('all');
   const [skipExisting, setSkipExisting] = useState<'skip' | 'fill'>('skip');
   const [expandedOutputs, setExpandedOutputs] = useState<Set<number>>(new Set());
+  
+  const { formatLastProcessed, formatUserDate } = useTimezoneDate();
   
   const { data: status, isLoading: isLoadingStatus } = useAIEnrichmentStatus();
 
@@ -45,9 +48,7 @@ export function AIEnrichment() {
     stopMutation.mutate();
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleString();
-  };
+  // Removed local formatDate function - using timezone-aware formatting
 
   const toggleOutputExpanded = (outputId: number) => {
     setExpandedOutputs(prev => {
@@ -176,7 +177,7 @@ export function AIEnrichment() {
               <div className="mt-4 text-sm text-gray-600 border-t pt-4">
                 <div className="flex justify-between">
                   <span>Last processed:</span>
-                  <span>{formatDate(status.last_processed)}</span>
+                  <span>{formatLastProcessed(status.last_processed)}</span>
                 </div>
                 {status.model_version && (
                   <div className="flex justify-between">
@@ -406,7 +407,7 @@ export function AIEnrichment() {
                           {output.processing_time && (
                             <span className="text-xs text-gray-500">{output.processing_time.toFixed(2)}s</span>
                           )}
-                          <span className="text-xs text-gray-500">{formatDate(output.timestamp)}</span>
+                          <span className="text-xs text-gray-500">{formatUserDate(output.timestamp, 'datetime-with-tz')}</span>
                         </div>
                       </div>
                       
