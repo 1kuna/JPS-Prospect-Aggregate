@@ -1,7 +1,7 @@
 import { PageLayout } from '@/components/layout';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { createColumnHelper, flexRender, getCoreRowModel, useReactTable } from '@tanstack/react-table';
-import { useState, useCallback, useMemo, useRef, memo } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -121,35 +121,6 @@ const fetchProspects = async (page: number, limit: number, filters?: ProspectFil
 
 const columnHelper = createColumnHelper<Prospect>();
 
-// Memoized table row component to prevent unnecessary re-renders
-const MemoizedTableRow = memo(({ 
-  row, 
-  rowIndex, 
-  onRowClick 
-}: { 
-  row: any; 
-  rowIndex: number; 
-  onRowClick: (prospect: Prospect) => void; 
-}) => (
-  <TableRow 
-    key={row.id} 
-    className={`transition-colors duration-150 ease-in-out hover:bg-gray-100 cursor-pointer ${rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'} data-[state=selected]:bg-blue-50 data-[state=selected]:hover:bg-blue-100`}
-    onClick={() => onRowClick(row.original)}
-  >
-    {row.getVisibleCells().map((cell: any) => (
-      <TableCell 
-        key={cell.id} 
-        className="px-6 py-4 whitespace-nowrap text-sm text-gray-800 align-top overflow-hidden"
-        style={{ 
-          width: cell.column.getSize() !== 0 ? cell.column.getSize() : undefined,
-          maxWidth: cell.column.getSize() !== 0 ? cell.column.getSize() : undefined
-        }}
-      >
-        {flexRender(cell.column.columnDef.cell, cell.getContext())}
-      </TableCell>
-    ))}
-  </TableRow>
-));
 
 // Column definitions moved inside the component to access showAIEnhanced state
 
@@ -333,43 +304,9 @@ export default function Dashboard() {
     }),
   ], [showAIEnhanced]);
 
-  // Deep comparison to prevent unnecessary re-renders even when objects are recreated
-  const previousDataRef = useRef<Prospect[]>([]);
+  // Stable memoized table data - simple but effective
   const tableData = useMemo(() => {
-    const newData = prospectsData?.data || [];
-    
-    // If lengths are different, definitely changed
-    if (newData.length !== previousDataRef.current.length) {
-      previousDataRef.current = newData;
-      return newData;
-    }
-    
-    // Deep comparison: only update if actual content changed
-    const hasChanged = newData.some((newProspect, index) => {
-      const oldProspect = previousDataRef.current[index];
-      if (!oldProspect) return true;
-      
-      // Compare key fields that matter for display
-      return (
-        newProspect.id !== oldProspect.id ||
-        newProspect.title !== oldProspect.title ||
-        newProspect.ai_enhanced_title !== oldProspect.ai_enhanced_title ||
-        newProspect.enhancement_status !== oldProspect.enhancement_status ||
-        newProspect.agency !== oldProspect.agency ||
-        newProspect.estimated_value !== oldProspect.estimated_value ||
-        newProspect.release_date !== oldProspect.release_date ||
-        newProspect.ollama_processed_at !== oldProspect.ollama_processed_at
-      );
-    });
-    
-    // Only update reference if content actually changed
-    if (hasChanged) {
-      previousDataRef.current = newData;
-      return newData;
-    }
-    
-    // Return previous reference to prevent re-render
-    return previousDataRef.current;
+    return prospectsData?.data || [];
   }, [prospectsData?.data]);
   
   // Memoize table instance to prevent recreation on every render
@@ -780,12 +717,24 @@ export default function Dashboard() {
                       </TableHeader>
                       <TableBody className="bg-white divide-y divide-gray-200">
                         {table.getRowModel().rows.map((row, rowIndex) => (
-                          <MemoizedTableRow
-                            key={row.id}
-                            row={row}
-                            rowIndex={rowIndex}
-                            onRowClick={handleRowClick}
-                          />
+                          <TableRow 
+                            key={row.id} 
+                            className={`transition-colors duration-150 ease-in-out hover:bg-gray-100 cursor-pointer ${rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'} data-[state=selected]:bg-blue-50 data-[state=selected]:hover:bg-blue-100`}
+                            onClick={() => handleRowClick(row.original)}
+                          >
+                            {row.getVisibleCells().map(cell => (
+                              <TableCell 
+                                key={cell.id} 
+                                className="px-6 py-4 whitespace-nowrap text-sm text-gray-800 align-top overflow-hidden"
+                                style={{ 
+                                  width: cell.column.getSize() !== 0 ? cell.column.getSize() : undefined,
+                                  maxWidth: cell.column.getSize() !== 0 ? cell.column.getSize() : undefined
+                                }}
+                              >
+                                {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                              </TableCell>
+                            ))}
+                          </TableRow>
                         ))}
                       </TableBody>
                     </Table>
