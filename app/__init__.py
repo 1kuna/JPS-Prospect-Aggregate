@@ -24,6 +24,7 @@ def create_app(config_name='default'): # config_name is no longer used but kept 
     # Initialize extensions
     CORS(app, resources={r'/api/*': {'origins': '*'}}) # Configure origins properly for production
     
+    
     # Configure user database bind BEFORE initializing db
     user_db = init_user_db(app) # Configure user database binds
     
@@ -88,5 +89,6 @@ def create_app(config_name='default'): # config_name is no longer used but kept 
         register_error_handlers(app)
     except ImportError:
         pass # No custom error handlers defined or file doesn't exist
+    
 
     return app

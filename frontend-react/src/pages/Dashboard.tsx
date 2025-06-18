@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/dialog";
 import { useProspectEnhancement } from '@/contexts/ProspectEnhancementContext';
 import { useTimezoneDate } from '@/hooks/useTimezoneDate';
+import { usePollingUpdates } from '@/hooks/usePollingUpdates';
 import { ReloadIcon } from '@radix-ui/react-icons';
 import { Switch } from '@/components/ui/switch';
 import { GoNoGoDecision } from '@/components/GoNoGoDecision';
@@ -48,6 +49,9 @@ interface Prospect {
   release_date: string | null; // ISO date string
   award_date: string | null; // ISO date string
   award_fiscal_year: number | null;
+  // Animation properties for real-time updates
+  _recentlyUpdated?: string;
+  _updateTimestamp?: number;
   place_city: string | null;
   place_state: string | null;
   place_country: string | null;
@@ -144,6 +148,14 @@ export default function Dashboard() {
   
   // Timezone hook for date formatting
   const { formatAIEnhanced, formatUserDate } = useTimezoneDate();
+  
+  // Polling-based real-time updates hook
+  const { isPolling, hasActiveEnhancements, isProspectRecentlyUpdated } = usePollingUpdates({
+    onProspectUpdate: (prospectId, updates) => {
+      console.log(`Prospect ${prospectId} updated:`, updates);
+    },
+    enableAnimations: true
+  });
 
   // const { data: countData, isLoading: isLoadingCount } = useQuery({
   //   queryKey: ['prospectCount'],
@@ -642,20 +654,30 @@ export default function Dashboard() {
           <Card className="shadow-lg">
             <CardHeader className="flex flex-row items-center justify-between py-5 px-6 border-b border-gray-200">
               <CardTitle className="text-2xl font-bold text-black">Prospects List</CardTitle>
-              <div className="flex items-center space-x-2">
-                <span className="text-sm font-medium text-gray-600">Rows per page:</span>
-                <Select value={itemsPerPage.toString()} onValueChange={handleItemsPerPageChange}>
-                  <SelectTrigger className="w-[80px] h-9 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-                    <SelectValue placeholder={itemsPerPage} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {[10, 20, 30, 50, 100].map(val => (
-                      <SelectItem key={val} value={val.toString()} className="text-sm">
-                        {val}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <div className="flex items-center space-x-4">
+                {/* Real-time connection status */}
+                <div className="flex items-center space-x-2">
+                  <div className={`w-2 h-2 rounded-full ${isPolling ? 'bg-green-500' : 'bg-red-500'} animate-pulse`}></div>
+                  <span className="text-xs text-gray-600">
+                    {isPolling ? 'Live updates' : 'Disconnected'}
+                  </span>
+                </div>
+                
+                <div className="flex items-center space-x-2">
+                  <span className="text-sm font-medium text-gray-600">Rows per page:</span>
+                  <Select value={itemsPerPage.toString()} onValueChange={handleItemsPerPageChange}>
+                    <SelectTrigger className="w-[80px] h-9 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                      <SelectValue placeholder={itemsPerPage} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {[10, 20, 30, 50, 100].map(val => (
+                        <SelectItem key={val} value={val.toString()} className="text-sm">
+                          {val}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </CardHeader>
             <CardContent className="pt-6 px-6 pb-6 relative">
@@ -703,26 +725,38 @@ export default function Dashboard() {
                         ))}
                       </TableHeader>
                       <TableBody className="bg-white divide-y divide-gray-200">
-                        {table.getRowModel().rows.map((row, rowIndex) => (
-                          <TableRow 
-                            key={row.id} 
-                            className={`transition-colors duration-150 ease-in-out hover:bg-gray-100 cursor-pointer ${rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'} data-[state=selected]:bg-blue-50 data-[state=selected]:hover:bg-blue-100`}
-                            onClick={() => handleRowClick(row.original)}
-                          >
-                            {row.getVisibleCells().map(cell => (
-                              <TableCell 
-                                key={cell.id} 
-                                className="px-6 py-4 whitespace-nowrap text-sm text-gray-800 align-top overflow-hidden"
-                                style={{ 
-                                  width: cell.column.getSize() !== 0 ? cell.column.getSize() : undefined,
-                                  maxWidth: cell.column.getSize() !== 0 ? cell.column.getSize() : undefined
-                                }}
-                              >
-                                {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                              </TableCell>
-                            ))}
-                          </TableRow>
-                        ))}
+                        {table.getRowModel().rows.map((row, rowIndex) => {
+                          const prospect = row.original;
+                          const isRecentlyUpdated = isProspectRecentlyUpdated(prospect.id);
+                          
+                          return (
+                            <TableRow 
+                              key={row.id} 
+                              className={`transition-all duration-300 ease-in-out hover:bg-gray-100 cursor-pointer ${
+                                rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'
+                              } data-[state=selected]:bg-blue-50 data-[state=selected]:hover:bg-blue-100 ${
+                                isRecentlyUpdated ? 'animate-pulse bg-gradient-to-r from-green-50 to-blue-50 border-l-4 border-l-blue-500 shadow-lg scale-[1.01]' : ''
+                              }`}
+                              onClick={() => handleRowClick(row.original)}
+                              style={{
+                                animation: isRecentlyUpdated ? 'highlightUpdate 2s ease-in-out' : undefined
+                              }}
+                            >
+                              {row.getVisibleCells().map(cell => (
+                                <TableCell 
+                                  key={cell.id} 
+                                  className="px-6 py-4 whitespace-nowrap text-sm text-gray-800 align-top overflow-hidden"
+                                  style={{ 
+                                    width: cell.column.getSize() !== 0 ? cell.column.getSize() : undefined,
+                                    maxWidth: cell.column.getSize() !== 0 ? cell.column.getSize() : undefined
+                                  }}
+                                >
+                                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                                </TableCell>
+                              ))}
+                            </TableRow>
+                          );
+                        })}
                       </TableBody>
                     </Table>
                   </div>
@@ -738,10 +772,13 @@ export default function Dashboard() {
                   )}
                 </>
               )}
-               {isFetchingProspects && !isLoadingProspects && prospectsData && prospectsData.data.length > 0 && (
+               {/* Show polling indicator when actively enhancing or fetching */}
+               {((hasActiveEnhancements && isPolling) || (isFetchingProspects && !isLoadingProspects)) && prospectsData && prospectsData.data.length > 0 && (
                    <div className="absolute top-2 right-2 bg-blue-50/90 backdrop-blur-sm rounded-full px-2 py-1 shadow-sm border border-blue-200 flex items-center gap-1.5 z-10">
                       <div className="animate-spin rounded-full h-3 w-3 border-t-2 border-b-2 border-blue-500"></div>
-                      <p className="text-xs font-medium text-blue-700">Updating</p>
+                      <p className="text-xs font-medium text-blue-700">
+                        {hasActiveEnhancements ? 'AI Enhancing' : 'Updating'}
+                      </p>
                   </div>
               )}
             </CardContent>
@@ -1054,7 +1091,7 @@ export default function Dashboard() {
                     <span className="font-medium text-gray-700">Release Date:</span>
                     <p className="mt-1 text-gray-900">
                       {selectedProspect.release_date 
-                        ? formatUserDate(selectedProspect.release_date, 'date')
+                        ? formatUserDate(selectedProspect.release_date)
                         : 'N/A'}
                     </p>
                   </div>
@@ -1062,7 +1099,7 @@ export default function Dashboard() {
                     <span className="font-medium text-gray-700">Award Date:</span>
                     <p className="mt-1 text-gray-900">
                       {selectedProspect.award_date 
-                        ? formatUserDate(selectedProspect.award_date, 'date')
+                        ? formatUserDate(selectedProspect.award_date)
                         : 'N/A'}
                     </p>
                   </div>
@@ -1080,31 +1117,6 @@ export default function Dashboard() {
                   </p>
                 </div>
               </div>
-
-              {/* Extra Information */}
-              {selectedProspect.extra && (
-                <div>
-                  <h3 className="text-lg font-semibold mb-3 text-gray-900">Additional Information</h3>
-                  <div className="bg-gray-50 p-4 rounded-lg">
-                    <pre className="text-sm text-gray-900 whitespace-pre-wrap font-mono">
-                      {(() => {
-                        try {
-                          // If it's a string, try to parse and reformat it
-                          if (typeof selectedProspect.extra === 'string') {
-                            const parsed = JSON.parse(selectedProspect.extra);
-                            return JSON.stringify(parsed, null, 2);
-                          }
-                          // If it's already an object, format it
-                          return JSON.stringify(selectedProspect.extra, null, 2);
-                        } catch (e) {
-                          // If parsing fails, return the original string as string
-                          return String(selectedProspect.extra);
-                        }
-                      })()}
-                    </pre>
-                  </div>
-                </div>
-              )}
 
               {/* Contact Information */}
               {showAIEnhanced && (selectedProspect.primary_contact_email || selectedProspect.primary_contact_name) && (
@@ -1152,7 +1164,7 @@ export default function Dashboard() {
                     <span className="font-medium text-gray-700">Loaded At:</span>
                     <p className="mt-1 text-gray-900">
                       {selectedProspect.loaded_at 
-                        ? formatUserDate(selectedProspect.loaded_at, 'datetime-with-tz')
+                        ? formatUserDate(selectedProspect.loaded_at)
                         : 'N/A'}
                     </p>
                   </div>
@@ -1165,7 +1177,7 @@ export default function Dashboard() {
                       <div>
                         <span className="font-medium text-gray-700">LLM Processed:</span>
                         <p className="mt-1 text-gray-900">
-                          {formatUserDate(selectedProspect.ollama_processed_at, 'datetime-with-tz')}
+                          {formatUserDate(selectedProspect.ollama_processed_at)}
                         </p>
                       </div>
                       <div>
@@ -1177,10 +1189,35 @@ export default function Dashboard() {
                 </div>
               </div>
 
+              {/* Extra Information */}
+              {selectedProspect.extra && (
+                <div>
+                  <h3 className="text-lg font-semibold mb-3 text-gray-900">Additional Information</h3>
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <pre className="text-sm text-gray-900 whitespace-pre-wrap font-mono">
+                      {(() => {
+                        try {
+                          // If it's a string, try to parse and reformat it
+                          if (typeof selectedProspect.extra === 'string') {
+                            const parsed = JSON.parse(selectedProspect.extra);
+                            return JSON.stringify(parsed, null, 2);
+                          }
+                          // If it's already an object, format it
+                          return JSON.stringify(selectedProspect.extra, null, 2);
+                        } catch (e) {
+                          // If parsing fails, return the original string as string
+                          return String(selectedProspect.extra);
+                        }
+                      })()}
+                    </pre>
+                  </div>
+                </div>
+              )}
+
             </div>
           )}
         </DialogContent>
       </Dialog>
     </PageLayout>
   );
-} 
+}

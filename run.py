@@ -31,13 +31,10 @@ def main():
     """Main entry point to start the server."""
     if DEBUG:
         logger.info(f"Starting Flask development server on http://{HOST}:{PORT}")
-        # Use Flask's built-in server for debugging, as Waitress can sometimes
-        # interfere with debugging features like auto-reloading.
         app.run(host=HOST, port=PORT, debug=True)
     else:
-        logger.info(f"Starting Waitress server on http://{HOST}:{PORT}")
-        # Use Waitress for production
-        serve(app, host=HOST, port=PORT, threads=4) # Adjust threads as needed
+        logger.info(f"Starting production server on http://{HOST}:{PORT}")
+        serve(app, host=HOST, port=PORT)
 
 if __name__ == "__main__":
     main()

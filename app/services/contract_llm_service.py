@@ -28,6 +28,15 @@ class ContractLLMService:
     def __init__(self, model_name: str = 'qwen3:latest'):
         self.model_name = model_name
         self.batch_size = 50
+    
+    def _update_prospect_timestamp(self, prospect: Prospect):
+        """Update prospect's ollama_processed_at timestamp for polling detection"""
+        try:
+            prospect.ollama_processed_at = datetime.now(timezone.utc)
+            db.session.commit()
+        except Exception as e:
+            logger.error(f"Failed to update prospect timestamp: {e}")
+            db.session.rollback()
         
     def parse_existing_naics(self, naics_str: Optional[str]) -> Dict[str, Optional[str]]:
         """Parse existing NAICS codes from source data formats"""
@@ -326,7 +335,7 @@ class ContractLLMService:
             return error_result
     
     def _process_enhancement_batch(self, prospects: List[Prospect], enhancement_name: str, 
-                                 processor_func, commit_batch_size: int = 100) -> int:
+                                 processor_func, commit_batch_size: int = 100, emit_updates: bool = True) -> int:
         """
         Template method for processing enhancement batches.
         processor_func should take a prospect and return True if processed successfully.
@@ -342,12 +351,22 @@ class ContractLLMService:
                 try:
                     if processor_func(prospect):
                         processed_count += 1
+                        
+                        # Commit immediately for real-time updates if enabled
+                        if emit_updates:
+                            try:
+                                db.session.commit()
+                                logger.debug(f"Committed {enhancement_name} for prospect {prospect.id}")
+                            except Exception as e:
+                                logger.error(f"Error committing individual update: {e}")
+                                db.session.rollback()
+                                continue
                 except Exception as e:
                     logger.error(f"Error processing prospect {prospect.id}: {e}")
                     continue
             
-            # Commit batch
-            if processed_count > 0 and processed_count % commit_batch_size == 0:
+            # Batch commit for non-real-time updates
+            if not emit_updates and processed_count > 0 and processed_count % commit_batch_size == 0:
                 try:
                     db.session.commit()
                     logger.info(f"Committed {processed_count} {enhancement_name} enhancements")
@@ -396,6 +415,10 @@ class ContractLLMService:
                     prospect.estimated_value_single = Decimal(str(parsed_value['single']))
                     prospect.ollama_processed_at = datetime.now(timezone.utc)
                     prospect.ollama_model_version = self.model_name
+                    
+                    # Update timestamp for polling detection
+                    self._update_prospect_timestamp(prospect)
+                    
                     return True
             
             return False
@@ -441,6 +464,10 @@ class ContractLLMService:
                     prospect.primary_contact_name = extracted_contact['name']
                     prospect.ollama_processed_at = datetime.now(timezone.utc)
                     prospect.ollama_model_version = self.model_name
+                    
+                    # Update timestamp for polling detection
+                    self._update_prospect_timestamp(prospect)
+                    
                     return True
             
             return False
@@ -491,6 +518,9 @@ class ContractLLMService:
                 
                 prospects_with_extra_naics += 1
                 logger.info(f"Found NAICS {extra_naics['code']} in extra field for prospect {prospect.id[:8]}...")
+                
+                # Update timestamp for polling detection
+                self._update_prospect_timestamp(prospect)
             else:
                 # No NAICS in extra field, will need LLM classification
                 prospects_after_extra_check.append(prospect)
@@ -546,6 +576,9 @@ class ContractLLMService:
                     'model_used': self.model_name,
                     'classified_at': datetime.now(timezone.utc).isoformat()
                 }
+                
+                # Update timestamp for polling detection
+                self._update_prospect_timestamp(prospect)
                 
                 return True
             
