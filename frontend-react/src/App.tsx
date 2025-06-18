@@ -7,7 +7,7 @@ import { AuthGuard } from './components/AuthGuard';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ProspectEnhancementProvider } from './contexts/ProspectEnhancementContext';
 import { TimezoneProvider } from './contexts/TimezoneContext';
-import { useAuth } from './hooks/api/useAuth';
+import { useAuth } from './components/AuthProvider';
 import styles from './App.module.css';
 
 // Lazy load pages
