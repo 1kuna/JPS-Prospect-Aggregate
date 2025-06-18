@@ -20,6 +20,8 @@ export interface User {
   first_name: string;
   created_at: string;
   last_login_at: string | null;
+  timezone?: string; // User's preferred timezone (e.g., 'America/New_York')
+  locale?: string;   // User's preferred locale (e.g., 'en-US')
 }
 
 export interface AuthStatus {

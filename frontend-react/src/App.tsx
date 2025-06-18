@@ -6,6 +6,8 @@ import { AuthProvider } from './components/AuthProvider';
 import { AuthGuard } from './components/AuthGuard';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ProspectEnhancementProvider } from './contexts/ProspectEnhancementContext';
+import { TimezoneProvider } from './contexts/TimezoneContext';
+import { useAuth } from './hooks/api/useAuth';
 import styles from './App.module.css';
 
 // Lazy load pages
@@ -21,6 +23,35 @@ const PageSkeleton = () => <div className={styles.pageSkeleton}>Loading page...<
 // Create a client
 const queryClient = new QueryClient();
 
+// Wrapper component to pass user data to TimezoneProvider
+function AppWithProviders() {
+  const { user } = useAuth();
+  
+  return (
+    <TimezoneProvider user={user}>
+      <ProspectEnhancementProvider>
+        <Router>
+          <AuthGuard>
+            <div className={styles.appContainer}>
+              <Navigation />
+              <Suspense fallback={<PageSkeleton />}>
+                <Routes>
+                  <Route path="/" element={<Dashboard />} />
+                  <Route path="/prospects" element={<Prospects />} />
+                  <Route path="/data-sources" element={<DataSources />} />
+                  <Route path="/database" element={<DirectDatabaseAccess />} />
+                  <Route path="/advanced" element={<Advanced />} />
+                  <Route path="*" element={<div>Page Not Found</div>} />
+                </Routes>
+              </Suspense>
+            </div>
+          </AuthGuard>
+        </Router>
+      </ProspectEnhancementProvider>
+    </TimezoneProvider>
+  );
+}
+
 function App() {
   console.log('App component loaded!');
   // Effect to toggle .dark class on <html> based on OS/browser preference
@@ -33,25 +64,7 @@ function App() {
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
-          <ProspectEnhancementProvider>
-            <Router>
-              <AuthGuard>
-                <div className={styles.appContainer}>
-                  <Navigation />
-                  <Suspense fallback={<PageSkeleton />}>
-                    <Routes>
-                      <Route path="/" element={<Dashboard />} />
-                      <Route path="/prospects" element={<Prospects />} />
-                      <Route path="/data-sources" element={<DataSources />} />
-                      <Route path="/database" element={<DirectDatabaseAccess />} />
-                      <Route path="/advanced" element={<Advanced />} />
-                      <Route path="*" element={<div>Page Not Found</div>} />
-                    </Routes>
-                  </Suspense>
-                </div>
-              </AuthGuard>
-            </Router>
-          </ProspectEnhancementProvider>
+          <AppWithProviders />
         </AuthProvider>
       </QueryClientProvider>
     </ErrorBoundary>

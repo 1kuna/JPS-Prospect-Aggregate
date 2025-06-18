@@ -23,6 +23,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useProspectEnhancement } from '@/contexts/ProspectEnhancementContext';
+import { useTimezoneDate } from '@/hooks/useTimezoneDate';
 import { ReloadIcon } from '@radix-ui/react-icons';
 import { Switch } from '@/components/ui/switch';
 
@@ -146,6 +147,9 @@ export default function Dashboard() {
 
   // Enhancement hook
   const { addToQueue, getProspectStatus } = useProspectEnhancement();
+  
+  // Timezone hook for date formatting
+  const { formatAIEnhanced, formatUserDate } = useTimezoneDate();
 
   // const { data: countData, isLoading: isLoadingCount } = useQuery({
   //   queryKey: ['prospectCount'],
@@ -842,7 +846,7 @@ export default function Dashboard() {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center text-sm text-blue-800">
                       <div className="w-2 h-2 bg-blue-500 rounded-full mr-2"></div>
-                      AI Enhanced on {new Date(selectedProspect.ollama_processed_at).toLocaleDateString()}
+                      {formatAIEnhanced(selectedProspect.ollama_processed_at)}
                     </div>
                     <Button
                       onClick={() => {
@@ -1044,7 +1048,7 @@ export default function Dashboard() {
                     <span className="font-medium text-gray-700">Release Date:</span>
                     <p className="mt-1 text-gray-900">
                       {selectedProspect.release_date 
-                        ? new Date(selectedProspect.release_date).toLocaleDateString()
+                        ? formatUserDate(selectedProspect.release_date, 'date')
                         : 'N/A'}
                     </p>
                   </div>
@@ -1052,7 +1056,7 @@ export default function Dashboard() {
                     <span className="font-medium text-gray-700">Award Date:</span>
                     <p className="mt-1 text-gray-900">
                       {selectedProspect.award_date 
-                        ? new Date(selectedProspect.award_date).toLocaleDateString()
+                        ? formatUserDate(selectedProspect.award_date, 'date')
                         : 'N/A'}
                     </p>
                   </div>
@@ -1129,7 +1133,7 @@ export default function Dashboard() {
                     <span className="font-medium text-gray-700">Loaded At:</span>
                     <p className="mt-1 text-gray-900">
                       {selectedProspect.loaded_at 
-                        ? new Date(selectedProspect.loaded_at).toLocaleString()
+                        ? formatUserDate(selectedProspect.loaded_at, 'datetime-with-tz')
                         : 'N/A'}
                     </p>
                   </div>
@@ -1142,7 +1146,7 @@ export default function Dashboard() {
                       <div>
                         <span className="font-medium text-gray-700">LLM Processed:</span>
                         <p className="mt-1 text-gray-900">
-                          {new Date(selectedProspect.ollama_processed_at).toLocaleString()}
+                          {formatUserDate(selectedProspect.ollama_processed_at, 'datetime-with-tz')}
                         </p>
                       </div>
                       <div>
