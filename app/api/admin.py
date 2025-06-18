@@ -6,6 +6,11 @@ from flask import Blueprint, request, jsonify
 from app.database import db
 from app.database.models import Settings
 from app.utils.logger import logger
+from app.utils.enhancement_cleanup import (
+    cleanup_stuck_enhancements, 
+    cleanup_all_in_progress_enhancements,
+    get_enhancement_statistics
+)
 
 admin_bp = Blueprint('admin', __name__, url_prefix='/api/admin')
 
@@ -111,3 +116,57 @@ def admin_health():
             "status": "unhealthy",
             "error": str(e)
         }), 500
+
+
+@admin_bp.route('/enhancement-cleanup', methods=['POST'])
+def cleanup_enhancements():
+    """
+    Clean up stuck enhancement requests.
+    
+    POST Body (optional):
+    {
+        "type": "stuck" | "all",  // Default: "stuck"
+        "max_age_hours": 1        // Only for "stuck" type, default: 1
+    }
+    """
+    try:
+        data = request.get_json() or {}
+        cleanup_type = data.get('type', 'stuck')
+        max_age_hours = data.get('max_age_hours', 1)
+        
+        if cleanup_type not in ['stuck', 'all']:
+            return jsonify({"error": "cleanup type must be 'stuck' or 'all'"}), 400
+            
+        if cleanup_type == 'all':
+            count = cleanup_all_in_progress_enhancements()
+            message = f"Reset {count} in-progress enhancement requests to idle"
+        else:
+            count = cleanup_stuck_enhancements(max_age_hours=max_age_hours)
+            message = f"Cleaned up {count} stuck enhancement requests (older than {max_age_hours} hours)"
+            
+        logger.info(f"Enhancement cleanup completed: {message}")
+        
+        return jsonify({
+            "success": True,
+            "count": count,
+            "message": message,
+            "type": cleanup_type
+        })
+        
+    except Exception as e:
+        logger.error(f"Error during enhancement cleanup: {str(e)}")
+        return jsonify({"error": f"Cleanup failed: {str(e)}"}), 500
+
+
+@admin_bp.route('/enhancement-stats', methods=['GET'])
+def enhancement_statistics():
+    """Get statistics about current enhancement statuses."""
+    try:
+        stats = get_enhancement_statistics()
+        return jsonify({
+            "success": True,
+            "statistics": stats
+        })
+    except Exception as e:
+        logger.error(f"Error getting enhancement statistics: {str(e)}")
+        return jsonify({"error": f"Failed to get statistics: {str(e)}"}), 500

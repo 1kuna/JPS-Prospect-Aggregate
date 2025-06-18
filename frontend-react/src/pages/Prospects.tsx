@@ -25,9 +25,6 @@ export default function Prospects() {
     error
   } = useInfiniteProspects(filters);
 
-  // Log prospects data in Prospects.tsx
-  console.log('[Prospects.tsx] prospects data from useInfiniteProspects:', prospects);
-  console.log('[Prospects.tsx] isLoading:', isLoading, 'isError:', isError, 'error:', error);
 
   const { data: statisticsData, isLoading: isLoadingStats } = useProspectStatistics();
 
