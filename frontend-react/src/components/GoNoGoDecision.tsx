@@ -1,10 +1,9 @@
-// Temporarily commented out for debugging
-// import { useState } from 'react';
-// import { useCreateDecision, useProspectDecisions, useDeleteDecision } from '../hooks/api';
-// import { Button } from './ui/button';
-// import { Input } from './ui/input';
-// import { Label } from './ui/label';
-// import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
+import { useState } from 'react';
+import { useCreateDecision, useProspectDecisions, useDeleteDecision } from '../hooks/api';
+import { Button } from './ui/button';
+import { Input } from './ui/input';
+import { Label } from './ui/label';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 
 interface GoNoGoDecisionProps {
   prospectId: string | number;
@@ -12,22 +11,10 @@ interface GoNoGoDecisionProps {
   compact?: boolean;
 }
 
-export const GoNoGoDecision = ({ prospectId }: GoNoGoDecisionProps) => {
-  // Temporarily return a simple placeholder to isolate the crash
-  return (
-    <div className="p-4 bg-gray-100 rounded">
-      <h3 className="font-semibold">Go/No-Go Decision</h3>
-      <p className="text-sm text-gray-600">Component temporarily simplified for debugging</p>
-      <p className="text-xs text-gray-500">Prospect ID: {prospectId}</p>
-    </div>
-  );
-
-  // Original code below (commented out for debugging)
-  /*
+export const GoNoGoDecision = ({ prospectId, prospectTitle, compact }: GoNoGoDecisionProps) => {
   const [showReasonDialog, setShowReasonDialog] = useState(false);
   const [pendingDecision, setPendingDecision] = useState<'go' | 'no-go' | null>(null);
   const [reason, setReason] = useState('');
-
 
   const createDecisionMutation = useCreateDecision();
   const deleteDecisionMutation = useDeleteDecision();
@@ -320,5 +307,4 @@ export const GoNoGoDecision = ({ prospectId }: GoNoGoDecisionProps) => {
       </Dialog>
     </div>
   );
-  */
 };

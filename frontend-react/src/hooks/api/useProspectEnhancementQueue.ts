@@ -118,7 +118,8 @@ export function useProspectEnhancementQueue() {
       const newQueue = { ...prev };
 
       // First, sync any backend queue items that aren't in local state yet
-      queueStatus.pending_items.forEach(backendItem => {
+      const pendingItems = Array.isArray(queueStatus?.pending_items) ? queueStatus.pending_items : [];
+      pendingItems.forEach(backendItem => {
         if (backendItem.type === 'individual' && backendItem.prospect_id) {
           const prospectId = backendItem.prospect_id.toString();
           const existingLocal = newQueue[prospectId];
@@ -134,7 +135,7 @@ export function useProspectEnhancementQueue() {
               prospect_id: prospectId,
               status: mappedStatus,
               queue_item_id: backendItem.id,
-              position: queueStatus.pending_items.indexOf(backendItem) + 1
+              position: pendingItems.indexOf(backendItem) + 1
             };
           }
         }
@@ -145,7 +146,7 @@ export function useProspectEnhancementQueue() {
         if (!localItem.queue_item_id) return;
 
         // Check if this item is currently being processed
-        if (queueStatus.current_item === localItem.queue_item_id) {
+        if (queueStatus?.current_item === localItem.queue_item_id) {
           newQueue[prospectId] = {
             ...localItem,
             status: 'processing',
@@ -155,7 +156,7 @@ export function useProspectEnhancementQueue() {
         }
 
         // Find corresponding backend item in pending items
-        const backendItem = queueStatus.pending_items.find(item => 
+        const backendItem = pendingItems.find(item => 
           item.id === localItem.queue_item_id
         );
 
@@ -169,11 +170,12 @@ export function useProspectEnhancementQueue() {
           newQueue[prospectId] = {
             ...localItem,
             status: mappedStatus,
-            position: queueStatus.pending_items.indexOf(backendItem) + 1
+            position: pendingItems.indexOf(backendItem) + 1
           };
         } else {
           // Check if completed
-          const completedItem = queueStatus.recent_completed.find(item => 
+          const recentCompleted = Array.isArray(queueStatus?.recent_completed) ? queueStatus.recent_completed : [];
+          const completedItem = recentCompleted.find(item => 
             item.id === localItem.queue_item_id
           );
 
@@ -243,7 +245,7 @@ export function useProspectEnhancementQueue() {
     });
 
     // Update processing status
-    setIsProcessing(queueStatus.current_item !== null);
+    setIsProcessing(queueStatus?.current_item !== null);
   }, [queueStatus, queryClient]);
 
   const getProspectStatus = useCallback((prospect_id: string) => {

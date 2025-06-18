@@ -1,5 +1,5 @@
 import { PageLayout } from '@/components/layout';
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { createColumnHelper, flexRender, getCoreRowModel, useReactTable } from '@tanstack/react-table';
 import { useState, useCallback, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -155,14 +155,9 @@ export default function Dashboard() {
     queryKey: ['prospects', currentPage, itemsPerPage, filters],
     queryFn: () => fetchProspects(currentPage, itemsPerPage, filters),
     placeholderData: keepPreviousData,
-    refetchInterval: (query) => {
-      // Only refetch if there are prospects being enhanced
-      const hasInProgress = query.state.data?.data?.some((prospect: Prospect) => prospect.enhancement_status === 'in_progress');
-      return hasInProgress ? 3000 : 30000; // 3s if enhancing, 30s otherwise
-    },
-    refetchOnWindowFocus: false, // Prevent refetch when window gains focus
-    staleTime: 2000, // Consider data fresh for 2 seconds to reduce flicker
-    refetchIntervalInBackground: false, // Don't refetch when tab is not active
+    staleTime: 5000, // Data stays fresh for 5 seconds
+    refetchInterval: 30000, // Default refetch every 30 seconds
+    refetchOnWindowFocus: false, // Don't refetch when tab gains focus
   });
   
 
@@ -304,21 +299,13 @@ export default function Dashboard() {
     }),
   ], [showAIEnhanced]);
 
-  // Stable memoized table data - simple but effective
-  const tableData = useMemo(() => {
-    return prospectsData?.data || [];
-  }, [prospectsData?.data]);
-  
-  // Memoize table instance to prevent recreation on every render
-  const table = useMemo(() => useReactTable({
-    data: tableData,
+  const table = useReactTable({
+    data: prospectsData?.data || [],
     columns,
     getCoreRowModel: getCoreRowModel(),
     manualPagination: true,
     rowCount: prospectsData?.total || 0,
-    // Add stable key to prevent unnecessary re-renders
-    getRowId: (row) => row.id,
-  }), [tableData, columns, prospectsData?.total]);
+  });
 
   const totalPages = prospectsData?.totalPages || 0;
 
@@ -672,14 +659,14 @@ export default function Dashboard() {
               </div>
             </CardHeader>
             <CardContent className="pt-6 px-6 pb-6 relative">
-              {(isLoadingProspects || isFetchingProspects) && (!prospectsData?.data || prospectsData.data.length === 0) && (
+              {isLoadingProspects && (
                 <div className="flex flex-col items-center justify-center h-96 space-y-4">
                   <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-blue-600"></div>
                   <p className="text-lg font-semibold text-gray-700">Loading prospects...</p>
                   <p className="text-sm text-gray-600">Please wait while we fetch the data.</p>
                 </div>
               )}
-              {!(isLoadingProspects || isFetchingProspects) && (!prospectsData?.data || prospectsData.data.length === 0) && (
+              {!isLoadingProspects && (!prospectsData?.data || prospectsData.data.length === 0) && (
                   <div className="flex flex-col items-center justify-center h-96 text-center space-y-3">
                       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-20 h-20 text-gray-400">
                           <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 6.75h7.5M8.25 12h7.5m-7.5 5.25h7.5M3.75 6.75h.007v.008H3.75V6.75Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0ZM3.75 12h.007v.008H3.75V12Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm-.375 5.25h.007v.008H3.75v-.008Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" />
@@ -689,10 +676,10 @@ export default function Dashboard() {
                       <p className="text-gray-600 max-w-md">It looks like there are no prospects matching your current criteria. Try adjusting filters or adding new prospects.</p>
                   </div>
               )}
-              {prospectsData && prospectsData.data.length > 0 && (
+              {prospectsData && prospectsData.data && prospectsData.data.length > 0 && (
                 <>
                   {/* Combined overflow container, height increased by 1rem */}
-                  <div className="h-[464px] overflow-y-auto overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
+                  <div className={`h-[464px] overflow-y-auto overflow-x-auto rounded-lg border border-gray-200 shadow-sm transition-opacity duration-500 ease-in-out ${isFetchingProspects && !isLoadingProspects ? 'opacity-80' : 'opacity-100'}`}>
                     <Table className="min-w-full divide-y divide-gray-200 table-fixed">
                       {/* TableHeader with a softer, custom shadow */}
                       <TableHeader className="sticky top-0 z-10 bg-gray-50 shadow-[0_2px_8px_rgba(0,0,0,0.08)]">
@@ -752,9 +739,9 @@ export default function Dashboard() {
                 </>
               )}
                {isFetchingProspects && !isLoadingProspects && prospectsData && prospectsData.data.length > 0 && (
-                   <div className="absolute top-0 right-0 m-4 bg-white/90 backdrop-blur-sm rounded-full px-3 py-2 shadow-lg border flex items-center gap-2 z-10">
-                      <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-blue-500"></div>
-                      <p className="text-sm font-medium text-gray-600">Refreshing...</p>
+                   <div className="absolute top-2 right-2 bg-blue-50/90 backdrop-blur-sm rounded-full px-2 py-1 shadow-sm border border-blue-200 flex items-center gap-1.5 z-10">
+                      <div className="animate-spin rounded-full h-3 w-3 border-t-2 border-b-2 border-blue-500"></div>
+                      <p className="text-xs font-medium text-blue-700">Updating</p>
                   </div>
               )}
             </CardContent>
@@ -1095,12 +1082,25 @@ export default function Dashboard() {
               </div>
 
               {/* Extra Information */}
-              {selectedProspect.extra && Object.keys(selectedProspect.extra).length > 0 && (
+              {selectedProspect.extra && (
                 <div>
                   <h3 className="text-lg font-semibold mb-3 text-gray-900">Additional Information</h3>
                   <div className="bg-gray-50 p-4 rounded-lg">
                     <pre className="text-sm text-gray-900 whitespace-pre-wrap font-mono">
-                      {JSON.stringify(selectedProspect.extra, null, 2)}
+                      {(() => {
+                        try {
+                          // If it's a string, try to parse and reformat it
+                          if (typeof selectedProspect.extra === 'string') {
+                            const parsed = JSON.parse(selectedProspect.extra);
+                            return JSON.stringify(parsed, null, 2);
+                          }
+                          // If it's already an object, format it
+                          return JSON.stringify(selectedProspect.extra, null, 2);
+                        } catch (e) {
+                          // If parsing fails, return the original string as string
+                          return String(selectedProspect.extra);
+                        }
+                      })()}
                     </pre>
                   </div>
                 </div>
