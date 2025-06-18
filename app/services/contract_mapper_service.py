@@ -6,7 +6,7 @@ Handles mapping from various government contract sources to standardized schema
 import re
 import logging
 from typing import Dict, List, Optional, Any
-from datetime import datetime
+from datetime import datetime, timezone
 import hashlib
 import json
 
@@ -396,7 +396,7 @@ class ContractMapperService:
                     for key, value in record.items():
                         if hasattr(existing, key) and key != 'id':
                             setattr(existing, key, value)
-                    existing.loaded_at = datetime.utcnow()
+                    existing.loaded_at = datetime.now(timezone.utc)
                 else:
                     # Create new prospect
                     prospect = Prospect(**record)
