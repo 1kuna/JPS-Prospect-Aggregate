@@ -51,6 +51,96 @@ class ContractLLMService:
         
         return {'code': str(naics_str), 'description': None}
     
+    def extract_naics_from_extra_field(self, extra_data: Any) -> Dict[str, Optional[str]]:
+        """Extract NAICS information from the extra field JSON data"""
+        if not extra_data:
+            return {'code': None, 'description': None, 'found_in_extra': False}
+        
+        # Handle case where extra is stored as JSON string
+        if isinstance(extra_data, str):
+            try:
+                extra_data = json.loads(extra_data)
+            except (json.JSONDecodeError, TypeError):
+                return {'code': None, 'description': None, 'found_in_extra': False}
+        
+        if not isinstance(extra_data, dict):
+            return {'code': None, 'description': None, 'found_in_extra': False}
+        
+        code = None
+        description = None
+        
+        # 1. Acquisition Gateway pattern: "naics_code": "236220"
+        if 'naics_code' in extra_data and extra_data['naics_code']:
+            potential_code = str(extra_data['naics_code']).strip()
+            if re.match(r'^\d{6}$', potential_code):
+                code = potential_code
+                description = None  # Acquisition Gateway doesn't include description
+        
+        # 2. Health and Human Services pattern: "primary_naics": "334516 : Analytical Laboratory Instrument Manufacturing"
+        elif 'primary_naics' in extra_data and extra_data['primary_naics']:
+            primary_naics = str(extra_data['primary_naics']).strip()
+            if primary_naics.upper() != 'TBD':  # Skip "To Be Determined" entries
+                # Look for pattern "334516 : Description"
+                match = re.match(r'^(\d{6})\s*:\s*(.*)', primary_naics)
+                if match:
+                    code = match.group(1)
+                    description = match.group(2).strip()
+                # Look for just a 6-digit code without description
+                elif re.match(r'^\d{6}$', primary_naics):
+                    code = primary_naics
+                    description = None
+        
+        # 3. Fallback: Search for other common NAICS field names
+        if not code:
+            naics_keys = ['naics', 'industry_code', 'classification', 'sector', 'naics_primary']
+            for key in naics_keys:
+                if key in extra_data and extra_data[key]:
+                    potential_value = str(extra_data[key]).strip()
+                    
+                    # Skip TBD/placeholder values
+                    if potential_value.upper() in ['TBD', 'TO BE DETERMINED', 'N/A', 'NULL', '']:
+                        continue
+                        
+                    # Check for code : description pattern
+                    match = re.match(r'^(\d{6})\s*[:\|\-]\s*(.*)', potential_value)
+                    if match:
+                        code = match.group(1)
+                        description = match.group(2).strip()
+                        break
+                    
+                    # Check for just a 6-digit code
+                    elif re.match(r'^\d{6}$', potential_value):
+                        code = potential_value
+                        description = None
+                        break
+        
+        # 4. Last resort: Search all values for any 6-digit numbers that could be NAICS codes
+        if not code:
+            for key, value in extra_data.items():
+                if isinstance(value, (str, int)):
+                    value_str = str(value)
+                    # Look for 6-digit numbers
+                    matches = re.findall(r'\b(\d{6})\b', value_str)
+                    for potential_code in matches:
+                        # Basic validation - NAICS codes start with digits 1-9 (not 0)
+                        if potential_code[0] in '123456789':
+                            code = potential_code
+                            # Try to extract description from the same field
+                            desc_match = re.search(rf'{code}\s*[:\|\-]\s*([^,\n]+)', value_str)
+                            if desc_match:
+                                description = desc_match.group(1).strip()
+                            break
+                
+                if code:  # Break outer loop if found
+                    break
+        
+        found_in_extra = code is not None
+        return {
+            'code': code,
+            'description': description,
+            'found_in_extra': found_in_extra
+        }
+    
     def _log_llm_output(self, prospect_id: str, enhancement_type: str, prompt: str, 
                         response: str, parsed_result: Dict, success: bool, 
                         error_message: str = None, processing_time: float = None):
@@ -359,19 +449,74 @@ class ContractLLMService:
     
     def enhance_prospect_naics(self, prospects: List[Prospect], commit_batch_size: int = 100) -> int:
         """
-        Enhance prospects with NAICS classification (only for missing NAICS).
+        Enhance prospects with NAICS classification.
+        First checks extra field for existing NAICS data, then uses LLM if needed.
         Returns count of successfully processed prospects.
         """
-        # Filter prospects needing NAICS
-        prospects_needing_naics = [p for p in prospects if not p.naics]
-        prospects_with_naics = len(prospects) - len(prospects_needing_naics)
+        # First pass: Check extra field for existing NAICS data
+        prospects_with_extra_naics = 0
+        prospects_after_extra_check = []
         
-        logger.info(f"NAICS Status: {prospects_with_naics} prospects already have NAICS codes")
-        logger.info(f"Processing {len(prospects_needing_naics)} prospects that need NAICS classification...")
+        for prospect in prospects:
+            # Skip if already has NAICS in main field
+            if prospect.naics:
+                continue
+                
+            # Check extra field for NAICS information
+            extra_naics = self.extract_naics_from_extra_field(prospect.extra)
+            
+            if extra_naics['found_in_extra'] and extra_naics['code']:
+                # Found NAICS in extra field - populate main fields
+                prospect.naics = extra_naics['code']
+                prospect.naics_description = extra_naics['description']
+                prospect.naics_source = 'original'  # Mark as original since it was in source data
+                prospect.ollama_processed_at = datetime.now(timezone.utc)
+                prospect.ollama_model_version = self.model_name
+                
+                # Mark in extra field to prevent future AI enhancement
+                if not prospect.extra:
+                    prospect.extra = {}
+                elif isinstance(prospect.extra, str):
+                    try:
+                        prospect.extra = json.loads(prospect.extra)
+                    except (json.JSONDecodeError, TypeError):
+                        prospect.extra = {}
+                
+                prospect.extra['naics_extracted_from_extra'] = {
+                    'extracted_at': datetime.now(timezone.utc).isoformat(),
+                    'extracted_by': 'llm_service_extra_field_check',
+                    'original_code': extra_naics['code'],
+                    'original_description': extra_naics['description']
+                }
+                
+                prospects_with_extra_naics += 1
+                logger.info(f"Found NAICS {extra_naics['code']} in extra field for prospect {prospect.id[:8]}...")
+            else:
+                # No NAICS in extra field, will need LLM classification
+                prospects_after_extra_check.append(prospect)
         
-        if not prospects_needing_naics:
-            logger.info("All prospects already have NAICS codes - skipping LLM classification")
-            return 0
+        # Log results of extra field check
+        prospects_with_main_naics = len(prospects) - len(prospects_after_extra_check) - prospects_with_extra_naics
+        logger.info(f"NAICS Status after extra field check:")
+        logger.info(f"  Already have NAICS in main field: {prospects_with_main_naics}")
+        logger.info(f"  Found NAICS in extra field: {prospects_with_extra_naics}")
+        logger.info(f"  Still need LLM classification: {len(prospects_after_extra_check)}")
+        
+        # Commit the extra field extractions first
+        if prospects_with_extra_naics > 0:
+            try:
+                db.session.commit()
+                logger.info(f"Successfully extracted {prospects_with_extra_naics} NAICS codes from extra fields")
+            except Exception as e:
+                logger.error(f"Failed to commit extra field NAICS extractions: {e}")
+                db.session.rollback()
+        
+        # Second pass: LLM classification for remaining prospects
+        if not prospects_after_extra_check:
+            logger.info("All prospects now have NAICS codes - skipping LLM classification")
+            return prospects_with_extra_naics
+        
+        logger.info(f"Starting LLM classification for {len(prospects_after_extra_check)} prospects...")
         
         def process_naics_enhancement(prospect: Prospect) -> bool:
             if not prospect.title or not prospect.description:
@@ -406,7 +551,12 @@ class ContractLLMService:
             
             return False
         
-        return self._process_enhancement_batch(prospects_needing_naics, "NAICS classification", process_naics_enhancement, commit_batch_size)
+        llm_enhanced = self._process_enhancement_batch(prospects_after_extra_check, "NAICS classification", process_naics_enhancement, commit_batch_size)
+        
+        total_enhanced = prospects_with_extra_naics + llm_enhanced
+        logger.info(f"Total NAICS enhancement complete: {prospects_with_extra_naics} from extra field + {llm_enhanced} from LLM = {total_enhanced}")
+        
+        return total_enhanced
     
     def enhance_all_prospects(self, limit: Optional[int] = None) -> Dict[str, int]:
         """

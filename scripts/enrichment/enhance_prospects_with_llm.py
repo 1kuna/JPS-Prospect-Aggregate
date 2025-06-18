@@ -64,6 +64,19 @@ def get_enhancement_stats() -> dict:
         ).count()
     }
     
+    # Additional stats for NAICS extracted from extra field
+    from sqlalchemy import text
+    try:
+        # Count prospects that have NAICS extracted from extra field marker
+        # Use SQLite-compatible JSON queries
+        extra_naics_extracted = db.session.execute(
+            text("SELECT COUNT(*) FROM prospects WHERE extra IS NOT NULL AND json_extract(extra, '$.naics_extracted_from_extra') IS NOT NULL")
+        ).scalar()
+        stats['naics_extracted_from_extra'] = extra_naics_extracted
+    except Exception as e:
+        logger.warning(f"Could not get extra field NAICS stats: {e}")
+        stats['naics_extracted_from_extra'] = 0
+    
     stats['needs_processing'] = stats['total_prospects'] - stats['already_processed']
     
     return stats
@@ -174,6 +187,7 @@ def main():
             logger.info(f"  Already processed: {stats['already_processed']:,}")
             logger.info(f"  Needs processing: {stats['needs_processing']:,}")
             logger.info(f"  Missing NAICS: {stats['missing_naics']:,}")
+            logger.info(f"  NAICS extracted from extra field: {stats['naics_extracted_from_extra']:,}")
             logger.info(f"  Missing value parsing: {stats['missing_value_parsing']:,}")
             logger.info(f"  Missing contact extraction: {stats['missing_contact']:,}")
             return
