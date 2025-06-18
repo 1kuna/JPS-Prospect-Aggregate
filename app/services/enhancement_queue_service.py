@@ -108,12 +108,29 @@ class EnhancementQueueService:
         
     def add_individual_enhancement(
         self, 
-        prospect_id: int, 
+        prospect_id, 
         enhancement_type: EnhancementType = "all", 
         user_id: Optional[int] = None,
         force_redo: bool = False
     ) -> str:
         """Add an individual prospect enhancement to the queue"""
+        
+        logger.info(f"ADD_INDIVIDUAL_ENHANCEMENT called for prospect {prospect_id}")
+        
+        with self._lock:
+            # Check if this prospect is already being processed or queued
+            logger.info(f"DEDUP_CHECK: Checking for existing queue items for prospect {prospect_id}")
+            queue_items_count = len(self._queue_items)
+            logger.info(f"DEDUP_CHECK: Total queue items in memory: {queue_items_count}")
+            
+            for item in self._queue_items.values():
+                logger.info(f"DEDUP_CHECK: item {item.id}: prospect={item.prospect_id}, type={item.type.value}, status={item.status.value}")
+                if (str(item.prospect_id) == str(prospect_id) and 
+                    item.type == QueueItemType.INDIVIDUAL and
+                    item.status in [QueueItemStatus.PENDING, QueueItemStatus.PROCESSING]):
+                    logger.info(f"DEDUP_FOUND: Prospect {prospect_id} already in queue with ID {item.id}, status {item.status.value}")
+                    return item.id
+            logger.info(f"DEDUP_CHECK: No existing queue item found for prospect {prospect_id} - creating new one")
         
         # Generate unique item ID
         item_id = f"individual_{prospect_id}_{int(time.time() * 1000)}"
