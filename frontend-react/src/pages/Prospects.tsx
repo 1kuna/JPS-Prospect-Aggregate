@@ -49,13 +49,13 @@ export default function Prospects() {
     if (!lastItem) return;
     
     if (
-      lastItem.index >= prospects.length - 1 - 5 && // Load when 5 items from the end
+      prospects && lastItem.index >= prospects.length - 1 - 5 && // Load when 5 items from the end
       hasNextPage &&
       !isFetchingNextPage
     ) {
       fetchNextPage();
     }
-  }, [hasNextPage, fetchNextPage, isFetchingNextPage, virtualizer.getVirtualItems(), prospects.length]);
+  }, [hasNextPage, fetchNextPage, isFetchingNextPage, virtualizer.getVirtualItems(), prospects?.length]);
 
 
   const pageError = isError ? (error as Error) : null;

@@ -310,11 +310,11 @@ export function AIEnrichment() {
                   )}
 
                   {/* Errors */}
-                  {progress.errors.length > 0 && (
+                  {progress?.errors && progress.errors.length > 0 && (
                     <div className="bg-red-50 border border-red-200 p-3 rounded-lg">
                       <div className="text-sm text-red-800">
                         <span className="font-medium">Errors encountered: </span>
-                        {progress.errors.length} prospect(s) failed
+                        {progress?.errors?.length || 0} prospect(s) failed
                       </div>
                     </div>
                   )}
