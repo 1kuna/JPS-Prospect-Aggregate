@@ -11,7 +11,7 @@ prospects_bp = Blueprint('prospects_api', __name__, url_prefix='/api/prospects')
 @prospects_bp.route('', methods=['GET'])
 @prospects_bp.route('/', methods=['GET'])
 def get_prospects_route():
-    logger.info("Received request for /api/prospects/")
+    # Only log errors and warnings, not successful requests to reduce noise
     try:
         page = request.args.get('page', 1, type=int)
         limit = request.args.get('limit', 10, type=int)
@@ -30,7 +30,9 @@ def get_prospects_route():
         agency_filter = request.args.get('agency', '', type=str)
         ai_enrichment_filter = request.args.get('ai_enrichment', 'all', type=str)
         
-        logger.debug(f"Requesting prospects with page={page}, limit={limit}, sort_by={sort_by}, sort_order={sort_order}, search='{search_term}', naics='{naics_filter}', keywords='{keywords_filter}', agency='{agency_filter}', ai_enrichment='{ai_enrichment_filter}'")
+        # Debug logging only when filters are applied to avoid noise
+        if search_term or naics_filter or keywords_filter or agency_filter or ai_enrichment_filter != 'all':
+            logger.debug(f"Requesting prospects with filters: search='{search_term}', naics='{naics_filter}', keywords='{keywords_filter}', agency='{agency_filter}', ai_enrichment='{ai_enrichment_filter}'")
         
         # Construct the base query
         base_query = Prospect.query
@@ -101,7 +103,7 @@ def get_prospects_route():
             }
         }
         
-        logger.info(f"Successfully retrieved {len(prospect_items_dict)} prospects for page {page}, limit {limit}.")
+        # Success - no logging needed for normal operations
         return jsonify(response_data), 200
 
     except ValidationError as ve:
@@ -116,7 +118,7 @@ def get_prospects_route():
 
 @prospects_bp.route('/<string:prospect_id>', methods=['GET'])
 def get_prospect_by_id_route(prospect_id: str):
-    logger.info(f"Received request for /api/prospects/{prospect_id}")
+    # Only log errors and warnings for individual prospect requests
     try:
         # session = db.session # Not strictly necessary if using .get() on the Model itself with Flask-SQLAlchemy
         prospect = Prospect.query.get(prospect_id) # Use .get() for primary key lookup

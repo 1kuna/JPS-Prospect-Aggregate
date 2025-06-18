@@ -450,6 +450,14 @@ class IterativeLLMServiceV2:
                 if not prospect.estimated_value_text:
                     prospect.estimated_value_text = value_to_parse
                 self._update_prospect_timestamps(prospect)
+                
+                # Emit real-time update
+                self.llm_service._emit_field_update(prospect.id, 'values', {
+                    'estimated_value_min': float(prospect.estimated_value_min) if prospect.estimated_value_min else None,
+                    'estimated_value_max': float(prospect.estimated_value_max) if prospect.estimated_value_max else None,
+                    'estimated_value_single': float(prospect.estimated_value_single) if prospect.estimated_value_single else None
+                })
+                
                 return True
         
         return False
@@ -488,6 +496,13 @@ class IterativeLLMServiceV2:
                     prospect.primary_contact_email = extracted_contact['email']
                     prospect.primary_contact_name = extracted_contact['name']
                     self._update_prospect_timestamps(prospect)
+                    
+                    # Emit real-time update
+                    self.llm_service._emit_field_update(prospect.id, 'contacts', {
+                        'primary_contact_email': prospect.primary_contact_email,
+                        'primary_contact_name': prospect.primary_contact_name
+                    })
+                    
                     return True
         
         return False
@@ -518,6 +533,14 @@ class IterativeLLMServiceV2:
                 }
                 
                 logger.info(f"Found NAICS {extra_naics['code']} in extra field for prospect {prospect.id[:8]}...")
+                
+                # Emit real-time update
+                self.llm_service._emit_field_update(prospect.id, 'naics', {
+                    'naics': prospect.naics,
+                    'naics_description': prospect.naics_description,
+                    'naics_source': prospect.naics_source
+                })
+                
                 return True
             
             # No NAICS in extra field, proceed with LLM classification
@@ -536,6 +559,14 @@ class IterativeLLMServiceV2:
                     'model_used': self.llm_service.model_name,
                     'classified_at': datetime.now(timezone.utc).isoformat()
                 }
+                
+                # Emit real-time update
+                self.llm_service._emit_field_update(prospect.id, 'naics', {
+                    'naics': prospect.naics,
+                    'naics_description': prospect.naics_description,
+                    'naics_source': prospect.naics_source
+                })
+                
                 return True
         
         return False
@@ -567,6 +598,12 @@ class IterativeLLMServiceV2:
                     'model_used': self.llm_service.model_name,
                     'enhanced_at': datetime.now(timezone.utc).isoformat()
                 }
+                
+                # Emit real-time update
+                self.llm_service._emit_field_update(prospect.id, 'titles', {
+                    'ai_enhanced_title': prospect.ai_enhanced_title
+                })
+                
                 return True
         
         return False
