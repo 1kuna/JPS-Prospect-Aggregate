@@ -7,7 +7,7 @@ import json
 import re
 import logging
 from typing import Dict, List, Optional, Any
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 
 from app.utils.llm_utils import call_ollama
@@ -304,7 +304,7 @@ class ContractLLMService:
                     prospect.estimated_value_min = Decimal(str(parsed_value['min'])) if parsed_value['min'] else None
                     prospect.estimated_value_max = Decimal(str(parsed_value['max'])) if parsed_value['max'] else None
                     prospect.estimated_value_single = Decimal(str(parsed_value['single']))
-                    prospect.ollama_processed_at = datetime.utcnow()
+                    prospect.ollama_processed_at = datetime.now(timezone.utc)
                     prospect.ollama_model_version = self.model_name
                     return True
             
@@ -349,7 +349,7 @@ class ContractLLMService:
                 if extracted_contact['email'] or extracted_contact['name']:
                     prospect.primary_contact_email = extracted_contact['email']
                     prospect.primary_contact_name = extracted_contact['name']
-                    prospect.ollama_processed_at = datetime.utcnow()
+                    prospect.ollama_processed_at = datetime.now(timezone.utc)
                     prospect.ollama_model_version = self.model_name
                     return True
             
@@ -383,7 +383,7 @@ class ContractLLMService:
                 prospect.naics = classification['code']
                 prospect.naics_description = classification['description']
                 prospect.naics_source = 'llm_inferred'
-                prospect.ollama_processed_at = datetime.utcnow()
+                prospect.ollama_processed_at = datetime.now(timezone.utc)
                 prospect.ollama_model_version = self.model_name
                 
                 # Add confidence to extras
@@ -399,7 +399,7 @@ class ContractLLMService:
                 prospect.extra['llm_classification'] = {
                     'naics_confidence': classification['confidence'],
                     'model_used': self.model_name,
-                    'classified_at': datetime.utcnow().isoformat()
+                    'classified_at': datetime.now(timezone.utc).isoformat()
                 }
                 
                 return True

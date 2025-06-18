@@ -5,7 +5,7 @@ from app.services.contract_llm_service import ContractLLMService
 from app.services.iterative_llm_service_v2 import iterative_service_v2 as iterative_service
 from app.services.enhancement_queue_service import enhancement_queue_service
 from sqlalchemy import func
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import time
 import asyncio
 import json
@@ -462,7 +462,7 @@ def _process_naics_enhancement(prospect, llm_service, force_redo):
                 'naics_confidence': classification['confidence'],
                 'all_naics_codes': classification.get('all_codes', []),
                 'model_used': llm_service.model_name,
-                'classified_at': datetime.now().isoformat()
+                'classified_at': datetime.now(timezone.utc).isoformat()
             }
             return True
     
@@ -489,7 +489,7 @@ def _process_title_enhancement(prospect, llm_service, force_redo):
                 'reasoning': enhanced_title.get('reasoning', ''),
                 'original_title': prospect.title,
                 'model_used': llm_service.model_name,
-                'enhanced_at': datetime.now().isoformat()
+                'enhanced_at': datetime.now(timezone.utc).isoformat()
             }
             return True
     
@@ -499,7 +499,7 @@ def _finalize_enhancement(prospect, llm_service, processed, enhancements, force_
     """Finalize the enhancement process and return appropriate response."""
     # Always update timestamp for force_redo, even if no new enhancements
     if processed or force_redo:
-        prospect.ollama_processed_at = datetime.now()
+        prospect.ollama_processed_at = datetime.now(timezone.utc)
         prospect.ollama_model_version = llm_service.model_name
         db.session.commit()
         
@@ -641,7 +641,7 @@ def enhance_single_prospect_direct():
                 
         # Set prospect as being enhanced
         prospect.enhancement_status = 'in_progress'
-        prospect.enhancement_started_at = datetime.now()
+        prospect.enhancement_started_at = datetime.now(timezone.utc)
         prospect.enhancement_user_id = user_id
         db.session.commit()
             
@@ -697,7 +697,7 @@ def cleanup_stale_enhancement_locks():
     """Clean up enhancement locks that are older than 10 minutes"""
     try:
         # Calculate cutoff time (10 minutes ago)
-        cutoff_time = datetime.now() - timedelta(minutes=10)
+        cutoff_time = datetime.now(timezone.utc) - timedelta(minutes=10)
         
         # Find prospects with stale locks
         stale_prospects = db.session.query(Prospect).filter(

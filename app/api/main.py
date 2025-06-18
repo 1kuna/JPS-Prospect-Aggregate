@@ -3,7 +3,7 @@ from sqlalchemy import func, desc
 from sqlalchemy.orm import joinedload, selectinload
 from app.models import db, Prospect, DataSource, ScraperStatus # Added ScraperStatus
 from app.utils.logger import logger
-import datetime
+from datetime import datetime, timezone
 from functools import lru_cache
 
 main_bp = Blueprint('main', __name__)
@@ -266,7 +266,7 @@ def database_status():
                 'data_source_count': data_source_count,
                 'status_record_count': status_count,
                 'database_size_bytes': db_size,
-                'timestamp': datetime.datetime.now().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }
         })
         
