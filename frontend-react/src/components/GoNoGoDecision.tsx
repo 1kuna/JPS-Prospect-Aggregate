@@ -1,10 +1,9 @@
 import { useState } from 'react';
-import { useCreateDecision, useProspectDecisions } from '../hooks/api';
+import { useCreateDecision, useProspectDecisions, useDeleteDecision } from '../hooks/api';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
-import { Card } from './ui/card';
-import { Dialog } from './ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 
 interface GoNoGoDecisionProps {
   prospectId: string | number;
@@ -17,11 +16,14 @@ export const GoNoGoDecision = ({ prospectId, prospectTitle, compact = false }: G
   const [pendingDecision, setPendingDecision] = useState<'go' | 'no-go' | null>(null);
   const [reason, setReason] = useState('');
 
-  const createDecisionMutation = useCreateDecision();
-  const { data: decisionsData } = useProspectDecisions(prospectId ? String(prospectId) : null);
 
+  const createDecisionMutation = useCreateDecision();
+  const deleteDecisionMutation = useDeleteDecision();
+  const { data: decisionsData } = useProspectDecisions(prospectId ? String(prospectId) : null);
+  
   // Check if current user has already made a decision
   const existingDecision = decisionsData?.data?.decisions?.[0]; // Most recent decision
+  
 
   const handleDecisionClick = (decision: 'go' | 'no-go') => {
     setPendingDecision(decision);
@@ -50,6 +52,16 @@ export const GoNoGoDecision = ({ prospectId, prospectTitle, compact = false }: G
     setShowReasonDialog(false);
     setPendingDecision(null);
     setReason('');
+  };
+
+  const handleUndoDecision = async () => {
+    if (!existingDecision?.id) return;
+    
+    try {
+      await deleteDecisionMutation.mutateAsync(existingDecision.id);
+    } catch (error) {
+      console.error('Failed to undo decision:', error);
+    }
   };
 
   if (compact) {
@@ -96,55 +108,56 @@ export const GoNoGoDecision = ({ prospectId, prospectTitle, compact = false }: G
         )}
 
         <Dialog open={showReasonDialog} onOpenChange={setShowReasonDialog}>
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <Card className="w-full max-w-md p-6">
-              <h3 className="text-lg font-semibold mb-4">
+          <DialogContent className="w-full max-w-md">
+            <DialogHeader>
+              <DialogTitle>
                 {pendingDecision === 'go' ? 'GO Decision' : 'NO-GO Decision'}
-              </h3>
-              
-              {prospectTitle && (
-                <p className="text-sm text-gray-600 mb-4">
-                  <strong>Prospect:</strong> {prospectTitle}
-                </p>
-              )}
+              </DialogTitle>
+            </DialogHeader>
+            
+            {prospectTitle && (
+              <p className="text-sm text-gray-600 mb-4">
+                <strong>Prospect:</strong> {prospectTitle}
+              </p>
+            )}
 
-              <div className="mb-4">
-                <Label htmlFor="reason">Reason (optional)</Label>
-                <Input
-                  id="reason"
-                  value={reason}
-                  onChange={(e) => setReason(e.target.value)}
-                  placeholder="Why did you make this decision?"
-                  className="mt-1"
-                />
-              </div>
+            <div className="mb-4">
+              <Label htmlFor="reason">Reason (optional)</Label>
+              <Input
+                id="reason"
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                placeholder="Why did you make this decision?"
+                className="mt-1"
+              />
+            </div>
 
-              <div className="flex gap-2 justify-end">
-                <Button
-                  variant="outline"
-                  onClick={handleCancel}
-                  disabled={createDecisionMutation.isPending}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleSubmitDecision}
-                  disabled={createDecisionMutation.isPending}
-                  className={pendingDecision === 'go' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}
-                >
-                  {createDecisionMutation.isPending ? 'Saving...' : `Confirm ${pendingDecision?.toUpperCase()}`}
-                </Button>
-              </div>
-            </Card>
-          </div>
+            <div className="flex gap-2 justify-end">
+              <Button
+                variant="outline"
+                onClick={handleCancel}
+                disabled={createDecisionMutation.isPending}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSubmitDecision}
+                disabled={createDecisionMutation.isPending}
+                className={pendingDecision === 'go' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}
+              >
+                {createDecisionMutation.isPending ? 'Saving...' : `Confirm ${pendingDecision?.toUpperCase()}`}
+              </Button>
+            </div>
+          </DialogContent>
         </Dialog>
       </div>
     );
   }
 
   // Full version for dedicated decision pages
+  
   return (
-    <Card className="p-6">
+    <div className="space-y-4">
       <h3 className="text-lg font-semibold mb-4">Go/No-Go Decision</h3>
       
       {prospectTitle && (
@@ -182,21 +195,32 @@ export const GoNoGoDecision = ({ prospectId, prospectTitle, compact = false }: G
           <div className="pt-4 border-t">
             <p className="text-sm text-gray-600 mb-4">Want to change your decision?</p>
             <div className="flex gap-2">
+              {existingDecision.decision === 'go' ? (
+                <Button
+                  variant="outline"
+                  onClick={() => handleDecisionClick('no-go')}
+                  disabled={createDecisionMutation.isPending}
+                  className="text-red-700 border-red-300 hover:bg-red-50"
+                >
+                  Change to NO-GO
+                </Button>
+              ) : (
+                <Button
+                  variant="outline"
+                  onClick={() => handleDecisionClick('go')}
+                  disabled={createDecisionMutation.isPending}
+                  className="text-green-700 border-green-300 hover:bg-green-50"
+                >
+                  Change to GO
+                </Button>
+              )}
               <Button
                 variant="outline"
-                onClick={() => handleDecisionClick('go')}
-                disabled={createDecisionMutation.isPending}
-                className="text-green-700 border-green-300 hover:bg-green-50"
+                onClick={handleUndoDecision}
+                disabled={deleteDecisionMutation.isPending}
+                className="text-gray-700 border-gray-300 hover:bg-gray-50"
               >
-                Change to GO
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => handleDecisionClick('no-go')}
-                disabled={createDecisionMutation.isPending}
-                className="text-red-700 border-red-300 hover:bg-red-50"
-              >
-                Change to NO-GO
+                {deleteDecisionMutation.isPending ? 'Undoing...' : 'Undo Decision'}
               </Button>
             </div>
           </div>
@@ -225,45 +249,45 @@ export const GoNoGoDecision = ({ prospectId, prospectTitle, compact = false }: G
       )}
 
       <Dialog open={showReasonDialog} onOpenChange={setShowReasonDialog}>
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <Card className="w-full max-w-md p-6">
-            <h3 className="text-lg font-semibold mb-4">
+        <DialogContent className="w-full max-w-md">
+          <DialogHeader>
+            <DialogTitle>
               {pendingDecision === 'go' ? 'GO Decision' : 'NO-GO Decision'}
-            </h3>
+            </DialogTitle>
+          </DialogHeader>
 
-            <div className="mb-4">
-              <Label htmlFor="reason">Reason (optional)</Label>
-              <Input
-                id="reason"
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-                placeholder="Why did you make this decision?"
-                className="mt-1"
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                This will help train our AI to understand company preferences
-              </p>
-            </div>
+          <div className="mb-4">
+            <Label htmlFor="reason">Reason (optional)</Label>
+            <Input
+              id="reason"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="Why did you make this decision?"
+              className="mt-1"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              This will help train our AI to understand company preferences
+            </p>
+          </div>
 
-            <div className="flex gap-2 justify-end">
-              <Button
-                variant="outline"
-                onClick={handleCancel}
-                disabled={createDecisionMutation.isPending}
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={handleSubmitDecision}
-                disabled={createDecisionMutation.isPending}
-                className={pendingDecision === 'go' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}
-              >
-                {createDecisionMutation.isPending ? 'Saving...' : `Confirm ${pendingDecision?.toUpperCase()}`}
-              </Button>
-            </div>
-          </Card>
-        </div>
+          <div className="flex gap-2 justify-end">
+            <Button
+              variant="outline"
+              onClick={handleCancel}
+              disabled={createDecisionMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSubmitDecision}
+              disabled={createDecisionMutation.isPending}
+              className={pendingDecision === 'go' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}
+            >
+              {createDecisionMutation.isPending ? 'Saving...' : `Confirm ${pendingDecision?.toUpperCase()}`}
+            </Button>
+          </div>
+        </DialogContent>
       </Dialog>
-    </Card>
+    </div>
   );
 };

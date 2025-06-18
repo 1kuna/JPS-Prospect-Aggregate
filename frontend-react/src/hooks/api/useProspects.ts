@@ -1,5 +1,6 @@
 import { useQuery, useInfiniteQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { Prospect, ProspectFilters, ProspectStatistics, ProspectStatus } from '@/types/prospects';
+import { ApiResponse } from '@/types/api';
 import { get, buildQueryString } from '@/utils/apiUtils';
 
 // Placeholder API base URL - commented out to remove unused variable warning
@@ -142,6 +143,22 @@ export function useProspectStatistics() {
     queryKey: prospectQueryKeys.statistics(),
     queryFn: fetchProspectStatisticsAPI,
     // Configure options like staleTime if needed
+  });
+}
+
+// Hook to get a single prospect by ID
+export function useProspect(prospectId: string | number | null) {
+  return useQuery({
+    queryKey: ['prospects', prospectId],
+    queryFn: async () => {
+      const response = await fetch(`/api/prospects/${prospectId}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch prospect');
+      }
+      return response.json() as Promise<ApiResponse<Prospect>>;
+    },
+    enabled: !!prospectId,
+    staleTime: 2 * 60 * 1000, // 2 minutes
   });
 }
 

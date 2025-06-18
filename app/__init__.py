@@ -65,6 +65,15 @@ def create_app(config_name='default'): # config_name is no longer used but kept 
     with app.app_context():
         from app.services.enhancement_queue_service import enhancement_queue_service
         from app.services.iterative_llm_service_v2 import iterative_service_v2
+        from app.utils.enhancement_cleanup import cleanup_all_in_progress_enhancements
+        
+        # Clean up any stuck enhancement statuses from previous server runs
+        try:
+            cleanup_count = cleanup_all_in_progress_enhancements()
+            if cleanup_count > 0:
+                print(f"✓ Cleaned up {cleanup_count} stuck enhancement requests on startup")
+        except Exception as e:
+            print(f"⚠ Warning: Failed to clean up stuck enhancements: {e}")
         
         # Set up cross-references between services
         enhancement_queue_service.set_bulk_service(iterative_service_v2)

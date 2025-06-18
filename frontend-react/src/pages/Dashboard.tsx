@@ -26,6 +26,7 @@ import { useProspectEnhancement } from '@/contexts/ProspectEnhancementContext';
 import { useTimezoneDate } from '@/hooks/useTimezoneDate';
 import { ReloadIcon } from '@radix-ui/react-icons';
 import { Switch } from '@/components/ui/switch';
+import { GoNoGoDecision } from '@/components/GoNoGoDecision';
 
 // Updated Prospect interface based on backend model
 interface Prospect {
@@ -93,12 +94,9 @@ const fetchProspects = async (page: number, limit: number, filters?: ProspectFil
   }
   
   const url = `/api/prospects?${queryParams.toString()}`;
-  console.log('Fetching prospects from:', url);
   
   try {
     const response = await fetch(url);
-    console.log('Response status:', response.status);
-    console.log('Response headers:', response.headers);
     
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ message: 'Failed to fetch prospects and parse error response' }));
@@ -108,10 +106,6 @@ const fetchProspects = async (page: number, limit: number, filters?: ProspectFil
     
     const result: { prospects: Prospect[], pagination: { total_items: number, total_pages: number, page: number, per_page: number } } = await response.json();
     
-    // Debug logging
-    console.log('API Response:', result);
-    console.log('Prospects count:', result.prospects?.length);
-    console.log('First prospect:', result.prospects?.[0]);
     
     // Map the backend response structure to what the frontend expects
     return {
@@ -130,7 +124,6 @@ const columnHelper = createColumnHelper<Prospect>();
 // Column definitions moved inside the component to access showAIEnhanced state
 
 export default function Dashboard() {
-  console.log('Dashboard component loaded!');
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [selectedProspect, setSelectedProspect] = useState<Prospect | null>(null);
@@ -156,7 +149,6 @@ export default function Dashboard() {
   //   queryFn: fetchProspectCount,
   // });
 
-  console.log('About to call useQuery with:', { currentPage, itemsPerPage });
   
   const { data: prospectsData, isLoading: isLoadingProspects, isFetching: isFetchingProspects } = useQuery({
     queryKey: ['prospects', currentPage, itemsPerPage, filters],
@@ -165,7 +157,6 @@ export default function Dashboard() {
     refetchInterval: 5000, // Refetch every 5 seconds to pick up enhancement status changes
   });
   
-  console.log('useQuery result:', { prospectsData, isLoadingProspects, isFetchingProspects });
 
   // Define columns inside component to access showAIEnhanced state
   const columns = useMemo(() => [
@@ -918,6 +909,16 @@ export default function Dashboard() {
                   </div>
                 </div>
               </div>
+
+              {/* Go/No-Go Decision */}
+              <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg">
+                <GoNoGoDecision 
+                  prospectId={selectedProspect.id} 
+                  prospectTitle={selectedProspect.ai_enhanced_title || selectedProspect.title}
+                  compact={false} 
+                />
+              </div>
+
               {/* Basic Information */}
               <div>
                 <h3 className="text-lg font-semibold mb-3 text-gray-900">Basic Information</h3>
@@ -1157,6 +1158,7 @@ export default function Dashboard() {
                   )}
                 </div>
               </div>
+
             </div>
           )}
         </DialogContent>
