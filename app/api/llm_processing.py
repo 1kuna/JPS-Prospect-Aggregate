@@ -548,7 +548,7 @@ def enhance_single_prospect():
                     "enhancement_user_id": prospect.enhancement_user_id
                 }), 409
                 
-        # Add to priority queue
+        # Add to priority queue (returns existing ID if already queued)
         queue_item_id = enhancement_queue_service.add_individual_enhancement(
             prospect_id=prospect_id,
             enhancement_type=enhancement_type,
@@ -556,14 +556,19 @@ def enhance_single_prospect():
             force_redo=force_redo
         )
         
+        # Check if this was an existing item
+        item_status = enhancement_queue_service.get_item_status(queue_item_id)
+        was_existing = item_status and item_status.get('created_at') != item_status.get('started_at', item_status.get('created_at'))
+        
         logger.info(f"Added individual enhancement for prospect {prospect_id} to queue with ID {queue_item_id}")
         
         return jsonify({
             "status": "queued",
-            "message": f"Enhancement request queued for prospect {prospect_id}",
+            "message": f"Enhancement request queued for prospect {prospect_id}" + (" (already in progress)" if was_existing else ""),
             "queue_item_id": queue_item_id,
             "prospect_id": prospect_id,
-            "priority": "high"
+            "priority": "high",
+            "was_existing": was_existing
         }), 200
             
     except Exception as e:
