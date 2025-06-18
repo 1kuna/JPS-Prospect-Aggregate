@@ -4,6 +4,7 @@ import { useInfiniteProspects, useProspectStatistics } from '@/hooks/api/usePros
 import { ProspectFilters } from '@/types/prospects';
 import { Button } from '@/components/ui';
 import { formatDate } from '@/utils/dateUtils';
+import { useTimezoneDate } from '@/hooks/useTimezoneDate';
 import { LoadingButton } from '@/components/ui/LoadingButton';
 import { ErrorDisplay } from '@/components/ui/ErrorDisplay';
 import { CenteredSpinner } from '@/components/ui/LoadingSpinner';
@@ -13,6 +14,7 @@ import { GoNoGoDecision } from '@/components/GoNoGoDecision';
 export default function Prospects() {
   const [filters] = useState<ProspectFilters>({});
   const parentRef = useRef<HTMLDivElement>(null);
+  const { formatUserDate } = useTimezoneDate();
   
   const {
     data: prospects,
@@ -134,7 +136,7 @@ export default function Prospects() {
                         {prospect?.dataSource?.name || 'N/A'}
                       </div>
                       <div className="text-sm text-gray-600">
-                        {formatDate(prospect?.createdAt, { format: 'date' })}
+                        {formatUserDate(prospect?.createdAt, 'date')}
                       </div>
                       <div>
                         <GoNoGoDecision 
