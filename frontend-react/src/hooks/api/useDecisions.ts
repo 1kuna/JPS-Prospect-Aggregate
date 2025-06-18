@@ -90,6 +90,8 @@ export const useProspectDecisions = (prospectId: string | null) => {
     queryFn: () => decisionsApi.getProspectDecisions(prospectId!),
     enabled: !!prospectId,
     staleTime: 1 * 60 * 1000, // 1 minute
+    retry: 1, // Only retry once
+    retryDelay: 1000, // Wait 1 second before retry
   });
 };
 
