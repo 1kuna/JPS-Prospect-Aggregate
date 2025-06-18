@@ -19,10 +19,12 @@ export const GoNoGoDecision = ({ prospectId, prospectTitle, compact = false }: G
 
   const createDecisionMutation = useCreateDecision();
   const deleteDecisionMutation = useDeleteDecision();
-  const { data: decisionsData } = useProspectDecisions(prospectId ? String(prospectId) : null);
+  const { data: decisionsData, isLoading: isLoadingDecisions, error: decisionsError } = useProspectDecisions(prospectId ? String(prospectId) : null);
   
   // Check if current user has already made a decision
-  const existingDecision = decisionsData?.data?.decisions?.[0]; // Most recent decision
+  const existingDecision = decisionsData?.data?.decisions && Array.isArray(decisionsData.data.decisions) && decisionsData.data.decisions.length > 0 
+    ? decisionsData.data.decisions[0] 
+    : null;
   
 
   const handleDecisionClick = (decision: 'go' | 'no-go') => {
@@ -63,6 +65,22 @@ export const GoNoGoDecision = ({ prospectId, prospectTitle, compact = false }: G
       console.error('Failed to undo decision:', error);
     }
   };
+
+  // Show loading state
+  if (isLoadingDecisions) {
+    return (
+      <div className="flex items-center gap-2">
+        <div className="animate-pulse bg-gray-200 h-6 w-16 rounded"></div>
+        <div className="animate-pulse bg-gray-200 h-6 w-16 rounded"></div>
+      </div>
+    );
+  }
+
+  // Show error state (optional - could be silent)
+  if (decisionsError) {
+    console.error('Error loading decisions:', decisionsError);
+    // Continue to render without existing decisions
+  }
 
   if (compact) {
     return (
