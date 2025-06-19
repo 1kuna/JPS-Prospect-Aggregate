@@ -1,4 +1,5 @@
 import datetime
+import asyncio
 from datetime import timezone
 from app.models import db, DataSource, ScraperStatus
 from app.exceptions import NotFoundError, ScraperError, DatabaseError
@@ -7,32 +8,8 @@ from app.utils.db_utils import update_scraper_status
 from app.core.scrapers import SCRAPERS
 from app.config import active_config
 
-# Import all config classes
-from app.core.scrapers.configs.acquisition_gateway_config import AcquisitionGatewayConfig
-from app.core.scrapers.configs.doc_config import DOCConfig
-from app.core.scrapers.configs.dhs_config import DHSConfig
-from app.core.scrapers.configs.doj_config import DOJConfig
-from app.core.scrapers.configs.dos_config import DOSConfig
-from app.core.scrapers.configs.dot_config import DOTConfig
-from app.core.scrapers.configs.hhs_config import HHSConfig
-from app.core.scrapers.configs.ssa_config import SSAConfig
-from app.core.scrapers.configs.treasury_config import TreasuryConfig
-
 # Set up logging using the centralized utility
 logger = logger.bind(name="services.scraper_service")
-
-# Map scraper keys to their config classes
-SCRAPER_CONFIGS = {
-    "acq_gateway": AcquisitionGatewayConfig,
-    "doc": DOCConfig,
-    "dhs": DHSConfig,
-    "doj": DOJConfig,
-    "dos": DOSConfig,
-    "hhs": HHSConfig,
-    "ssa": SSAConfig,
-    "treasury": TreasuryConfig,
-    "dot": DOTConfig,
-}
 
 class ScraperService:
     @staticmethod
@@ -45,12 +22,12 @@ class ScraperService:
             from app import create_app
             app = create_app()
             with app.app_context():
-                return ScraperService._execute_scrape(source_id)
+                return asyncio.run(ScraperService._execute_scrape(source_id))
         else:
-            return ScraperService._execute_scrape(source_id)
+            return asyncio.run(ScraperService._execute_scrape(source_id))
     
     @staticmethod
-    def _execute_scrape(source_id: int):
+    async def _execute_scrape(source_id: int):
         session = db.session
         data_source = None
         try:
@@ -65,83 +42,57 @@ class ScraperService:
             if not ScraperClass:
                 raise ScraperError(f"No scraper configured for scraper_key: '{data_source.scraper_key}' for data source: {data_source.name}")
 
-            ConfigClass = SCRAPER_CONFIGS.get(data_source.scraper_key)
-            if not ConfigClass:
-                raise ScraperError(f"No config class found for scraper_key: '{data_source.scraper_key}' for data source: {data_source.name}")
-
-            # Create config instance with base_url from active_config if needed
-            config = ConfigClass()
-            
-            # Set base_url from active_config based on scraper_key
-            if data_source.scraper_key == 'acq_gateway' and not config.base_url:
-                config.base_url = active_config.ACQUISITION_GATEWAY_URL
-            elif data_source.scraper_key == 'dhs' and not config.base_url:
-                config.base_url = active_config.DHS_FORECAST_URL
-            elif data_source.scraper_key == 'doc' and not config.base_url:
-                config.base_url = active_config.COMMERCE_FORECAST_URL
-            elif data_source.scraper_key == 'doj' and not config.base_url:
-                config.base_url = active_config.DOJ_FORECAST_URL
-            elif data_source.scraper_key == 'dos' and not config.base_url:
-                config.base_url = active_config.DOS_FORECAST_URL
-            elif data_source.scraper_key == 'dot' and not config.base_url:
-                config.base_url = active_config.DOT_FORECAST_URL
-            elif data_source.scraper_key == 'hhs' and not config.base_url:
-                config.base_url = active_config.HHS_FORECAST_URL
-            elif data_source.scraper_key == 'ssa' and not config.base_url:
-                config.base_url = active_config.SSA_CONTRACT_FORECAST_URL
-            elif data_source.scraper_key == 'treasury' and not config.base_url:
-                config.base_url = active_config.TREASURY_FORECAST_URL
-
-            # Initialize scraper with appropriate debug mode
-            # DOT scraper needs special handling due to website blocking
-            # Acquisition Gateway also runs in debug mode to monitor slow downloads
-            debug_mode = data_source.scraper_key in ['dot', 'acq_gateway']  # Enable debug mode for DOT and Acquisition Gateway scrapers
-            scraper_instance = ScraperClass(config=config, debug_mode=debug_mode)
+            # Consolidated scrapers don't need config parameters - they handle config internally
+            scraper_instance = ScraperClass()
             
             # Update status to 'working' before starting
             update_scraper_status(source_id=data_source.id, status='working', details="Scrape process initiated.")
 
             try:
                 logger.info(f"Starting scrape for {data_source.name} (ID: {source_id})")
-                # Run the scraper and check the result
-                scrape_result = scraper_instance.run()
                 
-                # Check if the scrape was successful
-                if isinstance(scrape_result, dict) and not scrape_result.get('success', False):
-                    # Scrape failed
-                    error_msg = scrape_result.get('error', 'Unknown error during scraping')
-                    logger.error(f"Scraper returned failure for {data_source.name}: {error_msg}")
-                    update_scraper_status(source_id=data_source.id, status='failed', details=error_msg[:500])
-                    raise ScraperError(f"Scraping {data_source.name} failed: {error_msg}")
+                # Try to detect if we're in an existing event loop
+                try:
+                    current_loop = asyncio.get_running_loop()
+                    logger.info("Detected existing event loop, using asyncio.create_task")
+                    
+                    # We're in an existing loop, need to run as task
+                    task = asyncio.create_task(scraper_instance.scrape())
+                    records_loaded = await task
+                    
+                except RuntimeError:
+                    # No running loop, we can use asyncio.run() directly
+                    logger.info("No existing event loop detected, using asyncio.run()")
+                    records_loaded = asyncio.run(scraper_instance.scrape())
                 
-                # Check if fallback was used
-                elif isinstance(scrape_result, dict) and scrape_result.get('used_fallback', False):
-                    # Scrape used fallback data
-                    fallback_reason = scrape_result.get('fallback_reason', 'Download failed')
-                    fallback_msg = f"Used fallback data due to: {fallback_reason}. Data may be outdated."
-                    logger.warning(f"Scraper used fallback for {data_source.name}: {fallback_msg}")
+                if records_loaded > 0:
+                    # Successful scrape
                     update_scraper_status(
                         source_id=data_source.id, 
-                        status='completed_with_fallback', 
-                        details=fallback_msg[:500]
+                        status='completed', 
+                        details=f"Scrape completed successfully. Loaded {records_loaded} records at {datetime.datetime.now().isoformat()}."
                     )
-                    # Update last_scraped time even for fallback
                     data_source.last_scraped = datetime.datetime.now()
-                    session.commit() # Commit update to data_source.last_scraped
-                    final_status_str = "completed_with_fallback"
-                    result_message = f"Data pull for {data_source.name} completed using fallback data. Reason: {fallback_reason}"
+                    session.commit()
+                    
+                    logger.info(f"Scrape for {data_source.name} completed successfully. Loaded {records_loaded} records.")
+                    latest_status_record = session.query(ScraperStatus).filter_by(source_id=source_id).order_by(ScraperStatus.last_checked.desc()).first()
+                    final_status_str = latest_status_record.status if latest_status_record else "completed"
+                    result_message = f"Data pull for {data_source.name} completed successfully. Loaded {records_loaded} records."
                     
                 else:
-                    # Normal successful scrape
-                    update_scraper_status(source_id=data_source.id, status='completed', details=f"Scrape completed successfully at {datetime.datetime.now().isoformat()}.")
+                    # No records loaded (could be empty data source or processing error)
+                    update_scraper_status(
+                        source_id=data_source.id, 
+                        status='completed', 
+                        details=f"Scrape completed but no records were loaded at {datetime.datetime.now().isoformat()}."
+                    )
                     data_source.last_scraped = datetime.datetime.now()
-                    session.commit() # Commit update to data_source.last_scraped
+                    session.commit()
                     
-                    logger.info(f"Scrape for {data_source.name} completed successfully.")
-                    # Get the latest status for the return message
-                    latest_status_record = session.query(ScraperStatus).filter_by(source_id=source_id).order_by(ScraperStatus.last_checked.desc()).first()
-                    final_status_str = latest_status_record.status if latest_status_record else "unknown"
-                    result_message = f"Data pull for {data_source.name} processed. Final status: {final_status_str}"
+                    logger.warning(f"Scrape for {data_source.name} completed but no records were loaded.")
+                    final_status_str = "completed"
+                    result_message = f"Data pull for {data_source.name} completed but no records were loaded."
 
             except Exception as scrape_exc: # Catch any exception from scraper_instance.run()
                 logger.error(f"Scraper for {data_source.name} failed: {scrape_exc}", exc_info=True)

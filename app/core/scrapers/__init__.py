@@ -2,16 +2,16 @@
 JPS Prospect Aggregate - Data Collectors Package
 """
 
-from app.core.base_scraper import BaseScraper
-from .acquisition_gateway import AcquisitionGatewayScraper
-from .doc_scraper import DocScraper
-from .dhs_scraper import DHSForecastScraper as DhsScraper
-from .doj_scraper import DOJForecastScraper as DojScraper
-from .dos_scraper import DOSForecastScraper as DosScraper
-from .hhs_forecast import HHSForecastScraper as HhsForecastScraper
-from .ssa_scraper import SsaScraper
-from .treasury_scraper import TreasuryScraper
-from .dot_scraper import DotScraper
+# Import consolidated scrapers
+from .acquisition_gateway_consolidated import AcquisitionGatewayScraper
+from .doc_scraper_consolidated import DocScraper
+from .dhs_scraper_consolidated import DHSForecastScraper as DhsScraper
+from .doj_scraper_consolidated import DOJForecastScraper as DojScraper
+from .dos_scraper_consolidated import DOSForecastScraper as DosScraper
+from .hhs_scraper_consolidated import HHSForecastScraper as HhsForecastScraper
+from .ssa_scraper_consolidated import SsaScraper
+from .treasury_scraper_consolidated import TreasuryScraper
+from .dot_scraper_consolidated import DotScraper
 
 # Dictionary mapping agency names to scraper classes
 SCRAPERS = {
@@ -28,7 +28,6 @@ SCRAPERS = {
 
 # Explicitly define what is exported when using 'from app.core.scrapers import *'
 __all__ = [
-    'BaseScraper',
     'AcquisitionGatewayScraper',
     'DocScraper',
     'DhsScraper',
