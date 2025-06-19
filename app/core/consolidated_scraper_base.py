@@ -26,6 +26,7 @@ from app.config import active_config
 from app.database.crud import bulk_upsert_prospects
 from app.database import db
 from app.database.models import DataSource
+from app.services.file_validation_service import file_validation_service
 
 
 @dataclass
@@ -1453,7 +1454,10 @@ class ConsolidatedScraperBase:
         )
     
     def standard_process(self, file_path: str) -> int:
-        """Standard processing: read file and apply transformations."""
+        """Standard processing with file validation and tracking."""
+        start_time = datetime.now()
+        processing_log = None
+        
         if not file_path:
             # Try to get most recent download
             file_path = self.get_last_downloaded_path()
@@ -1461,17 +1465,88 @@ class ConsolidatedScraperBase:
                 self.logger.error("No file available for processing")
                 return 0
         
-        # Read file to DataFrame
-        df = self.read_file_to_dataframe(file_path)
-        if df is None:
-            self.logger.error("Failed to read file to DataFrame")
-            return 0
-        
-        # Apply transformations
-        df = self.transform_dataframe(df)
-        
-        # Load to database
-        return self.prepare_and_load_data(df)
+        try:
+            # Get source ID for tracking
+            source_id = file_validation_service.get_source_id_by_name(self.source_name)
+            if not source_id:
+                self.logger.warning(f"Could not find source ID for {self.source_name}")
+            
+            # Create processing log
+            if source_id:
+                processing_log = file_validation_service.create_processing_log(source_id, file_path)
+            
+            # Perform soft file validation (warnings only)
+            warnings, is_likely_valid = file_validation_service.validate_file_content(file_path)
+            
+            # Get expected columns for schema validation (if available)
+            expected_columns = None
+            if hasattr(self.config, 'data_processing_rules') and self.config.data_processing_rules:
+                if hasattr(self.config.data_processing_rules, 'raw_column_rename_map'):
+                    expected_columns = list(self.config.data_processing_rules.raw_column_rename_map.keys())
+            
+            # Detect schema changes
+            schema_issues = file_validation_service.detect_schema_changes(file_path, expected_columns)
+            
+            # Log validation summary (warnings only - don't block processing)
+            file_validation_service.log_validation_summary(file_path, warnings, schema_issues, is_likely_valid)
+            
+            # Read file to DataFrame
+            df = self.read_file_to_dataframe(file_path)
+            if df is None:
+                error_msg = "Failed to read file to DataFrame"
+                self.logger.error(error_msg)
+                
+                # Update processing log with failure
+                if processing_log:
+                    processing_duration = (datetime.now() - start_time).total_seconds()
+                    file_validation_service.update_processing_success(
+                        processing_log.id, False, 
+                        error_message=error_msg,
+                        validation_warnings=warnings,
+                        schema_issues=schema_issues,
+                        processing_duration=processing_duration
+                    )
+                return 0
+            
+            records_extracted = len(df)
+            actual_columns = list(df.columns) if not df.empty else []
+            
+            # Apply transformations
+            df = self.transform_dataframe(df)
+            
+            # Load to database
+            records_inserted = self.prepare_and_load_data(df)
+            
+            # Update processing log with success
+            if processing_log:
+                processing_duration = (datetime.now() - start_time).total_seconds()
+                file_validation_service.update_processing_success(
+                    processing_log.id, True,
+                    records_extracted=records_extracted,
+                    records_inserted=records_inserted,
+                    schema_columns=actual_columns,
+                    schema_issues=schema_issues if schema_issues.get('missing_columns') or schema_issues.get('extra_columns') else None,
+                    validation_warnings=warnings if warnings else None,
+                    processing_duration=processing_duration
+                )
+            
+            return records_inserted
+            
+        except Exception as e:
+            error_msg = f"Error during file processing: {e}"
+            self.logger.error(error_msg)
+            
+            # Update processing log with failure
+            if processing_log:
+                processing_duration = (datetime.now() - start_time).total_seconds()
+                file_validation_service.update_processing_success(
+                    processing_log.id, False,
+                    error_message=error_msg,
+                    processing_duration=processing_duration
+                )
+            
+            # Re-raise the exception to maintain existing error handling
+            raise
     
     async def scrape_with_structure(self, 
                                   setup_method: Optional[Callable] = None,
