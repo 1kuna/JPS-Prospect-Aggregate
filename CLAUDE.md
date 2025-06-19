@@ -51,6 +51,36 @@ python -m pytest tests/test_specific.py::test_function -v
 python scripts/enrichment/enhance_prospects_with_llm.py values --limit 100
 ```
 
+### Scraper Testing
+```bash
+# Test all scrapers
+python run_scraper_tests.py
+
+# Test specific scraper
+python run_scraper_tests.py --scraper dhs
+
+# Test individual scraper without web server
+python test_scraper_individual.py --scraper acquisition_gateway
+
+# Test all scrapers individually
+python test_scraper_individual.py --scraper all
+
+# List available scrapers
+python test_scraper_individual.py --list
+```
+
+### Decision System & ML Export
+```bash
+# Export decisions for LLM training
+python scripts/export_decisions_for_llm.py --format jsonl
+
+# Export only decisions with reasoning
+python scripts/export_decisions_for_llm.py --reasons-only
+
+# Export to both JSONL and CSV
+python scripts/export_decisions_for_llm.py --format both
+```
+
 ### Frontend Development
 ```bash
 cd frontend-react
@@ -89,25 +119,55 @@ python -m scripts.export_csv
 ## Architecture
 
 ### Scraper Framework
-The scraper system is built on a composable architecture:
+The scraper system uses a unified architecture for efficient web scraping:
 
-- **BaseScraper** (`app/core/base_scraper.py`): Core scraping functionality with error handling, screenshots on failure, and structured logging
-- **Mixins** (`app/core/mixins/`): Reusable components for navigation, downloading, and data processing that compose into scrapers
-- **Agency Scrapers** (`app/core/scrapers/`): Specific implementations for each government agency (DoD, DHS, DOJ, etc.)
-- **Configurations** (`app/core/configs/`): Dataclass-based configs defining data processing rules, field mappings, and scraper behavior
+- **ConsolidatedScraperBase** (`app/core/consolidated_scraper_base.py`): Unified base class containing all scraping functionality (browser automation, navigation, downloads, data processing)
+- **ScraperConfig**: Single configuration dataclass for all scraper settings
+- **Config Converter** (`app/core/config_converter.py`): Functions to create configurations for each agency scraper
+- **Agency Scrapers** (`app/core/scrapers/`): Simple implementations focusing only on agency-specific logic (each ~50-100 lines)
 
-Each scraper inherits from BaseScraper and composes mixins based on needs. Configuration classes define how raw data is processed, what fields to extract, and how to handle duplicates.
+Key features:
+- Unified configuration system
+- Built-in error handling with screenshots and HTML dumps
+- Stealth mode for avoiding detection
+- Automatic retry logic
+- Structured data processing pipeline
+
+### Creating New Scrapers
+```python
+from app.core.consolidated_scraper_base import ConsolidatedScraperBase
+from app.core.config_converter import create_your_agency_config
+
+class YourAgencyScraper(ConsolidatedScraperBase):
+    def __init__(self):
+        config = create_your_agency_config()
+        config.base_url = active_config.YOUR_AGENCY_URL
+        super().__init__(config)
+    
+    # Add custom transformations if needed
+    def custom_transform(self, df):
+        return df
+```
 
 ### Database Layer
 - **Models** (`app/database/models.py`): SQLAlchemy models for prospects, data sources, scraper status
 - **Operations** (`app/database/operations.py`): High-level database operations with duplicate detection and bulk operations
 - **Migrations** (`migrations/`): Alembic-managed schema changes
+- **User Authentication**: Separate user database for security isolation
+- **Decision Tracking**: Go/no-go decisions linked to users and prospects
 
 ### API Layer
 Flask app with modular blueprints:
 - **Main API** (`app/api/`): RESTful endpoints for prospects, data sources, duplicates
+- **Decision API** (`/api/decisions/`): CRUD operations for go/no-go decisions
 - **Health endpoints**: Database connectivity and system status
 - **Pagination support**: Efficient large dataset handling
+
+Key decision endpoints:
+- `POST /api/decisions/` - Create/update decision
+- `GET /api/decisions/<prospect_id>` - Get decisions for prospect
+- `GET /api/decisions/my` - Get current user's decisions
+- `DELETE /api/decisions/<id>` - Delete a decision
 
 ### Frontend Architecture
 React TypeScript application with:
@@ -130,11 +190,12 @@ React TypeScript application with:
 - Download behavior and file handling
 - Duplicate detection criteria
 
-**Mixin Composition**: Scrapers compose functionality from mixins rather than inheritance:
+**Unified Architecture**: Scrapers inherit from a single base class with unified configuration:
 ```python
-class AgencyScraper(BaseScraper, NavigationMixin, DownloadMixin, DataProcessingMixin):
+class AgencyScraper(ConsolidatedScraperBase):
     def __init__(self):
-        super().__init__(config=AgencyConfig())
+        config = create_agency_config()
+        super().__init__(config)
 ```
 
 **Error Handling Strategy**: All scrapers capture screenshots and HTML dumps on failure, with structured logging via Loguru for debugging.
@@ -178,3 +239,4 @@ Built-in utility manages storage with rolling cleanup policy:
 - **Current Impact**: 50% storage reduction (86 files/84MB → 43 files/42MB)
 - **Default**: Keeps 3 most recent files per data source
 - **Safety**: Dry-run mode by default with detailed logging
+

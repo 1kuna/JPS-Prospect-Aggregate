@@ -1,156 +1,142 @@
-"""Department of Commerce Opportunity Forecast scraper."""
-
-import os
-from typing import Optional
-from urllib.parse import urljoin 
-
+"""
+DOC scraper using the consolidated architecture.
+Preserves all original DOC-specific functionality including link text finding and fiscal quarter processing.
+"""
 import pandas as pd
+from typing import Optional
+from app.utils.parsing import fiscal_quarter_to_date
 
-from app.core.specialized_scrapers import PageInteractionScraper
+from app.core.consolidated_scraper_base import ConsolidatedScraperBase
+from app.core.config_converter import create_doc_config
 from app.config import active_config
-from app.exceptions import ScraperError
-from app.core.scrapers.configs.doc_config import DOCConfig
-from app.utils.parsing import fiscal_quarter_to_date # For custom transforms
 
-class DocScraper(PageInteractionScraper):
-    """Scraper for the Department of Commerce (DOC) Forecast site."""
+
+class DocScraper(ConsolidatedScraperBase):
+    """
+    Consolidated DOC scraper.
+    Preserves all original functionality including link text finding and custom transforms.
+    """
     
-    def __init__(self, config: DOCConfig, debug_mode: bool = False):
-        if config.base_url is None:
-            config.base_url = active_config.COMMERCE_FORECAST_URL
-            print(f"Warning: DOCConfig.base_url was None, set from active_config: {config.base_url}")
-        super().__init__(config=config, debug_mode=debug_mode)
-
-    def _setup_method(self) -> None:
-        """Navigates to the base URL of the scraper."""
-        self.logger.info(f"Executing DOC setup: Navigating to base URL: {self.config.base_url}")
-        if not self.config.base_url:
-            self._handle_and_raise_scraper_error(ValueError("Base URL not configured."), "DOC setup navigation")
-        self.navigate_to_url(self.config.base_url)
-        # Additional wait for load state can be added if needed, e.g., self.wait_for_load_state('networkidle')
-
-    def _extract_method(self) -> Optional[str]:
-        """Finds the download link by text, resolves its URL, and downloads the file directly."""
-        self.logger.info(f"Starting DOC data file download process. Looking for link text: '{self.config.download_link_text}'")
-        
-        link_selector = f'a:has-text("{self.config.download_link_text}")'
-        
-        # Wait for selector ensures the link is at least attached, visible is better if no immediate click
-        self.wait_for_selector(link_selector, state='visible', timeout_ms=self.config.interaction_timeout_ms)
-        
-        # Using .first because has-text can sometimes match multiple if text is not unique enough, though unlikely here.
-        link_locator = self.page.locator(link_selector).first 
-        
-        href = link_locator.get_attribute('href')
-        if not href:
-            # Error saving (screenshot/HTML) will be done by _handle_and_raise_scraper_error via BaseScraper
-            self._handle_and_raise_scraper_error(
-                ScraperError("Download link found but has no href attribute."), 
-                f"finding href for download link '{self.config.download_link_text}'"
-            )
-            return None # Unreachable
-
-        # Resolve the potentially relative URL from href against the current page's URL
-        absolute_url = urljoin(self.page.url, href)
-        self.logger.info(f"Resolved download URL: {absolute_url}")
-
-        try:
-            # download_file_directly is from DownloadMixin
-            downloaded_path = self.download_file_directly(url=absolute_url)
-            return downloaded_path
-        except ScraperError as e:
-            self.logger.error(f"ScraperError during DOC direct download from '{absolute_url}': {e}", exc_info=True)
-            raise # Re-raise
-        except Exception as e:
-            self.logger.error(f"Unexpected error during DOC direct download from '{absolute_url}': {e}", exc_info=True)
-            self._handle_and_raise_scraper_error(e, f"DOC direct download from {absolute_url}")
-        return None # Unreachable
-
-
+    def __init__(self):
+        config = create_doc_config()
+        config.base_url = active_config.COMMERCE_FORECAST_URL
+        super().__init__(config)
+    
     def _custom_doc_transforms(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Applies DOC-specific transformations. Called by DataProcessingMixin.transform_dataframe
-        *after* raw_column_rename_map.
+        Custom DOC transformations preserving the original logic.
+        Derives release date from fiscal year/quarter and handles place country standardization.
         """
-        self.logger.info("Applying custom DOC transformations...")
-
-        # Derive Solicitation Date (release_date_final) from FY/Quarter
-        # Expects 'solicitation_fy_raw' and 'solicitation_qtr_raw' from raw_column_rename_map
-        if 'solicitation_fy_raw' in df.columns and 'solicitation_qtr_raw' in df.columns:
-            # fiscal_quarter_to_date needs strings like "Q1", "Q2" etc.
-            # Ensure quarter column is formatted correctly.
-            df['solicitation_qtr_fmt'] = df['solicitation_qtr_raw'].astype(str).apply(
-                lambda x: f'Q{x.split(".")[0]}' if pd.notna(x) and x else None
-            )
-            df['solicitation_fyq_combined'] = df['solicitation_fy_raw'].astype(str).fillna('') + ' ' + df['solicitation_qtr_fmt'].fillna('')
+        try:
+            self.logger.info("Applying custom DOC transformations...")
             
-            parsed_sol_date_info = df['solicitation_fyq_combined'].apply(
-                lambda x: fiscal_quarter_to_date(x.strip()) if pd.notna(x) and x.strip() else (None, None)
-            )
-            df['release_date_final'] = parsed_sol_date_info.apply(lambda x: x[0].date() if x[0] else None)
-            # df['solicitation_fiscal_year_final'] = parsed_sol_date_info.apply(lambda x: x[1]).astype('Int64') # If needed
-            self.logger.debug("Derived 'release_date_final' from fiscal year and quarter.")
-        else:
-            df['release_date_final'] = None
-            self.logger.warning("Could not derive 'release_date_final'; 'solicitation_fy_raw' or 'solicitation_qtr_raw' missing.")
+            # Derive Solicitation Date (release_date_final) from FY/Quarter
+            if 'solicitation_fy_raw' in df.columns and 'solicitation_qtr_raw' in df.columns:
+                # Format quarter column correctly for fiscal_quarter_to_date
+                df['solicitation_qtr_fmt'] = df['solicitation_qtr_raw'].astype(str).apply(
+                    lambda x: f'Q{x.split(".")[0]}' if pd.notna(x) and x else None
+                )
+                df['solicitation_fyq_combined'] = df['solicitation_fy_raw'].astype(str).fillna('') + ' ' + df['solicitation_qtr_fmt'].fillna('')
+                
+                parsed_sol_date_info = df['solicitation_fyq_combined'].apply(
+                    lambda x: fiscal_quarter_to_date(x.strip()) if pd.notna(x) and x.strip() else (None, None)
+                )
+                df['release_date_final'] = parsed_sol_date_info.apply(lambda x: x[0].date() if x[0] else None)
+                self.logger.debug("Derived 'release_date_final' from fiscal year and quarter.")
+            else:
+                df['release_date_final'] = None
+                self.logger.warning("Could not derive 'release_date_final'; 'solicitation_fy_raw' or 'solicitation_qtr_raw' missing.")
 
-        # Initialize award dates as None (DOC source doesn't provide them)
-        df['award_date_final'] = None
-        df['award_fiscal_year_final'] = pd.NA # Use pandas NA for Int64 compatibility
-        self.logger.debug("Initialized 'award_date_final' and 'award_fiscal_year_final' to None/NA.")
+            # Initialize award dates as None (DOC source doesn't provide them)
+            df['award_date_final'] = None
+            df['award_fiscal_year_final'] = pd.NA  # Use pandas NA for Int64 compatibility
+            self.logger.debug("Initialized 'award_date_final' and 'award_fiscal_year_final' to None/NA.")
+                
+            # Default place_country_final to 'USA' if not present or NaN
+            if 'place_country_raw' in df.columns:
+                df['place_country_final'] = df['place_country_raw'].fillna('USA')
+            else:
+                df['place_country_final'] = 'USA'
+            self.logger.debug("Processed 'place_country_final', defaulting to USA if needed.")
             
-        # Default place_country_final to 'USA' if not present or NaN
-        # Expects 'place_country_raw' from raw_column_rename_map
-        if 'place_country_raw' in df.columns:
-            df['place_country_final'] = df['place_country_raw'].fillna('USA')
-        else:
-            df['place_country_final'] = 'USA'
-        self.logger.debug("Processed 'place_country_final', defaulting to USA if needed.")
+        except Exception as e:
+            self.logger.warning(f"Error in _custom_doc_transforms: {e}")
         
         return df
-
-    def _process_method(self, file_path: Optional[str], data_source=None) -> Optional[int]:
-        """Processes the downloaded Excel file."""
-        self.logger.info(f"Starting DOC processing for file: {file_path}")
-        if not file_path or not os.path.exists(file_path):
-            self.logger.error(f"File path '{file_path}' is invalid. Cannot process.")
-            return 0
-
-        try:
-            df = self.read_file_to_dataframe(
-                file_path, 
-                file_type_hint=self.config.file_type_hint,
-                read_options=self.config.read_options
-            )
-            # Initial dropna(how='all') is handled by transform_dataframe via config
-            if df.empty:
-                self.logger.info("DataFrame is empty after reading. Nothing to process for DOC.")
-                return 0
-            
-            df = self.transform_dataframe(df, config_params=self.config.data_processing_rules)
-            if df.empty:
-                self.logger.info("DataFrame is empty after transformations. Nothing to load for DOC.")
-                return 0
-            
-            loaded_count = self.prepare_and_load_data(df, config_params=self.config.data_processing_rules, data_source=data_source)
-            
-            self.logger.info(f"DOC processing completed. Loaded {loaded_count} prospects.")
-            return loaded_count
-
-        except ScraperError as e:
-            self.logger.error(f"ScraperError during DOC processing of {file_path}: {e}", exc_info=True)
-            raise
-        except Exception as e:
-            self.logger.error(f"Unexpected error processing DOC file {file_path}: {e}", exc_info=True)
-            self._handle_and_raise_scraper_error(e, f"processing DOC file {file_path}")
-        return 0
-
-
-    def scrape(self):
-        """Orchestrates the scraping process for DOC."""
-        self.logger.info(f"Starting scrape for {self.config.source_name} using DocScraper logic.")
-        return self.scrape_with_structure(
-            setup_func=self._setup_method,
-            extract_func=self._extract_method,
-            process_func=self._process_method
+    
+    async def doc_setup(self) -> bool:
+        """
+        DOC-specific setup: simple navigation to base URL.
+        """
+        if not self.base_url:
+            self.logger.error("Base URL not configured.")
+            return False
+        
+        self.logger.info(f"DOC setup: Navigating to {self.base_url}")
+        return await self.navigate_to_url(self.base_url)
+    
+    async def doc_extract(self) -> Optional[str]:
+        """
+        DOC-specific extraction: find link by text and download directly.
+        Preserves original DOC download behavior.
+        """
+        self.logger.info(f"Starting DOC data file download process. Looking for link text: '{self.config.download_link_text}'")
+        
+        # Find the download link by text
+        download_url = await self.find_link_by_text(
+            self.config.download_link_text, 
+            timeout_ms=self.config.interaction_timeout_ms
         )
+        
+        if not download_url:
+            await self.capture_error_info(Exception("Download link not found"), "doc_link_not_found")
+            self.logger.error(f"Download link with text '{self.config.download_link_text}' not found on page.")
+            return None
+        
+        self.logger.info(f"Attempting direct download from resolved link: {download_url}")
+        
+        # Download directly from the URL
+        return await self.download_file_directly(download_url)
+    
+    def doc_process(self, file_path: str) -> int:
+        """
+        DOC-specific processing with Excel-specific read options.
+        """
+        if not file_path:
+            # Try to get most recent download
+            file_path = self.get_last_downloaded_path()
+            if not file_path:
+                self.logger.error("No file available for processing")
+                return 0
+        
+        self.logger.info(f"Starting DOC processing for file: {file_path}")
+        
+        # Read Excel file with specific options (header at row 2)
+        df = self.read_file_to_dataframe(file_path)
+        if df is None or df.empty:
+            self.logger.info("DataFrame is empty after reading. Nothing to process.")
+            return 0
+        
+        # Apply transformations
+        df = self.transform_dataframe(df)
+        if df.empty:
+            self.logger.info("DataFrame is empty after transformations. Nothing to load.")
+            return 0
+        
+        # Load to database
+        return self.prepare_and_load_data(df)
+    
+    async def scrape(self) -> int:
+        """Execute the complete DOC scraping workflow."""
+        return await self.scrape_with_structure(
+            setup_method=self.doc_setup,
+            extract_method=self.doc_extract,
+            process_method=self.doc_process
+        )
+
+
+# For backward compatibility
+async def run_doc_scraper() -> int:
+    """Run the DOC scraper."""
+    scraper = DocScraper()
+    return await scraper.scrape()
