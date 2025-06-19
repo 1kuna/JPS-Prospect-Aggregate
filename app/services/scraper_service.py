@@ -1,7 +1,8 @@
 import datetime
 import asyncio
 from datetime import timezone
-from app.models import db, DataSource, ScraperStatus
+from app.database import db
+from app.database.models import DataSource, ScraperStatus
 from app.exceptions import NotFoundError, ScraperError, DatabaseError
 from app.utils.logger import logger
 from app.utils.db_utils import update_scraper_status
