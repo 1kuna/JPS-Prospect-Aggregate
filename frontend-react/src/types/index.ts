@@ -1,8 +1,12 @@
 // Placeholder types index
 export interface DataSource {
-  id: string | number;
+  id: number;
   name: string;
-  type: string;
+  url: string;
+  description: string;
+  last_scraped: string | null;
+  prospectCount: number;
+  last_checked: string | null;
   status: string;
-  // Add other relevant fields as discovered or specified
+  type?: string; // Optional for backward compatibility
 }

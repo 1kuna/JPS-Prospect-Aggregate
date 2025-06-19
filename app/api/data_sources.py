@@ -159,6 +159,36 @@ def create_data_source():
         raise DatabaseError("Could not create data source")
 
 
+@data_sources_bp.route('/<int:source_id>/clear-data', methods=['POST'])
+def clear_data_source_data(source_id):
+    """Clear all prospects from a data source while keeping the data source itself."""
+    session = db.session
+    try:
+        # Check if data source exists
+        source = session.query(DataSource).filter(DataSource.id == source_id).first()
+        if not source:
+            raise NotFoundError(f"Data source with ID {source_id} not found")
+        
+        # Count prospects before deletion
+        prospect_count = session.query(func.count(Prospect.id)).filter(Prospect.source_id == source_id).scalar()
+        
+        # Delete all prospects for this data source
+        deleted_count = session.query(Prospect).filter(Prospect.source_id == source_id).delete()
+        session.commit()
+        
+        logger.info(f"Cleared {deleted_count} prospects from data source {source.name} (ID: {source_id})")
+        
+        return jsonify({
+            "status": "success", 
+            "message": f"Cleared {deleted_count} prospects from {source.name}",
+            "deleted_count": deleted_count
+        })
+    except NotFoundError as nfe:
+        raise nfe
+    except Exception as e:
+        logger.error(f"Error clearing data from source {source_id}: {e}", exc_info=True)
+        raise DatabaseError(f"Could not clear data from data source {source_id}")
+
 @data_sources_bp.route('/<int:source_id>', methods=['DELETE'])
 def delete_data_source(source_id):
     """Delete a data source and its related prospects and status records."""

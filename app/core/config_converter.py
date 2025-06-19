@@ -11,6 +11,7 @@ def create_acquisition_gateway_config() -> ScraperConfig:
     return ScraperConfig(
         source_name="Acquisition Gateway",
         base_url=None,  # Set by runner from active_config.ACQUISITION_GATEWAY_URL
+        folder_name="acqgw",  # Use existing folder structure
         
         # Browser settings
         use_stealth=False,
@@ -27,19 +28,27 @@ def create_acquisition_gateway_config() -> ScraperConfig:
         # Selectors
         export_button_selector="button#export-0",
         
+        # File reading configuration
+        csv_read_options={
+            "encoding": "utf-8",
+            "on_bad_lines": "skip",  # Skip malformed lines
+            "quoting": 1,  # QUOTE_ALL - handle embedded quotes better
+            "engine": "python"  # More robust parsing
+        },
+        
         # Data processing
         custom_transform_functions=["custom_summary_fallback"],
         raw_column_rename_map={
+            # Core fields mapped to standard schema
             'Listing ID': 'native_id',
             'Title': 'title',
-            'Body': 'description',
+            'Description': 'description',  # Primary description field
             'NAICS Code': 'naics_code',
             'Estimated Contract Value': 'estimated_value_text',
             'Estimated Solicitation Date': 'release_date_raw',
             'Ultimate Completion Date': 'award_date_raw',
             'Estimated Award FY': 'award_fiscal_year',
-            'Organization': 'agency',
-            'Agency': 'parent_agency',
+            'Agency': 'agency',
             'Place of Performance City': 'place_city',
             'Place of Performance State': 'place_state', 
             'Place of Performance Country': 'place_country',
@@ -68,7 +77,8 @@ def create_acquisition_gateway_config() -> ScraperConfig:
             'place_state': 'place_state',
             'place_country': 'place_country',
             'contract_type': 'contract_type',
-            'set_aside': 'set_aside'
+            'set_aside': 'set_aside',
+            'extras_json': 'extra'  # Map extras JSON to database extra field
         },
         fields_for_id_hash=['native_id', 'naics_code', 'title', 'description']
     )
@@ -79,6 +89,7 @@ def create_dhs_config() -> ScraperConfig:
     return ScraperConfig(
         source_name="Department of Homeland Security",
         base_url=None,  # Set by runner from active_config.DHS_FORECAST_URL
+        folder_name="dhs",  # Use existing folder structure
         
         # Browser settings
         use_stealth=False,
@@ -146,17 +157,11 @@ def create_treasury_config() -> ScraperConfig:
     return ScraperConfig(
         source_name="Department of Treasury",
         base_url=None,  # Set by runner from active_config.TREASURY_FORECAST_URL
+        folder_name="treas",  # Use existing folder structure
         
-        # Browser settings - enable stealth mode for anti-automation detection
-        use_stealth=True,
-        debug_mode=False,  # Headless mode
-        special_browser_args=[
-            "--disable-blink-features=AutomationControlled",
-            "--disable-dev-shm-usage", 
-            "--no-sandbox",
-            "--disable-web-security",
-            "--disable-features=VizDisplayCompositor"
-        ],
+        # Browser settings - simple approach like other working scrapers
+        use_stealth=False,
+        debug_mode=True,  # Visible mode for monitoring
         
         # Extended timeouts for potentially slow site  
         navigation_timeout_ms=180000,  # 3 minutes
@@ -166,32 +171,27 @@ def create_treasury_config() -> ScraperConfig:
         # Selectors - Treasury uses XPath (corrected from original)
         export_button_selector="//lightning-button/button[contains(text(), 'Download Opportunity Data')]",  # XPath from original
         
-        # File reading
-        file_read_strategy="html_then_excel",
+        # File reading - XLS files only, no HTML fallback
+        file_read_strategy="excel",
         read_options={"header": 0},
         
-        # Data processing
+        # Data processing - restored from original working config
         custom_transform_functions=["_custom_treasury_transforms"],
         raw_column_rename_map={
-            'Specific Id': 'native_id_intermediate',
-            'ShopCart/req': 'shopcart_req_intermediate',
-            'Contract Number': 'contract_num_intermediate',
-            'Desc': 'description',
-            'Agency': 'agency',
-            'NAICS': 'naics_code',
+            'Specific Id': 'native_id_primary', # Primary candidate for native_id
+            'ShopCart/req': 'native_id_fallback1', # Fallback candidate 1
+            'Contract Number': 'native_id_fallback2', # Fallback candidate 2
+            'Bureau': 'agency',
+            'PSC': 'title', # Used as title
+            'Type of Requirement': 'requirement_type', # Will go to extras
+            'Place of Performance': 'place_raw', # For place parsing
             'Contract Type': 'contract_type',
-            'Small Business': 'set_aside',
-            'Period/PopEnd': 'award_qtr_raw',
-            'Estimated Value': 'estimated_value_text',
-            'Procurement Office City': 'place_raw'
+            'NAICS': 'naics_code',
+            'Estimated Total Contract Value': 'estimated_value_text', # Keep original text
+            'Type of Small Business Set-aside': 'set_aside',
+            'Projected Award FY_Qtr': 'award_qtr_raw', # For fiscal quarter parsing
+            'Project Period of Performance Start': 'release_date_raw' # Still needs date parsing
         },
-        date_column_configs=[
-            {'column': 'award_qtr_raw', 
-             'target_date_col': 'award_date', 
-             'target_fy_col': 'award_fiscal_year',
-             'parse_type': 'fiscal_quarter'
-            }
-        ],
         place_column_configs=[
             {'column': 'place_raw', 
              'target_city_col': 'place_city', 
@@ -199,21 +199,40 @@ def create_treasury_config() -> ScraperConfig:
              'target_country_col': 'place_country'
             }
         ],
+        date_column_configs=[
+            {'column': 'release_date_raw', 'target_column': 'release_date', 'parse_type': 'datetime', 'store_as_date': True},
+            {'column': 'award_qtr_raw', 
+             'target_date_col': 'award_date', 
+             'target_fy_col': 'award_fiscal_year',
+             'parse_type': 'fiscal_quarter'
+            }
+        ],
         db_column_rename_map={
-            'native_id_final': 'native_id',
-            'description_final': 'description',
+            # Most fields are already correctly named from raw_column_rename_map
+            'native_id': 'native_id', # Custom transform will create from primary/fallback fields
             'agency': 'agency',
-            'naics_code': 'naics',
+            'title': 'title',
+            'description': 'description', # Custom transform will create
+            'place_city': 'place_city',
+            'place_state': 'place_state',
+            'place_country': 'place_country',
             'contract_type': 'contract_type',
+            'naics_code': 'naics',
+            'estimated_value_text': 'estimated_value_text',
             'set_aside': 'set_aside',
             'award_date': 'award_date',
             'award_fiscal_year': 'award_fiscal_year',
-            'estimated_value_text': 'estimated_value_text',
-            'place_city': 'place_city',
-            'place_state': 'place_state',
-            'place_country': 'place_country'
+            'release_date': 'release_date'
         },
-        fields_for_id_hash=['native_id_final', 'naics_code', 'description_final', 'agency', 'place_city', 'place_state', 'row_index']
+        fields_for_id_hash=[
+            'native_id', 
+            'naics_code', 
+            'title', 
+            'description',
+            'agency',
+            'place_city', 
+            'place_state'
+        ]
     )
 
 
@@ -222,6 +241,7 @@ def create_dot_config() -> ScraperConfig:
     return ScraperConfig(
         source_name="Department of Transportation",
         base_url=None,  # Set by runner from active_config.DOT_FORECAST_URL
+        folder_name="dot",  # Use existing folder structure
         
         # Browser settings - DOT needs stealth mode and special args
         # DOT batch processing requires visible browser (headless detection)
@@ -310,6 +330,7 @@ def create_hhs_config() -> ScraperConfig:
     return ScraperConfig(
         source_name="Health and Human Services",
         base_url=None,  # Set by runner from active_config.HHS_FORECAST_URL
+        folder_name="hhs",  # Use existing folder structure
         
         # Browser settings - enable stealth and special args for HHS
         use_stealth=True,
@@ -390,6 +411,7 @@ def create_ssa_config() -> ScraperConfig:
     return ScraperConfig(
         source_name="Social Security Administration",
         base_url=None,  # Set by runner from active_config.SSA_CONTRACT_FORECAST_URL
+        folder_name="ssa",  # Use existing folder structure
         
         # Browser settings
         use_stealth=False,
@@ -450,6 +472,7 @@ def create_doc_config() -> ScraperConfig:
     return ScraperConfig(
         source_name="Department of Commerce",
         base_url=None,  # Set by runner from active_config.COMMERCE_FORECAST_URL
+        folder_name="doc",  # Use existing folder structure
         
         # Browser settings
         use_stealth=False,
@@ -504,6 +527,7 @@ def create_doj_config() -> ScraperConfig:
     return ScraperConfig(
         source_name="Department of Justice",
         base_url=None,  # Set by runner from active_config.DOJ_FORECAST_URL
+        folder_name="doj",  # Use existing folder structure
         
         # Browser settings
         use_stealth=False,
@@ -570,6 +594,7 @@ def create_dos_config() -> ScraperConfig:
     return ScraperConfig(
         source_name="Department of State",
         base_url=None,  # Set by runner from active_config.DOS_FORECAST_URL (for reference)
+        folder_name="dos",  # Use existing folder structure
         
         # Browser settings
         use_stealth=False,

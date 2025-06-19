@@ -20,6 +20,10 @@ async function deleteDataSourceAPI(dataSourceId: DataSource['id']): Promise<void
   return del<void>(`/api/data-sources/${dataSourceId}`);
 }
 
+async function clearDataSourceDataAPI(dataSourceId: DataSource['id']): Promise<{ status: string; message: string; deleted_count: number }> {
+  return post<{ status: string; message: string; deleted_count: number }>(`/api/data-sources/${dataSourceId}/clear-data`);
+}
+
 // --- React Query Hooks ---
 
 const dataSourceQueryKeys = {
@@ -81,6 +85,19 @@ export function useDeleteDataSource() {
       // queryClient.setQueryData(dataSourceQueryKeys.list(), (oldData: DataSource[] | undefined) =>
       //   oldData?.filter(ds => ds.id !== dataSourceId) || []
       // );
+    },
+  });
+}
+
+export function useClearDataSourceData() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: clearDataSourceDataAPI,
+    onSuccess: () => {
+      // Invalidate and refetch the list of data sources to update prospect counts
+      queryClient.invalidateQueries({ queryKey: dataSourceQueryKeys.lists() });
+      // Also invalidate the general dataSources query used in Advanced.tsx
+      queryClient.invalidateQueries({ queryKey: ['dataSources'] });
     },
   });
 }

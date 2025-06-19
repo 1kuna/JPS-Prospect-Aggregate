@@ -1,10 +1,9 @@
 """
 Treasury scraper using the consolidated architecture.
-Preserves all original Treasury-specific functionality including complex custom transforms.
+Simplified to download XLS files only - no HTML fallbacks.
 """
-import pandas as pd
 import os
-from datetime import datetime
+import pandas as pd
 from typing import Optional
 
 from app.core.consolidated_scraper_base import ConsolidatedScraperBase
@@ -25,44 +24,113 @@ class TreasuryScraper(ConsolidatedScraperBase):
     
     def _custom_treasury_transforms(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Custom Treasury transformations preserving the original complex logic.
-        Handles native_id selection, row_index, and description initialization.
+        Custom Treasury transformations using original working logic.
+        Handles native_id selection from primary/fallback fields and description creation.
         """
         try:
             self.logger.info("Applying Treasury transformations...")
             
-            # Handle alternative native_id fields (from original _custom_treasury_pre_transforms)
-            if 'native_id_intermediate' in df.columns:
-                df['native_id_final'] = df['native_id_intermediate']
-                self.logger.debug("Used 'native_id_intermediate' as native_id_final.")
-            elif 'shopcart_req_intermediate' in df.columns:
-                df['native_id_final'] = df['shopcart_req_intermediate']
-                self.logger.info("Used 'shopcart_req_intermediate' as native_id_final.")
-            elif 'contract_num_intermediate' in df.columns:
-                df['native_id_final'] = df['contract_num_intermediate']
-                self.logger.info("Used 'contract_num_intermediate' as native_id_final.")
+            # Handle native_id selection (from original working config)
+            if 'native_id_primary' in df.columns and df['native_id_primary'].notna().any():
+                df['native_id'] = df['native_id_primary']
+                self.logger.debug("Used 'native_id_primary' as native_id.")
+            elif 'native_id_fallback1' in df.columns and df['native_id_fallback1'].notna().any():
+                df['native_id'] = df['native_id_fallback1']
+                self.logger.info("Used 'native_id_fallback1' as native_id.")
+            elif 'native_id_fallback2' in df.columns and df['native_id_fallback2'].notna().any():
+                df['native_id'] = df['native_id_fallback2']
+                self.logger.info("Used 'native_id_fallback2' as native_id.")
             else:
-                df['native_id_final'] = None
-                self.logger.warning("No primary or fallback native ID column found. 'native_id_final' set to None.")
+                df['native_id'] = None
+                self.logger.warning("No primary or fallback native ID column found. 'native_id' set to None.")
 
             # Add row_index for unique ID generation (Treasury data may have duplicates)
             df.reset_index(drop=True, inplace=True)
             df['row_index'] = df.index 
             self.logger.debug("Added 'row_index' to DataFrame.")
             
-            # Initialize description as None (from original _custom_treasury_transforms_in_mixin_flow)
-            df['description_final'] = None 
-            self.logger.debug("Initialized 'description_final' to None.")
+            # Create description from title if description doesn't exist
+            if 'title' in df.columns and 'description' not in df.columns:
+                df['description'] = df['title']
+                self.logger.debug("Created 'description' from 'title'.")
+            elif 'description' not in df.columns:
+                df['description'] = None
+                self.logger.debug("Initialized 'description' to None.")
             
         except Exception as e:
             self.logger.warning(f"Error in _custom_treasury_transforms: {e}")
         
         return df
     
+    def _is_html_content(self, file_path: str) -> bool:
+        """Check if file contains HTML content even with .xls extension."""
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                first_chunk = f.read(100).strip().lower()
+                return first_chunk.startswith('<table') or '<html' in first_chunk
+        except:
+            return False
+    
+    def read_file_to_dataframe(self, file_path: str) -> Optional[pd.DataFrame]:
+        """
+        Treasury-specific file reading that handles HTML content in .xls files.
+        """
+        if not file_path or not os.path.exists(file_path):
+            self.logger.error(f"File does not exist: {file_path}")
+            return None
+        
+        self.logger.info(f"Reading Treasury file: {file_path}")
+        
+        # Check if it's HTML content disguised as XLS
+        if self._is_html_content(file_path):
+            self.logger.info("Detected HTML content in .xls file, using HTML parser")
+            try:
+                # Try different parsers for HTML parsing
+                parsers_to_try = ['lxml', 'html.parser', 'html5lib']
+                
+                for parser in parsers_to_try:
+                    try:
+                        self.logger.info(f"Trying HTML parser: {parser}")
+                        tables = pd.read_html(
+                            file_path,
+                            header=0,  # First row contains headers
+                            encoding='utf-8',
+                            flavor=parser if parser != 'html.parser' else None
+                        )
+                        
+                        if tables and len(tables) > 0:
+                            df = tables[0]
+                            self.logger.info(f"Successfully read HTML table with {parser}: {len(df)} rows and {len(df.columns)} columns")
+                            
+                            # If empty, try without header specification
+                            if len(df) == 0:
+                                self.logger.info("Table empty with header=0, trying without header specification")
+                                tables = pd.read_html(file_path, encoding='utf-8', flavor=parser if parser != 'html.parser' else None)
+                                if tables and len(tables[0]) > 0:
+                                    df = tables[0]
+                                    self.logger.info(f"Successfully read HTML table without header spec: {len(df)} rows and {len(df.columns)} columns")
+                            
+                            if len(df) > 0:
+                                return df
+                        
+                    except Exception as parser_error:
+                        self.logger.debug(f"Parser {parser} failed: {parser_error}")
+                        continue
+                
+                self.logger.warning("All HTML parsers failed")
+                return None
+                
+            except Exception as e:
+                self.logger.warning(f"Failed to read as HTML: {e}")
+                # Fall back to Excel parsing
+        
+        # Fall back to standard Excel parsing
+        self.logger.info("Using standard Excel parser")
+        return super().read_file_to_dataframe(file_path)
+    
     async def treasury_setup(self) -> bool:
         """
-        Treasury-specific setup: navigate and wait for 'load' state.
-        Preserves original Treasury behavior.
+        Simple Treasury setup like other working scrapers.
         """
         if not self.base_url:
             self.logger.error("Base URL not configured.")
@@ -72,18 +140,22 @@ class TreasuryScraper(ConsolidatedScraperBase):
         
         success = await self.navigate_to_url(self.base_url, wait_until='domcontentloaded')
         if success:
-            # Wait for the page to be fully interactive instead of 'load'
+            # Wait for the page to be fully interactive
             await self.wait_for_load_state('domcontentloaded')
             self.logger.info("Page DOM content loaded and interactive.")
+            
+            # Additional wait for Lightning components to fully initialize
+            self.logger.info("Waiting 5 seconds for Lightning components to fully load...")
+            await self.page.wait_for_timeout(5000)
+            self.logger.info("Treasury setup completed, page should be ready for interaction.")
         
         return success
     
     async def treasury_extract(self) -> Optional[str]:
         """
-        Treasury-specific extraction with multiple download strategies.
-        Handles Salesforce Lightning framework quirks.
+        Simple Treasury extraction like other working scrapers.
         """
-        self.logger.info("Starting Treasury data file download process.")
+        self.logger.info("Starting Treasury XLS file download.")
         
         selector = self.config.export_button_selector
         
@@ -94,233 +166,37 @@ class TreasuryScraper(ConsolidatedScraperBase):
         
         self.logger.info(f"Download button '{selector}' is visible.")
         
-        # Try multiple download strategies for Lightning framework
-        return await self._treasury_multi_strategy_download(selector)
-    
-    async def _treasury_multi_strategy_download(self, selector: str) -> Optional[str]:
-        """
-        Try multiple download strategies for Treasury's Lightning framework.
-        """
-        # Strategy 1: Check if clicking button updates page content with data
-        self.logger.info("Strategy 1: Check for page content update after button click")
-        result = await self._treasury_page_content_download(selector)
-        if result:
-            return result
-        
-        # Strategy 2: Traditional download with extended timeout
-        self.logger.info("Strategy 2: Traditional download with long timeout")
-        result = await self.download_file_via_click(
+        # Simple download approach like other working scrapers
+        return await self.download_file_via_click(
             selector=selector,
             js_click_fallback=True,
-            wait_after_click=2000,  # Wait 2 seconds after click
-            timeout=60000  # Reduced timeout for faster testing
+            wait_after_click=2000,
+            timeout=60000
         )
-        if result:
-            return result
-        
-        # Strategy 3: Check for new tab/window downloads
-        self.logger.info("Strategy 3: Checking for new tab/window download")
-        result = await self._treasury_new_tab_download(selector)
-        if result:
-            return result
-        
-        # Strategy 4: Look for direct download links after button click
-        self.logger.info("Strategy 4: Looking for generated download links")
-        result = await self._treasury_generated_link_download(selector)
-        if result:
-            return result
-        
-        self.logger.error("All Treasury download strategies failed")
-        return None
     
-    async def _treasury_page_content_download(self, selector: str) -> Optional[str]:
-        """
-        Click button and check if the current page content is updated with data.
-        """
-        try:
-            # Get initial page content to compare
-            initial_content = await self.page.content()
-            initial_length = len(initial_content)
-            
-            # Click the button
-            self.logger.info("Clicking download button to check for page content update")
-            success = await self.click_element(selector, use_js=True)
-            if not success:
-                return None
-            
-            # Wait for potential content update
-            await self.wait_for_timeout(5000)  # Wait 5 seconds for content to load
-            
-            # Get updated content
-            updated_content = await self.page.content()
-            updated_length = len(updated_content)
-            
-            self.logger.info(f"Content length: initial={initial_length}, updated={updated_length}")
-            
-            # Check if content significantly changed (likely with data table)
-            if updated_length > initial_length * 1.1:  # At least 10% increase
-                # Look for table data indicators
-                if 'table' in updated_content.lower() and ('naics' in updated_content.lower() or 'contract' in updated_content.lower()):
-                    # This looks like Treasury data content
-                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    filename = f"treasury_data_{timestamp}.html"
-                    filepath = os.path.join(self.download_dir, filename)
-                    
-                    with open(filepath, 'w', encoding='utf-8') as f:
-                        f.write(updated_content)
-                    
-                    self.last_downloaded_file = filepath
-                    self.logger.info(f"Saved Treasury data from page content: {filepath}")
-                    return filepath
-            
-            # Check if any visible table elements appeared or updated
-            table_elements = await self.page.query_selector_all('table')
-            if table_elements:
-                self.logger.info(f"Found {len(table_elements)} table elements on page")
-                
-                # Try to find the main data table
-                for i, table in enumerate(table_elements):
-                    table_text = await table.inner_text()
-                    if len(table_text) > 1000 and ('naics' in table_text.lower() or 'contract' in table_text.lower()):
-                        # This looks like the data table
-                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                        filename = f"treasury_table_data_{timestamp}.html"
-                        filepath = os.path.join(self.download_dir, filename)
-                        
-                        table_html = await table.inner_html()
-                        full_html = f"""
-                        <html>
-                        <head><title>Treasury Data</title></head>
-                        <body>
-                        <table>{table_html}</table>
-                        </body>
-                        </html>
-                        """
-                        
-                        with open(filepath, 'w', encoding='utf-8') as f:
-                            f.write(full_html)
-                        
-                        self.last_downloaded_file = filepath
-                        self.logger.info(f"Saved Treasury table data: {filepath}")
-                        return filepath
-            
-        except Exception as e:
-            self.logger.warning(f"Page content download strategy failed: {e}")
-        
-        return None
-    
-    async def _treasury_new_tab_download(self, selector: str) -> Optional[str]:
-        """
-        Handle Treasury downloads that might open in new tabs.
-        """
-        try:
-            # Set up new page expectation
-            async with self.context.expect_page() as new_page_info:
-                # Click the button
-                success = await self.click_element(selector, use_js=True)
-                if not success:
-                    return None
-                
-                # Wait for new page
-                new_page = await new_page_info.value
-                
-                # Check if new page has download or data
-                await new_page.wait_for_load_state('domcontentloaded', timeout=30000)
-                
-                # Look for download on new page or check if it's the data page itself
-                url = new_page.url
-                self.logger.info(f"New page opened: {url}")
-                
-                # If the new page is a direct download URL, download it
-                if any(ext in url.lower() for ext in ['.xls', '.xlsx', '.csv']):
-                    await new_page.close()
-                    return await self.download_file_directly(url)
-                
-                # Check if new page has the data content
-                content = await new_page.content()
-                if 'table' in content.lower() and len(content) > 10000:  # Likely has data table
-                    # Save the HTML content as the data file
-                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    filename = f"treasury_data_{timestamp}.html"
-                    filepath = os.path.join(self.download_dir, filename)
-                    
-                    with open(filepath, 'w', encoding='utf-8') as f:
-                        f.write(content)
-                    
-                    await new_page.close()
-                    self.last_downloaded_file = filepath
-                    self.logger.info(f"Saved Treasury data from new page: {filepath}")
-                    return filepath
-                
-                await new_page.close()
-                
-        except Exception as e:
-            self.logger.warning(f"New tab download strategy failed: {e}")
-        
-        return None
-    
-    async def _treasury_generated_link_download(self, selector: str) -> Optional[str]:
-        """
-        Look for dynamically generated download links after clicking the button.
-        """
-        try:
-            # Click the button first
-            success = await self.click_element(selector, use_js=True)
-            if not success:
-                return None
-            
-            # Wait for potential dynamic content to load
-            await self.wait_for_timeout(3000)
-            
-            # Look for any new download links that might have appeared
-            download_selectors = [
-                "a[href*='.xls']",
-                "a[href*='.xlsx']", 
-                "a[href*='download']",
-                "a[download]",
-                "button[onclick*='download']"
-            ]
-            
-            for dl_selector in download_selectors:
-                elements = await self.page.query_selector_all(dl_selector)
-                if elements:
-                    self.logger.info(f"Found {len(elements)} potential download links with {dl_selector}")
-                    
-                    for element in elements:
-                        href = await element.get_attribute('href')
-                        if href and not href.startswith('javascript:'):
-                            # Try to download directly
-                            if href.startswith('/'):
-                                # Relative URL, make it absolute
-                                href = f"https://osdbu.forecast.treasury.gov{href}"
-                            elif not href.startswith('http'):
-                                continue
-                            
-                            self.logger.info(f"Attempting direct download from: {href}")
-                            return await self.download_file_directly(href)
-            
-        except Exception as e:
-            self.logger.warning(f"Generated link download strategy failed: {e}")
-        
-        return None
     
     def treasury_process(self, file_path: str) -> int:
         """
-        Treasury-specific processing preserving original file reading strategy.
+        Treasury-specific processing for XLS files only.
         """
         if not file_path:
             # Try to get most recent download
             file_path = self.get_last_downloaded_path()
             if not file_path:
-                self.logger.error("No file available for processing")
+                self.logger.error("No XLS file available for processing")
                 return 0
         
-        self.logger.info(f"Starting Treasury processing for file: {file_path}")
+        # Verify we have an XLS file
+        if not file_path.lower().endswith(('.xls', '.xlsx')):
+            self.logger.error(f"Expected XLS file, got: {file_path}")
+            return 0
         
-        # Read file using html_then_excel strategy
+        self.logger.info(f"Starting Treasury processing for XLS file: {file_path}")
+        
+        # Read XLS file
         df = self.read_file_to_dataframe(file_path)
         if df is None or df.empty:
-            self.logger.info("DataFrame is empty after reading. Nothing to process.")
+            self.logger.info("DataFrame is empty after reading XLS. Nothing to process.")
             return 0
         
         # Initial cleanup
