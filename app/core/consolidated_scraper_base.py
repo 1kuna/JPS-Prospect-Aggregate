@@ -24,7 +24,8 @@ from playwright.sync_api import sync_playwright
 from app.utils.logger import logger
 from app.config import active_config
 from app.database.crud import bulk_upsert_prospects
-from app.models import db, DataSource
+from app.database import db
+from app.database.models import DataSource
 
 
 @dataclass

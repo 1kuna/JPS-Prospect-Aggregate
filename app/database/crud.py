@@ -5,7 +5,8 @@ from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 import numpy as np
 import math
 
-from app.models import db, Prospect # Changed back to Prospect
+from app.database import db
+from app.database.models import Prospect # Changed back to Prospect
 from app.exceptions import ValidationError
 
 # Logging is now handled by app.utils.logger (Loguru)

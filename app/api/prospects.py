@@ -2,7 +2,8 @@ from flask import Blueprint, jsonify, request
 from sqlalchemy import desc, asc, or_, cast, String # Added for sorting and JSON queries
 from sqlalchemy.sql import func
 from app.database.crud import paginate_sqlalchemy_query
-from app.models import Prospect, db # Added db for session access in new route
+from app.database import db
+from app.database.models import Prospect # Added db for session access in new route
 from app.exceptions import ValidationError, NotFoundError # Added NotFoundError
 from app.utils.logger import logger
 

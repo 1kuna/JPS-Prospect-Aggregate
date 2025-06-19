@@ -41,7 +41,8 @@ def update_scraper_status(source_id: int, status: str, details: Optional[str] = 
         status (str): Status to set (e.g., 'working', 'completed', 'failed').
         details (Optional[str]): Additional details or error message.
     """
-    from app.models import db, DataSource, ScraperStatus # Import db from app.models
+    from app.database import db # Import db from app.database
+    from app.database.models import DataSource, ScraperStatus
     # Ensure datetime is available (already imported at the top)
 
     logger.info(f"Updating scraper status for source ID {source_id} to '{status}'. Details: {details}")
@@ -86,7 +87,8 @@ def update_scraper_status(source_id: int, status: str, details: Optional[str] = 
 
 def get_data_source_id_by_name(source_name: str) -> int | None:
     """Fetches the ID of a data source by its name."""
-    from app.models import db, DataSource
+    from app.database import db
+    from app.database.models import DataSource
     session = db.session
     try:
         data_source = session.query(DataSource.id).filter(DataSource.name == source_name).scalar()

@@ -10,7 +10,7 @@ import difflib
 from typing import List, Dict, Tuple, Optional, Set
 from dataclasses import dataclass
 from sqlalchemy.orm import Session
-from app.models import Prospect
+from app.database.models import Prospect
 from app.utils.logger import logger
 from functools import lru_cache
 

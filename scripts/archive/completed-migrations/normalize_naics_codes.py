@@ -6,7 +6,8 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app import create_app
-from app.models import db, Prospect
+from app.database import db
+from app.database.models import Prospect
 from app.utils.parsing import normalize_naics_code
 from sqlalchemy import func
 import pandas as pd

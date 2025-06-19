@@ -2,7 +2,8 @@ import time
 import datetime
 
 # from app.database.connection import session_scope # Removed
-from app.models import db, DataSource, ScraperStatus # Added db
+from app.database import db # Added db
+from app.database.models import DataSource, ScraperStatus
 from app import create_app # Added for app context
 from app.config import active_config # Import active_config
 from app.utils.logger import logger, cleanup_logs
