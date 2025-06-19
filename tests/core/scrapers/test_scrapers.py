@@ -12,16 +12,16 @@ import pandas as pd
 from typing import Dict, Any
 import datetime
 
-# Import all consolidated scrapers
-from app.core.scrapers.acquisition_gateway_consolidated import AcquisitionGatewayScraper
-from app.core.scrapers.dhs_scraper_consolidated import DHSForecastScraper
-from app.core.scrapers.treasury_scraper_consolidated import TreasuryScraper
-from app.core.scrapers.dot_scraper_consolidated import DotScraper
-from app.core.scrapers.hhs_scraper_consolidated import HHSForecastScraper
-from app.core.scrapers.ssa_scraper_consolidated import SsaScraper
-from app.core.scrapers.doc_scraper_consolidated import DocScraper
-from app.core.scrapers.doj_scraper_consolidated import DOJForecastScraper
-from app.core.scrapers.dos_scraper_consolidated import DOSForecastScraper
+# Import all scrapers
+from app.core.scrapers.acquisition_gateway import AcquisitionGatewayScraper
+from app.core.scrapers.dhs_scraper import DHSForecastScraper
+from app.core.scrapers.treasury_scraper import TreasuryScraper
+from app.core.scrapers.dot_scraper import DotScraper
+from app.core.scrapers.hhs_scraper import HHSForecastScraper
+from app.core.scrapers.ssa_scraper import SsaScraper
+from app.core.scrapers.doc_scraper import DocScraper
+from app.core.scrapers.doj_scraper import DOJForecastScraper
+from app.core.scrapers.dos_scraper import DOSForecastScraper
 
 from app.database.models import Prospect, DataSource
 from app.config import active_config
