@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { PageLayout } from '@/components/layout';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -48,26 +48,50 @@ export default function Advanced() {
   const [runningScrapers, setRunningScrapers] = useState<Set<number>>(new Set());
   const [runAllInProgress, setRunAllInProgress] = useState(false);
 
-  // Fetch data sources
+  // Fetch data sources with more frequent updates when scrapers are running
   const { data: sources, isLoading, error } = useQuery<{ status: string; data: DataSource[] }>({
     queryKey: ['dataSources'],
     queryFn: () => get<{ status: string; data: DataSource[] }>('/api/data-sources/'),
+    refetchInterval: 5000, // Check every 5 seconds for simplicity
+    refetchIntervalInBackground: true,
   });
+
+  // Track which scrapers are actually working based on API status
+  const workingScrapers = useState(() => {
+    return new Set<number>();
+  })[0];
+
+  // Update working scrapers when data changes
+  useEffect(() => {
+    if (sources?.data) {
+      const dataSources = sources.data;
+      const currentlyWorking = new Set(dataSources.filter((source: DataSource) => source.status === 'working').map((source: DataSource) => source.id));
+      
+      // Update the working scrapers set
+      workingScrapers.clear();
+      currentlyWorking.forEach(id => workingScrapers.add(id));
+    }
+  }, [sources, workingScrapers]);
 
   // Mutation for running individual scraper
   const runScraperMutation = useMutation({
     mutationFn: (sourceId: number) => post(`/api/data-sources/${sourceId}/pull`),
     onMutate: (sourceId) => {
+      // Only track the API call, not the scraper status
       setRunningScrapers(prev => new Set(prev).add(sourceId));
     },
     onSettled: (_, __, sourceId) => {
+      // Remove from API call tracking
       setRunningScrapers(prev => {
         const next = new Set(prev);
         next.delete(sourceId);
         return next;
       });
-      // Refetch data sources to update status
+      // Immediately refetch to get updated status
       queryClient.invalidateQueries({ queryKey: ['dataSources'] });
+    },
+    onError: (error, sourceId) => {
+      console.error(`Scraper start failed for source ${sourceId}:`, error);
     },
   });
 
@@ -203,9 +227,28 @@ export default function Advanced() {
     }
 
     const dataSources = sources?.data || [];
+    const activeScrapers = dataSources.filter((source: DataSource) => source.status === 'working');
+    const hasActiveScrapers = activeScrapers.length > 0;
 
     return (
       <div className="space-y-6">
+        {/* Active Scrapers Status */}
+        {hasActiveScrapers && (
+          <div className="bg-blue-50 border-l-4 border-blue-400 p-4 rounded-md">
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <div className="h-3 w-3 rounded-full bg-blue-400 animate-pulse"></div>
+              </div>
+              <div className="ml-3">
+                <p className="text-sm text-blue-700">
+                  <strong>{activeScrapers.length}</strong> scraper{activeScrapers.length !== 1 ? 's' : ''} currently running: {' '}
+                  {activeScrapers.map((s: DataSource) => s.name).join(', ')}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+        
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>Data Sources</CardTitle>
@@ -213,7 +256,7 @@ export default function Advanced() {
               onClick={handleRunAllScrapers}
               isLoading={runAllInProgress}
               loadingText="Running All Scrapers..."
-              disabled={dataSources.length === 0}
+              disabled={dataSources.length === 0 || hasActiveScrapers}
               className="bg-blue-600 hover:bg-blue-700"
             >
               Pull All Sources
@@ -233,8 +276,23 @@ export default function Advanced() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {dataSources.map((source) => {
-                    const isRunning = runningScrapers.has(source.id);
+                  {dataSources.map((source: DataSource) => {
+                    const isApiCallInProgress = runningScrapers.has(source.id);
+                    const isScraperWorking = source.status === 'working';
+                    const isDisabled = runAllInProgress || isScraperWorking || isApiCallInProgress;
+                    
+                    // Determine button text and loading state
+                    let buttonText = 'Run Scraper';
+                    let isLoading = false;
+                    
+                    if (isScraperWorking) {
+                      buttonText = 'Working...';
+                      isLoading = true;
+                    } else if (isApiCallInProgress) {
+                      buttonText = 'Starting...';
+                      isLoading = true;
+                    }
+                    
                     return (
                       <TableRow key={source.id}>
                         <TableCell className="font-medium">{source.name}</TableCell>
@@ -242,6 +300,9 @@ export default function Advanced() {
                         <TableCell>
                           <span className={`font-medium ${getStatusColor(source.status)}`}>
                             {source.status}
+                            {isScraperWorking && (
+                              <span className="ml-2 inline-flex h-2 w-2 rounded-full bg-blue-400 animate-pulse"></span>
+                            )}
                           </span>
                         </TableCell>
                         <TableCell className="text-sm">{formatDate(source.last_scraped, { fallback: 'Never' })}</TableCell>
@@ -250,12 +311,12 @@ export default function Advanced() {
                           <LoadingButton
                             size="sm"
                             onClick={() => handleRunScraper(source.id)}
-                            isLoading={isRunning}
-                            loadingText="Running..."
-                            disabled={runAllInProgress}
-                            className="bg-green-600 hover:bg-green-700"
+                            isLoading={isLoading}
+                            loadingText={buttonText}
+                            disabled={isDisabled}
+                            className="bg-green-600 hover:bg-green-700 disabled:bg-gray-400"
                           >
-                            Run Scraper
+                            {buttonText}
                           </LoadingButton>
                         </TableCell>
                       </TableRow>
