@@ -88,11 +88,12 @@ def get_files_by_source(raw_data_path: Path) -> Dict[str, List[Tuple[Path, datet
     return files_by_source
 
 
-def apply_retention_policy(files_by_source: Dict[str, List[Tuple[Path, datetime]]], 
-                          retention_count: int = 3,
-                          dry_run: bool = True) -> Dict[str, int]:
+def apply_intelligent_retention_policy(files_by_source: Dict[str, List[Tuple[Path, datetime]]], 
+                                     retention_count: int = 5,
+                                     dry_run: bool = True) -> Dict[str, int]:
     """
-    Apply retention policy to files, keeping only the most recent N files per source.
+    Apply intelligent retention policy: Keep N most recent files PLUS always preserve
+    last 2 successfully processed files.
     
     Args:
         files_by_source: Dictionary mapping source to files with timestamps
@@ -102,29 +103,54 @@ def apply_retention_policy(files_by_source: Dict[str, List[Tuple[Path, datetime]
     Returns:
         Dictionary with statistics about files processed/deleted per source
     """
+    from app.services.file_validation_service import file_validation_service
+    
     stats = {}
     total_deleted = 0
     total_kept = 0
     
     for source_name, files_with_timestamps in files_by_source.items():
-        files_to_keep = files_with_timestamps[:retention_count]
-        files_to_delete = files_with_timestamps[retention_count:]
+        # Get source ID for looking up successful files
+        source_id = file_validation_service.get_source_id_by_name(source_name)
+        
+        # Get last 2 successfully processed files
+        successful_files = []
+        if source_id:
+            successful_file_paths = file_validation_service.get_last_successful_files(source_id, 2)
+            successful_files = [Path(fp) for fp in successful_file_paths if Path(fp).exists()]
+        
+        # Files to keep: N most recent + successful files (deduplicated)
+        recent_files = [fp for fp, _ in files_with_timestamps[:retention_count]]
+        files_to_preserve = set(recent_files + successful_files)
+        
+        # Split into keep and delete
+        files_to_keep = [(fp, ts) for fp, ts in files_with_timestamps if fp in files_to_preserve]
+        files_to_delete = [(fp, ts) for fp, ts in files_with_timestamps if fp not in files_to_preserve]
         
         kept_count = len(files_to_keep)
         deleted_count = len(files_to_delete)
         
         stats[source_name] = {
             'kept': kept_count,
-            'deleted': deleted_count
+            'deleted': deleted_count,
+            'kept_recent': len(recent_files),
+            'kept_successful': len([f for f in successful_files if f in files_to_preserve]),
+            'total_successful_tracked': len(successful_files)
         }
         
         total_kept += kept_count
         total_deleted += deleted_count
         
+        # Log retention details
+        logger.info(f"Source '{source_name}': Keeping {kept_count} files "
+                   f"({stats[source_name]['kept_recent']} recent + "
+                   f"{stats[source_name]['kept_successful']} successful), "
+                   f"{'would delete' if dry_run else 'deleting'} {deleted_count} files")
+        
+        if successful_files:
+            logger.info(f"  Protected successful files: {[f.name for f in successful_files]}")
+        
         if files_to_delete:
-            logger.info(f"Source '{source_name}': Keeping {kept_count} files, "
-                       f"{'would delete' if dry_run else 'deleting'} {deleted_count} files")
-            
             for file_path, timestamp in files_to_delete:
                 if dry_run:
                     logger.info(f"  [DRY RUN] Would delete: {file_path.name} "
@@ -135,8 +161,6 @@ def apply_retention_policy(files_by_source: Dict[str, List[Tuple[Path, datetime]
                         logger.info(f"  Deleted: {file_path.name}")
                     except OSError as e:
                         logger.error(f"  Failed to delete {file_path.name}: {e}")
-        else:
-            logger.info(f"Source '{source_name}': {kept_count} files, no deletion needed")
     
     logger.info(f"\nSummary: {total_kept} files kept, "
                f"{total_deleted} files {'would be deleted' if dry_run else 'deleted'}")
@@ -144,7 +168,24 @@ def apply_retention_policy(files_by_source: Dict[str, List[Tuple[Path, datetime]
     return stats
 
 
-def cleanup_raw_data(retention_count: int = 3, raw_data_path: str = None) -> Dict[str, int]:
+def apply_retention_policy(files_by_source: Dict[str, List[Tuple[Path, datetime]]], 
+                          retention_count: int = 5,
+                          dry_run: bool = True) -> Dict[str, int]:
+    """
+    Legacy retention policy function - now uses intelligent retention.
+    
+    Args:
+        files_by_source: Dictionary mapping source to files with timestamps
+        retention_count: Number of most recent files to keep per source
+        dry_run: If True, only log what would be deleted without actually deleting
+        
+    Returns:
+        Dictionary with statistics about files processed/deleted per source
+    """
+    return apply_intelligent_retention_policy(files_by_source, retention_count, dry_run)
+
+
+def cleanup_raw_data(retention_count: int = 5, raw_data_path: str = None) -> Dict[str, int]:
     """
     Programmatic interface for data retention cleanup.
     
@@ -193,8 +234,8 @@ def main():
     parser.add_argument(
         '--retention-count', 
         type=int, 
-        default=3,
-        help='Number of most recent files to keep per source (default: 3)'
+        default=5,
+        help='Number of most recent files to keep per source (default: 5)'
     )
     parser.add_argument(
         '--dry-run',

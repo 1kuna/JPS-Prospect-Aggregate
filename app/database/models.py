@@ -296,20 +296,62 @@ class GoNoGoDecision(db.Model):
     def __repr__(self):
         return f"<GoNoGoDecision(id={self.id}, prospect_id='{self.prospect_id}', user_id={self.user_id}, decision='{self.decision}')>"
 
-    def to_dict(self, include_user=False, user_data=None):
-        result = {
+    def to_dict(self):
+        return {
             "id": self.id,
             "prospect_id": self.prospect_id,
             "user_id": self.user_id,
             "decision": self.decision,
             "reason": self.reason,
             "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
-            "prospect_title": self.prospect.title if self.prospect else None
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None
         }
-        
-        # Optionally include user data if provided (from separate query)
-        if include_user and user_data:
-            result["user"] = user_data
-            
-        return result
+
+
+class FileProcessingLog(db.Model):
+    """Track file processing success for intelligent data retention."""
+    __tablename__ = 'file_processing_logs'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    source_id = Column(Integer, ForeignKey('data_sources.id'), nullable=False, index=True)
+    file_path = Column(String(500), nullable=False, index=True)
+    file_name = Column(String(255), nullable=False, index=True)
+    file_size = Column(Integer, nullable=True)
+    file_timestamp = Column(TIMESTAMP(timezone=True), nullable=False, index=True)  # Extracted from filename
+    processing_started_at = Column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now(), index=True)
+    processing_completed_at = Column(TIMESTAMP(timezone=True), nullable=True, index=True)
+    success = Column(db.Boolean, nullable=False, default=False, index=True)
+    records_extracted = Column(Integer, nullable=True)
+    records_inserted = Column(Integer, nullable=True)
+    schema_columns = Column(JSON, nullable=True)  # Columns found in file
+    schema_issues = Column(JSON, nullable=True)  # Missing/extra columns vs expected
+    validation_warnings = Column(JSON, nullable=True)  # Non-blocking validation issues
+    error_message = Column(Text, nullable=True)
+    processing_duration = Column(Float, nullable=True)  # Duration in seconds
+
+    # Relationship to data source
+    data_source = relationship("DataSource", backref="file_processing_logs")
+
+    def __repr__(self):
+        return f"<FileProcessingLog(id={self.id}, file_name='{self.file_name}', success={self.success})>"
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "source_id": self.source_id,
+            "source_name": self.data_source.name if self.data_source else None,
+            "file_path": self.file_path,
+            "file_name": self.file_name,
+            "file_size": self.file_size,
+            "file_timestamp": self.file_timestamp.isoformat() if self.file_timestamp else None,
+            "processing_started_at": self.processing_started_at.isoformat() if self.processing_started_at else None,
+            "processing_completed_at": self.processing_completed_at.isoformat() if self.processing_completed_at else None,
+            "success": self.success,
+            "records_extracted": self.records_extracted,
+            "records_inserted": self.records_inserted,
+            "schema_columns": self.schema_columns,
+            "schema_issues": self.schema_issues,
+            "validation_warnings": self.validation_warnings,
+            "error_message": self.error_message,
+            "processing_duration": self.processing_duration
+        }
