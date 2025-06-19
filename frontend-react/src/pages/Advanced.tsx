@@ -19,17 +19,9 @@ import { get, post } from '@/utils/apiUtils';
 import { LoadingButton } from '@/components/ui/LoadingButton';
 import { ErrorDisplay } from '@/components/ui/ErrorDisplay';
 import { CenteredSpinner } from '@/components/ui/LoadingSpinner';
-
-interface DataSource {
-  id: number;
-  name: string;
-  url: string;
-  description: string;
-  last_scraped: string | null;
-  prospectCount: number;
-  last_checked: string | null;
-  status: string;
-}
+import { useClearDataSourceData } from '@/hooks/api/useDataSources';
+import { Button } from '@/components/ui';
+import { DataSource } from '@/types';
 
 interface ScraperResult {
   source_name: string;
@@ -47,6 +39,9 @@ export default function Advanced() {
   const queryClient = useQueryClient();
   const [runningScrapers, setRunningScrapers] = useState<Set<number>>(new Set());
   const [runAllInProgress, setRunAllInProgress] = useState(false);
+
+  // Clear data source data mutation
+  const clearDataMutation = useClearDataSourceData();
 
   // Fetch data sources with more frequent updates when scrapers are running
   const { data: sources, isLoading, error } = useQuery<{ status: string; data: DataSource[] }>({
@@ -126,6 +121,19 @@ export default function Advanced() {
   const handleRunAllScrapers = () => {
     if (window.confirm('This will run all scrapers synchronously. This may take several minutes. Continue?')) {
       runAllScrapersMutation.mutate();
+    }
+  };
+
+  const handleClearData = async (id: DataSource['id'], sourceName: string) => {
+    if (window.confirm(`Clear all scraped data from ${sourceName}? This will delete all prospects but keep the data source.`)) {
+      try {
+        const result = await clearDataMutation.mutateAsync(id);
+        alert(`Successfully cleared ${result.deleted_count} prospects from ${sourceName}.`);
+        // Query invalidation is handled by the mutation's onSuccess
+      } catch (err) {
+        console.error('Failed to clear data source data:', err);
+        alert('Failed to clear data source data. Please try again.');
+      }
     }
   };
 
@@ -308,16 +316,27 @@ export default function Advanced() {
                         <TableCell className="text-sm">{formatDate(source.last_scraped, { fallback: 'Never' })}</TableCell>
                         <TableCell>{source.prospectCount}</TableCell>
                         <TableCell>
-                          <LoadingButton
-                            size="sm"
-                            onClick={() => handleRunScraper(source.id)}
-                            isLoading={isLoading}
-                            loadingText={buttonText}
-                            disabled={isDisabled}
-                            className="bg-green-600 hover:bg-green-700 disabled:bg-gray-400"
-                          >
-                            {buttonText}
-                          </LoadingButton>
+                          <div className="flex gap-2">
+                            <LoadingButton
+                              size="sm"
+                              onClick={() => handleRunScraper(source.id)}
+                              isLoading={isLoading}
+                              loadingText={buttonText}
+                              disabled={isDisabled}
+                              className="bg-green-600 hover:bg-green-700 disabled:bg-gray-400"
+                            >
+                              {buttonText}
+                            </LoadingButton>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleClearData(source.id, source.name)}
+                              disabled={clearDataMutation.isPending && clearDataMutation.variables === source.id}
+                              className="border-orange-500 text-orange-600 hover:bg-orange-50"
+                            >
+                              {clearDataMutation.isPending && clearDataMutation.variables === source.id ? 'Clearing...' : 'Clear Data'}
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     );

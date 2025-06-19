@@ -15,63 +15,63 @@ from app.utils.logger import logger
 DATA_SOURCES = [
     {
         "name": "Acquisition Gateway",
-        "scraper_key": "acq_gateway",
+        "scraper_key": "ACQGW",
         "url": "https://hallways.cap.gsa.gov/app/#/gateway/acquisition-gateway/forecast-documents",
         "description": "GSA Acquisition Gateway forecast documents",
         "frequency": "weekly"
     },
     {
         "name": "Department of Commerce",
-        "scraper_key": "doc",
+        "scraper_key": "DOC",
         "url": "https://www.commerce.gov/",
         "description": "Department of Commerce procurement forecasts",
         "frequency": "weekly"
     },
     {
         "name": "Department of Homeland Security",
-        "scraper_key": "dhs",
+        "scraper_key": "DHS",
         "url": "https://www.dhs.gov/",
         "description": "DHS procurement forecasts",
         "frequency": "weekly"
     },
     {
         "name": "Department of Justice",
-        "scraper_key": "doj",
+        "scraper_key": "DOJ",
         "url": "https://www.justice.gov/",
         "description": "DOJ procurement forecasts",
         "frequency": "weekly"
     },
     {
         "name": "Department of State",
-        "scraper_key": "dos",
+        "scraper_key": "DOS",
         "url": "https://www.state.gov/",
         "description": "DOS procurement forecasts",
         "frequency": "weekly"
     },
     {
         "name": "Department of Transportation",
-        "scraper_key": "dot",
+        "scraper_key": "DOT",
         "url": "https://www.transportation.gov/",
         "description": "DOT procurement forecasts",
         "frequency": "weekly"
     },
     {
         "name": "Health and Human Services",
-        "scraper_key": "hhs",
+        "scraper_key": "HHS",
         "url": "https://www.hhs.gov/",
         "description": "HHS procurement forecasts",
         "frequency": "weekly"
     },
     {
         "name": "Social Security Administration",
-        "scraper_key": "ssa",
+        "scraper_key": "SSA",
         "url": "https://www.ssa.gov/",
         "description": "SSA procurement forecasts",
         "frequency": "weekly"
     },
     {
         "name": "Department of Treasury",
-        "scraper_key": "treasury",
+        "scraper_key": "TREAS",
         "url": "https://www.treasury.gov/",
         "description": "Treasury procurement forecasts",
         "frequency": "weekly"

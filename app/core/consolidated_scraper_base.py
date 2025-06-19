@@ -38,6 +38,7 @@ class ScraperConfig:
     # Core identification
     source_name: str
     base_url: Optional[str] = None
+    folder_name: Optional[str] = None  # Custom folder name for file storage (defaults to sanitized source_name)
     
     # Browser configuration
     use_stealth: bool = False
@@ -152,9 +153,21 @@ class ConsolidatedScraperBase:
         
         # Launch browser - use Firefox for HHS and Treasury if stealth is enabled
         headless = not self.config.debug_mode
-        if self.config.use_stealth and ("Treasury" in self.source_name or "Transportation" in self.source_name):
+        if self.config.use_stealth and "Treasury" in self.source_name:
+            self.logger.info(f"Using Firefox for {self.source_name} to avoid bot detection")
+            # Firefox args for Treasury SSL issues
+            firefox_args = [
+                "--ignore-certificate-errors",
+                "--ignore-ssl-errors",
+                "--disable-web-security"
+            ]
+            self.browser = await playwright.firefox.launch(
+                headless=headless,
+                args=firefox_args
+            )
+        elif self.config.use_stealth and "Transportation" in self.source_name:
             self.logger.info(f"Using Chromium with enhanced SSL handling for {self.source_name}")
-            # Enhanced args for Treasury and DOT SSL/timeout issues
+            # Enhanced args for DOT SSL/timeout issues
             enhanced_args = [
                 "--disable-web-security",
                 "--ignore-certificate-errors-spki-list",
@@ -183,8 +196,8 @@ class ConsolidatedScraperBase:
             )
         
         # Create context with enhanced settings for JavaScript-heavy sites
-        if self.config.use_stealth and "Health and Human Services" in self.source_name:
-            # Use Firefox user agent and headers for HHS
+        if self.config.use_stealth and ("Health and Human Services" in self.source_name or "Treasury" in self.source_name):
+            # Use Firefox user agent and headers for HHS and Treasury
             context_kwargs = {
                 'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/121.0',
                 'java_script_enabled': True,
@@ -195,10 +208,14 @@ class ConsolidatedScraperBase:
                     'DNT': '1',
                     'Connection': 'keep-alive',
                     'Upgrade-Insecure-Requests': '1',
-                    'Referer': 'https://www.hhs.gov/',
                     'Cache-Control': 'max-age=0'
                 }
             }
+            # Set appropriate referer
+            if "Treasury" in self.source_name:
+                context_kwargs['extra_http_headers']['Referer'] = 'https://www.treasury.gov/'
+            else:
+                context_kwargs['extra_http_headers']['Referer'] = 'https://www.hhs.gov/'
         else:
             context_kwargs = {
                 'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -217,6 +234,27 @@ class ConsolidatedScraperBase:
                     'Cache-Control': 'max-age=0'
                 }
             }
+        
+        # Add persistent storage for Treasury to maintain session state
+        if "Treasury" in self.source_name:
+            import tempfile
+            # Create a persistent directory for Treasury browser profile
+            treasury_profile_dir = os.path.join(tempfile.gettempdir(), 'treasury_browser_profile')
+            os.makedirs(treasury_profile_dir, exist_ok=True)
+            
+            context_kwargs['storage_state'] = None  # Will be set if file exists
+            profile_file = os.path.join(treasury_profile_dir, 'treasury_state.json')
+            
+            # Load existing state if available
+            if os.path.exists(profile_file):
+                try:
+                    context_kwargs['storage_state'] = profile_file
+                    self.logger.info(f"Loading existing browser state from {profile_file}")
+                except Exception as e:
+                    self.logger.warning(f"Could not load browser state: {e}")
+            
+            # Add SSL ignore for Firefox context
+            context_kwargs['ignore_https_errors'] = True
         
         self.context = await self.browser.new_context(**context_kwargs)
         
@@ -248,22 +286,80 @@ class ConsolidatedScraperBase:
                 'Upgrade-Insecure-Requests': '1'
             })
             
-            # Override navigator properties to hide automation
+            # Enhanced navigator properties to hide automation and fingerprinting
             await self.page.add_init_script("""
+                // Comprehensive webdriver hiding
                 Object.defineProperty(navigator, 'webdriver', {
                     get: () => undefined,
                 });
+                delete navigator.__proto__.webdriver;
                 
+                // Enhanced plugin system
                 Object.defineProperty(navigator, 'plugins', {
                     get: () => [1, 2, 3, 4, 5],
                 });
                 
+                // Realistic language settings
                 Object.defineProperty(navigator, 'languages', {
                     get: () => ['en-US', 'en'],
                 });
                 
+                // Enhanced hardware properties
+                Object.defineProperty(navigator, 'hardwareConcurrency', {
+                    get: () => 4,
+                });
+                
+                Object.defineProperty(navigator, 'deviceMemory', {
+                    get: () => 8,
+                });
+                
+                // Realistic screen properties
+                Object.defineProperty(screen, 'availWidth', {
+                    get: () => 1920,
+                });
+                
+                Object.defineProperty(screen, 'availHeight', {
+                    get: () => 1040,
+                });
+                
+                // Enhanced Chrome object
                 window.chrome = {
                     runtime: {},
+                    loadTimes: function() {},
+                    csi: function() {},
+                };
+                
+                // Mock permissions API to appear more realistic
+                const originalQuery = window.navigator.permissions.query;
+                window.navigator.permissions.query = (parameters) => (
+                    parameters.name === 'notifications' ?
+                        Promise.resolve({ state: Notification.permission }) :
+                        originalQuery(parameters)
+                );
+                
+                // Canvas fingerprint spoofing with slight noise injection
+                const getImageData = HTMLCanvasElement.prototype.getImageData;
+                HTMLCanvasElement.prototype.getImageData = function(sx, sy, sw, sh) {
+                    const imageData = getImageData.apply(this, arguments);
+                    // Add minimal noise to prevent fingerprinting
+                    for (let i = 0; i < imageData.data.length; i += 4) {
+                        imageData.data[i] += Math.floor(Math.random() * 3) - 1;
+                        imageData.data[i + 1] += Math.floor(Math.random() * 3) - 1;
+                        imageData.data[i + 2] += Math.floor(Math.random() * 3) - 1;
+                    }
+                    return imageData;
+                };
+                
+                // WebGL fingerprint protection
+                const getParameter = WebGLRenderingContext.prototype.getParameter;
+                WebGLRenderingContext.prototype.getParameter = function(parameter) {
+                    if (parameter === 37445) {
+                        return 'Intel Inc.';
+                    }
+                    if (parameter === 37446) {
+                        return 'Intel(R) Iris(TM) Graphics 6100';
+                    }
+                    return getParameter.apply(this, [parameter]);
                 };
             """)
         
@@ -279,7 +375,9 @@ class ConsolidatedScraperBase:
     def _setup_download_handling(self):
         """Configure download event handling."""
         # Create download directory
-        self.download_dir = os.path.join(active_config.RAW_DATA_DIR, self.source_name.lower().replace(' ', '_'))
+        # Use custom folder name if provided, otherwise sanitize source name
+        self.folder_name = self.config.folder_name or self.source_name.lower().replace(' ', '_')
+        self.download_dir = os.path.join(active_config.RAW_DATA_DIR, self.folder_name)
         os.makedirs(self.download_dir, exist_ok=True)
         
         # Register download handler
@@ -294,9 +392,9 @@ class ConsolidatedScraperBase:
             suggested_filename = download.suggested_filename
             if suggested_filename:
                 name, ext = os.path.splitext(suggested_filename)
-                filename = f"{self.source_name.lower().replace(' ', '_')}_{timestamp}{ext}"
+                filename = f"{self.folder_name}_{timestamp}{ext}"
             else:
-                filename = f"{self.source_name.lower().replace(' ', '_')}_{timestamp}.csv"
+                filename = f"{self.folder_name}_{timestamp}.csv"
             
             filepath = os.path.join(self.download_dir, filename)
             await download.save_as(filepath)
@@ -310,6 +408,20 @@ class ConsolidatedScraperBase:
     
     async def cleanup_browser(self):
         """Clean up browser resources."""
+        # Save browser state for Treasury before closing
+        if "Treasury" in self.source_name and self.context:
+            try:
+                import tempfile
+                treasury_profile_dir = os.path.join(tempfile.gettempdir(), 'treasury_browser_profile')
+                os.makedirs(treasury_profile_dir, exist_ok=True)
+                profile_file = os.path.join(treasury_profile_dir, 'treasury_state.json')
+                
+                # Save current browser state (cookies, localStorage, etc.)
+                await self.context.storage_state(path=profile_file)
+                self.logger.info(f"Saved browser state to {profile_file}")
+            except Exception as e:
+                self.logger.warning(f"Could not save browser state: {e}")
+        
         if self.page:
             await self.page.close()
         if self.context:
@@ -325,7 +437,7 @@ class ConsolidatedScraperBase:
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 screenshot_path = os.path.join(
                     active_config.ERROR_SCREENSHOTS_DIR,
-                    f"{prefix}_{self.source_name.lower().replace(' ', '_')}_{timestamp}.png"
+                    f"{prefix}_{self.folder_name}_{timestamp}.png"
                 )
                 await self.page.screenshot(path=screenshot_path, full_page=True)
                 self.logger.info(f"Error screenshot saved: {screenshot_path}")
@@ -334,7 +446,7 @@ class ConsolidatedScraperBase:
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 html_path = os.path.join(
                     active_config.ERROR_HTML_DIR,
-                    f"{prefix}_{self.source_name.lower().replace(' ', '_')}_{timestamp}.html"
+                    f"{prefix}_{self.folder_name}_{timestamp}.html"
                 )
                 html_content = await self.page.content()
                 with open(html_path, 'w', encoding='utf-8') as f:
@@ -392,6 +504,175 @@ class ConsolidatedScraperBase:
         except Exception as e:
             self.logger.error(f"Navigation error to {url}: {e}")
             await self.capture_error_info(e, "navigation_error")
+            return False
+    
+    # ============================================================================
+    # ENHANCED ANTI-BOT FUNCTIONALITY
+    # ============================================================================
+    
+    async def scroll_into_view(self, selector: str, behavior: str = 'smooth', block: str = 'center') -> bool:
+        """
+        Scroll element into viewport before interaction to mimic human behavior.
+        
+        Args:
+            selector: CSS selector or XPath of element to scroll to
+            behavior: Scroll behavior ('auto', 'smooth')
+            block: Vertical alignment ('start', 'center', 'end', 'nearest')
+            
+        Returns:
+            bool: Success status
+        """
+        try:
+            self.logger.debug(f"Scrolling element into view: {selector}")
+            
+            # Detect if selector is XPath
+            is_xpath = selector.startswith('//') or selector.startswith('xpath=')
+            
+            if is_xpath:
+                xpath = selector.replace('xpath=', '')
+                await self.page.evaluate("""
+                    (xpath, behavior, block) => {
+                        const element = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+                        if (element) {
+                            element.scrollIntoView({ behavior: behavior, block: block });
+                        }
+                    }
+                """, xpath, behavior, block)
+            else:
+                await self.page.evaluate(f"""
+                    const element = document.querySelector('{selector}');
+                    if (element) {{
+                        element.scrollIntoView({{ behavior: '{behavior}', block: '{block}' }});
+                    }}
+                """)
+            
+            # Wait for scroll animation to complete
+            await self.wait_for_timeout(1000)
+            self.logger.debug(f"Successfully scrolled to element: {selector}")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error scrolling to element {selector}: {e}")
+            return False
+    
+    async def human_like_hover(self, selector: str) -> bool:
+        """
+        Hover over element with human-like mouse movement to avoid bot detection.
+        
+        Args:
+            selector: CSS selector or XPath of element to hover
+            
+        Returns:
+            bool: Success status
+        """
+        try:
+            self.logger.debug(f"Hovering over element: {selector}")
+            
+            # Detect if selector is XPath and convert for locator
+            if selector.startswith('//') or selector.startswith('xpath='):
+                if not selector.startswith('xpath='):
+                    selector = f"xpath={selector}"
+                locator = self.page.locator(selector)
+            else:
+                locator = self.page.locator(selector)
+            
+            # Get element bounding box
+            box = await locator.bounding_box()
+            if not box:
+                self.logger.warning(f"Could not get bounding box for {selector}")
+                return False
+            
+            # Add slight randomization to hover position
+            import random
+            x = box['x'] + box['width'] / 2 + random.randint(-5, 5)
+            y = box['y'] + box['height'] / 2 + random.randint(-5, 5)
+            
+            # Move mouse to element with human-like timing
+            await self.page.mouse.move(x, y)
+            await self.wait_for_timeout(random.randint(100, 300))
+            
+            self.logger.debug(f"Successfully hovered over element: {selector}")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error hovering over {selector}: {e}")
+            return False
+    
+    async def random_wait(self, min_ms: int = 1000, max_ms: int = 3000) -> None:
+        """
+        Wait for a random amount of time to mimic human behavior.
+        
+        Args:
+            min_ms: Minimum wait time in milliseconds
+            max_ms: Maximum wait time in milliseconds
+        """
+        import random
+        wait_time = random.randint(min_ms, max_ms)
+        self.logger.debug(f"Random wait: {wait_time}ms")
+        await self.wait_for_timeout(wait_time)
+    
+    async def enhanced_click_element(self, selector: str, ensure_visible: bool = True, 
+                                   use_js: bool = False, timeout: Optional[int] = None,
+                                   js_click_fallback: bool = True) -> bool:
+        """
+        Enhanced click with visibility checks, scrolling, and human-like behavior.
+        
+        Args:
+            selector: CSS selector or XPath
+            ensure_visible: Whether to scroll element into view and hover before clicking
+            use_js: Use JavaScript click instead of Playwright click
+            timeout: Custom timeout for this operation
+            js_click_fallback: Use JS fallback if regular click fails
+            
+        Returns:
+            bool: Success status
+        """
+        timeout = timeout or self.config.interaction_timeout_ms
+        
+        try:
+            self.logger.debug(f"Enhanced clicking element: {selector}")
+            
+            # Detect if selector is XPath
+            is_xpath = selector.startswith('//') or selector.startswith('xpath=')
+            if is_xpath and not selector.startswith('xpath='):
+                selector = f"xpath={selector}"
+            
+            if ensure_visible:
+                # Scroll element into view
+                await self.scroll_into_view(selector)
+                
+                # Hover over element to mimic human behavior
+                await self.human_like_hover(selector)
+                
+                # Wait for element to be truly visible and stable
+                await self.page.wait_for_selector(selector, state='visible', timeout=timeout)
+                
+                # Ensure element is not moving (check stability)
+                if is_xpath:
+                    xpath_clean = selector.replace('xpath=', '')
+                    await self.page.wait_for_function("""
+                        (xpath) => {
+                            const el = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+                            return el && el.offsetWidth > 0 && el.offsetHeight > 0;
+                        }
+                    """, xpath_clean, timeout=timeout)
+                else:
+                    await self.page.wait_for_function(f"""
+                        () => {{
+                            const el = document.querySelector('{selector}');
+                            return el && el.offsetWidth > 0 && el.offsetHeight > 0;
+                        }}
+                    """, timeout=timeout)
+            
+            # Add small random delay before click
+            await self.random_wait(200, 800)
+            
+            # Use the existing click_element method with fallback enabled
+            return await self.click_element(selector, use_js=use_js, timeout=timeout, js_click_fallback=js_click_fallback)
+            
+        except Exception as e:
+            self.logger.error(f"Enhanced click failed for {selector}: {e}")
+            await self.capture_error_info(e, "enhanced_click_error")
             return False
     
     async def click_element(self, selector: str, use_js: bool = False, timeout: Optional[int] = None, js_click_fallback: bool = False) -> bool:
@@ -623,7 +904,7 @@ class ConsolidatedScraperBase:
                 parsed_url = urlparse(url)
                 original_name = os.path.basename(parsed_url.path) or "download"
                 name, ext = os.path.splitext(original_name)
-                filename = f"{self.source_name.lower().replace(' ', '_')}_{timestamp}{ext}"
+                filename = f"{self.folder_name}_{timestamp}{ext}"
             
             # Save file
             filepath = os.path.join(self.download_dir, filename)
@@ -690,7 +971,7 @@ class ConsolidatedScraperBase:
                     if temp_path and os.path.exists(temp_path):
                         import shutil
                         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                        filename = f"{self.source_name.lower().replace(' ', '_')}_{timestamp}.csv"
+                        filename = f"{self.folder_name}_{timestamp}.csv"
                         final_path = os.path.join(self.download_dir, filename)
                         
                         shutil.copy2(temp_path, final_path)
@@ -710,7 +991,7 @@ class ConsolidatedScraperBase:
                         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                         screenshot_path = os.path.join(
                             active_config.ERROR_SCREENSHOTS_DIR,
-                            f"new_page_download_error_{self.source_name.lower().replace(' ', '_')}_{timestamp}.png"
+                            f"new_page_download_error_{self.folder_name}_{timestamp}.png"
                         )
                         await new_page.screenshot(path=screenshot_path)
                         self.logger.info(f"Saved new page screenshot: {screenshot_path}")

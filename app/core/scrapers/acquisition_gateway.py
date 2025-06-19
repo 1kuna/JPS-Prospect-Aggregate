@@ -2,6 +2,7 @@
 Acquisition Gateway scraper using the consolidated architecture.
 This replaces the original acquisition_gateway.py with simplified, unified approach.
 """
+import json
 import pandas as pd
 from typing import Optional
 
@@ -24,21 +25,72 @@ class AcquisitionGatewayScraper(ConsolidatedScraperBase):
     
     def custom_summary_fallback(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Custom transformation: Handle Body/Summary column fallback.
-        This preserves the original behavior from the acquisition gateway scraper.
+        Custom transformation: Handle Description/Body column fallback and create extras JSON.
+        Uses Description as primary, falls back to Body if Description is empty.
+        Also collects acquisition gateway-specific fields into extras JSON.
         """
         try:
-            # If 'description' (from 'Body') is missing but 'Summary' exists, use Summary
-            if 'description' in df.columns and 'Summary' in df.columns:
-                # Fill missing descriptions with Summary values
+            # Handle Description/Body fallback
+            if 'Description' in df.columns and 'Body' in df.columns:
+                # Use Description as primary, fall back to Body if Description is empty
+                mask = df['Description'].isna() | (df['Description'] == '')
+                df.loc[mask, 'Description'] = df.loc[mask, 'Body']
+                self.logger.debug("Applied Body fallback for missing descriptions")
+            elif 'description' in df.columns and 'Body' in df.columns:
+                # Fill missing descriptions with Body values (post-rename case)
                 mask = df['description'].isna() | (df['description'] == '')
-                df.loc[mask, 'description'] = df.loc[mask, 'Summary']
-                
-                self.logger.debug("Applied summary fallback for missing descriptions")
+                df.loc[mask, 'description'] = df.loc[mask, 'Body']
+                self.logger.debug("Applied Body fallback for missing descriptions (post-rename)")
             
-            # Remove the Summary column if it exists (no longer needed)
-            if 'Summary' in df.columns:
-                df = df.drop(columns=['Summary'])
+            # Create extras JSON with acquisition gateway-specific fields
+            extras_fields = {
+                'Node_ID': 'node_id',
+                'Body': 'body',
+                'Organization': 'organization',
+                'Requirement Status': 'requirement_status',
+                'Basic Exercised Value': 'basic_exercised_value',
+                'Basic Exercised Options': 'basic_exercised_options',
+                'Acquisition Phase': 'acquisition_phase',
+                'Delivery Order Value': 'delivery_order_value',
+                'Current Fiscal Year Projected Obligation': 'current_fy_projected_obligation',
+                'Funding Source': 'funding_source',
+                'Estimated Award FY-QTR': 'estimated_award_fy_qtr',
+                'Solicitation Link': 'solicitation_link',
+                'Period of Performance': 'period_of_performance',
+                'Procurement Method': 'procurement_method',
+                'Extent Competed': 'extent_competed',
+                'Additional Information': 'additional_information',
+                'Contractor Name': 'contractor_name',
+                'Type of Awardee': 'type_of_awardee',
+                'Award Type': 'award_type',
+                'Region': 'region',
+                'Awarded Contract Order': 'awarded_contract_order',
+                'Content: Point of Contact (Name) For': 'poc_name',
+                'Point of Contact (Email)': 'poc_email',
+                'Current Completion Date': 'current_completion_date',
+                'Content: Small Business Specialist Info (Email)': 'sbs_email',
+                'Content: Small Business Specialist Info (Name)': 'sbs_name',
+                'Content: Small Business Specialist Info (Phone)': 'sbs_phone',
+                'CreatedDate': 'created_date',
+                'ChangedDate': 'changed_date',
+                'Published': 'published'
+            }
+            
+            # Create extras JSON column
+            extras_data = []
+            for _, row in df.iterrows():
+                extras = {}
+                for original_col, extra_key in extras_fields.items():
+                    if original_col in df.columns:
+                        value = row[original_col]
+                        if pd.notna(value) and value != '':
+                            extras[extra_key] = str(value)
+                extras_data.append(extras if extras else {})
+            
+            # Add the extras JSON column
+            df['extras_json'] = [json.dumps(extras) for extras in extras_data]
+            
+            self.logger.debug(f"Created extras JSON for {len(extras_data)} rows")
                 
         except Exception as e:
             self.logger.warning(f"Error in custom_summary_fallback: {e}")
@@ -79,17 +131,26 @@ async def test_acquisition_gateway_scraper():
         
         # Test custom transform function
         test_df = pd.DataFrame({
-            'description': ['Valid desc', None, ''],
-            'Summary': ['Summary 1', 'Summary 2', 'Summary 3']
+            'Description': ['Valid desc', None, ''],
+            'Body': ['Body 1', 'Body 2', 'Body 3'],
+            'Node_ID': ['123', '456', '789'],
+            'Organization': ['GSA', 'DOD', 'VA']
         })
         
         transformed_df = scraper.custom_summary_fallback(test_df)
         
         # Verify fallback behavior
-        assert transformed_df.loc[1, 'description'] == 'Summary 2'  # Filled from Summary
-        assert transformed_df.loc[2, 'description'] == 'Summary 3'  # Filled from Summary
-        assert transformed_df.loc[0, 'description'] == 'Valid desc'  # Unchanged
-        assert 'Summary' not in transformed_df.columns  # Summary column removed
+        assert transformed_df.loc[1, 'Description'] == 'Body 2'  # Filled from Body
+        assert transformed_df.loc[2, 'Description'] == 'Body 3'  # Filled from Body
+        assert transformed_df.loc[0, 'Description'] == 'Valid desc'  # Unchanged
+        assert 'Body' in transformed_df.columns  # Body column retained
+        assert 'extras_json' in transformed_df.columns  # Extras JSON column created
+        
+        # Verify extras JSON contains expected data
+        extras_0 = json.loads(transformed_df.loc[0, 'extras_json'])
+        assert extras_0['node_id'] == '123'
+        assert extras_0['body'] == 'Body 1'
+        assert extras_0['organization'] == 'GSA'
         
         logger.info("✓ Acquisition Gateway consolidated scraper test passed")
         return True
