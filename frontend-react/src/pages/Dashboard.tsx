@@ -1095,8 +1095,8 @@ export default function Dashboard() {
                   <div className={`${currentStep?.includes('title') ? 'animate-pulse bg-blue-50 border border-blue-200 rounded p-2' : ''}`}>
                     <span className="font-medium text-gray-700">Title:</span>
                     {currentStep?.includes('title') && (
-                      <span className="ml-2 text-xs px-2 py-1 rounded bg-blue-100 text-blue-700 animate-pulse">
-                        <ReloadIcon className="inline w-3 h-3 mr-1 animate-spin" />
+                      <span className="ml-2 text-xs px-2 py-1 rounded bg-blue-100 text-blue-700 animate-pulse inline-flex items-center">
+                        <ReloadIcon className="w-3 h-3 mr-1 animate-spin" />
                         Enhancing...
                       </span>
                     )}
@@ -1137,8 +1137,8 @@ export default function Dashboard() {
                     <div className={`${currentStep?.includes('NAICS') ? 'animate-pulse bg-blue-50 border border-blue-200 rounded p-2' : ''}`}>
                       <span className="font-medium text-gray-700">NAICS:</span>
                       {currentStep?.includes('NAICS') && (
-                        <span className="ml-2 text-xs px-2 py-1 rounded bg-blue-100 text-blue-700 animate-pulse">
-                          <ReloadIcon className="inline w-3 h-3 mr-1 animate-spin" />
+                        <span className="ml-2 text-xs px-2 py-1 rounded bg-blue-100 text-blue-700 animate-pulse inline-flex items-center">
+                          <ReloadIcon className="w-3 h-3 mr-1 animate-spin" />
                           Classifying...
                         </span>
                       )}
