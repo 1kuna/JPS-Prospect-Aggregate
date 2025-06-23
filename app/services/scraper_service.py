@@ -5,7 +5,7 @@ from app.database import db
 from app.database.models import DataSource, ScraperStatus
 from app.exceptions import NotFoundError, ScraperError, DatabaseError
 from app.utils.logger import logger
-from app.utils.db_utils import update_scraper_status
+from app.utils.database_helpers import update_scraper_status
 from app.core.scrapers import SCRAPERS
 from app.config import active_config
 

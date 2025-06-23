@@ -4,7 +4,7 @@ Preserves all original DOS-specific functionality including direct download and 
 """
 import pandas as pd
 from typing import Optional
-from app.utils.parsing import fiscal_quarter_to_date, parse_value_range
+from app.utils.value_and_date_parsing import fiscal_quarter_to_date, parse_value_range
 
 from app.core.consolidated_scraper_base import ConsolidatedScraperBase
 from app.core.config_converter import create_dos_config
