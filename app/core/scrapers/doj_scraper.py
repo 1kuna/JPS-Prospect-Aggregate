@@ -4,7 +4,7 @@ Preserves all original DOJ-specific functionality including complex award date p
 """
 import pandas as pd
 from typing import Optional
-from app.utils.parsing import fiscal_quarter_to_date
+from app.utils.value_and_date_parsing import fiscal_quarter_to_date
 
 from app.core.consolidated_scraper_base import ConsolidatedScraperBase
 from app.core.config_converter import create_doj_config

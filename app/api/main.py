@@ -240,7 +240,6 @@ def database_status():
         ).scalar()
         original_count = prospect_count - ai_enriched_count
         
-        from app.models import ScraperStatus
         status_count = db.session.query(func.count(ScraperStatus.id)).scalar()
         
         # Get database file size if using SQLite

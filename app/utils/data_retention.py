@@ -95,6 +95,28 @@ def apply_intelligent_retention_policy(files_by_source: Dict[str, List[Tuple[Pat
     Apply intelligent retention policy: Keep N most recent files PLUS always preserve
     last 2 successfully processed files.
     
+    CRITICAL IMPLEMENTATION DETAILS:
+    This function implements a dual-criteria retention policy to balance storage 
+    efficiency with data reliability:
+    
+    1. Time-based retention: Keeps the N most recent files based on timestamp
+    2. Success-based retention: Always preserves the last 2 successfully processed files
+    
+    WHY THIS APPROACH:
+    - Recent files are kept because they're most likely to be needed for reprocessing
+    - Successfully processed files are kept as a fallback in case recent files are corrupted
+    - The combination ensures we always have valid data available even if recent scrapes fail
+    
+    EXAMPLE SCENARIO:
+    If we have files: [today_failed, yesterday_failed, 3days_ago_success, 1week_ago_success]
+    With retention_count=2, we would keep:
+    - today_failed (recent)
+    - yesterday_failed (recent) 
+    - 3days_ago_success (last successful)
+    - 1week_ago_success (2nd last successful)
+    
+    This prevents a situation where all retained files are corrupted/failed scrapes.
+    
     Args:
         files_by_source: Dictionary mapping source to files with timestamps
         retention_count: Number of most recent files to keep per source

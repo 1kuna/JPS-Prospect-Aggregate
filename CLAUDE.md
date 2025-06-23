@@ -16,6 +16,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 3. Copy `.env.example` to `.env` and adjust settings if needed
 4. Initialize database:
    ```bash
+   # Complete database setup (recommended)
+   python scripts/setup_databases.py
+   
+   # Or manual setup
+   python scripts/init_user_database.py
    flask db upgrade
    python scripts/populate_data_sources.py
    ```
@@ -47,8 +52,11 @@ python -m pytest tests/ -v --cov=app --cov-report=html
 # Run single test
 python -m pytest tests/test_specific.py::test_function -v
 
-# LLM enhancement (requires Ollama)
+# LLM enhancement (requires Ollama with qwen3 model)
 python scripts/enrichment/enhance_prospects_with_llm.py values --limit 100
+
+# Check LLM status
+python scripts/enrichment/enhance_prospects_with_llm.py --check-status
 ```
 
 ### Scraper Testing
@@ -114,7 +122,28 @@ python -m scripts.health_check
 
 # Export data to CSV
 python -m scripts.export_csv
+
+# Data validation
+python scripts/validate_file_naming.py
 ```
+
+## Prerequisites
+
+**LLM Requirements:**
+- Install Ollama from https://ollama.ai/
+- Required model: `ollama pull qwen3:latest`
+
+**Environment Configuration:**
+- Separate database URLs for business and user data (security isolation)
+- Playwright timeouts configurable via environment variables
+- File processing settings: `FILE_FRESHNESS_SECONDS`
+
+## Debugging
+
+**Error Handling:**
+- Screenshots saved to: `logs/error_screenshots/`
+- HTML dumps saved to: `logs/error_html/`
+- Logs: `logs/app.log`, `logs/scrapers.log`, `logs/errors.log`
 
 ## Architecture
 
