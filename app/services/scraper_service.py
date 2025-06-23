@@ -120,4 +120,3 @@ class ScraperService:
                 update_scraper_status(source_id=data_source.id, status='failed', details=error_detail)
             raise DatabaseError(f"Unexpected error processing pull for {data_source.name if data_source else source_id} in service")
 
-    # TODO: Add other scraper-related service methods here 
