@@ -60,11 +60,11 @@ class HHSForecastScraper(ConsolidatedScraperBase):
         Captures 3 additional data points for comprehensive data retention.
         """
         try:
-            # Define HHS-specific extras fields mapping
+            # Define HHS-specific extras fields mapping (using original CSV column names)
             extras_fields = {
-                'program_poc_office': 'program_poc_office',
-                'incumbent_contractor': 'incumbent_contractor',
-                'existing_contract_number': 'existing_contract_number'
+                'Program POC Office': 'program_poc_office',
+                'Incumbent Contractor (if applicable)': 'incumbent_contractor',
+                'Existing Contract number (if applicable)': 'existing_contract_number'
             }
             
             # Create extras JSON column

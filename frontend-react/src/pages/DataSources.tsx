@@ -13,12 +13,14 @@ import {
 
 export default function DataSources() {
   const {
-    data,
+    data: dataSourcesData,
     isLoading,
     isError,
     error,
     refetch
   } = useListDataSources();
+  
+  const data = dataSourcesData?.data || [];
 
   const deleteMutation = useDeleteDataSource();
 

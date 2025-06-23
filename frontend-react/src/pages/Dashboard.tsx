@@ -28,6 +28,8 @@ import { usePollingUpdates } from '@/hooks/usePollingUpdates';
 import { ReloadIcon } from '@radix-ui/react-icons';
 import { Switch } from '@/components/ui/switch';
 import { GoNoGoDecision } from '@/components/GoNoGoDecision';
+import { useListDataSources } from '@/hooks/api/useDataSources';
+import { DataSource } from '@/types';
 
 // Updated Prospect interface based on backend model
 interface Prospect {
@@ -81,6 +83,7 @@ interface ProspectFilters {
   keywords?: string;
   agency?: string;
   ai_enrichment?: 'all' | 'enhanced' | 'original';
+  dataSourceIds?: number[];
 }
 
 const fetchProspects = async (page: number, limit: number, filters?: ProspectFilters): Promise<{ data: Prospect[], total: number, totalPages: number }> => {
@@ -94,6 +97,9 @@ const fetchProspects = async (page: number, limit: number, filters?: ProspectFil
     if (filters.agency) queryParams.append('agency', filters.agency);
     if (filters.ai_enrichment && filters.ai_enrichment !== 'all') {
       queryParams.append('ai_enrichment', filters.ai_enrichment);
+    }
+    if (filters.dataSourceIds && filters.dataSourceIds.length > 0) {
+      queryParams.append('source_ids', filters.dataSourceIds.join(','));
     }
   }
   
@@ -140,8 +146,13 @@ export default function Dashboard() {
     naics: '',
     keywords: '',
     agency: '',
-    ai_enrichment: 'all'
+    ai_enrichment: 'all',
+    dataSourceIds: []  // Changed to array for multiple selection
   });
+
+  // Data sources hook
+  const { data: dataSourcesData } = useListDataSources();
+  const dataSources = dataSourcesData?.data || [];
 
   // Enhancement hook
   const { addToQueue, getProspectStatus } = useProspectEnhancement();
@@ -344,19 +355,33 @@ export default function Dashboard() {
     setCurrentPage(1); // Reset to first page when filters change
   }, []);
   
+  const handleDataSourceToggle = useCallback((sourceId: number) => {
+    setFilters(prev => {
+      const currentIds = prev.dataSourceIds || [];
+      const newIds = currentIds.includes(sourceId)
+        ? currentIds.filter((id: number) => id !== sourceId)
+        : [...currentIds, sourceId];
+      return { ...prev, dataSourceIds: newIds };
+    });
+    setCurrentPage(1);
+  }, []);
+  
   const handleRowClick = useCallback((prospect: Prospect) => {
     setSelectedProspect(prospect);
     setIsDialogOpen(true);
   }, []);
   
   const clearFilters = useCallback(() => {
-    setFilters({ naics: '', keywords: '', agency: '', ai_enrichment: 'all' });
+    setFilters({ naics: '', keywords: '', agency: '', ai_enrichment: 'all', dataSourceIds: [] });
     setCurrentPage(1);
   }, []);
   
   const hasActiveFilters = Object.entries(filters).some(([key, value]) => {
     if (key === 'ai_enrichment') {
       return value && value !== 'all';
+    }
+    if (key === 'dataSourceIds') {
+      return Array.isArray(value) && value.length > 0;
     }
     return value && value.trim() !== '';
   });
@@ -559,6 +584,34 @@ export default function Dashboard() {
                 />
               </div>
               
+              {/* Data Source Filter */}
+              <div className="space-y-2">
+                <Label className="text-sm font-medium text-gray-700">
+                  Data Source
+                </Label>
+                <div className="max-h-48 overflow-y-auto border rounded-md p-3 space-y-2">
+                  {dataSources.map((source: DataSource) => (
+                    <label 
+                      key={source.id} 
+                      className="flex items-center space-x-2 cursor-pointer hover:bg-gray-50 p-1 rounded"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={filters.dataSourceIds?.includes(source.id) || false}
+                        onChange={() => handleDataSourceToggle(source.id)}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="text-sm text-gray-700">{source.name}</span>
+                    </label>
+                  ))}
+                  {dataSources.length === 0 && (
+                    <div className="text-sm text-gray-500 text-center py-2">
+                      No data sources available
+                    </div>
+                  )}
+                </div>
+              </div>
+              
               {/* AI Enrichment Filter */}
               <div className="space-y-2">
                 <Label htmlFor="ai-enrichment" className="text-sm font-medium text-gray-700">
@@ -630,6 +683,22 @@ export default function Dashboard() {
                           ×
                         </button>
                       </div>
+                    )}
+                    {filters.dataSourceIds && filters.dataSourceIds.length > 0 && (
+                      filters.dataSourceIds.map((sourceId: number) => {
+                        const source = dataSources.find((s: DataSource) => s.id === sourceId);
+                        return (
+                          <div key={sourceId} className="text-xs bg-orange-50 text-orange-700 px-2 py-1 rounded flex justify-between items-center">
+                            <span>Source: {source ? source.name : sourceId}</span>
+                            <button 
+                              onClick={() => handleDataSourceToggle(sourceId)}
+                              className="ml-1 text-orange-500 hover:text-orange-700"
+                            >
+                              ×
+                            </button>
+                          </div>
+                        );
+                      })
                     )}
                     {filters.ai_enrichment && filters.ai_enrichment !== 'all' && (
                       <div className="text-xs bg-indigo-50 text-indigo-700 px-2 py-1 rounded flex justify-between items-center">

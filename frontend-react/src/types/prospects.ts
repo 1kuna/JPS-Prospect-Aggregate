@@ -63,8 +63,11 @@ export interface ProspectStatistics {
 
 export interface ProspectFilters {
   status?: ProspectStatus;
-  dataSourceId?: number;
+  dataSourceIds?: number[];  // Changed to array for multiple selection
   startDate?: string;
   endDate?: string;
   search?: string;
+  keywords?: string;
+  naics?: string;
+  agency?: string;
 }

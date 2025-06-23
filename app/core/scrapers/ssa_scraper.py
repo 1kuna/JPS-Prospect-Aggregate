@@ -65,17 +65,17 @@ class SsaScraper(ConsolidatedScraperBase):
         Captures 9 additional data points for comprehensive data retention.
         """
         try:
-            # Define SSA-specific extras fields mapping
+            # Define SSA-specific extras fields mapping (using original CSV column names)
             extras_fields = {
-                'requirement_type': 'requirement_type',
-                'est_cost_per_fy': 'est_cost_per_fy',
-                'planned_award_date': 'planned_award_date',
-                'existing_award_number': 'existing_award_number',
-                'incumbent_vendor': 'incumbent_vendor',
-                'naics_description': 'naics_description',
-                'type_of_competition': 'type_of_competition',
-                'net_view_total_obligated_amount': 'net_view_total_obligated_amount',
-                'ultimate_completion_date': 'ultimate_completion_date'
+                'REQUIREMENT TYPE': 'requirement_type',
+                'EST COST PER FY': 'est_cost_per_fy',
+                'PLANNED AWARD DATE': 'planned_award_date',
+                'EXISTING AWD #': 'existing_award_number',
+                'INCUMBENT VENDOR': 'incumbent_vendor',
+                'NAICS DESCRIPTION': 'naics_description',
+                'TYPE OF COMPETITION': 'type_of_competition',
+                'NET VIEW TOTAL OBLIGATED AMT': 'net_view_total_obligated_amount',
+                'ULTIMATE COMPLETION DATE': 'ultimate_completion_date'
             }
             
             # Create extras JSON column

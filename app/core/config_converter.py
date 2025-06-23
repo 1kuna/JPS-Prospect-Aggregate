@@ -188,7 +188,7 @@ def create_treasury_config() -> ScraperConfig:
         read_options={"header": 0},
         
         # Data processing - restored from original working config
-        custom_transform_functions=["_custom_treasury_transforms"],
+        custom_transform_functions=["_custom_treasury_transforms", "_treasury_create_extras"],
         raw_column_rename_map={
             'Specific Id': 'native_id_primary', # Primary candidate for native_id
             'ShopCart/req': 'native_id_fallback1', # Fallback candidate 1
@@ -234,7 +234,8 @@ def create_treasury_config() -> ScraperConfig:
             'set_aside': 'set_aside',
             'award_date': 'award_date',
             'award_fiscal_year': 'award_fiscal_year',
-            'release_date': 'release_date'
+            'release_date': 'release_date',
+            'extras_json': 'extra'  # Map extras JSON to database extra field
         },
         fields_for_id_hash=[
             'native_id', 

@@ -3,6 +3,7 @@ Treasury scraper using the consolidated architecture.
 Simplified to download XLS files only - no HTML fallbacks.
 """
 import os
+import json
 import pandas as pd
 from typing import Optional
 
@@ -59,6 +60,44 @@ class TreasuryScraper(ConsolidatedScraperBase):
             
         except Exception as e:
             self.logger.warning(f"Error in _custom_treasury_transforms: {e}")
+        
+        return df
+    
+    def _treasury_create_extras(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Create extras JSON with Treasury-specific fields that aren't in core schema.
+        Captures additional data points for comprehensive data retention.
+        """
+        try:
+            # Define Treasury-specific extras fields mapping (using original CSV column names)
+            extras_fields = {
+                'Type of Requirement': 'requirement_type',
+                'Specific Id': 'native_id_primary',
+                'ShopCart/req': 'native_id_fallback1',
+                'Contract Number': 'native_id_fallback2',
+                'Place of Performance': 'place_raw',
+                'Projected Award FY_Qtr': 'award_qtr_raw',
+                'Project Period of Performance Start': 'release_date_raw'
+            }
+            
+            # Create extras JSON column
+            extras_data = []
+            for _, row in df.iterrows():
+                extras = {}
+                for df_col, extra_key in extras_fields.items():
+                    if df_col in df.columns:
+                        value = row[df_col]
+                        if pd.notna(value) and value != '':
+                            extras[extra_key] = str(value)
+                extras_data.append(extras if extras else {})
+            
+            # Add the extras JSON column
+            df['extras_json'] = [json.dumps(extras) for extras in extras_data]
+            
+            self.logger.debug(f"Created Treasury extras JSON for {len(extras_data)} rows with {len(extras_fields)} potential fields")
+                
+        except Exception as e:
+            self.logger.warning(f"Error in _treasury_create_extras: {e}")
         
         return df
     

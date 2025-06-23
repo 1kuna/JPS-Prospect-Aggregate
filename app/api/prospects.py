@@ -30,10 +30,11 @@ def get_prospects_route():
         keywords_filter = request.args.get('keywords', '', type=str)
         agency_filter = request.args.get('agency', '', type=str)
         ai_enrichment_filter = request.args.get('ai_enrichment', 'all', type=str)
+        source_ids_filter = request.args.get('source_ids', '', type=str)  # Comma-separated list of source IDs
         
         # Debug logging only when filters are applied to avoid noise
-        if search_term or naics_filter or keywords_filter or agency_filter or ai_enrichment_filter != 'all':
-            logger.debug(f"Requesting prospects with filters: search='{search_term}', naics='{naics_filter}', keywords='{keywords_filter}', agency='{agency_filter}', ai_enrichment='{ai_enrichment_filter}'")
+        if search_term or naics_filter or keywords_filter or agency_filter or ai_enrichment_filter != 'all' or source_ids_filter:
+            logger.debug(f"Requesting prospects with filters: search='{search_term}', naics='{naics_filter}', keywords='{keywords_filter}', agency='{agency_filter}', ai_enrichment='{ai_enrichment_filter}', source_ids='{source_ids_filter}'")
         
         # Construct the base query
         base_query = Prospect.query
@@ -77,6 +78,17 @@ def get_prospects_route():
             # Show only prospects that have NOT been processed by AI
             base_query = base_query.filter(Prospect.ollama_processed_at.is_(None))
         # 'all' or any other value means no filter applied
+        
+        # Apply source IDs filter
+        if source_ids_filter:
+            try:
+                # Parse comma-separated source IDs and convert to integers
+                source_ids = [int(id.strip()) for id in source_ids_filter.split(',') if id.strip()]
+                if source_ids:
+                    base_query = base_query.filter(Prospect.source_id.in_(source_ids))
+            except ValueError:
+                # Log warning for invalid source ID format but continue without filter
+                logger.warning(f"Invalid source_ids format: '{source_ids_filter}'. Expected comma-separated integers.")
         
         # Apply sorting
         sort_column = getattr(Prospect, sort_by, Prospect.id) # Default to Prospect.id if sort_by is invalid

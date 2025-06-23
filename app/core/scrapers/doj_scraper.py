@@ -77,29 +77,29 @@ class DOJForecastScraper(ConsolidatedScraperBase):
         Captures 21 additional data points for comprehensive data retention.
         """
         try:
-            # Define DOJ-specific extras fields mapping
+            # Define DOJ-specific extras fields mapping (using original CSV column names)
             extras_fields = {
-                'fiscal_year': 'fiscal_year',
-                'obd': 'organizational_business_division', 
-                'contracting_office': 'contracting_office',
-                'doj_sb_poc_name': 'small_business_poc_name',
-                'doj_sb_poc_email': 'small_business_poc_email',
-                'doj_req_poc_name': 'requirement_poc_name',
-                'doj_req_poc_email': 'requirement_poc_email',
-                'category': 'category',
-                'subcategory': 'subcategory', 
-                'award_type': 'award_type',
-                'product_service_code': 'product_service_code',
-                'competition_approach': 'competition_approach',
-                'contracting_solution': 'contracting_solution',
-                'contract_availability': 'contract_availability',
-                'length_of_contract': 'length_of_contract',
-                'rfi_planned': 'rfi_planned',
-                'acquisition_history': 'acquisition_history',
-                'incumbent_contractor': 'incumbent_contractor',
-                'incumbent_contractor_piid': 'incumbent_contractor_piid',
-                'solicitation_link': 'solicitation_link',
-                'other_information': 'other_information'
+                'Fiscal Year': 'fiscal_year',
+                'OBD': 'organizational_business_division', 
+                'Contracting Office': 'contracting_office',
+                'DOJ Small Business POC - Name': 'small_business_poc_name',
+                'DOJ Small Business POC - Email Address': 'small_business_poc_email',
+                'DOJ Requirement POC - Name': 'requirement_poc_name',
+                'DOJ Requirement POC - Email Address': 'requirement_poc_email',
+                'Category': 'category',
+                'Subcategory': 'subcategory', 
+                'Award Type': 'award_type',
+                'Product Service Code': 'product_service_code',
+                'Competition Approach': 'competition_approach',
+                'Contracting Solution': 'contracting_solution',
+                'Contract Availability': 'contract_availability',
+                'Length of Contract': 'length_of_contract',
+                'Request for Information (RFI) Planned': 'rfi_planned',
+                'Acquisition History': 'acquisition_history',
+                'Incumbent Contractor': 'incumbent_contractor',
+                'Incumbent Contractor PIID': 'incumbent_contractor_piid',
+                'Solicitation Link': 'solicitation_link',
+                'Other Information': 'other_information'
             }
             
             # Create extras JSON column
