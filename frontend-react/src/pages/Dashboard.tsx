@@ -1,7 +1,7 @@
 import { PageLayout } from '@/components/layout';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { createColumnHelper, flexRender, getCoreRowModel, useReactTable } from '@tanstack/react-table';
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -141,6 +141,11 @@ export default function Dashboard() {
   const [selectedProspect, setSelectedProspect] = useState<Prospect | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [showAIEnhanced, setShowAIEnhanced] = useState(true);
+  const [enhancingProspectId, setEnhancingProspectId] = useState<string | null>(null);
+  const enhancingProspectIdRef = useRef<string | null>(null);
+  
+  // Update ref when state changes
+  enhancingProspectIdRef.current = enhancingProspectId;
   
   // Filter states
   const [filters, setFilters] = useState<ProspectFilters>({
@@ -169,44 +174,54 @@ export default function Dashboard() {
     enableAnimations: true
   });
 
-  // Real-time enhancement progress hook for selected prospect
+  // Stable callback functions to prevent infinite re-renders
+  const onFieldUpdate = useCallback((field: string, value: Record<string, unknown>) => {
+    console.log(`Field ${field} updated:`, value);
+    // The useEnhancementProgress hook already updates the TanStack Query cache
+    // which will automatically update the UI without causing infinite loops
+  }, []);
+
+  const onComplete = useCallback(() => {
+    const currentEnhancingId = enhancingProspectIdRef.current;
+    console.log('Enhancement completed for prospect:', currentEnhancingId);
+    // Clear the enhancing prospect ID
+    setEnhancingProspectId(null);
+    // Show success notification
+    if (window.showToast) {
+      window.showToast({
+        title: 'Enhancement Complete',
+        message: 'AI enhancement completed successfully',
+        type: 'success',
+        duration: 3000
+      });
+    }
+  }, []);
+
+  const onError = useCallback((error: string) => {
+    console.error('Enhancement error:', error);
+    // Clear the enhancing prospect ID on error
+    setEnhancingProspectId(null);
+    // Show error notification
+    if (window.showToast) {
+      window.showToast({
+        title: 'Enhancement Failed',
+        message: error,
+        type: 'error',
+        duration: 5000
+      });
+    }
+  }, []);
+
+  // Real-time enhancement progress hook - only for actively enhancing prospect
   const { 
     isEnhancing: isSSEEnhancing, 
     currentStep 
   } = useEnhancementProgress(
-    selectedProspect?.id || null,
+    enhancingProspectId,
     {
-      onFieldUpdate: (field, value) => {
-        console.log(`Field ${field} updated:`, value);
-        // Update selected prospect immediately for modal
-        if (selectedProspect) {
-          setSelectedProspect(prev => prev ? { ...prev, ...value } : null);
-        }
-      },
-      onComplete: () => {
-        console.log('Enhancement completed for selected prospect');
-        // Show success notification
-        if (window.showToast) {
-          window.showToast({
-            title: 'Enhancement Complete',
-            message: 'AI enhancement completed successfully',
-            type: 'success',
-            duration: 3000
-          });
-        }
-      },
-      onError: (error) => {
-        console.error('Enhancement error:', error);
-        // Show error notification
-        if (window.showToast) {
-          window.showToast({
-            title: 'Enhancement Failed',
-            message: error,
-            type: 'error',
-            duration: 5000
-          });
-        }
-      }
+      onFieldUpdate,
+      onComplete,
+      onError
     }
   );
 
@@ -919,7 +934,7 @@ export default function Dashboard() {
                   return 'Prospect Details';
                 })()}
               </span>
-              {(selectedProspect?.enhancement_status === 'in_progress' || isSSEEnhancing) && (
+              {(selectedProspect?.enhancement_status === 'in_progress' || (isSSEEnhancing && enhancingProspectId === selectedProspect?.id)) && (
                 <div className="inline-flex items-center ml-3 px-2 py-1 text-xs font-medium bg-yellow-100 text-yellow-800 rounded-full">
                   <ReloadIcon className="mr-1 h-3 w-3 animate-spin" />
                   {currentStep || 'Being Enhanced'}
@@ -939,6 +954,8 @@ export default function Dashboard() {
                   <Button
                     onClick={() => {
                       if (selectedProspect) {
+                        // Set the enhancing prospect ID to start SSE connection
+                        setEnhancingProspectId(selectedProspect.id);
                         addToQueue({
                           prospect_id: selectedProspect.id,
                           user_id: 1
@@ -946,17 +963,17 @@ export default function Dashboard() {
                       }
                     }}
                     disabled={(() => {
-                      const queueStatus = getProspectStatus(selectedProspect.id);
+                      const queueStatus = getProspectStatus(selectedProspect?.id);
                       return queueStatus?.status === 'processing' || 
                              queueStatus?.status === 'queued' || 
                              selectedProspect.enhancement_status === 'in_progress' ||
-                             isSSEEnhancing;
+                             (isSSEEnhancing && enhancingProspectId === selectedProspect?.id);
                     })()}
                     className="bg-blue-600 hover:bg-blue-700 text-white disabled:bg-gray-400"
                   >
                     {(() => {
-                      const queueStatus = getProspectStatus(selectedProspect.id);
-                      if (isSSEEnhancing) {
+                      const queueStatus = getProspectStatus(selectedProspect?.id);
+                      if (isSSEEnhancing && enhancingProspectId === selectedProspect?.id) {
                         return (
                           <>
                             <ReloadIcon className="mr-2 h-4 w-4 animate-spin" />
@@ -1003,6 +1020,8 @@ export default function Dashboard() {
                     <Button
                       onClick={() => {
                         if (selectedProspect) {
+                          // Set the enhancing prospect ID to start SSE connection
+                          setEnhancingProspectId(selectedProspect.id);
                           addToQueue({
                             prospect_id: selectedProspect.id,
                             force_redo: true,
@@ -1011,19 +1030,19 @@ export default function Dashboard() {
                         }
                       }}
                       disabled={(() => {
-                        const queueStatus = getProspectStatus(selectedProspect.id);
+                        const queueStatus = getProspectStatus(selectedProspect?.id);
                         return queueStatus?.status === 'processing' || 
                                queueStatus?.status === 'queued' || 
                                selectedProspect.enhancement_status === 'in_progress' ||
-                               isSSEEnhancing;
+                               (isSSEEnhancing && enhancingProspectId === selectedProspect?.id);
                       })()}
                       variant="outline"
                       size="sm"
                       className="text-blue-700 border-blue-300 hover:bg-blue-100 disabled:bg-gray-100 disabled:text-gray-400"
                     >
                       {(() => {
-                        const queueStatus = getProspectStatus(selectedProspect.id);
-                        if (isSSEEnhancing) {
+                        const queueStatus = getProspectStatus(selectedProspect?.id);
+                        if (isSSEEnhancing && enhancingProspectId === selectedProspect?.id) {
                           return (
                             <>
                               <ReloadIcon className="mr-2 h-3 w-3 animate-spin" />
@@ -1092,9 +1111,9 @@ export default function Dashboard() {
               <div>
                 <h3 className="text-lg font-semibold mb-3 text-gray-900">Basic Information</h3>
                 <div className="grid grid-cols-1 gap-4 bg-gray-50 p-4 rounded-lg">
-                  <div className={`${currentStep?.includes('title') ? 'animate-pulse bg-blue-50 border border-blue-200 rounded p-2' : ''}`}>
+                  <div className={`${(currentStep?.includes('title') && enhancingProspectId === selectedProspect?.id) ? 'animate-pulse bg-blue-50 border border-blue-200 rounded p-2' : ''}`}>
                     <span className="font-medium text-gray-700">Title:</span>
-                    {currentStep?.includes('title') ? (
+                    {(currentStep?.includes('title') && enhancingProspectId === selectedProspect?.id) ? (
                       <span className="ml-2 text-xs px-2 py-1 rounded bg-blue-100 text-blue-700 animate-pulse inline-flex items-center">
                         <ReloadIcon className="w-3 h-3 mr-1 animate-spin" />
                         Enhancing...
@@ -1116,7 +1135,7 @@ export default function Dashboard() {
                       }
                       return 'N/A';
                     })()}
-                    {showAIEnhanced && selectedProspect.ai_enhanced_title && selectedProspect.title && !currentStep?.includes('title') && (
+                    {showAIEnhanced && selectedProspect.ai_enhanced_title && selectedProspect.title && !(currentStep?.includes('title') && enhancingProspectId === selectedProspect?.id) && (
                       <span className="ml-2 text-xs px-2 py-1 rounded bg-green-100 text-green-700">
                         AI Enhanced
                       </span>
@@ -1134,9 +1153,9 @@ export default function Dashboard() {
                       <span className="font-medium text-gray-700">Agency:</span>
                       <p className="mt-1 text-gray-900">{selectedProspect.agency || 'N/A'}</p>
                     </div>
-                    <div className={`${currentStep?.includes('NAICS') ? 'animate-pulse bg-blue-50 border border-blue-200 rounded p-2' : ''}`}>
+                    <div className={`${(currentStep?.includes('NAICS') && enhancingProspectId === selectedProspect?.id) ? 'animate-pulse bg-blue-50 border border-blue-200 rounded p-2' : ''}`}>
                       <span className="font-medium text-gray-700">NAICS:</span>
-                      {currentStep?.includes('NAICS') ? (
+                      {(currentStep?.includes('NAICS') && enhancingProspectId === selectedProspect?.id) ? (
                         <span className="ml-2 text-xs px-2 py-1 rounded bg-blue-100 text-blue-700 animate-pulse inline-flex items-center">
                           <ReloadIcon className="w-3 h-3 mr-1 animate-spin" />
                           Classifying...
@@ -1150,7 +1169,7 @@ export default function Dashboard() {
                           }
                           return selectedProspect.naics || 'N/A';
                         })()}
-                        {showAIEnhanced && selectedProspect.naics_source && !currentStep?.includes('NAICS') && (
+                        {showAIEnhanced && selectedProspect.naics_source && !(currentStep?.includes('NAICS') && enhancingProspectId === selectedProspect?.id) && (
                           <span className={`ml-2 text-xs px-2 py-1 rounded ${
                             selectedProspect.naics_source === 'llm_inferred' 
                               ? 'bg-blue-100 text-blue-700' 
@@ -1182,7 +1201,7 @@ export default function Dashboard() {
                   </div>
                   
                   {/* AI-parsed values with progress indicator */}
-                  {currentStep?.includes('value') && (
+                  {(currentStep?.includes('value') && enhancingProspectId === selectedProspect?.id) && (
                     <div className="bg-blue-50 p-3 rounded-lg border border-blue-200 animate-pulse">
                       <div className="flex items-center mb-2">
                         <span className="font-medium text-blue-800">Parsing Contract Values</span>
@@ -1193,7 +1212,7 @@ export default function Dashboard() {
                   )}
                   
                   {/* AI-parsed values */}
-                  {showAIEnhanced && (selectedProspect.estimated_value_min || selectedProspect.estimated_value_max || selectedProspect.estimated_value_single) && !currentStep?.includes('value') && (
+                  {showAIEnhanced && (selectedProspect.estimated_value_min || selectedProspect.estimated_value_max || selectedProspect.estimated_value_single) && !(currentStep?.includes('value') && enhancingProspectId === selectedProspect?.id) && (
                     <div className="bg-green-50 p-3 rounded-lg border border-green-200">
                       <div className="flex items-center mb-2">
                         <span className="font-medium text-green-800">AI-Processed Values</span>
@@ -1269,7 +1288,7 @@ export default function Dashboard() {
               </div>
 
               {/* Contact Information with progress indicator */}
-              {currentStep?.includes('contact') && (
+              {(currentStep?.includes('contact') && enhancingProspectId === selectedProspect?.id) && (
                 <div>
                   <div className="flex items-center mb-3">
                     <h3 className="text-lg font-semibold text-gray-900">Contact Information</h3>
@@ -1283,7 +1302,7 @@ export default function Dashboard() {
               )}
 
               {/* Contact Information */}
-              {!currentStep?.includes('contact') && showAIEnhanced && (selectedProspect.primary_contact_email || selectedProspect.primary_contact_name) && (
+              {!(currentStep?.includes('contact') && enhancingProspectId === selectedProspect?.id) && showAIEnhanced && (selectedProspect.primary_contact_email || selectedProspect.primary_contact_name) && (
                 <div>
                   <div className="flex items-center mb-3">
                     <h3 className="text-lg font-semibold text-gray-900">Contact Information</h3>

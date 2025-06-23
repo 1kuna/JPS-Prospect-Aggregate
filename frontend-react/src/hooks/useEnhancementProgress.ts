@@ -32,7 +32,19 @@ export function useEnhancementProgress(
   const eventSourceRef = useRef<EventSource | null>(null);
   const queryClient = useQueryClient();
   
-  const { onProgressUpdate, onFieldUpdate, onComplete, onError } = options;
+  // Use refs to store current callbacks and avoid dependency issues
+  const callbacksRef = useRef(options);
+  callbacksRef.current = options;
+
+  const disconnect = useCallback(() => {
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
+    setIsConnected(false);
+    setIsEnhancing(false);
+    setCurrentStep(null);
+  }, []);
 
   const connect = useCallback((id: string) => {
     if (eventSourceRef.current) {
@@ -57,7 +69,7 @@ export function useEnhancementProgress(
     eventSource.onmessage = (event) => {
       try {
         const progressEvent: EnhancementProgressEvent = JSON.parse(event.data);
-        onProgressUpdate?.(progressEvent);
+        callbacksRef.current.onProgressUpdate?.(progressEvent);
 
         switch (progressEvent.event_type) {
           case 'connected':
@@ -71,7 +83,7 @@ export function useEnhancementProgress(
 
           case 'values_completed':
             setProgress(prev => ({ ...prev, ...progressEvent.data }));
-            onFieldUpdate?.('values', progressEvent.data || {});
+            callbacksRef.current.onFieldUpdate?.('values', progressEvent.data || {});
             // Optimistically update query cache
             queryClient.setQueryData(['prospects'], (oldData: unknown) => {
               if (!oldData || typeof oldData !== 'object' || !('data' in oldData)) return oldData;
@@ -93,7 +105,7 @@ export function useEnhancementProgress(
 
           case 'contacts_completed':
             setProgress(prev => ({ ...prev, ...progressEvent.data }));
-            onFieldUpdate?.('contacts', progressEvent.data || {});
+            callbacksRef.current.onFieldUpdate?.('contacts', progressEvent.data || {});
             // Optimistically update query cache
             queryClient.setQueryData(['prospects'], (oldData: unknown) => {
               if (!oldData || typeof oldData !== 'object' || !('data' in oldData)) return oldData;
@@ -115,7 +127,7 @@ export function useEnhancementProgress(
 
           case 'naics_completed':
             setProgress(prev => ({ ...prev, ...progressEvent.data }));
-            onFieldUpdate?.('naics', progressEvent.data || {});
+            callbacksRef.current.onFieldUpdate?.('naics', progressEvent.data || {});
             // Optimistically update query cache
             queryClient.setQueryData(['prospects'], (oldData: unknown) => {
               if (!oldData || typeof oldData !== 'object' || !('data' in oldData)) return oldData;
@@ -137,7 +149,7 @@ export function useEnhancementProgress(
 
           case 'titles_completed':
             setProgress(prev => ({ ...prev, ...progressEvent.data }));
-            onFieldUpdate?.('titles', progressEvent.data || {});
+            callbacksRef.current.onFieldUpdate?.('titles', progressEvent.data || {});
             // Optimistically update query cache
             queryClient.setQueryData(['prospects'], (oldData: unknown) => {
               if (!oldData || typeof oldData !== 'object' || !('data' in oldData)) return oldData;
@@ -171,7 +183,7 @@ export function useEnhancementProgress(
             });
             // Invalidate queries to ensure fresh data
             queryClient.invalidateQueries({ queryKey: ['prospects'] });
-            onComplete?.();
+            callbacksRef.current.onComplete?.();
             disconnect();
             break;
 
@@ -181,7 +193,7 @@ export function useEnhancementProgress(
           case 'titles_failed': {
             const errorMsg = (progressEvent.data?.error as string) || 'Enhancement step failed';
             setError(errorMsg);
-            onError?.(errorMsg);
+            callbacksRef.current.onError?.(errorMsg);
             break;
           }
 
@@ -189,7 +201,7 @@ export function useEnhancementProgress(
             setError('Enhancement timed out');
             setIsEnhancing(false);
             setCurrentStep(null);
-            onError?.('Enhancement timed out');
+            callbacksRef.current.onError?.('Enhancement timed out');
             disconnect();
             break;
 
@@ -198,7 +210,7 @@ export function useEnhancementProgress(
             setError(errorMessage);
             setIsEnhancing(false);
             setCurrentStep(null);
-            onError?.(errorMessage);
+            callbacksRef.current.onError?.(errorMessage);
             disconnect();
             break;
           }
@@ -213,20 +225,10 @@ export function useEnhancementProgress(
       console.error('SSE connection error:', err);
       setIsConnected(false);
       setError('Connection to enhancement progress lost');
-      onError?.('Connection to enhancement progress lost');
+      callbacksRef.current.onError?.('Connection to enhancement progress lost');
     };
 
-  }, [onProgressUpdate, onFieldUpdate, onComplete, onError, queryClient]);
-
-  const disconnect = useCallback(() => {
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
-      eventSourceRef.current = null;
-    }
-    setIsConnected(false);
-    setIsEnhancing(false);
-    setCurrentStep(null);
-  }, []);
+  }, [queryClient, disconnect]);
 
   // Connect when prospectId is provided
   useEffect(() => {
