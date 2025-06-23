@@ -14,7 +14,7 @@ import {
 import { DatabaseManagement } from '@/components/DatabaseManagement';
 import { AIEnrichment } from '@/components/AIEnrichment';
 import { DuplicateReview } from '@/components/DuplicateReview';
-import { formatDate } from '@/utils/dateUtils';
+import { useTimezoneDate } from '@/hooks/useTimezoneDate';
 import { get, post } from '@/utils/apiUtils';
 import { LoadingButton } from '@/components/ui/LoadingButton';
 import { ErrorDisplay } from '@/components/ui/ErrorDisplay';
@@ -39,6 +39,9 @@ export default function Advanced() {
   const queryClient = useQueryClient();
   const [runningScrapers, setRunningScrapers] = useState<Set<number>>(new Set());
   const [runAllInProgress, setRunAllInProgress] = useState(false);
+  
+  // Timezone hook for consistent date formatting
+  const { formatUserDate } = useTimezoneDate();
 
   // Clear data source data mutation
   const clearDataMutation = useClearDataSourceData();
@@ -313,7 +316,7 @@ export default function Advanced() {
                             )}
                           </span>
                         </TableCell>
-                        <TableCell className="text-sm">{formatDate(source.last_scraped, { fallback: 'Never' })}</TableCell>
+                        <TableCell className="text-sm">{source.last_scraped ? formatUserDate(source.last_scraped, 'datetime') : 'Never'}</TableCell>
                         <TableCell>{source.prospectCount}</TableCell>
                         <TableCell>
                           <div className="flex gap-2">
