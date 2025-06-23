@@ -32,12 +32,13 @@ class DocScraper(ConsolidatedScraperBase):
             self.logger.info("Applying custom DOC transformations...")
             
             # Derive Solicitation Date (release_date_final) from FY/Quarter
-            if 'solicitation_fy_raw' in df.columns and 'solicitation_qtr_raw' in df.columns:
+            # Use original Excel column names (before renaming)
+            if 'Estimated Solicitation Fiscal Year' in df.columns and 'Estimated Solicitation Fiscal Quarter' in df.columns:
                 # Format quarter column correctly for fiscal_quarter_to_date
-                df['solicitation_qtr_fmt'] = df['solicitation_qtr_raw'].astype(str).apply(
+                df['solicitation_qtr_fmt'] = df['Estimated Solicitation Fiscal Quarter'].astype(str).apply(
                     lambda x: f'Q{x.split(".")[0]}' if pd.notna(x) and x else None
                 )
-                df['solicitation_fyq_combined'] = df['solicitation_fy_raw'].astype(str).fillna('') + ' ' + df['solicitation_qtr_fmt'].fillna('')
+                df['solicitation_fyq_combined'] = df['Estimated Solicitation Fiscal Year'].astype(str).fillna('') + ' ' + df['solicitation_qtr_fmt'].fillna('')
                 
                 parsed_sol_date_info = df['solicitation_fyq_combined'].apply(
                     lambda x: fiscal_quarter_to_date(x.strip()) if pd.notna(x) and x.strip() else (None, None)
@@ -46,7 +47,7 @@ class DocScraper(ConsolidatedScraperBase):
                 self.logger.debug("Derived 'release_date_final' from fiscal year and quarter.")
             else:
                 df['release_date_final'] = None
-                self.logger.warning("Could not derive 'release_date_final'; 'solicitation_fy_raw' or 'solicitation_qtr_raw' missing.")
+                self.logger.warning("Could not derive 'release_date_final'; 'Estimated Solicitation Fiscal Year' or 'Estimated Solicitation Fiscal Quarter' missing.")
 
             # Initialize award dates as None (DOC source doesn't provide them)
             df['award_date_final'] = None
@@ -54,8 +55,9 @@ class DocScraper(ConsolidatedScraperBase):
             self.logger.debug("Initialized 'award_date_final' and 'award_fiscal_year_final' to None/NA.")
                 
             # Default place_country_final to 'USA' if not present or NaN
-            if 'place_country_raw' in df.columns:
-                df['place_country_final'] = df['place_country_raw'].fillna('USA')
+            # Use original Excel column name (before renaming)
+            if 'Place Of Performance Country' in df.columns:
+                df['place_country_final'] = df['Place Of Performance Country'].fillna('USA')
             else:
                 df['place_country_final'] = 'USA'
             self.logger.debug("Processed 'place_country_final', defaulting to USA if needed.")
@@ -124,26 +126,42 @@ class DocScraper(ConsolidatedScraperBase):
     
     async def doc_extract(self) -> Optional[str]:
         """
-        DOC-specific extraction: find link by text and download directly.
-        Preserves original DOC download behavior.
+        DOC-specific extraction: find link by text and download via browser click.
+        Uses interactive download to avoid 403 errors with direct downloads.
         """
         self.logger.info(f"Starting DOC data file download process. Looking for link text: '{self.config.download_link_text}'")
         
-        # Find the download link by text
-        download_url = await self.find_link_by_text(
-            self.config.download_link_text, 
-            timeout_ms=self.config.interaction_timeout_ms
-        )
+        # First, dismiss the newsletter popup if it appears
+        popup_selector = "#prefix-dismissButton"
+        try:
+            popup_exists = await self.wait_for_selector(popup_selector, state='visible', timeout=5000)
+            if popup_exists:
+                self.logger.info("Newsletter popup detected, dismissing...")
+                await self.click_element(popup_selector)
+                await self.wait_for_timeout(2000)  # Wait for popup to close
+                self.logger.info("Newsletter popup dismissed")
+            else:
+                self.logger.info("No newsletter popup detected, proceeding...")
+        except Exception as e:
+            self.logger.info(f"No popup found or error dismissing popup: {e}, proceeding with download...")
         
-        if not download_url:
+        # Create selector for the link containing the specific text
+        link_selector = f'a:has-text("{self.config.download_link_text}")'
+        
+        # Verify the link exists and is visible
+        link_exists = await self.wait_for_selector(link_selector, state='visible', timeout=self.config.interaction_timeout_ms)
+        if not link_exists:
             await self.capture_error_info(Exception("Download link not found"), "doc_link_not_found")
             self.logger.error(f"Download link with text '{self.config.download_link_text}' not found on page.")
             return None
         
-        self.logger.info(f"Attempting direct download from resolved link: {download_url}")
+        self.logger.info(f"Found download link, attempting interactive download via click")
         
-        # Download directly from the URL
-        return await self.download_file_directly(download_url)
+        # Download by clicking the link (avoids 403 errors)
+        return await self.download_file_via_click(
+            selector=link_selector,
+            timeout=self.config.download_timeout_ms
+        )
     
     def doc_process(self, file_path: str) -> int:
         """
