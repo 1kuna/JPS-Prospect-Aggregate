@@ -5,7 +5,6 @@ from flask import Blueprint, current_app, send_from_directory
 
 # Create blueprints
 main = Blueprint('web_main', __name__)
-data_sources = Blueprint('data_sources', __name__, url_prefix='/data-sources')
 
 @main.route('/', defaults={'path': ''})
 @main.route('/<path:path>')
@@ -66,8 +65,3 @@ def index(path):
     current_app.logger.error(f"React index.html not found at {index_path}")
     return {"error": "React application index not found. Please check the build directory."}, 500
 
-# Data sources routes
-@data_sources.route('/')
-def list_sources():
-    """List all available data sources."""
-    return {"message": "Data sources endpoint"} 
