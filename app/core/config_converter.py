@@ -106,8 +106,9 @@ def create_dhs_config() -> ScraperConfig:
         excel_read_options={"sheet_name": 0, "header": 0},
         
         # Data processing
-        custom_transform_functions=["_custom_dhs_transforms"],
+        custom_transform_functions=["_custom_dhs_transforms", "_dhs_create_extras"],
         raw_column_rename_map={
+            # Core fields mapped to standard schema
             'APFS Number': 'native_id',
             'NAICS': 'naics_code',
             'Component': 'agency',
@@ -122,7 +123,17 @@ def create_dhs_config() -> ScraperConfig:
             'Place of Performance State': 'place_state',
             'Description': 'description',
             'Estimated Solicitation Release': 'release_date_raw',
-            'Award Quarter': 'award_qtr_raw'
+            'Award Quarter': 'award_qtr_raw',
+            
+            # Additional fields for extras capture - all 23 columns
+            'Contract Number': 'contract_number',
+            'Contractor': 'contractor',
+            'Primary Contact First Name': 'primary_contact_first_name',
+            'Primary Contact Last Name': 'primary_contact_last_name',
+            'Primary Contact Phone': 'primary_contact_phone',
+            'Primary Contact Email': 'primary_contact_email',
+            'Forecast Published': 'forecast_published',
+            'Forecast Previously Published': 'forecast_previously_published'
         },
         date_column_configs=[
             {'column': 'release_date_raw', 'target_column': 'release_date', 'parse_type': 'datetime', 'store_as_date': True},
@@ -146,7 +157,8 @@ def create_dhs_config() -> ScraperConfig:
             'set_aside': 'set_aside',
             'place_city': 'place_city',
             'place_state': 'place_state',
-            'place_country': 'place_country'
+            'place_country': 'place_country',
+            'extras_json': 'extra'  # Map extras JSON to database extra field
         },
         fields_for_id_hash=['native_id', 'naics_code', 'title', 'description', 'place_city', 'place_state']
     )
@@ -279,8 +291,9 @@ def create_dot_config() -> ScraperConfig:
         new_page_initial_load_wait_ms=5000,
         
         # Data processing
-        custom_transform_functions=["_custom_dot_transforms"],
+        custom_transform_functions=["_custom_dot_transforms", "_dot_create_extras"],
         raw_column_rename_map={
+            # Core fields mapped to standard schema
             'Sequence Number': 'native_id',
             'Procurement Office': 'agency', 
             'Project Title': 'title',
@@ -290,7 +303,28 @@ def create_dot_config() -> ScraperConfig:
             'Competition Type': 'set_aside',
             'RFP Quarter': 'solicitation_qtr_raw',
             'Place of Performance': 'place_raw',
-            'Contract Vehicle': 'contract_vehicle'
+            'Contract Vehicle': 'contract_vehicle',
+            
+            # Additional fields for extras capture - all 29 columns
+            'Agency': 'dot_agency',
+            'FY': 'fiscal_year',
+            'Procurement Category': 'procurement_category',
+            'Incumbent/Contract Number': 'incumbent_contract_number',
+            'Updates': 'updates',
+            'Contact Name': 'contact_name',
+            'Contact Email': 'contact_email',
+            'Contact Phone': 'contact_phone',
+            'Is this a follow-on to a current 8(a) contract?': 'followon_8a_contract',
+            'Is this funded through the American Recovery and Reinvestment Act?': 'arra_funded',
+            'Contract Awarded': 'contract_awarded',
+            'Expected Period of Performance - Start': 'performance_start_date',
+            'Expected Period of Performance - End': 'performance_end_date',
+            'Personnel Clearance Requirements': 'clearance_requirements',
+            'Date Modified': 'date_modified',
+            'Incumbent Contractor': 'incumbent_contractor',
+            'Action/Award Type': 'action_award_type',
+            'Anticipated Award Date': 'anticipated_award_date',
+            'Bipartisan Infrastructure Law (BIL) Opportunity': 'bil_opportunity'
         },
         date_column_configs=[
             {'column': 'solicitation_qtr_raw', 
@@ -319,7 +353,8 @@ def create_dot_config() -> ScraperConfig:
             'place_city': 'place_city',
             'place_state': 'place_state',
             'place_country': 'place_country',
-            'contract_vehicle': 'contract_type'
+            'contract_vehicle': 'contract_type',
+            'extras_json': 'extra'  # Map extras JSON to database extra field
         },
         fields_for_id_hash=['native_id', 'naics_code', 'title', 'description', 'agency']
     )
@@ -361,8 +396,9 @@ def create_hhs_config() -> ScraperConfig:
         read_options={"on_bad_lines": "skip", "header": 0},
         
         # Data processing
-        custom_transform_functions=["_custom_hhs_transforms"],
+        custom_transform_functions=["_custom_hhs_transforms", "_hhs_create_extras"],
         raw_column_rename_map={
+            # Core fields mapped to standard schema
             'Title': 'title',
             'Description': 'description', 
             'Operating Division': 'agency',
@@ -377,7 +413,12 @@ def create_hhs_config() -> ScraperConfig:
             'Contracting Office': 'contract_office',
             'CO Email': 'co_email',
             'CO First Name': 'co_first_name',
-            'CO Last Name': 'co_last_name'
+            'CO Last Name': 'co_last_name',
+            
+            # Additional fields for extras capture - all 18 columns
+            'Program POC Office': 'program_poc_office',
+            'Incumbent Contractor (if applicable)': 'incumbent_contractor',
+            'Existing Contract number (if applicable)': 'existing_contract_number'
         },
         date_column_configs=[
             {'column': 'award_date_raw', 'target_column': 'award_date', 'parse_type': 'datetime', 'store_as_date': True},
@@ -399,7 +440,8 @@ def create_hhs_config() -> ScraperConfig:
             'set_aside': 'set_aside',
             'primary_contact_email': 'primary_contact_email',
             'primary_contact_name': 'primary_contact_name',  # Created by custom transform
-            'place_country_final': 'place_country'
+            'place_country_final': 'place_country',
+            'extras_json': 'extra'  # Map extras JSON to database extra field
         },
         fields_for_id_hash=['title', 'description', 'agency', 'naics_code', 'row_index'],  # row_index added by custom transform
         required_fields_for_load=['native_id', 'title']  # Minimal requirements for HHS
@@ -430,8 +472,9 @@ def create_ssa_config() -> ScraperConfig:
         read_options={"sheet_name": "Sheet1", "header": 4, "engine": "openpyxl"},
         
         # Data processing
-        custom_transform_functions=["_custom_ssa_transforms"],
+        custom_transform_functions=["_custom_ssa_transforms", "_ssa_create_extras"],
         raw_column_rename_map={
+            # Core fields mapped to standard schema
             'APP #': 'native_id',
             'SITE Type': 'agency',
             'DESCRIPTION': 'description',  # Also used for title mapping
@@ -440,7 +483,18 @@ def create_ssa_config() -> ScraperConfig:
             'SET ASIDE': 'set_aside',
             'ESTIMATED VALUE': 'estimated_value_text',
             'AWARD FISCAL YEAR': 'award_fiscal_year',
-            'PLACE OF PERFORMANCE': 'place_raw'
+            'PLACE OF PERFORMANCE': 'place_raw',
+            
+            # Additional fields for extras capture
+            'REQUIREMENT TYPE': 'requirement_type',
+            'EST COST PER FY': 'est_cost_per_fy',
+            'PLANNED AWARD DATE': 'planned_award_date',
+            'EXISTING AWD #': 'existing_award_number',
+            'INCUMBENT VENDOR': 'incumbent_vendor',
+            'NAICS DESCRIPTION': 'naics_description',
+            'TYPE OF COMPETITION': 'type_of_competition',
+            'NET VIEW TOTAL OBLIGATED AMT': 'net_view_total_obligated_amount',
+            'ULTIMATE COMPLETION DATE': 'ultimate_completion_date'
         },
         place_column_configs=[
             {'column': 'place_raw', 
@@ -461,7 +515,8 @@ def create_ssa_config() -> ScraperConfig:
             'award_fiscal_year': 'award_fiscal_year',
             'place_city': 'place_city',
             'place_state': 'place_state',
-            'place_country': 'place_country'
+            'place_country': 'place_country',
+            'extras_json': 'extra'  # Map extras JSON to database extra field
         },
         fields_for_id_hash=['native_id', 'naics_code', 'title', 'description']
     )
@@ -485,8 +540,9 @@ def create_doc_config() -> ScraperConfig:
         read_options={"sheet_name": "Sheet1", "header": 2},
         
         # Data processing
-        custom_transform_functions=["_custom_doc_transforms"],
+        custom_transform_functions=["_custom_doc_transforms", "_doc_create_extras"],
         raw_column_rename_map={
+            # Core fields mapped to standard schema
             'Forecast ID': 'native_id',
             'Organization': 'agency',
             'Title': 'title',
@@ -501,7 +557,24 @@ def create_doc_config() -> ScraperConfig:
             'Anticipated Set Aside And Type': 'set_aside',
             'Anticipated Action Award Type': 'action_award_type',
             'Competition Strategy': 'competition_strategy',
-            'Anticipated Contract Vehicle': 'contract_vehicle'
+            'Anticipated Contract Vehicle': 'contract_vehicle',
+            
+            # Additional fields for extras capture - all 30 columns
+            'Workspace Number': 'workspace_number',
+            'Date Created': 'date_created',
+            'Office': 'office',
+            'Organization Unit': 'organization_unit',
+            'Months': 'months',
+            'Years': 'years',
+            'Type Of Awardee': 'type_of_awardee',
+            'New Requirement Or Recompete': 'new_requirement_or_recompete',
+            'Incumbent Contractor Name': 'incumbent_contractor_name',
+            'Awarded Contract Order Number': 'awarded_contract_order_number',
+            'Point Of Contact Name': 'point_of_contact_name',
+            'Point Of Contact Email': 'point_of_contact_email',
+            'Does This Acquisition Contain Information Technology': 'contains_information_technology',
+            'Date Created or Modified': 'date_created_or_modified',
+            'Awarded?': 'awarded'
         },
         db_column_rename_map={
             'native_id': 'native_id',
@@ -516,7 +589,8 @@ def create_doc_config() -> ScraperConfig:
             'release_date_final': 'release_date',
             'award_date_final': 'award_date',
             'award_fiscal_year_final': 'award_fiscal_year',
-            'set_aside': 'set_aside'
+            'set_aside': 'set_aside',
+            'extras_json': 'extra'  # Map extras JSON to database extra field
         },
         fields_for_id_hash=['native_id', 'naics_code', 'title', 'description', 'place_city', 'place_state']
     )
@@ -543,8 +617,9 @@ def create_doj_config() -> ScraperConfig:
         read_options={"sheet_name": "Contracting Opportunities Data", "header": 12},
         
         # Data processing
-        custom_transform_functions=["_custom_doj_transforms"],
+        custom_transform_functions=["_custom_doj_transforms", "_doj_create_extras"],
         raw_column_rename_map={
+            # Core fields mapped to standard schema
             'Action Tracking Number': 'native_id',
             'Bureau': 'agency',
             'Contract Name': 'title',
@@ -556,7 +631,30 @@ def create_doj_config() -> ScraperConfig:
             'Target Solicitation Date': 'release_date_raw',
             'Target Award Date': 'award_date_raw',
             'Place of Performance': 'place_raw',
-            'Country': 'place_country_raw'
+            'Country': 'place_country_raw',
+            
+            # Additional fields for extras capture
+            'Fiscal Year': 'fiscal_year',
+            'OBD': 'obd',
+            'Contracting Office': 'contracting_office',
+            'DOJ Small Business POC - Name': 'doj_sb_poc_name',
+            'DOJ Small Business POC - Email Address': 'doj_sb_poc_email',
+            'DOJ Requirement POC - Name': 'doj_req_poc_name',
+            'DOJ Requirement POC - Email Address': 'doj_req_poc_email',
+            'Category': 'category',
+            'Subcategory': 'subcategory',
+            'Award Type': 'award_type',
+            'Product Service Code': 'product_service_code',
+            'Competition Approach': 'competition_approach',
+            'Contracting Solution': 'contracting_solution',
+            'Contract Availability': 'contract_availability',
+            'Length of Contract': 'length_of_contract',
+            'Request for Information (RFI) Planned': 'rfi_planned',
+            'Acquisition History': 'acquisition_history',
+            'Incumbent Contractor': 'incumbent_contractor',
+            'Incumbent Contractor PIID': 'incumbent_contractor_piid',
+            'Solicitation Link': 'solicitation_link',
+            'Other Information': 'other_information'
         },
         date_column_configs=[
             {'column': 'release_date_raw', 'target_column': 'release_date', 'parse_type': 'datetime', 'store_as_date': True},
@@ -583,7 +681,8 @@ def create_doj_config() -> ScraperConfig:
             'award_fiscal_year_final': 'award_fiscal_year',  # From custom transform
             'place_city': 'place_city',
             'place_state': 'place_state',
-            'place_country_final': 'place_country'  # From custom transform
+            'place_country_final': 'place_country',  # From custom transform
+            'extras_json': 'extra'  # Map extras JSON to database extra field
         },
         fields_for_id_hash=['native_id', 'naics_code', 'title', 'description', 'place_city', 'place_state']
     )
@@ -607,8 +706,9 @@ def create_dos_config() -> ScraperConfig:
         read_options={"sheet_name": "FY25-Procurement-Forecast", "header": 0},
         
         # Data processing
-        custom_transform_functions=["_custom_dos_transforms"],
+        custom_transform_functions=["_custom_dos_transforms", "_dos_create_extras"],
         raw_column_rename_map={
+            # Core fields mapped to standard schema
             'Contract Number': 'native_id',
             'Office Symbol': 'agency',
             'Requirement Title': 'title',
@@ -623,7 +723,20 @@ def create_dos_config() -> ScraperConfig:
             'Target Award Quarter': 'award_qtr_raw',
             'Fiscal Year': 'award_fiscal_year_raw',
             'Anticipated Set Aside': 'set_aside',
-            'Anticipated Solicitation Release Date': 'release_date_raw'
+            'Anticipated Solicitation Release Date': 'release_date_raw',
+            
+            # Additional fields for extras capture - all 26 columns
+            'New Requirement?': 'new_requirement',
+            'Length of Performance': 'length_of_performance',
+            'Facility Security Clearance': 'facility_security_clearance',
+            'Past Competition': 'past_competition',
+            'Past Set-Aside': 'past_set_aside',
+            'Incumbent Contractor': 'incumbent_contractor',
+            'Contract Vehicle': 'contract_vehicle',
+            'Program Funding Agency': 'program_funding_agency',
+            'Acquisition Phase': 'acquisition_phase',
+            'Extent Competed': 'extent_competed',
+            'Modified': 'modified'
         },
         db_column_rename_map={
             'native_id': 'native_id',
@@ -640,7 +753,8 @@ def create_dos_config() -> ScraperConfig:
             'release_date_final': 'release_date',
             'estimated_value_final': 'estimated_value',
             'est_value_unit_final': 'est_value_unit',
-            'naics_final': 'naics'
+            'naics_final': 'naics',
+            'extras_json': 'extra'  # Map extras JSON to database extra field
         },
         fields_for_id_hash=['native_id', 'title', 'description', 'place_city_final', 'place_state_final', 'row_index']
     )

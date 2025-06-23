@@ -2,6 +2,7 @@
 DOS scraper using the consolidated architecture.
 Preserves all original DOS-specific functionality including direct download and complex value processing.
 """
+import json
 import pandas as pd
 from typing import Optional
 from app.utils.value_and_date_parsing import fiscal_quarter_to_date, parse_value_range
@@ -99,6 +100,48 @@ class DOSForecastScraper(ConsolidatedScraperBase):
             
         except Exception as e:
             self.logger.warning(f"Error in _custom_dos_transforms: {e}")
+        
+        return df
+    
+    def _dos_create_extras(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Create extras JSON with DOS-specific fields that aren't in core schema.
+        Captures 11 additional data points for comprehensive data retention.
+        """
+        try:
+            # Define DOS-specific extras fields mapping
+            extras_fields = {
+                'new_requirement': 'new_requirement',
+                'length_of_performance': 'length_of_performance',
+                'facility_security_clearance': 'facility_security_clearance',
+                'past_competition': 'past_competition',
+                'past_set_aside': 'past_set_aside',
+                'incumbent_contractor': 'incumbent_contractor',
+                'contract_vehicle': 'contract_vehicle',
+                'program_funding_agency': 'program_funding_agency',
+                'acquisition_phase': 'acquisition_phase',
+                'extent_competed': 'extent_competed',
+                'modified': 'modified'
+            }
+            
+            # Create extras JSON column
+            extras_data = []
+            for _, row in df.iterrows():
+                extras = {}
+                for df_col, extra_key in extras_fields.items():
+                    if df_col in df.columns:
+                        value = row[df_col]
+                        if pd.notna(value) and value != '':
+                            extras[extra_key] = str(value)
+                extras_data.append(extras if extras else {})
+            
+            # Add the extras JSON column
+            df['extras_json'] = [json.dumps(extras) for extras in extras_data]
+            
+            self.logger.debug(f"Created DOS extras JSON for {len(extras_data)} rows with {len(extras_fields)} potential fields")
+                
+        except Exception as e:
+            self.logger.warning(f"Error in _dos_create_extras: {e}")
         
         return df
     

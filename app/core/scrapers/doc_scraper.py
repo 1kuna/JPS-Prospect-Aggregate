@@ -2,6 +2,7 @@
 DOC scraper using the consolidated architecture.
 Preserves all original DOC-specific functionality including link text finding and fiscal quarter processing.
 """
+import json
 import pandas as pd
 from typing import Optional
 from app.utils.value_and_date_parsing import fiscal_quarter_to_date
@@ -61,6 +62,52 @@ class DocScraper(ConsolidatedScraperBase):
             
         except Exception as e:
             self.logger.warning(f"Error in _custom_doc_transforms: {e}")
+        
+        return df
+    
+    def _doc_create_extras(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Create extras JSON with DOC-specific fields that aren't in core schema.
+        Captures 15 additional data points for comprehensive data retention.
+        """
+        try:
+            # Define DOC-specific extras fields mapping
+            extras_fields = {
+                'workspace_number': 'workspace_number',
+                'date_created': 'date_created',
+                'office': 'office',
+                'organization_unit': 'organization_unit',
+                'months': 'months',
+                'years': 'years',
+                'type_of_awardee': 'type_of_awardee',
+                'new_requirement_or_recompete': 'new_requirement_or_recompete',
+                'incumbent_contractor_name': 'incumbent_contractor_name',
+                'awarded_contract_order_number': 'awarded_contract_order_number',
+                'point_of_contact_name': 'point_of_contact_name',
+                'point_of_contact_email': 'point_of_contact_email',
+                'contains_information_technology': 'contains_information_technology',
+                'date_created_or_modified': 'date_created_or_modified',
+                'awarded': 'awarded'
+            }
+            
+            # Create extras JSON column
+            extras_data = []
+            for _, row in df.iterrows():
+                extras = {}
+                for df_col, extra_key in extras_fields.items():
+                    if df_col in df.columns:
+                        value = row[df_col]
+                        if pd.notna(value) and value != '':
+                            extras[extra_key] = str(value)
+                extras_data.append(extras if extras else {})
+            
+            # Add the extras JSON column
+            df['extras_json'] = [json.dumps(extras) for extras in extras_data]
+            
+            self.logger.debug(f"Created DOC extras JSON for {len(extras_data)} rows with {len(extras_fields)} potential fields")
+                
+        except Exception as e:
+            self.logger.warning(f"Error in _doc_create_extras: {e}")
         
         return df
     

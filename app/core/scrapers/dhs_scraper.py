@@ -2,6 +2,7 @@
 DHS scraper using the consolidated architecture.
 Preserves all original DHS-specific functionality.
 """
+import json
 import pandas as pd
 from typing import Optional
 
@@ -34,6 +35,45 @@ class DHSForecastScraper(ConsolidatedScraperBase):
             
         except Exception as e:
             self.logger.warning(f"Error in _custom_dhs_transforms: {e}")
+        
+        return df
+    
+    def _dhs_create_extras(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Create extras JSON with DHS-specific fields that aren't in core schema.
+        Captures 8 additional data points for comprehensive data retention.
+        """
+        try:
+            # Define DHS-specific extras fields mapping
+            extras_fields = {
+                'contract_number': 'contract_number',
+                'contractor': 'contractor',
+                'primary_contact_first_name': 'primary_contact_first_name',
+                'primary_contact_last_name': 'primary_contact_last_name',
+                'primary_contact_phone': 'primary_contact_phone',
+                'primary_contact_email': 'primary_contact_email',
+                'forecast_published': 'forecast_published',
+                'forecast_previously_published': 'forecast_previously_published'
+            }
+            
+            # Create extras JSON column
+            extras_data = []
+            for _, row in df.iterrows():
+                extras = {}
+                for df_col, extra_key in extras_fields.items():
+                    if df_col in df.columns:
+                        value = row[df_col]
+                        if pd.notna(value) and value != '':
+                            extras[extra_key] = str(value)
+                extras_data.append(extras if extras else {})
+            
+            # Add the extras JSON column
+            df['extras_json'] = [json.dumps(extras) for extras in extras_data]
+            
+            self.logger.debug(f"Created DHS extras JSON for {len(extras_data)} rows with {len(extras_fields)} potential fields")
+                
+        except Exception as e:
+            self.logger.warning(f"Error in _dhs_create_extras: {e}")
         
         return df
     

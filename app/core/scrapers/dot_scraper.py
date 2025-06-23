@@ -2,6 +2,7 @@
 DOT scraper using the consolidated architecture.
 Preserves all original DOT-specific functionality including complex retry logic and new page downloads.
 """
+import json
 import pandas as pd
 import time
 import os
@@ -41,6 +42,56 @@ class DotScraper(ConsolidatedScraperBase):
             
         except Exception as e:
             self.logger.warning(f"Error in _custom_dot_transforms: {e}")
+        
+        return df
+    
+    def _dot_create_extras(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Create extras JSON with DOT-specific fields that aren't in core schema.
+        Captures 19 additional data points for comprehensive data retention.
+        """
+        try:
+            # Define DOT-specific extras fields mapping
+            extras_fields = {
+                'dot_agency': 'agency_detail',
+                'fiscal_year': 'fiscal_year',
+                'procurement_category': 'procurement_category',
+                'incumbent_contract_number': 'incumbent_contract_number',
+                'updates': 'updates',
+                'contact_name': 'contact_name',
+                'contact_email': 'contact_email',
+                'contact_phone': 'contact_phone',
+                'followon_8a_contract': 'followon_8a_contract',
+                'arra_funded': 'arra_funded',
+                'contract_awarded': 'contract_awarded',
+                'performance_start_date': 'performance_start_date',
+                'performance_end_date': 'performance_end_date',
+                'clearance_requirements': 'clearance_requirements',
+                'date_modified': 'date_modified',
+                'incumbent_contractor': 'incumbent_contractor',
+                'action_award_type': 'action_award_type',
+                'anticipated_award_date': 'anticipated_award_date',
+                'bil_opportunity': 'bil_opportunity'
+            }
+            
+            # Create extras JSON column
+            extras_data = []
+            for _, row in df.iterrows():
+                extras = {}
+                for df_col, extra_key in extras_fields.items():
+                    if df_col in df.columns:
+                        value = row[df_col]
+                        if pd.notna(value) and value != '':
+                            extras[extra_key] = str(value)
+                extras_data.append(extras if extras else {})
+            
+            # Add the extras JSON column
+            df['extras_json'] = [json.dumps(extras) for extras in extras_data]
+            
+            self.logger.debug(f"Created DOT extras JSON for {len(extras_data)} rows with {len(extras_fields)} potential fields")
+                
+        except Exception as e:
+            self.logger.warning(f"Error in _dot_create_extras: {e}")
         
         return df
     
