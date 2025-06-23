@@ -2,6 +2,7 @@
 SSA scraper using the consolidated architecture.
 Preserves all original SSA-specific functionality including Excel link finding and direct downloads.
 """
+import json
 import pandas as pd
 from typing import Optional
 
@@ -55,6 +56,46 @@ class SsaScraper(ConsolidatedScraperBase):
             
         except Exception as e:
             self.logger.warning(f"Error in _custom_ssa_transforms: {e}")
+        
+        return df
+    
+    def _ssa_create_extras(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Create extras JSON with SSA-specific fields that aren't in core schema.
+        Captures 9 additional data points for comprehensive data retention.
+        """
+        try:
+            # Define SSA-specific extras fields mapping
+            extras_fields = {
+                'requirement_type': 'requirement_type',
+                'est_cost_per_fy': 'est_cost_per_fy',
+                'planned_award_date': 'planned_award_date',
+                'existing_award_number': 'existing_award_number',
+                'incumbent_vendor': 'incumbent_vendor',
+                'naics_description': 'naics_description',
+                'type_of_competition': 'type_of_competition',
+                'net_view_total_obligated_amount': 'net_view_total_obligated_amount',
+                'ultimate_completion_date': 'ultimate_completion_date'
+            }
+            
+            # Create extras JSON column
+            extras_data = []
+            for _, row in df.iterrows():
+                extras = {}
+                for df_col, extra_key in extras_fields.items():
+                    if df_col in df.columns:
+                        value = row[df_col]
+                        if pd.notna(value) and value != '':
+                            extras[extra_key] = str(value)
+                extras_data.append(extras if extras else {})
+            
+            # Add the extras JSON column
+            df['extras_json'] = [json.dumps(extras) for extras in extras_data]
+            
+            self.logger.debug(f"Created SSA extras JSON for {len(extras_data)} rows with {len(extras_fields)} potential fields")
+                
+        except Exception as e:
+            self.logger.warning(f"Error in _ssa_create_extras: {e}")
         
         return df
     

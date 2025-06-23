@@ -2,6 +2,7 @@
 HHS scraper using the consolidated architecture.
 Preserves all original HHS-specific functionality including View All workflow.
 """
+import json
 import pandas as pd
 from typing import Optional
 
@@ -50,6 +51,40 @@ class HHSForecastScraper(ConsolidatedScraperBase):
             
         except Exception as e:
             self.logger.warning(f"Error in _custom_hhs_transforms: {e}")
+        
+        return df
+    
+    def _hhs_create_extras(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Create extras JSON with HHS-specific fields that aren't in core schema.
+        Captures 3 additional data points for comprehensive data retention.
+        """
+        try:
+            # Define HHS-specific extras fields mapping
+            extras_fields = {
+                'program_poc_office': 'program_poc_office',
+                'incumbent_contractor': 'incumbent_contractor',
+                'existing_contract_number': 'existing_contract_number'
+            }
+            
+            # Create extras JSON column
+            extras_data = []
+            for _, row in df.iterrows():
+                extras = {}
+                for df_col, extra_key in extras_fields.items():
+                    if df_col in df.columns:
+                        value = row[df_col]
+                        if pd.notna(value) and value != '':
+                            extras[extra_key] = str(value)
+                extras_data.append(extras if extras else {})
+            
+            # Add the extras JSON column
+            df['extras_json'] = [json.dumps(extras) for extras in extras_data]
+            
+            self.logger.debug(f"Created HHS extras JSON for {len(extras_data)} rows with {len(extras_fields)} potential fields")
+                
+        except Exception as e:
+            self.logger.warning(f"Error in _hhs_create_extras: {e}")
         
         return df
     

@@ -2,6 +2,7 @@
 DOJ scraper using the consolidated architecture.
 Preserves all original DOJ-specific functionality including complex award date processing.
 """
+import json
 import pandas as pd
 from typing import Optional
 from app.utils.value_and_date_parsing import fiscal_quarter_to_date
@@ -67,6 +68,58 @@ class DOJForecastScraper(ConsolidatedScraperBase):
                 
         except Exception as e:
             self.logger.warning(f"Error in _custom_doj_transforms: {e}")
+        
+        return df
+    
+    def _doj_create_extras(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Create extras JSON with DOJ-specific fields that aren't in core schema.
+        Captures 21 additional data points for comprehensive data retention.
+        """
+        try:
+            # Define DOJ-specific extras fields mapping
+            extras_fields = {
+                'fiscal_year': 'fiscal_year',
+                'obd': 'organizational_business_division', 
+                'contracting_office': 'contracting_office',
+                'doj_sb_poc_name': 'small_business_poc_name',
+                'doj_sb_poc_email': 'small_business_poc_email',
+                'doj_req_poc_name': 'requirement_poc_name',
+                'doj_req_poc_email': 'requirement_poc_email',
+                'category': 'category',
+                'subcategory': 'subcategory', 
+                'award_type': 'award_type',
+                'product_service_code': 'product_service_code',
+                'competition_approach': 'competition_approach',
+                'contracting_solution': 'contracting_solution',
+                'contract_availability': 'contract_availability',
+                'length_of_contract': 'length_of_contract',
+                'rfi_planned': 'rfi_planned',
+                'acquisition_history': 'acquisition_history',
+                'incumbent_contractor': 'incumbent_contractor',
+                'incumbent_contractor_piid': 'incumbent_contractor_piid',
+                'solicitation_link': 'solicitation_link',
+                'other_information': 'other_information'
+            }
+            
+            # Create extras JSON column
+            extras_data = []
+            for _, row in df.iterrows():
+                extras = {}
+                for df_col, extra_key in extras_fields.items():
+                    if df_col in df.columns:
+                        value = row[df_col]
+                        if pd.notna(value) and value != '':
+                            extras[extra_key] = str(value)
+                extras_data.append(extras if extras else {})
+            
+            # Add the extras JSON column
+            df['extras_json'] = [json.dumps(extras) for extras in extras_data]
+            
+            self.logger.debug(f"Created DOJ extras JSON for {len(extras_data)} rows with {len(extras_fields)} potential fields")
+                
+        except Exception as e:
+            self.logger.warning(f"Error in _doj_create_extras: {e}")
         
         return df
     
