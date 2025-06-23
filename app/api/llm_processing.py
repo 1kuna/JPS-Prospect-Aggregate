@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, Response, stream_with_context
 from app.database.models import Prospect, db, AIEnrichmentLog, LLMOutput
 from app.utils.logger import logger
 from app.services.contract_llm_service import ContractLLMService
@@ -389,6 +389,9 @@ def _process_value_enhancement(prospect, llm_service, force_redo):
             value_to_parse = str(prospect.estimated_value)
     
     if value_to_parse:
+        # Emit start event
+        emit_enhancement_progress(prospect.id, 'values_started', {'text_to_parse': value_to_parse})
+        
         parsed_value = llm_service.parse_contract_value_with_llm(value_to_parse, prospect_id=prospect.id)
         if parsed_value['single'] is not None:
             try:
@@ -405,9 +408,20 @@ def _process_value_enhancement(prospect, llm_service, force_redo):
                     # Store the text version if it didn't exist
                     if not prospect.estimated_value_text:
                         prospect.estimated_value_text = value_to_parse
+                    
+                    # Commit to database immediately for real-time updates
+                    db.session.commit()
+                    
+                    # Emit completion event with new values
+                    emit_enhancement_progress(prospect.id, 'values_completed', {
+                        'estimated_value_single': single_val,
+                        'estimated_value_min': min_val,
+                        'estimated_value_max': max_val
+                    })
                     return True
             except (ValueError, TypeError) as e:
                 logger.warning(f"Failed to convert LLM parsed values to float for prospect {prospect.id}: {e}")
+                emit_enhancement_progress(prospect.id, 'values_failed', {'error': str(e)})
     
     return False
 
@@ -433,12 +447,26 @@ def _process_contact_enhancement(prospect, llm_service, force_redo):
             contact_data = {}
         
         if any(contact_data.values()):
+            # Emit start event
+            emit_enhancement_progress(prospect.id, 'contacts_started', {'contact_data': contact_data})
+            
             extracted_contact = llm_service.extract_contact_with_llm(contact_data, prospect_id=prospect.id)
             
             if extracted_contact['email'] or extracted_contact['name']:
                 prospect.primary_contact_email = extracted_contact['email']
                 prospect.primary_contact_name = extracted_contact['name']
+                
+                # Commit to database immediately for real-time updates
+                db.session.commit()
+                
+                # Emit completion event with new contact data
+                emit_enhancement_progress(prospect.id, 'contacts_completed', {
+                    'primary_contact_email': extracted_contact['email'],
+                    'primary_contact_name': extracted_contact['name']
+                })
                 return True
+            else:
+                emit_enhancement_progress(prospect.id, 'contacts_failed', {'error': 'No valid contact data extracted'})
     
     return False
 
@@ -448,6 +476,12 @@ def _process_naics_enhancement(prospect, llm_service, force_redo):
     should_process = force_redo or not prospect.naics
     
     if prospect.description and should_process:
+        # Emit start event
+        emit_enhancement_progress(prospect.id, 'naics_started', {
+            'title': prospect.title,
+            'description': prospect.description[:200] + '...' if len(prospect.description) > 200 else prospect.description
+        })
+        
         classification = llm_service.classify_naics_with_llm(prospect.title, prospect.description, prospect_id=prospect.id)
         
         if classification['code']:
@@ -464,13 +498,33 @@ def _process_naics_enhancement(prospect, llm_service, force_redo):
                 'model_used': llm_service.model_name,
                 'classified_at': datetime.now(timezone.utc).isoformat()
             }
+            
+            # Commit to database immediately for real-time updates
+            db.session.commit()
+            
+            # Emit completion event with new NAICS data
+            emit_enhancement_progress(prospect.id, 'naics_completed', {
+                'naics': classification['code'],
+                'naics_description': classification['description'],
+                'naics_source': 'llm_inferred',
+                'confidence': classification['confidence']
+            })
             return True
+        else:
+            emit_enhancement_progress(prospect.id, 'naics_failed', {'error': 'No valid NAICS classification found'})
     
     return False
 
 def _process_title_enhancement(prospect, llm_service, force_redo):
     """Process title enhancement for a prospect."""
     if prospect.title and (force_redo or not prospect.ai_enhanced_title):
+        # Emit start event
+        emit_enhancement_progress(prospect.id, 'titles_started', {
+            'original_title': prospect.title,
+            'description': prospect.description[:100] + '...' if prospect.description and len(prospect.description) > 100 else prospect.description,
+            'agency': prospect.agency
+        })
+        
         enhanced_title = llm_service.enhance_title_with_llm(
             prospect.title, 
             prospect.description or "",
@@ -491,7 +545,19 @@ def _process_title_enhancement(prospect, llm_service, force_redo):
                 'model_used': llm_service.model_name,
                 'enhanced_at': datetime.now(timezone.utc).isoformat()
             }
+            
+            # Commit to database immediately for real-time updates
+            db.session.commit()
+            
+            # Emit completion event with new title
+            emit_enhancement_progress(prospect.id, 'titles_completed', {
+                'ai_enhanced_title': enhanced_title['enhanced_title'],
+                'original_title': prospect.title,
+                'confidence': enhanced_title['confidence']
+            })
             return True
+        else:
+            emit_enhancement_progress(prospect.id, 'titles_failed', {'error': 'No enhanced title generated'})
     
     return False
 
@@ -779,3 +845,91 @@ def stop_queue_worker():
     except Exception as e:
         logger.error(f"Error stopping queue worker: {e}", exc_info=True)
         return jsonify({"error": f"Failed to stop queue worker: {str(e)}"}), 500
+
+# Global dictionary to store SSE progress events for prospects
+_enhancement_progress_events = {}
+
+def emit_enhancement_progress(prospect_id, event_type, data):
+    """Emit progress event for a specific prospect enhancement"""
+    if prospect_id not in _enhancement_progress_events:
+        _enhancement_progress_events[prospect_id] = []
+    
+    event_data = {
+        'event_type': event_type,
+        'timestamp': datetime.now(timezone.utc).isoformat(),
+        'data': data
+    }
+    
+    _enhancement_progress_events[prospect_id].append(event_data)
+    logger.info(f"Emitted enhancement progress for prospect {prospect_id}: {event_type}")
+
+@llm_bp.route('/enhancement-progress/<prospect_id>')
+def enhancement_progress_stream(prospect_id):
+    """Server-Sent Events endpoint for real-time enhancement progress"""
+    def generate():
+        # Set initial connection message
+        yield f"data: {json.dumps({'event_type': 'connected', 'prospect_id': prospect_id})}\n\n"
+        
+        # Initialize events list for this prospect if it doesn't exist
+        if prospect_id not in _enhancement_progress_events:
+            _enhancement_progress_events[prospect_id] = []
+        
+        sent_event_count = 0
+        max_wait_time = 300  # 5 minutes max wait
+        start_time = time.time()
+        
+        try:
+            while True:
+                # Check if we've exceeded max wait time
+                if time.time() - start_time > max_wait_time:
+                    yield f"data: {json.dumps({'event_type': 'timeout'})}\n\n"
+                    break
+                
+                # Send any new events for this prospect
+                prospect_events = _enhancement_progress_events.get(prospect_id, [])
+                new_events = prospect_events[sent_event_count:]
+                
+                for event in new_events:
+                    yield f"data: {json.dumps(event)}\n\n"
+                    sent_event_count += 1
+                
+                # Check if enhancement is complete
+                prospect = Prospect.query.get(prospect_id)
+                if prospect and prospect.enhancement_status not in ['in_progress', 'queued']:
+                    # Send completion event if we haven't already
+                    completion_event = {
+                        'event_type': 'completed',
+                        'timestamp': datetime.now(timezone.utc).isoformat(),
+                        'data': {
+                            'status': prospect.enhancement_status,
+                            'ollama_processed_at': prospect.ollama_processed_at.isoformat() if prospect.ollama_processed_at else None
+                        }
+                    }
+                    yield f"data: {json.dumps(completion_event)}\n\n"
+                    break
+                
+                # Wait before checking again
+                time.sleep(0.5)
+                
+        except GeneratorExit:
+            # Client disconnected
+            logger.info(f"Client disconnected from enhancement progress stream for prospect {prospect_id}")
+        finally:
+            # Clean up old events for this prospect (keep only last hour)
+            if prospect_id in _enhancement_progress_events:
+                cutoff_time = datetime.now(timezone.utc) - timedelta(hours=1)
+                _enhancement_progress_events[prospect_id] = [
+                    event for event in _enhancement_progress_events[prospect_id]
+                    if datetime.fromisoformat(event['timestamp'].replace('Z', '+00:00')) > cutoff_time
+                ]
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Headers': 'Cache-Control'
+        }
+    )
