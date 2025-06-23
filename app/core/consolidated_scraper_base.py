@@ -1741,7 +1741,7 @@ class ConsolidatedScraperBase:
         except Exception as e:
             self.logger.error(f"Error loading data to database: {e}")
             db.session.rollback()
-            return 0
+            raise Exception(f"Database loading failed: {e}") from e
     
     def _ensure_data_source(self):
         """Ensure data source record exists in database."""
@@ -1812,7 +1812,7 @@ class ConsolidatedScraperBase:
             file_path = self.get_last_downloaded_path()
             if not file_path:
                 self.logger.error("No file available for processing")
-                return 0
+                raise Exception("No file available for processing")
         
         try:
             # Get source ID for tracking
@@ -1855,7 +1855,7 @@ class ConsolidatedScraperBase:
                         schema_issues=schema_issues,
                         processing_duration=processing_duration
                     )
-                return 0
+                raise Exception(f"Failed to read file to DataFrame: {file_path}")
             
             records_extracted = len(df)
             actual_columns = list(df.columns) if not df.empty else []
@@ -1925,14 +1925,14 @@ class ConsolidatedScraperBase:
             if not setup_success:
                 self.logger.error("Setup phase failed")
                 await self.cleanup_browser()
-                return 0
+                raise Exception("Setup phase failed - unable to initialize scraper")
             
             # Extract phase
             file_path = await extract_method()
             if not file_path:
                 self.logger.error("Extract phase failed")
                 await self.cleanup_browser()
-                return 0
+                raise Exception("Extract phase failed - unable to download file")
             
             # Process phase
             if asyncio.iscoroutinefunction(process_method):
@@ -1950,7 +1950,7 @@ class ConsolidatedScraperBase:
             self.logger.error(f"Error during scrape: {e}")
             await self.capture_error_info(e, "scrape_structure_exception")
             await self.cleanup_browser()
-            return 0
+            raise Exception(f"Scraper failed with error: {e}") from e
     
     async def scrape(self) -> int:
         """Simple scrape using standard workflow."""

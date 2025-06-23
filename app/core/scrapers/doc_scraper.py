@@ -71,23 +71,23 @@ class DocScraper(ConsolidatedScraperBase):
         Captures 15 additional data points for comprehensive data retention.
         """
         try:
-            # Define DOC-specific extras fields mapping
+            # Define DOC-specific extras fields mapping (using original CSV column names)
             extras_fields = {
-                'workspace_number': 'workspace_number',
-                'date_created': 'date_created',
-                'office': 'office',
-                'organization_unit': 'organization_unit',
-                'months': 'months',
-                'years': 'years',
-                'type_of_awardee': 'type_of_awardee',
-                'new_requirement_or_recompete': 'new_requirement_or_recompete',
-                'incumbent_contractor_name': 'incumbent_contractor_name',
-                'awarded_contract_order_number': 'awarded_contract_order_number',
-                'point_of_contact_name': 'point_of_contact_name',
-                'point_of_contact_email': 'point_of_contact_email',
-                'contains_information_technology': 'contains_information_technology',
-                'date_created_or_modified': 'date_created_or_modified',
-                'awarded': 'awarded'
+                'Workspace Number': 'workspace_number',
+                'Date Created': 'date_created',
+                'Office': 'office',
+                'Organization Unit': 'organization_unit',
+                'Months': 'months',
+                'Years': 'years',
+                'Type Of Awardee': 'type_of_awardee',
+                'New Requirement Or Recompete': 'new_requirement_or_recompete',
+                'Incumbent Contractor Name': 'incumbent_contractor_name',
+                'Awarded Contract Order Number': 'awarded_contract_order_number',
+                'Point Of Contact Name': 'point_of_contact_name',
+                'Point Of Contact Email': 'point_of_contact_email',
+                'Does This Acquisition Contain Information Technology': 'contains_information_technology',
+                'Date Created or Modified': 'date_created_or_modified',
+                'Awarded?': 'awarded'
             }
             
             # Create extras JSON column

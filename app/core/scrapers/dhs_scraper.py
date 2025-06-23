@@ -44,16 +44,16 @@ class DHSForecastScraper(ConsolidatedScraperBase):
         Captures 8 additional data points for comprehensive data retention.
         """
         try:
-            # Define DHS-specific extras fields mapping
+            # Define DHS-specific extras fields mapping (using original CSV column names)
             extras_fields = {
-                'contract_number': 'contract_number',
-                'contractor': 'contractor',
-                'primary_contact_first_name': 'primary_contact_first_name',
-                'primary_contact_last_name': 'primary_contact_last_name',
-                'primary_contact_phone': 'primary_contact_phone',
-                'primary_contact_email': 'primary_contact_email',
-                'forecast_published': 'forecast_published',
-                'forecast_previously_published': 'forecast_previously_published'
+                'Contract Number': 'contract_number',
+                'Contractor': 'contractor',
+                'Primary Contact First Name': 'primary_contact_first_name',
+                'Primary Contact Last Name': 'primary_contact_last_name',
+                'Primary Contact Phone': 'primary_contact_phone',
+                'Primary Contact Email': 'primary_contact_email',
+                'Forecast Published': 'forecast_published',
+                'Forecast Previously Published': 'forecast_previously_published'
             }
             
             # Create extras JSON column

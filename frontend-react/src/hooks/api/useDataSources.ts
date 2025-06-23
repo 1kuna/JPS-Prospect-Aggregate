@@ -4,8 +4,8 @@ import { get, post, put, del } from '@/utils/apiUtils';
 
 // --- API Call Functions ---
 
-async function fetchDataSourcesAPI(): Promise<DataSource[]> {
-  return get<DataSource[]>('/api/data-sources');
+async function fetchDataSourcesAPI(): Promise<{ status: string; data: DataSource[] }> {
+  return get<{ status: string; data: DataSource[] }>('/api/data-sources');
 }
 
 async function createDataSourceAPI(newDataSource: Omit<DataSource, 'id'>): Promise<DataSource> {

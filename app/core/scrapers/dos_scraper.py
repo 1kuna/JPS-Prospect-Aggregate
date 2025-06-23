@@ -109,19 +109,19 @@ class DOSForecastScraper(ConsolidatedScraperBase):
         Captures 11 additional data points for comprehensive data retention.
         """
         try:
-            # Define DOS-specific extras fields mapping
+            # Define DOS-specific extras fields mapping (using original CSV column names)
             extras_fields = {
-                'new_requirement': 'new_requirement',
-                'length_of_performance': 'length_of_performance',
-                'facility_security_clearance': 'facility_security_clearance',
-                'past_competition': 'past_competition',
-                'past_set_aside': 'past_set_aside',
-                'incumbent_contractor': 'incumbent_contractor',
-                'contract_vehicle': 'contract_vehicle',
-                'program_funding_agency': 'program_funding_agency',
-                'acquisition_phase': 'acquisition_phase',
-                'extent_competed': 'extent_competed',
-                'modified': 'modified'
+                'New Requirement?': 'new_requirement',
+                'Length of Performance': 'length_of_performance',
+                'Facility Security Clearance': 'facility_security_clearance',
+                'Past Competition': 'past_competition',
+                'Past Set-Aside': 'past_set_aside',
+                'Incumbent Contractor': 'incumbent_contractor',
+                'Contract Vehicle': 'contract_vehicle',
+                'Program Funding Agency': 'program_funding_agency',
+                'Acquisition Phase': 'acquisition_phase',
+                'Extent Competed': 'extent_competed',
+                'Modified': 'modified'
             }
             
             # Create extras JSON column

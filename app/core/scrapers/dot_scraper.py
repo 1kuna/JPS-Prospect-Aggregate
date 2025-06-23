@@ -51,27 +51,27 @@ class DotScraper(ConsolidatedScraperBase):
         Captures 19 additional data points for comprehensive data retention.
         """
         try:
-            # Define DOT-specific extras fields mapping
+            # Define DOT-specific extras fields mapping (using original CSV column names)
             extras_fields = {
-                'dot_agency': 'agency_detail',
-                'fiscal_year': 'fiscal_year',
-                'procurement_category': 'procurement_category',
-                'incumbent_contract_number': 'incumbent_contract_number',
-                'updates': 'updates',
-                'contact_name': 'contact_name',
-                'contact_email': 'contact_email',
-                'contact_phone': 'contact_phone',
-                'followon_8a_contract': 'followon_8a_contract',
-                'arra_funded': 'arra_funded',
-                'contract_awarded': 'contract_awarded',
-                'performance_start_date': 'performance_start_date',
-                'performance_end_date': 'performance_end_date',
-                'clearance_requirements': 'clearance_requirements',
-                'date_modified': 'date_modified',
-                'incumbent_contractor': 'incumbent_contractor',
-                'action_award_type': 'action_award_type',
-                'anticipated_award_date': 'anticipated_award_date',
-                'bil_opportunity': 'bil_opportunity'
+                'Agency': 'agency_detail',
+                'FY': 'fiscal_year',
+                'Procurement Category': 'procurement_category',
+                'Incumbent/Contract Number': 'incumbent_contract_number',
+                'Updates': 'updates',
+                'Contact Name': 'contact_name',
+                'Contact Email': 'contact_email',
+                'Contact Phone': 'contact_phone',
+                'Is this a follow-on to a current 8(a) contract?': 'followon_8a_contract',
+                'Is this funded through the American Recovery and Reinvestment Act?': 'arra_funded',
+                'Contract Awarded': 'contract_awarded',
+                'Expected Period of Performance - Start': 'performance_start_date',
+                'Expected Period of Performance - End': 'performance_end_date',
+                'Personnel Clearance Requirements': 'clearance_requirements',
+                'Date Modified': 'date_modified',
+                'Incumbent Contractor': 'incumbent_contractor',
+                'Action/Award Type': 'action_award_type',
+                'Anticipated Award Date': 'anticipated_award_date',
+                'Bipartisan Infrastructure Law (BIL) Opportunity': 'bil_opportunity'
             }
             
             # Create extras JSON column
