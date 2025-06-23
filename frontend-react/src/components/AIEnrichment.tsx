@@ -407,7 +407,7 @@ export function AIEnrichment() {
                           {output.processing_time && (
                             <span className="text-xs text-gray-500">{output.processing_time.toFixed(2)}s</span>
                           )}
-                          <span className="text-xs text-gray-500">{formatUserDate(output.timestamp, 'datetime-with-tz')}</span>
+                          <span className="text-xs text-gray-500">{formatUserDate(output.timestamp, 'datetime')}</span>
                         </div>
                       </div>
                       

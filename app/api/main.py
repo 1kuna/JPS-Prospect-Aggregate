@@ -38,7 +38,7 @@ def health_check():
         
         return jsonify({
             'status': 'healthy',
-            'timestamp': datetime.datetime.now().isoformat(),
+            'timestamp': datetime.now().isoformat(),
             'database': 'connected'
         })
     except Exception as e:
@@ -46,7 +46,7 @@ def health_check():
         # No rollback needed for a read operation that failed
         return jsonify({
             'status': 'unhealthy',
-            'timestamp': datetime.datetime.now().isoformat(),
+            'timestamp': datetime.now().isoformat(),
             'database': 'disconnected', # More specific status
             'error': str(e)
         }), 500
@@ -125,7 +125,7 @@ def _execute_database_clear_operation(operation_name: str, clear_function):
         return jsonify({
             'status': 'success',
             'message': result['response_message'],
-            'timestamp': datetime.datetime.now().isoformat()
+            'timestamp': datetime.now().isoformat()
         })
         
     except Exception as e:
@@ -153,7 +153,7 @@ def clear_database():
             pass
         
         # Clear scraper status records
-        from app.models import ScraperStatus
+        from app.database.models import ScraperStatus
         status_count = db.session.query(func.count(ScraperStatus.id)).scalar()
         db.session.query(ScraperStatus).delete()
         
@@ -184,7 +184,7 @@ def clear_ai_entries():
         ).delete()
         
         # Clear AI enrichment logs
-        from app.models import AIEnrichmentLog, LLMOutput
+        from app.database.models import AIEnrichmentLog, LLMOutput
         log_count = db.session.query(func.count(AIEnrichmentLog.id)).scalar()
         db.session.query(AIEnrichmentLog).delete()
         
