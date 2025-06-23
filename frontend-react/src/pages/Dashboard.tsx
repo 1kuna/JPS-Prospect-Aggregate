@@ -1094,12 +1094,12 @@ export default function Dashboard() {
                 <div className="grid grid-cols-1 gap-4 bg-gray-50 p-4 rounded-lg">
                   <div className={`${currentStep?.includes('title') ? 'animate-pulse bg-blue-50 border border-blue-200 rounded p-2' : ''}`}>
                     <span className="font-medium text-gray-700">Title:</span>
-                    {currentStep?.includes('title') && (
+                    {currentStep?.includes('title') ? (
                       <span className="ml-2 text-xs px-2 py-1 rounded bg-blue-100 text-blue-700 animate-pulse inline-flex items-center">
                         <ReloadIcon className="w-3 h-3 mr-1 animate-spin" />
                         Enhancing...
                       </span>
-                    )}
+                    ) : null}
                     <p className="mt-1 text-gray-900">{(() => {
                       // Use AI-enhanced title if toggle is on and available
                       if (showAIEnhanced && selectedProspect.ai_enhanced_title) {
@@ -1136,12 +1136,12 @@ export default function Dashboard() {
                     </div>
                     <div className={`${currentStep?.includes('NAICS') ? 'animate-pulse bg-blue-50 border border-blue-200 rounded p-2' : ''}`}>
                       <span className="font-medium text-gray-700">NAICS:</span>
-                      {currentStep?.includes('NAICS') && (
+                      {currentStep?.includes('NAICS') ? (
                         <span className="ml-2 text-xs px-2 py-1 rounded bg-blue-100 text-blue-700 animate-pulse inline-flex items-center">
                           <ReloadIcon className="w-3 h-3 mr-1 animate-spin" />
                           Classifying...
                         </span>
-                      )}
+                      ) : null}
                       <p className="mt-1 text-gray-900">
                         {(() => {
                           // Show AI NAICS only if toggle is on and it's AI classified
