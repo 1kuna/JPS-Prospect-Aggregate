@@ -371,7 +371,7 @@ def _setup_progress_tracking():
 
 def _get_prospects_to_process(source_id, limit):
     """Get the list of prospects to process for duplicate detection."""
-    from app.models import Prospect
+    from app.database.models import Prospect
     
     query = db.session.query(Prospect)
     if source_id:
@@ -403,7 +403,7 @@ def _format_prospect_for_api(prospect):
 
 def _create_duplicate_group(prospect, high_confidence_matches, matched_prospects_cache=None):
     """Create a duplicate group from a prospect and its matches."""
-    from app.models import Prospect
+    from app.database.models import Prospect
     
     # Use cache if provided, otherwise fetch
     if matched_prospects_cache is None:
@@ -770,7 +770,7 @@ def merge_duplicates():
 def get_data_sources_for_duplicates():
     """Get list of data sources for duplicate detection filtering."""
     try:
-        from app.models import DataSource
+        from app.database.models import DataSource
         
         # Use a single query with a subquery to get counts
         sources_with_counts = db.session.query(

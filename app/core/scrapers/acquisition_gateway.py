@@ -2,7 +2,6 @@
 Acquisition Gateway scraper using the consolidated architecture.
 This replaces the original acquisition_gateway.py with simplified, unified approach.
 """
-import json
 import pandas as pd
 from typing import Optional
 
@@ -87,8 +86,8 @@ class AcquisitionGatewayScraper(ConsolidatedScraperBase):
                             extras[extra_key] = str(value)
                 extras_data.append(extras if extras else {})
             
-            # Add the extras JSON column
-            df['extras_json'] = [json.dumps(extras) for extras in extras_data]
+            # Add the extras JSON column (as dict, not JSON string)
+            df['extras_json'] = extras_data
             
             self.logger.debug(f"Created extras JSON for {len(extras_data)} rows")
                 
@@ -146,8 +145,8 @@ async def test_acquisition_gateway_scraper():
         assert 'Body' in transformed_df.columns  # Body column retained
         assert 'extras_json' in transformed_df.columns  # Extras JSON column created
         
-        # Verify extras JSON contains expected data
-        extras_0 = json.loads(transformed_df.loc[0, 'extras_json'])
+        # Verify extras dict contains expected data
+        extras_0 = transformed_df.loc[0, 'extras_json']
         assert extras_0['node_id'] == '123'
         assert extras_0['body'] == 'Body 1'
         assert extras_0['organization'] == 'GSA'
