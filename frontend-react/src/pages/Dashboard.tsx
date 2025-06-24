@@ -132,6 +132,8 @@ const fetchProspects = async (page: number, limit: number, filters?: ProspectFil
 
 const columnHelper = createColumnHelper<Prospect>();
 
+// Type for enhancement step status
+type EnhancementStepStatus = 'pending' | 'active' | 'completed' | 'skipped';
 
 // Column definitions moved inside the component to access showAIEnhanced state
 
@@ -143,6 +145,11 @@ export default function Dashboard() {
   const [showAIEnhanced, setShowAIEnhanced] = useState(true);
   const [enhancingProspectId, setEnhancingProspectId] = useState<string | null>(null);
   const enhancingProspectIdRef = useRef<string | null>(null);
+  
+  // Track which steps have been completed in the current enhancement session
+  const [completedStepsInSession, setCompletedStepsInSession] = useState<Set<string>>(new Set());
+  // Track which steps have been skipped in the current enhancement session
+  const [skippedStepsInSession, setSkippedStepsInSession] = useState<Set<string>>(new Set());
   
   // Update ref when state changes
   enhancingProspectIdRef.current = enhancingProspectId;
@@ -177,15 +184,42 @@ export default function Dashboard() {
   // Stable callback functions to prevent infinite re-renders
   const onFieldUpdate = useCallback((field: string, value: Record<string, unknown>) => {
     console.log(`Field ${field} updated:`, value);
+    
+    // Track completed and skipped steps in current session
+    if (value.skipped) {
+      setSkippedStepsInSession(prev => new Set([...prev, field]));
+    } else {
+      setCompletedStepsInSession(prev => new Set([...prev, field]));
+    }
+    
     // The useEnhancementProgress hook already updates the TanStack Query cache
     // which will automatically update the UI without causing infinite loops
-  }, []);
+    
+    // Update selectedProspect in real-time if modal is open for this prospect
+    if (selectedProspect && enhancingProspectId === selectedProspect.id) {
+      setSelectedProspect(prev => prev ? { ...prev, ...value } : null);
+    }
+  }, [selectedProspect, enhancingProspectId]);
 
   const onComplete = useCallback(() => {
     const currentEnhancingId = enhancingProspectIdRef.current;
     console.log('Enhancement completed for prospect:', currentEnhancingId);
-    // Clear the enhancing prospect ID
+    
+    // Reset enhancement state
     setEnhancingProspectId(null);
+    setCompletedStepsInSession(new Set());
+    setSkippedStepsInSession(new Set());
+    
+    // Update selectedProspect with completion status if modal is open for this prospect
+    // Note: Don't override ollama_processed_at here - it will be updated by the SSE hook
+    // with the server timestamp, which is more accurate
+    if (selectedProspect && currentEnhancingId === selectedProspect.id) {
+      setSelectedProspect(prev => prev ? { 
+        ...prev, 
+        enhancement_status: 'idle'
+        // ollama_processed_at will be updated by SSE hook from server response
+      } : null);
+    }
     // Show success notification
     if (window.showToast) {
       window.showToast({
@@ -195,12 +229,14 @@ export default function Dashboard() {
         duration: 3000
       });
     }
-  }, []);
+  }, [selectedProspect]);
 
   const onError = useCallback((error: string) => {
     console.error('Enhancement error:', error);
-    // Clear the enhancing prospect ID on error
+    // Reset enhancement state on error
     setEnhancingProspectId(null);
+    setCompletedStepsInSession(new Set());
+    setSkippedStepsInSession(new Set());
     // Show error notification
     if (window.showToast) {
       window.showToast({
@@ -954,6 +990,9 @@ export default function Dashboard() {
                   <Button
                     onClick={() => {
                       if (selectedProspect) {
+                        // Reset completed and skipped steps for new enhancement session
+                        setCompletedStepsInSession(new Set());
+                        setSkippedStepsInSession(new Set());
                         // Set the enhancing prospect ID to start SSE connection
                         setEnhancingProspectId(selectedProspect.id);
                         addToQueue({
@@ -1006,6 +1045,100 @@ export default function Dashboard() {
                       }
                     })()}
                   </Button>
+                </div>
+              )}
+              
+              {/* Enhancement Progress - Show all steps when actively enhancing */}
+              {(selectedProspect?.enhancement_status === 'in_progress' || (isSSEEnhancing && enhancingProspectId === selectedProspect?.id)) && (
+                <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-lg">
+                  <h4 className="text-sm font-medium text-yellow-800 mb-3">AI Enhancement Progress</h4>
+                  <div className="space-y-2">
+                    {(() => {
+                      const getStepStatus = (stepKey: string): EnhancementStepStatus => {
+                        // Check if currently active step with more flexible matching
+                        const stepText = currentStep?.toLowerCase() || '';
+                        let isActive = false;
+                        
+                        switch (stepKey) {
+                          case 'values':
+                            isActive = stepText.includes('parsing') || stepText.includes('contract') || stepText.includes('values');
+                            break;
+                          case 'contacts':
+                            isActive = stepText.includes('extracting') || stepText.includes('contact');
+                            break;
+                          case 'naics':
+                            isActive = stepText.includes('classifying') || stepText.includes('naics');
+                            break;
+                          case 'titles':
+                            isActive = stepText.includes('enhancing') || stepText.includes('title');
+                            break;
+                        }
+                        
+                        if (isActive) {
+                          return 'active';
+                        }
+                        
+                        // Check if completed in current session
+                        if (completedStepsInSession.has(stepKey)) {
+                          return 'completed';
+                        }
+                        
+                        // Check if skipped in current session
+                        if (skippedStepsInSession.has(stepKey)) {
+                          return 'skipped';
+                        }
+                        
+                        // Default to pending
+                        return 'pending';
+                      };
+                      
+                      const steps = [
+                        { step: 'values', label: 'Parsing contract values', status: getStepStatus('values') },
+                        { step: 'contacts', label: 'Extracting contact information', status: getStepStatus('contacts') },
+                        { step: 'naics', label: 'Classifying NAICS code', status: getStepStatus('naics') },
+                        { step: 'titles', label: 'Enhancing title', status: getStepStatus('titles') }
+                      ];
+                      
+                      // Debug logging
+                      console.log('Current step:', currentStep);
+                      console.log('Completed steps in session:', completedStepsInSession);
+                      console.log('Skipped steps in session:', skippedStepsInSession);
+                      console.log('Step statuses:', steps.map(s => ({ step: s.step, status: s.status })));
+                      
+                      return steps;
+                    })().map((item) => (
+                      <div key={item.step} className="flex items-center">
+                        {item.status === 'active' && (
+                          <ReloadIcon className="mr-2 h-3 w-3 animate-spin text-yellow-600" />
+                        )}
+                        {item.status === 'completed' && (
+                          <div className="mr-2 h-3 w-3 bg-green-500 rounded-full"></div>
+                        )}
+                        {item.status === 'skipped' && (
+                          <div className="mr-2 h-3 w-3 bg-blue-400 rounded-full opacity-60 flex items-center justify-center">
+                            <div className="h-0.5 w-1.5 bg-white rounded"></div>
+                          </div>
+                        )}
+                        {item.status === 'pending' && (
+                          <div className="mr-2 h-3 w-3 bg-gray-300 rounded-full"></div>
+                        )}
+                        <span className={`text-sm ${
+                          item.status === 'active' ? 'text-yellow-800 font-medium' :
+                          item.status === 'completed' ? 'text-green-700' :
+                          item.status === 'skipped' ? 'text-blue-600 opacity-75' :
+                          'text-gray-600'
+                        }`}>
+                          {item.label}
+                          {item.status === 'skipped' && <span className="text-xs text-blue-500 ml-1">(skipped)</span>}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  {!isSSEEnhancing && !currentStep && selectedProspect.ollama_processed_at && (
+                    <div className="mt-3 p-2 bg-green-50 border border-green-200 rounded text-sm text-green-800 font-medium">
+                      ✓ Enhancement completed successfully!
+                    </div>
+                  )}
                 </div>
               )}
               
