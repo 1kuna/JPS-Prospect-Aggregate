@@ -376,6 +376,12 @@ def _ensure_extra_is_dict(prospect):
 
 def _process_value_enhancement(prospect, llm_service, force_redo):
     """Process value parsing enhancement for a prospect."""
+    # Always emit start event first
+    emit_enhancement_progress(prospect.id, 'values_started', {
+        'force_redo': force_redo,
+        'has_existing_value': bool(prospect.estimated_value_single)
+    })
+    
     value_to_parse = None
     
     # Check if we should process values
@@ -389,8 +395,6 @@ def _process_value_enhancement(prospect, llm_service, force_redo):
             value_to_parse = str(prospect.estimated_value)
     
     if value_to_parse:
-        # Emit start event
-        emit_enhancement_progress(prospect.id, 'values_started', {'text_to_parse': value_to_parse})
         
         parsed_value = llm_service.parse_contract_value_with_llm(value_to_parse, prospect_id=prospect.id)
         if parsed_value['single'] is not None:
@@ -422,11 +426,25 @@ def _process_value_enhancement(prospect, llm_service, force_redo):
             except (ValueError, TypeError) as e:
                 logger.warning(f"Failed to convert LLM parsed values to float for prospect {prospect.id}: {e}")
                 emit_enhancement_progress(prospect.id, 'values_failed', {'error': str(e)})
+                return False
+    else:
+        # No data to process - emit skipped completion
+        reason = 'Already has parsed value' if not should_process else 'No value text available to parse'
+        emit_enhancement_progress(prospect.id, 'values_completed', {
+            'skipped': True,
+            'reason': reason
+        })
     
     return False
 
 def _process_contact_enhancement(prospect, llm_service, force_redo):
     """Process contact extraction enhancement for a prospect."""
+    # Always emit start event first
+    emit_enhancement_progress(prospect.id, 'contacts_started', {
+        'force_redo': force_redo,
+        'has_existing_contact': bool(prospect.primary_contact_name or prospect.primary_contact_email)
+    })
+    
     # Check if we should process contacts
     should_process = force_redo or (not prospect.primary_contact_name and not prospect.primary_contact_email)
     
@@ -447,9 +465,6 @@ def _process_contact_enhancement(prospect, llm_service, force_redo):
             contact_data = {}
         
         if any(contact_data.values()):
-            # Emit start event
-            emit_enhancement_progress(prospect.id, 'contacts_started', {'contact_data': contact_data})
-            
             extracted_contact = llm_service.extract_contact_with_llm(contact_data, prospect_id=prospect.id)
             
             if extracted_contact['email'] or extracted_contact['name']:
@@ -467,20 +482,36 @@ def _process_contact_enhancement(prospect, llm_service, force_redo):
                 return True
             else:
                 emit_enhancement_progress(prospect.id, 'contacts_failed', {'error': 'No valid contact data extracted'})
+                return False
+        else:
+            # No contact data available
+            emit_enhancement_progress(prospect.id, 'contacts_completed', {
+                'skipped': True,
+                'reason': 'No contact data available in extra field'
+            })
+    else:
+        # Not processing contacts - emit skipped completion
+        reason = 'Already has contact information' if not should_process else 'No extra field data available'
+        emit_enhancement_progress(prospect.id, 'contacts_completed', {
+            'skipped': True,
+            'reason': reason
+        })
     
     return False
 
 def _process_naics_enhancement(prospect, llm_service, force_redo):
     """Process NAICS classification enhancement for a prospect."""
+    # Always emit start event first
+    emit_enhancement_progress(prospect.id, 'naics_started', {
+        'force_redo': force_redo,
+        'has_existing_naics': bool(prospect.naics),
+        'has_description': bool(prospect.description)
+    })
+    
     # Check if we should process NAICS
     should_process = force_redo or not prospect.naics
     
     if prospect.description and should_process:
-        # Emit start event
-        emit_enhancement_progress(prospect.id, 'naics_started', {
-            'title': prospect.title,
-            'description': prospect.description[:200] + '...' if len(prospect.description) > 200 else prospect.description
-        })
         
         classification = llm_service.classify_naics_with_llm(prospect.title, prospect.description, prospect_id=prospect.id)
         
@@ -512,18 +543,30 @@ def _process_naics_enhancement(prospect, llm_service, force_redo):
             return True
         else:
             emit_enhancement_progress(prospect.id, 'naics_failed', {'error': 'No valid NAICS classification found'})
+            return False
+    else:
+        # Not processing NAICS - emit skipped completion
+        if not should_process:
+            reason = 'Already has NAICS classification'
+        else:
+            reason = 'No description available for classification'
+        emit_enhancement_progress(prospect.id, 'naics_completed', {
+            'skipped': True,
+            'reason': reason
+        })
     
     return False
 
 def _process_title_enhancement(prospect, llm_service, force_redo):
     """Process title enhancement for a prospect."""
+    # Always emit start event first
+    emit_enhancement_progress(prospect.id, 'titles_started', {
+        'force_redo': force_redo,
+        'has_existing_enhanced_title': bool(prospect.ai_enhanced_title),
+        'has_title': bool(prospect.title)
+    })
+    
     if prospect.title and (force_redo or not prospect.ai_enhanced_title):
-        # Emit start event
-        emit_enhancement_progress(prospect.id, 'titles_started', {
-            'original_title': prospect.title,
-            'description': prospect.description[:100] + '...' if prospect.description and len(prospect.description) > 100 else prospect.description,
-            'agency': prospect.agency
-        })
         
         enhanced_title = llm_service.enhance_title_with_llm(
             prospect.title, 
@@ -558,6 +601,17 @@ def _process_title_enhancement(prospect, llm_service, force_redo):
             return True
         else:
             emit_enhancement_progress(prospect.id, 'titles_failed', {'error': 'No enhanced title generated'})
+            return False
+    else:
+        # Not processing title - emit skipped completion
+        if not prospect.title:
+            reason = 'No title available to enhance'
+        else:
+            reason = 'Already has enhanced title'
+        emit_enhancement_progress(prospect.id, 'titles_completed', {
+            'skipped': True,
+            'reason': reason
+        })
     
     return False
 
