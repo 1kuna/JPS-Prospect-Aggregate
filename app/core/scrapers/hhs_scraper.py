@@ -2,7 +2,6 @@
 HHS scraper using the consolidated architecture.
 Preserves all original HHS-specific functionality including View All workflow.
 """
-import json
 import pandas as pd
 from typing import Optional
 
@@ -82,8 +81,8 @@ class HHSForecastScraper(ConsolidatedScraperBase):
                             extras[extra_key] = str(value)
                 extras_data.append(extras if extras else {})
             
-            # Add the extras JSON column
-            df['extras_json'] = [json.dumps(extras) for extras in extras_data]
+            # Add the extras JSON column (as dict, not JSON string)
+            df['extras_json'] = extras_data
             
             self.logger.debug(f"Created HHS extras JSON for {len(extras_data)} rows with {len(extras_fields)} potential fields")
                 

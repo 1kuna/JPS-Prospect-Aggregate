@@ -1684,6 +1684,9 @@ class ConsolidatedScraperBase:
             current_columns = set(df.columns)
             unmapped_columns = current_columns - columns_to_keep
             
+            # Exclude extras_json from unmapped columns since it's handled specially
+            unmapped_columns.discard('extras_json')
+            
             if not unmapped_columns:
                 self.logger.debug("No unmapped columns found - no extras to collect")
                 return df
