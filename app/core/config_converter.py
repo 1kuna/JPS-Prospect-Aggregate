@@ -53,7 +53,14 @@ def create_acquisition_gateway_config() -> ScraperConfig:
             'Place of Performance State': 'place_state', 
             'Place of Performance Country': 'place_country',
             'Contract Type': 'contract_type',
-            'Set Aside Type': 'set_aside'
+            'Set Aside Type': 'set_aside',
+            
+            # Contact information fields (previously missing!)
+            'Point of Contact (Email)': 'primary_contact_email',
+            'Content: Point of Contact (Name) For': 'primary_contact_name',
+            'Content: Small Business Specialist Info (Email)': 'sb_specialist_email',
+            'Content: Small Business Specialist Info (Name)': 'sb_specialist_name',
+            'Content: Small Business Specialist Info (Phone)': 'sb_specialist_phone'
         },
         date_column_configs=[
             {'column': 'release_date_raw', 'target_column': 'release_date', 'parse_type': 'datetime', 'store_as_date': True},
@@ -78,6 +85,11 @@ def create_acquisition_gateway_config() -> ScraperConfig:
             'place_country': 'place_country',
             'contract_type': 'contract_type',
             'set_aside': 'set_aside',
+            
+            # Contact information fields
+            'primary_contact_email': 'primary_contact_email',
+            'primary_contact_name': 'primary_contact_name',
+            
             'extras_json': 'extra'  # Map extras JSON to database extra field
         },
         fields_for_id_hash=['native_id', 'naics_code', 'title', 'description']
@@ -158,6 +170,8 @@ def create_dhs_config() -> ScraperConfig:
             'place_city': 'place_city',
             'place_state': 'place_state',
             'place_country': 'place_country',
+            'primary_contact_email': 'primary_contact_email',
+            'primary_contact_name': 'primary_contact_name',  # Created by custom transform
             'extras_json': 'extra'  # Map extras JSON to database extra field
         },
         fields_for_id_hash=['native_id', 'naics_code', 'title', 'description', 'place_city', 'place_state']
@@ -183,9 +197,9 @@ def create_treasury_config() -> ScraperConfig:
         # Selectors - Treasury uses XPath (corrected from original)
         export_button_selector="//lightning-button/button[contains(text(), 'Download Opportunity Data')]",  # XPath from original
         
-        # File reading - XLS files only, no HTML fallback
-        file_read_strategy="excel",
-        read_options={"header": 0},
+        # File reading - Treasury files are HTML with .xls extension
+        file_read_strategy="html",
+        html_read_options={"header": 0},
         
         # Data processing - restored from original working config
         custom_transform_functions=["_custom_treasury_transforms", "_treasury_create_extras"],
@@ -202,7 +216,11 @@ def create_treasury_config() -> ScraperConfig:
             'Estimated Total Contract Value': 'estimated_value_text', # Keep original text
             'Type of Small Business Set-aside': 'set_aside',
             'Projected Award FY_Qtr': 'award_qtr_raw', # For fiscal quarter parsing
-            'Project Period of Performance Start': 'release_date_raw' # Still needs date parsing
+            'Project Period of Performance Start': 'release_date_raw', # Still needs date parsing
+            
+            # Contact information fields
+            'Bureau Point of Contact': 'bureau_contact_name',
+            'Program Office Point of Contact': 'program_office_contact_name'
         },
         place_column_configs=[
             {'column': 'place_raw', 
@@ -235,6 +253,7 @@ def create_treasury_config() -> ScraperConfig:
             'award_date': 'award_date',
             'award_fiscal_year': 'award_fiscal_year',
             'release_date': 'release_date',
+            'primary_contact_name': 'primary_contact_name',  # Contact name mapping
             'extras_json': 'extra'  # Map extras JSON to database extra field
         },
         fields_for_id_hash=[
@@ -355,6 +374,8 @@ def create_dot_config() -> ScraperConfig:
             'place_state': 'place_state',
             'place_country': 'place_country',
             'contract_vehicle': 'contract_type',
+            'contact_email': 'primary_contact_email',
+            'contact_name': 'primary_contact_name',
             'extras_json': 'extra'  # Map extras JSON to database extra field
         },
         fields_for_id_hash=['native_id', 'naics_code', 'title', 'description', 'agency']
@@ -591,6 +612,8 @@ def create_doc_config() -> ScraperConfig:
             'award_date_final': 'award_date',
             'award_fiscal_year_final': 'award_fiscal_year',
             'set_aside': 'set_aside',
+            'point_of_contact_email': 'primary_contact_email',
+            'point_of_contact_name': 'primary_contact_name',
             'extras_json': 'extra'  # Map extras JSON to database extra field
         },
         fields_for_id_hash=['native_id', 'naics_code', 'title', 'description', 'place_city', 'place_state']
@@ -683,6 +706,8 @@ def create_doj_config() -> ScraperConfig:
             'place_city': 'place_city',
             'place_state': 'place_state',
             'place_country_final': 'place_country',  # From custom transform
+            'primary_contact_email': 'primary_contact_email',  # Created by custom transform
+            'primary_contact_name': 'primary_contact_name',  # Created by custom transform
             'extras_json': 'extra'  # Map extras JSON to database extra field
         },
         fields_for_id_hash=['native_id', 'naics_code', 'title', 'description', 'place_city', 'place_state']

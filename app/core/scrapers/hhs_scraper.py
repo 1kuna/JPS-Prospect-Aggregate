@@ -39,11 +39,15 @@ class HHSForecastScraper(ConsolidatedScraperBase):
             df['native_id'] = 'HHS-' + df['row_index'].astype(str).str.zfill(5)
             self.logger.debug("Created native_id from row_index.")
             
-            # Combine POC names if they exist
-            if 'poc_first_name' in df.columns and 'poc_last_name' in df.columns:
-                df['primary_contact_name'] = df['poc_first_name'].fillna('') + ' ' + df['poc_last_name'].fillna('')
+            # Combine POC names if they exist (using original column names before renaming)
+            first_name_col = 'Program Office POC First Name'
+            last_name_col = 'Program Office POC Last Name'
+            if first_name_col in df.columns and last_name_col in df.columns:
+                df['primary_contact_name'] = df[first_name_col].fillna('') + ' ' + df[last_name_col].fillna('')
                 df['primary_contact_name'] = df['primary_contact_name'].str.strip()
-                self.logger.debug("Combined POC first and last names.")
+                # Clean up empty combinations (just spaces)
+                df['primary_contact_name'] = df['primary_contact_name'].replace('', None)
+                self.logger.debug("Combined POC first and last names from original columns.")
             
             # Set default place_country since it's not in the CSV
             df['place_country_final'] = 'USA'
