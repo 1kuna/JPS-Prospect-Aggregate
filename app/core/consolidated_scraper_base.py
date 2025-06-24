@@ -1364,18 +1364,21 @@ class ConsolidatedScraperBase:
         if self.config.fiscal_year_configs:
             df = self._process_fiscal_year_columns(df, self.config.fiscal_year_configs)
         
-        # 8. Apply database column renaming
+        # 8. Collect unmapped columns into extras_json before db column renaming
+        df = self._collect_unmapped_columns_to_extras(df)
+        
+        # 9. Apply database column renaming (this will rename extras_json to extra)
         if self.config.db_column_rename_map:
             df = self._apply_column_renaming(df, self.config.db_column_rename_map)
         
-        # 9. Generate ID hash
+        # 10. Generate ID hash
         if self.config.fields_for_id_hash:
             df = self._generate_id_hash(df, self.config.fields_for_id_hash)
         
-        # 10. Clean up - keep only columns that are in the db_column_rename_map values (final columns)
+        # 11. Clean up - keep only columns that are in the db_column_rename_map values (final columns)
         if self.config.db_column_rename_map:
             final_columns = list(self.config.db_column_rename_map.values())
-            # Also keep id and any other essential columns
+            # Also keep id and any other essential columns (extras_json gets renamed to extra via mapping)
             essential_columns = ['id', 'source_id', 'loaded_at']
             columns_to_keep = [col for col in df.columns if col in final_columns or col in essential_columns]
             df = df[columns_to_keep]
@@ -1660,6 +1663,91 @@ class ConsolidatedScraperBase:
         except Exception as e:
             self.logger.error(f"Error generating ID hash: {e}")
             df['id'] = df.index.astype(str)  # Fallback
+        
+        return df
+    
+    def _collect_unmapped_columns_to_extras(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Collect unmapped columns into extras_json field before they get filtered out.
+        This preserves additional data that isn't explicitly mapped but may be useful for AI processing.
+        """
+        try:
+            if not self.config.db_column_rename_map:
+                return df
+            
+            # Get all columns that should be kept after cleanup
+            final_columns = list(self.config.db_column_rename_map.values())
+            essential_columns = ['id', 'source_id', 'loaded_at']
+            columns_to_keep = set(final_columns + essential_columns)
+            
+            # Find columns that will be dropped (unmapped columns)
+            current_columns = set(df.columns)
+            unmapped_columns = current_columns - columns_to_keep
+            
+            if not unmapped_columns:
+                self.logger.debug("No unmapped columns found - no extras to collect")
+                return df
+            
+            self.logger.debug(f"Collecting {len(unmapped_columns)} unmapped columns into extras_json: {sorted(unmapped_columns)}")
+            
+            # Create extras_json column with unmapped data
+            def create_extras_json(row):
+                extras = {}
+                for col in unmapped_columns:
+                    value = row.get(col)
+                    # Only include non-null, non-empty values
+                    if pd.notna(value) and value != '' and value is not None:
+                        # Convert to string for JSON serialization
+                        if isinstance(value, (int, float, str, bool)):
+                            extras[col] = value
+                        else:
+                            extras[col] = str(value)
+                
+                return extras if extras else None
+            
+            # Apply the function to create the extras_json column, merging with existing if present
+            if 'extras_json' in df.columns:
+                # If extras_json already exists (e.g., from custom transforms), merge the data
+                def merge_with_existing_extras(row):
+                    new_extras = create_extras_json(row)
+                    existing_extras = row.get('extras_json')
+                    
+                    # Handle existing extras_json that might be a JSON string
+                    if isinstance(existing_extras, str):
+                        try:
+                            existing_extras = json.loads(existing_extras) if existing_extras and existing_extras != '{}' else {}
+                        except (json.JSONDecodeError, TypeError):
+                            existing_extras = {}
+                    elif not isinstance(existing_extras, dict):
+                        existing_extras = {}
+                    
+                    # Merge new extras with existing ones
+                    if new_extras:
+                        merged = {**existing_extras, **new_extras}
+                        return merged if merged else None
+                    else:
+                        return existing_extras if existing_extras else None
+                
+                df['extras_json'] = df.apply(merge_with_existing_extras, axis=1)
+                self.logger.debug("Merged unmapped columns with existing extras_json data")
+            else:
+                # No existing extras_json, create new one
+                df['extras_json'] = df.apply(create_extras_json, axis=1)
+            
+            # Log statistics about extras collection
+            non_empty_extras = df['extras_json'].apply(lambda x: x is not None and len(x) > 0).sum()
+            self.logger.info(f"Created extras_json for {non_empty_extras}/{len(df)} rows")
+            
+            # Log sample of collected extras for debugging
+            if non_empty_extras > 0:
+                sample_extras = df[df['extras_json'].notna()]['extras_json'].iloc[0]
+                sample_keys = list(sample_extras.keys()) if sample_extras else []
+                self.logger.debug(f"Sample extras keys: {sample_keys[:10]}")  # Show first 10 keys
+            
+        except Exception as e:
+            self.logger.error(f"Error collecting unmapped columns to extras: {e}")
+            # Add empty extras_json column as fallback
+            df['extras_json'] = None
         
         return df
     

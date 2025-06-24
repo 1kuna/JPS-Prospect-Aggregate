@@ -24,7 +24,7 @@ class DHSForecastScraper(ConsolidatedScraperBase):
     
     def _custom_dhs_transforms(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Custom DHS transformations: set place_country to 'USA'.
+        Custom DHS transformations: set place_country to 'USA' and combine contact names.
         This preserves the original behavior from the DHS scraper.
         """
         try:
@@ -32,6 +32,16 @@ class DHSForecastScraper(ConsolidatedScraperBase):
             if 'place_country' not in df.columns:
                 df['place_country'] = 'USA'
                 self.logger.debug("Initialized 'place_country' to 'USA' as DHS data doesn't include country.")
+            
+            # Combine contact first and last names into primary_contact_name
+            first_name_col = 'primary_contact_first_name'
+            last_name_col = 'primary_contact_last_name'
+            if first_name_col in df.columns and last_name_col in df.columns:
+                df['primary_contact_name'] = df[first_name_col].fillna('') + ' ' + df[last_name_col].fillna('')
+                df['primary_contact_name'] = df['primary_contact_name'].str.strip()
+                # Clean up empty combinations (just spaces)
+                df['primary_contact_name'] = df['primary_contact_name'].replace('', None)
+                self.logger.debug("Combined DHS primary contact first and last names.")
             
         except Exception as e:
             self.logger.warning(f"Error in _custom_dhs_transforms: {e}")

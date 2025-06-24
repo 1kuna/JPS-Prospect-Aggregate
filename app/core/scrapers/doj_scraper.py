@@ -57,6 +57,35 @@ class DOJForecastScraper(ConsolidatedScraperBase):
                 df['award_fiscal_year_final'] = pd.NA
                 self.logger.warning(f"'{award_date_col_raw}' not found. Award date fields initialized to None/NA.")
 
+            # Contact Selection Logic - prioritize requirement POC over small business POC
+            req_poc_name = 'doj_req_poc_name'
+            req_poc_email = 'doj_req_poc_email' 
+            sb_poc_name = 'doj_sb_poc_name'
+            sb_poc_email = 'doj_sb_poc_email'
+            
+            # Initialize primary contact fields
+            df['primary_contact_name'] = None
+            df['primary_contact_email'] = None
+            
+            # Prioritize requirement POC
+            if req_poc_name in df.columns and req_poc_email in df.columns:
+                df['primary_contact_name'] = df[req_poc_name].fillna('')
+                df['primary_contact_email'] = df[req_poc_email].fillna('')
+                
+                # Fall back to small business POC where requirement POC is missing
+                if sb_poc_name in df.columns and sb_poc_email in df.columns:
+                    df['primary_contact_name'] = df['primary_contact_name'].where(
+                        df['primary_contact_name'] != '', df[sb_poc_name].fillna('')
+                    )
+                    df['primary_contact_email'] = df['primary_contact_email'].where(
+                        df['primary_contact_email'] != '', df[sb_poc_email].fillna('')
+                    )
+                
+                # Clean up empty values
+                df['primary_contact_name'] = df['primary_contact_name'].replace('', None)
+                df['primary_contact_email'] = df['primary_contact_email'].replace('', None)
+                self.logger.debug("Selected primary contacts from DOJ requirement POC with small business POC fallback.")
+
             # Place Country Logic
             place_country_col_raw = "place_country_raw"  # From raw_column_rename_map (original: 'Country')
             if place_country_col_raw in df.columns:

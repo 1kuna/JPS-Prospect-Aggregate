@@ -58,6 +58,15 @@ class TreasuryScraper(ConsolidatedScraperBase):
                 df['description'] = None
                 self.logger.debug("Initialized 'description' to None.")
             
+            # Handle contact information - Treasury has names but no emails
+            # Use Program Office Point of Contact as primary contact name
+            if 'program_office_contact_name' in df.columns:
+                df['primary_contact_name'] = df['program_office_contact_name']
+                self.logger.debug("Set program office contact as primary contact name.")
+            
+            # Note: Treasury has no email addresses in the data
+            # Bureau contact name will go to extras via _treasury_create_extras
+            
         except Exception as e:
             self.logger.warning(f"Error in _custom_treasury_transforms: {e}")
         

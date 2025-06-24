@@ -1302,32 +1302,60 @@ export default function Dashboard() {
               )}
 
               {/* Contact Information */}
-              {!(currentStep?.includes('contact') && enhancingProspectId === selectedProspect?.id) && showAIEnhanced && (selectedProspect.primary_contact_email || selectedProspect.primary_contact_name) && (
+              {!(currentStep?.includes('contact') && enhancingProspectId === selectedProspect?.id) && (selectedProspect.primary_contact_email || selectedProspect.primary_contact_name) && (
                 <div>
-                  <div className="flex items-center mb-3">
-                    <h3 className="text-lg font-semibold text-gray-900">Contact Information</h3>
-                    <div className="w-2 h-2 bg-orange-500 rounded-full ml-2" title="AI Extracted"></div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4 bg-orange-50 p-4 rounded-lg border border-orange-200">
-                    {selectedProspect.primary_contact_name && (
-                      <div>
-                        <span className="font-medium text-orange-800">Primary Contact:</span>
-                        <p className="mt-1 text-gray-900">{selectedProspect.primary_contact_name}</p>
-                      </div>
-                    )}
-                    {selectedProspect.primary_contact_email && (
-                      <div>
-                        <span className="font-medium text-orange-800">Email:</span>
-                        <p className="mt-1 text-gray-900">
-                          <a href={`mailto:${selectedProspect.primary_contact_email}`} 
-                             className="text-blue-600 hover:text-blue-800 underline">
-                            {selectedProspect.primary_contact_email}
-                          </a>
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                  <p className="text-xs text-gray-500 mt-2">AI-extracted contact information</p>
+                  {(() => {
+                    // Determine if contact information was AI-extracted
+                    // Contact info is AI-extracted if:
+                    // 1. The prospect has been processed by LLM (ollama_processed_at exists), AND
+                    // 2. We're showing AI enhanced data, AND  
+                    // 3. The contact info wasn't imported from source data originally
+                    
+                    // For now, we'll use a simple heuristic: if ollama_processed_at exists and we're showing AI data,
+                    // we assume contacts were AI-extracted. This will need refinement as we track contact source better.
+                    const isAIExtracted = showAIEnhanced && selectedProspect.ollama_processed_at;
+                    
+                    return (
+                      <>
+                        <div className="flex items-center mb-3">
+                          <h3 className="text-lg font-semibold text-gray-900">Contact Information</h3>
+                          {isAIExtracted && (
+                            <div className="w-2 h-2 bg-orange-500 rounded-full ml-2" title="AI Extracted"></div>
+                          )}
+                        </div>
+                        <div className={`grid grid-cols-2 gap-4 p-4 rounded-lg ${
+                          isAIExtracted 
+                            ? 'bg-orange-50 border border-orange-200' 
+                            : 'bg-gray-50 border border-gray-200'
+                        }`}>
+                          {selectedProspect.primary_contact_name && (
+                            <div>
+                              <span className={`font-medium ${isAIExtracted ? 'text-orange-800' : 'text-gray-700'}`}>
+                                Primary Contact:
+                              </span>
+                              <p className="mt-1 text-gray-900">{selectedProspect.primary_contact_name}</p>
+                            </div>
+                          )}
+                          {selectedProspect.primary_contact_email && (
+                            <div>
+                              <span className={`font-medium ${isAIExtracted ? 'text-orange-800' : 'text-gray-700'}`}>
+                                Email:
+                              </span>
+                              <p className="mt-1 text-gray-900">
+                                <a href={`mailto:${selectedProspect.primary_contact_email}`} 
+                                   className="text-blue-600 hover:text-blue-800 underline">
+                                  {selectedProspect.primary_contact_email}
+                                </a>
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                        {isAIExtracted && (
+                          <p className="text-xs text-gray-500 mt-2">AI-extracted contact information</p>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
               )}
 
