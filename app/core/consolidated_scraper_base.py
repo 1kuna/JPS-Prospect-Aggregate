@@ -1451,8 +1451,8 @@ class ConsolidatedScraperBase:
             return df
         
         try:
-            # Extract fiscal year and quarter from strings like "FY24 Q2"
-            fiscal_pattern = r'FY(\d{2})\s*Q(\d)'
+            # Extract fiscal year and quarter from strings like "FY24 Q2" or "FY 2025 Q2"
+            fiscal_pattern = r'FY\s*(\d{2,4})\s*Q(\d)'
             
             def parse_fiscal_quarter(value):
                 if pd.isna(value):
@@ -1460,11 +1460,14 @@ class ConsolidatedScraperBase:
                 
                 match = re.search(fiscal_pattern, str(value))
                 if match:
-                    fy_short = int(match.group(1))
+                    year_str = match.group(1)
                     quarter = int(match.group(2))
                     
                     # Convert 2-digit year to 4-digit (assume 20XX)
-                    fiscal_year = 2000 + fy_short
+                    if len(year_str) == 2:
+                        fiscal_year = 2000 + int(year_str)
+                    else:
+                        fiscal_year = int(year_str)
                     
                     # Fiscal year typically starts in October
                     # Q1: Oct-Dec, Q2: Jan-Mar, Q3: Apr-Jun, Q4: Jul-Sep
