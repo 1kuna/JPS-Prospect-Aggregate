@@ -48,6 +48,7 @@ def create_acquisition_gateway_config() -> ScraperConfig:
             'Estimated Solicitation Date': 'release_date_raw',
             'Ultimate Completion Date': 'award_date_raw',
             'Estimated Award FY': 'award_fiscal_year',
+            'Estimated Award FY-QTR': 'award_fyqtr_raw',
             'Agency': 'agency',
             'Place of Performance City': 'place_city',
             'Place of Performance State': 'place_state', 
@@ -64,7 +65,12 @@ def create_acquisition_gateway_config() -> ScraperConfig:
         },
         date_column_configs=[
             {'column': 'release_date_raw', 'target_column': 'release_date', 'parse_type': 'datetime', 'store_as_date': True},
-            {'column': 'award_date_raw', 'target_column': 'award_date', 'parse_type': 'datetime', 'store_as_date': True}
+            {'column': 'award_date_raw', 'target_column': 'award_date', 'parse_type': 'datetime', 'store_as_date': True},
+            {'column': 'award_fyqtr_raw', 
+             'target_date_col': 'award_date_from_fyqtr', 
+             'target_fy_col': 'award_fiscal_year_from_fyqtr',
+             'parse_type': 'fiscal_quarter'
+            }
         ],
         fiscal_year_configs=[
             {'column': 'award_fiscal_year', 'target_column': 'award_fiscal_year', 'parse_type': 'direct'},
@@ -89,6 +95,10 @@ def create_acquisition_gateway_config() -> ScraperConfig:
             # Contact information fields
             'primary_contact_email': 'primary_contact_email',
             'primary_contact_name': 'primary_contact_name',
+            
+            # Fiscal quarter parsed dates (for extras/analysis)
+            'award_date_from_fyqtr': 'award_date_from_fyqtr',
+            'award_fiscal_year_from_fyqtr': 'award_fiscal_year_from_fyqtr',
             
             'extras_json': 'extra'  # Map extras JSON to database extra field
         },
@@ -351,8 +361,8 @@ def create_dot_config() -> ScraperConfig:
              'target_date_col': 'release_date', 
              'target_fy_col': 'release_fiscal_year',
              'parse_type': 'fiscal_quarter'
-            }
-            # Note: award_date handled by custom transform
+            },
+            {'column': 'anticipated_award_date', 'target_column': 'award_date', 'parse_type': 'datetime', 'store_as_date': True}
         ],
         place_column_configs=[
             {'column': 'place_raw', 
@@ -370,6 +380,7 @@ def create_dot_config() -> ScraperConfig:
             'set_aside': 'set_aside',
             'estimated_value_text': 'estimated_value_text',
             'release_date': 'release_date',
+            'award_date': 'award_date',
             'place_city': 'place_city',
             'place_state': 'place_state',
             'place_country': 'place_country',
@@ -525,6 +536,9 @@ def create_ssa_config() -> ScraperConfig:
              'target_country_col': 'place_country'
             }
         ],
+        date_column_configs=[
+            {'column': 'planned_award_date', 'target_column': 'award_date', 'parse_type': 'datetime', 'store_as_date': True}
+        ],
         db_column_rename_map={
             'native_id': 'native_id',
             'agency': 'agency',
@@ -536,6 +550,7 @@ def create_ssa_config() -> ScraperConfig:
             'set_aside': 'set_aside',
             'estimated_value_text': 'estimated_value_text',
             'award_fiscal_year': 'award_fiscal_year',
+            'award_date': 'award_date',
             'place_city': 'place_city',
             'place_state': 'place_state',
             'place_country': 'place_country',
