@@ -1451,14 +1451,18 @@ class ConsolidatedScraperBase:
             return df
         
         try:
-            # Extract fiscal year and quarter from strings like "FY24 Q2" or "FY 2025 Q2"
+            # Extract fiscal year and quarter from strings like "FY24 Q2", "FY 2025 Q2", or "3rd (April 1 - June 30)"
             fiscal_pattern = r'FY\s*(\d{2,4})\s*Q(\d)'
+            quarter_detailed_pattern = r'(\d+)(?:st|nd|rd|th)\s*\('
             
             def parse_fiscal_quarter(value):
                 if pd.isna(value):
                     return None, None
                 
-                match = re.search(fiscal_pattern, str(value))
+                value_str = str(value)
+                
+                # Try standard FY Q pattern first
+                match = re.search(fiscal_pattern, value_str)
                 if match:
                     year_str = match.group(1)
                     quarter = int(match.group(2))
@@ -1479,6 +1483,27 @@ class ConsolidatedScraperBase:
                         date = datetime(fiscal_year, 4, 1).date()
                     else:  # quarter == 4
                         date = datetime(fiscal_year, 7, 1).date()
+                    
+                    return date, fiscal_year
+                
+                # Try detailed quarter pattern like "3rd (April 1 - June 30)"
+                quarter_match = re.search(quarter_detailed_pattern, value_str)
+                if quarter_match:
+                    quarter = int(quarter_match.group(1))
+                    # Assume current fiscal year (can be improved later with context)
+                    current_year = datetime.now().year
+                    fiscal_year = current_year if datetime.now().month >= 10 else current_year
+                    
+                    if quarter == 1:
+                        date = datetime(fiscal_year - 1, 10, 1).date()
+                    elif quarter == 2:
+                        date = datetime(fiscal_year, 1, 1).date()
+                    elif quarter == 3:
+                        date = datetime(fiscal_year, 4, 1).date()
+                    elif quarter == 4:
+                        date = datetime(fiscal_year, 7, 1).date()
+                    else:
+                        return None, None
                     
                     return date, fiscal_year
                 

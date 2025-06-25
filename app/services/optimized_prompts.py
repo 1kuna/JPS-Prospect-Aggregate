@@ -143,23 +143,30 @@ Confidence guidelines:
 
 def get_naics_prompt(title: str, description: str) -> str:
     """Get optimized NAICS classification prompt"""
-    return NAICS_CLASSIFICATION_PROMPT.format(title=title, description=description)
+    prompt = NAICS_CLASSIFICATION_PROMPT
+    prompt = prompt.replace("{title}", title or "")
+    prompt = prompt.replace("{description}", description or "")
+    return prompt
 
 def get_value_prompt(value_text: str) -> str:
     """Get optimized value parsing prompt"""
-    return VALUE_PARSING_PROMPT.format(value_text=value_text)
+    prompt = VALUE_PARSING_PROMPT
+    prompt = prompt.replace("{value_text}", value_text or "")
+    return prompt
 
 def get_contact_prompt(contact_data: str) -> str:
     """Get optimized contact extraction prompt"""
     import json
     if isinstance(contact_data, dict):
         contact_data = json.dumps(contact_data, indent=2)
-    return CONTACT_EXTRACTION_PROMPT.format(contact_data=contact_data)
+    prompt = CONTACT_EXTRACTION_PROMPT
+    prompt = prompt.replace("{contact_data}", contact_data or "")
+    return prompt
 
 def get_title_prompt(title: str, description: str, agency: str) -> str:
     """Get optimized title enhancement prompt"""
-    return TITLE_ENHANCEMENT_PROMPT.format(
-        title=title or "No title provided",
-        description=description or "No description available", 
-        agency=agency or "Unknown agency"
-    )
+    prompt = TITLE_ENHANCEMENT_PROMPT
+    prompt = prompt.replace("{title}", title or "No title provided")
+    prompt = prompt.replace("{description}", description or "No description available")
+    prompt = prompt.replace("{agency}", agency or "Unknown agency")
+    return prompt
