@@ -531,6 +531,7 @@ def create_ssa_config() -> ScraperConfig:
             'title': 'title',  # Created from description in custom transform
             'description': 'description',
             'naics_code': 'naics',
+            'naics_description': 'naics_description',
             'contract_type': 'contract_type',
             'set_aside': 'set_aside',
             'estimated_value_text': 'estimated_value_text',

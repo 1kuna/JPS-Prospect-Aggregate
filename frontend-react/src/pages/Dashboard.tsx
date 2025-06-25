@@ -1393,7 +1393,7 @@ export default function Dashboard() {
                     <span className="font-medium text-gray-700">Release Date:</span>
                     <p className="mt-1 text-gray-900">
                       {selectedProspect.release_date 
-                        ? formatUserDate(selectedProspect.release_date)
+                        ? formatUserDate(selectedProspect.release_date, 'date')
                         : 'N/A'}
                     </p>
                   </div>
@@ -1401,7 +1401,7 @@ export default function Dashboard() {
                     <span className="font-medium text-gray-700">Award Date:</span>
                     <p className="mt-1 text-gray-900">
                       {selectedProspect.award_date 
-                        ? formatUserDate(selectedProspect.award_date)
+                        ? formatUserDate(selectedProspect.award_date, 'date')
                         : 'N/A'}
                     </p>
                   </div>
