@@ -1,5 +1,5 @@
 import { createContext, useContext, ReactNode } from 'react';
-import { useProspectEnhancementQueue } from '@/hooks/api/useProspectEnhancementQueue';
+import { useUnifiedEnhancement } from '@/hooks/api/useUnifiedEnhancement';
 
 interface ProspectEnhancementContextType {
   addToQueue: (request: {
@@ -7,15 +7,21 @@ interface ProspectEnhancementContextType {
     force_redo?: boolean;
     user_id?: number;
   }) => void;
-  getProspectStatus: (prospect_id: string) => {
+  getProspectStatus: (prospect_id: string | undefined) => {
     prospect_id: string;
-    force_redo?: boolean;
-    user_id?: number;
-    status: 'queued' | 'processing' | 'completed' | 'failed';
-    position?: number;
+    status: 'idle' | 'queued' | 'processing' | 'completed' | 'failed';
+    queuePosition?: number;
+    estimatedTimeRemaining?: number;
+    currentStep?: string;
+    progress?: {
+      values?: { completed: boolean; skipped?: boolean; data?: any };
+      contacts?: { completed: boolean; skipped?: boolean; data?: any };
+      naics?: { completed: boolean; skipped?: boolean; data?: any };
+      titles?: { completed: boolean; skipped?: boolean; data?: any };
+    };
     error?: string;
   } | null;
-  removeFromQueue: (prospect_id: string) => void;
+  cancelEnhancement: (prospect_id: string) => Promise<boolean>;
   queueLength: number;
   isProcessing: boolean;
 }
@@ -23,10 +29,39 @@ interface ProspectEnhancementContextType {
 const ProspectEnhancementContext = createContext<ProspectEnhancementContextType | undefined>(undefined);
 
 export function ProspectEnhancementProvider({ children }: { children: ReactNode }) {
-  const queueManager = useProspectEnhancementQueue();
+  const {
+    queueEnhancement,
+    getEnhancementState,
+    cancelEnhancement,
+    queueLength,
+    isProcessing
+  } = useUnifiedEnhancement();
+
+  // Adapt the interface to match existing API
+  const contextValue: ProspectEnhancementContextType = {
+    addToQueue: queueEnhancement,
+    getProspectStatus: (prospect_id: string | undefined) => {
+      if (!prospect_id) return null;
+      const state = getEnhancementState(prospect_id);
+      if (!state) return null;
+      
+      return {
+        prospect_id,
+        status: state.status,
+        queuePosition: state.queuePosition,
+        estimatedTimeRemaining: state.estimatedTimeRemaining,
+        currentStep: state.currentStep,
+        progress: state.progress,
+        error: state.error
+      };
+    },
+    cancelEnhancement,
+    queueLength,
+    isProcessing
+  };
 
   return (
-    <ProspectEnhancementContext.Provider value={queueManager}>
+    <ProspectEnhancementContext.Provider value={contextValue}>
       {children}
     </ProspectEnhancementContext.Provider>
   );

@@ -796,6 +796,9 @@ def enhance_single_prospect_direct():
             prospect.enhancement_started_at = None
             prospect.enhancement_user_id = None
             
+            # Commit the status change immediately so SSE can detect completion
+            db.session.commit()
+            
             # Finalize and return response
             return _finalize_enhancement(prospect, llm_service, processed, enhancements, force_redo)
             
@@ -919,7 +922,7 @@ def emit_enhancement_progress(prospect_id, event_type, data):
 
 @llm_bp.route('/enhancement-progress/<prospect_id>')
 def enhancement_progress_stream(prospect_id):
-    """Server-Sent Events endpoint for real-time enhancement progress"""
+    """Enhanced Server-Sent Events endpoint for real-time enhancement progress"""
     def generate():
         # Set initial connection message
         yield f"data: {json.dumps({'event_type': 'connected', 'prospect_id': prospect_id})}\n\n"
@@ -929,15 +932,72 @@ def enhancement_progress_stream(prospect_id):
             _enhancement_progress_events[prospect_id] = []
         
         sent_event_count = 0
-        max_wait_time = 300  # 5 minutes max wait
+        max_wait_time = 600  # 10 minutes max wait (increased)
         start_time = time.time()
+        last_heartbeat = time.time()
+        last_queue_check = time.time()
         
         try:
             while True:
+                current_time = time.time()
+                
                 # Check if we've exceeded max wait time
-                if time.time() - start_time > max_wait_time:
-                    yield f"data: {json.dumps({'event_type': 'timeout'})}\n\n"
+                if current_time - start_time > max_wait_time:
+                    yield f"data: {json.dumps({'event_type': 'timeout', 'reason': 'max_wait_exceeded'})}\n\n"
                     break
+                
+                # Send heartbeat every 30 seconds
+                if current_time - last_heartbeat > 30:
+                    heartbeat_event = {
+                        'event_type': 'keepalive',
+                        'timestamp': datetime.now(timezone.utc).isoformat(),
+                        'data': {'connection_time': current_time - start_time}
+                    }
+                    yield f"data: {json.dumps(heartbeat_event)}\n\n"
+                    last_heartbeat = current_time
+                
+                # Check queue status every 2 seconds
+                if current_time - last_queue_check > 2:
+                    # Get queue position for this prospect
+                    queue_status = enhancement_queue_service.get_queue_status()
+                    if queue_status and queue_status.get('pending_items'):
+                        prospect_queue_item = None
+                        queue_position = None
+                        
+                        for idx, item in enumerate(queue_status['pending_items']):
+                            if (item.get('type') == 'individual' and 
+                                str(item.get('prospect_id')) == str(prospect_id)):
+                                prospect_queue_item = item
+                                queue_position = idx + 1
+                                break
+                        
+                        # If found in queue, send position update
+                        if prospect_queue_item and queue_position:
+                            # Calculate estimated time remaining (rough estimate: 60s per item ahead)
+                            estimated_time = (queue_position - 1) * 60
+                            
+                            position_event = {
+                                'event_type': 'queue_position_update',
+                                'timestamp': datetime.now(timezone.utc).isoformat(),
+                                'data': {
+                                    'position': queue_position,
+                                    'estimated_time': estimated_time,
+                                    'queue_size': len(queue_status['pending_items'])
+                                }
+                            }
+                            yield f"data: {json.dumps(position_event)}\n\n"
+                        
+                        # Check if processing has started
+                        if (queue_status.get('current_item') and 
+                            queue_status['current_item'].get('prospect_id') == int(prospect_id)):
+                            processing_event = {
+                                'event_type': 'processing_started',
+                                'timestamp': datetime.now(timezone.utc).isoformat(),
+                                'data': {'queue_item_id': queue_status['current_item'].get('id')}
+                            }
+                            yield f"data: {json.dumps(processing_event)}\n\n"
+                    
+                    last_queue_check = current_time
                 
                 # Send any new events for this prospect
                 prospect_events = _enhancement_progress_events.get(prospect_id, [])
@@ -949,6 +1009,8 @@ def enhancement_progress_stream(prospect_id):
                 
                 # Check if enhancement is complete
                 prospect = Prospect.query.get(prospect_id)
+                logger.info(f"SSE checking completion for prospect {prospect_id}: status={prospect.enhancement_status if prospect else 'NOT_FOUND'}")
+                
                 if prospect and prospect.enhancement_status not in ['in_progress', 'queued']:
                     # Send completion event if we haven't already
                     completion_event = {
@@ -959,15 +1021,25 @@ def enhancement_progress_stream(prospect_id):
                             'ollama_processed_at': prospect.ollama_processed_at.isoformat() if prospect.ollama_processed_at else None
                         }
                     }
+                    logger.info(f"SSE sending completion event for prospect {prospect_id} with status {prospect.enhancement_status}")
                     yield f"data: {json.dumps(completion_event)}\n\n"
+                    logger.info(f"SSE completion event sent for prospect {prospect_id}")
                     break
                 
-                # Wait before checking again
-                time.sleep(0.5)
+                # Wait before checking again (reduced for better responsiveness)
+                time.sleep(0.2)
                 
         except GeneratorExit:
             # Client disconnected
             logger.info(f"Client disconnected from enhancement progress stream for prospect {prospect_id}")
+        except Exception as e:
+            logger.error(f"Error in SSE stream for prospect {prospect_id}: {e}")
+            error_event = {
+                'event_type': 'error',
+                'timestamp': datetime.now(timezone.utc).isoformat(),
+                'data': {'error': str(e)}
+            }
+            yield f"data: {json.dumps(error_event)}\n\n"
         finally:
             # Clean up old events for this prospect (keep only last hour)
             if prospect_id in _enhancement_progress_events:
@@ -986,3 +1058,31 @@ def enhancement_progress_stream(prospect_id):
             'Access-Control-Allow-Headers': 'Cache-Control'
         }
     )
+
+
+@llm_bp.route('/enhancement-queue/<queue_item_id>', methods=['DELETE'])
+def cancel_enhancement(queue_item_id):
+    """Cancel a queued enhancement request"""
+    try:
+        # Attempt to cancel the queue item
+        success = enhancement_queue_service.cancel_item(queue_item_id)
+        
+        if success:
+            logger.info(f"Successfully cancelled enhancement queue item: {queue_item_id}")
+            return jsonify({
+                "success": True,
+                "message": "Enhancement request cancelled successfully"
+            }), 200
+        else:
+            logger.warning(f"Failed to cancel enhancement queue item: {queue_item_id} (not found or already processing)")
+            return jsonify({
+                "success": False,
+                "error": "Queue item not found or already processing"
+            }), 404
+            
+    except Exception as e:
+        logger.error(f"Error cancelling enhancement queue item {queue_item_id}: {e}", exc_info=True)
+        return jsonify({
+            "success": False,
+            "error": "Failed to cancel enhancement request"
+        }), 500
