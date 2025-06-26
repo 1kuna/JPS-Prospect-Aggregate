@@ -1,7 +1,7 @@
 import { PageLayout } from '@/components/layout';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { createColumnHelper, flexRender, getCoreRowModel, useReactTable } from '@tanstack/react-table';
-import { useState, useCallback, useMemo, useRef } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -25,12 +25,14 @@ import {
 import { useProspectEnhancement } from '@/contexts/ProspectEnhancementContext';
 import { useTimezoneDate } from '@/hooks/useTimezoneDate';
 import { usePollingUpdates } from '@/hooks/usePollingUpdates';
-import { useEnhancementProgress } from '@/hooks/useEnhancementProgress';
 import { ReloadIcon } from '@radix-ui/react-icons';
 import { Switch } from '@/components/ui/switch';
 import { GoNoGoDecision } from '@/components/GoNoGoDecision';
 import { useListDataSources } from '@/hooks/api/useDataSources';
 import { DataSource } from '@/types';
+import { EnhancementButton } from '@/components/EnhancementButton';
+import { EnhancementProgress } from '@/components/EnhancementProgress';
+import { EnhancementErrorBoundary } from '@/components/EnhancementErrorBoundary';
 
 // Updated Prospect interface based on backend model
 interface Prospect {
@@ -132,27 +134,15 @@ const fetchProspects = async (page: number, limit: number, filters?: ProspectFil
 
 const columnHelper = createColumnHelper<Prospect>();
 
-// Type for enhancement step status
-type EnhancementStepStatus = 'pending' | 'active' | 'completed' | 'skipped';
-
 // Column definitions moved inside the component to access showAIEnhanced state
 
 export default function Dashboard() {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
-  const [selectedProspect, setSelectedProspect] = useState<Prospect | null>(null);
+  const [selectedProspectId, setSelectedProspectId] = useState<string | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [showAIEnhanced, setShowAIEnhanced] = useState(true);
-  const [enhancingProspectId, setEnhancingProspectId] = useState<string | null>(null);
-  const enhancingProspectIdRef = useRef<string | null>(null);
-  
-  // Track which steps have been completed in the current enhancement session
-  const [completedStepsInSession, setCompletedStepsInSession] = useState<Set<string>>(new Set());
-  // Track which steps have been skipped in the current enhancement session
-  const [skippedStepsInSession, setSkippedStepsInSession] = useState<Set<string>>(new Set());
-  
-  // Update ref when state changes
-  enhancingProspectIdRef.current = enhancingProspectId;
+  // Enhancement tracking simplified with unified system
   
   // Filter states
   const [filters, setFilters] = useState<ProspectFilters>({
@@ -181,85 +171,7 @@ export default function Dashboard() {
     enableAnimations: true
   });
 
-  // Stable callback functions to prevent infinite re-renders
-  const onFieldUpdate = useCallback((field: string, value: Record<string, unknown>) => {
-    console.log(`Field ${field} updated:`, value);
-    
-    // Track completed and skipped steps in current session
-    if (value.skipped) {
-      setSkippedStepsInSession(prev => new Set([...prev, field]));
-    } else {
-      setCompletedStepsInSession(prev => new Set([...prev, field]));
-    }
-    
-    // The useEnhancementProgress hook already updates the TanStack Query cache
-    // which will automatically update the UI without causing infinite loops
-    
-    // Update selectedProspect in real-time if modal is open for this prospect
-    if (selectedProspect && enhancingProspectId === selectedProspect.id) {
-      setSelectedProspect(prev => prev ? { ...prev, ...value } : null);
-    }
-  }, [selectedProspect, enhancingProspectId]);
-
-  const onComplete = useCallback(() => {
-    const currentEnhancingId = enhancingProspectIdRef.current;
-    console.log('Enhancement completed for prospect:', currentEnhancingId);
-    
-    // Reset enhancement state
-    setEnhancingProspectId(null);
-    setCompletedStepsInSession(new Set());
-    setSkippedStepsInSession(new Set());
-    
-    // Update selectedProspect with completion status if modal is open for this prospect
-    // Note: Don't override ollama_processed_at here - it will be updated by the SSE hook
-    // with the server timestamp, which is more accurate
-    if (selectedProspect && currentEnhancingId === selectedProspect.id) {
-      setSelectedProspect(prev => prev ? { 
-        ...prev, 
-        enhancement_status: 'idle'
-        // ollama_processed_at will be updated by SSE hook from server response
-      } : null);
-    }
-    // Show success notification
-    if (window.showToast) {
-      window.showToast({
-        title: 'Enhancement Complete',
-        message: 'AI enhancement completed successfully',
-        type: 'success',
-        duration: 3000
-      });
-    }
-  }, [selectedProspect]);
-
-  const onError = useCallback((error: string) => {
-    console.error('Enhancement error:', error);
-    // Reset enhancement state on error
-    setEnhancingProspectId(null);
-    setCompletedStepsInSession(new Set());
-    setSkippedStepsInSession(new Set());
-    // Show error notification
-    if (window.showToast) {
-      window.showToast({
-        title: 'Enhancement Failed',
-        message: error,
-        type: 'error',
-        duration: 5000
-      });
-    }
-  }, []);
-
-  // Real-time enhancement progress hook - only for actively enhancing prospect
-  const { 
-    isEnhancing: isSSEEnhancing, 
-    currentStep 
-  } = useEnhancementProgress(
-    enhancingProspectId,
-    {
-      onFieldUpdate,
-      onComplete,
-      onError
-    }
-  );
+  // Enhancement system simplified - unified hooks handle progress and updates
 
   // const { data: countData, isLoading: isLoadingCount } = useQuery({
   //   queryKey: ['prospectCount'],
@@ -275,6 +187,21 @@ export default function Dashboard() {
     refetchInterval: 30000, // Default refetch every 30 seconds
     refetchOnWindowFocus: false, // Don't refetch when tab gains focus
   });
+
+  // Get live prospect data from cache for modal (updates in real-time)
+  const selectedProspect = useMemo(() => {
+    if (!selectedProspectId || !prospectsData?.data) return null;
+    const found = prospectsData.data.find((p: Prospect) => p.id === selectedProspectId) || null;
+    if (found) {
+      console.log(`Modal prospect data updated for ${selectedProspectId}:`, {
+        ollama_processed_at: found.ollama_processed_at,
+        enhancement_status: found.enhancement_status,
+        ai_enhanced_title: found.ai_enhanced_title,
+        estimated_value_single: found.estimated_value_single
+      });
+    }
+    return found;
+  }, [selectedProspectId, prospectsData?.data]);
   
 
   // Define columns inside component to access showAIEnhanced state
@@ -460,7 +387,7 @@ export default function Dashboard() {
   }, []);
   
   const handleRowClick = useCallback((prospect: Prospect) => {
-    setSelectedProspect(prospect);
+    setSelectedProspectId(prospect.id);
     setIsDialogOpen(true);
   }, []);
   
@@ -949,7 +876,10 @@ export default function Dashboard() {
       </div>
 
       {/* Prospect Details Dialog */}
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+      <Dialog open={isDialogOpen} onOpenChange={(open) => {
+        setIsDialogOpen(open);
+        if (!open) setSelectedProspectId(null);
+      }}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-2xl font-bold pr-8">
@@ -970,12 +900,19 @@ export default function Dashboard() {
                   return 'Prospect Details';
                 })()}
               </span>
-              {(selectedProspect?.enhancement_status === 'in_progress' || (isSSEEnhancing && enhancingProspectId === selectedProspect?.id)) && (
-                <div className="inline-flex items-center ml-3 px-2 py-1 text-xs font-medium bg-yellow-100 text-yellow-800 rounded-full">
-                  <ReloadIcon className="mr-1 h-3 w-3 animate-spin" />
-                  {currentStep || 'Being Enhanced'}
-                </div>
-              )}
+              {(() => {
+                if (!selectedProspect) return null;
+                const status = getProspectStatus(selectedProspect.id);
+                const isActive = ['queued', 'processing'].includes(status?.status as string) || selectedProspect.enhancement_status === 'in_progress';
+                if (!isActive) return null;
+                
+                return (
+                  <div className="inline-flex items-center ml-3 px-2 py-1 text-xs font-medium bg-yellow-100 text-yellow-800 rounded-full">
+                    <ReloadIcon className="mr-1 h-3 w-3 animate-spin" />
+                    {status?.currentStep || status?.status === 'queued' ? `Queued (#${status.queuePosition})` : 'Being Enhanced'}
+                  </div>
+                );
+              })()}
             </DialogTitle>
             <DialogDescription>
               Full details for this prospect opportunity
@@ -987,160 +924,27 @@ export default function Dashboard() {
               {/* Enhancement Button */}
               {!selectedProspect.ollama_processed_at && (
                 <div className="flex justify-end">
-                  <Button
-                    onClick={() => {
-                      if (selectedProspect) {
-                        // Reset completed and skipped steps for new enhancement session
-                        setCompletedStepsInSession(new Set());
-                        setSkippedStepsInSession(new Set());
-                        // Set the enhancing prospect ID to start SSE connection
-                        setEnhancingProspectId(selectedProspect.id);
-                        addToQueue({
-                          prospect_id: selectedProspect.id,
-                          user_id: 1
-                        });
-                      }
-                    }}
-                    disabled={(() => {
-                      const queueStatus = getProspectStatus(selectedProspect?.id);
-                      return queueStatus?.status === 'processing' || 
-                             queueStatus?.status === 'queued' || 
-                             selectedProspect.enhancement_status === 'in_progress' ||
-                             (isSSEEnhancing && enhancingProspectId === selectedProspect?.id);
-                    })()}
-                    className="bg-blue-600 hover:bg-blue-700 text-white disabled:bg-gray-400"
-                  >
-                    {(() => {
-                      const queueStatus = getProspectStatus(selectedProspect?.id);
-                      if (isSSEEnhancing && enhancingProspectId === selectedProspect?.id) {
-                        return (
-                          <>
-                            <ReloadIcon className="mr-2 h-4 w-4 animate-spin" />
-                            {currentStep || 'Enhancing...'}
-                          </>
-                        );
-                      } else if (queueStatus?.status === 'processing') {
-                        return (
-                          <>
-                            <ReloadIcon className="mr-2 h-4 w-4 animate-spin" />
-                            Enhancing...
-                          </>
-                        );
-                      } else if (queueStatus?.status === 'queued') {
-                        return (
-                          <>
-                            <ReloadIcon className="mr-2 h-4 w-4 animate-spin" />
-                            Queued (#{queueStatus.position})
-                          </>
-                        );
-                      } else if (selectedProspect.enhancement_status === 'in_progress') {
-                        return (
-                          <>
-                            <ReloadIcon className="mr-2 h-4 w-4 animate-spin" />
-                            Being Enhanced by Another User...
-                          </>
-                        );
-                      } else {
-                        return 'Enhance with AI';
-                      }
-                    })()}
-                  </Button>
+                  <EnhancementErrorBoundary>
+                    <EnhancementButton 
+                      prospect={selectedProspect}
+                      userId={1}
+                    />
+                  </EnhancementErrorBoundary>
                 </div>
               )}
               
-              {/* Enhancement Progress - Show all steps when actively enhancing */}
-              {(selectedProspect?.enhancement_status === 'in_progress' || (isSSEEnhancing && enhancingProspectId === selectedProspect?.id)) && (
-                <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-lg">
-                  <h4 className="text-sm font-medium text-yellow-800 mb-3">AI Enhancement Progress</h4>
-                  <div className="space-y-2">
-                    {(() => {
-                      const getStepStatus = (stepKey: string): EnhancementStepStatus => {
-                        // Check if currently active step with more flexible matching
-                        const stepText = currentStep?.toLowerCase() || '';
-                        let isActive = false;
-                        
-                        switch (stepKey) {
-                          case 'values':
-                            isActive = stepText.includes('parsing') || stepText.includes('contract') || stepText.includes('values');
-                            break;
-                          case 'contacts':
-                            isActive = stepText.includes('extracting') || stepText.includes('contact');
-                            break;
-                          case 'naics':
-                            isActive = stepText.includes('classifying') || stepText.includes('naics');
-                            break;
-                          case 'titles':
-                            isActive = stepText.includes('enhancing') || stepText.includes('title');
-                            break;
-                        }
-                        
-                        if (isActive) {
-                          return 'active';
-                        }
-                        
-                        // Check if completed in current session
-                        if (completedStepsInSession.has(stepKey)) {
-                          return 'completed';
-                        }
-                        
-                        // Check if skipped in current session
-                        if (skippedStepsInSession.has(stepKey)) {
-                          return 'skipped';
-                        }
-                        
-                        // Default to pending
-                        return 'pending';
-                      };
-                      
-                      const steps = [
-                        { step: 'values', label: 'Parsing contract values', status: getStepStatus('values') },
-                        { step: 'contacts', label: 'Extracting contact information', status: getStepStatus('contacts') },
-                        { step: 'naics', label: 'Classifying NAICS code', status: getStepStatus('naics') },
-                        { step: 'titles', label: 'Enhancing title', status: getStepStatus('titles') }
-                      ];
-                      
-                      // Debug logging
-                      console.log('Current step:', currentStep);
-                      console.log('Completed steps in session:', completedStepsInSession);
-                      console.log('Skipped steps in session:', skippedStepsInSession);
-                      console.log('Step statuses:', steps.map(s => ({ step: s.step, status: s.status })));
-                      
-                      return steps;
-                    })().map((item) => (
-                      <div key={item.step} className="flex items-center">
-                        {item.status === 'active' && (
-                          <ReloadIcon className="mr-2 h-3 w-3 animate-spin text-yellow-600" />
-                        )}
-                        {item.status === 'completed' && (
-                          <div className="mr-2 h-3 w-3 bg-green-500 rounded-full"></div>
-                        )}
-                        {item.status === 'skipped' && (
-                          <div className="mr-2 h-3 w-3 bg-blue-400 rounded-full opacity-60 flex items-center justify-center">
-                            <div className="h-0.5 w-1.5 bg-white rounded"></div>
-                          </div>
-                        )}
-                        {item.status === 'pending' && (
-                          <div className="mr-2 h-3 w-3 bg-gray-300 rounded-full"></div>
-                        )}
-                        <span className={`text-sm ${
-                          item.status === 'active' ? 'text-yellow-800 font-medium' :
-                          item.status === 'completed' ? 'text-green-700' :
-                          item.status === 'skipped' ? 'text-blue-600 opacity-75' :
-                          'text-gray-600'
-                        }`}>
-                          {item.label}
-                          {item.status === 'skipped' && <span className="text-xs text-blue-500 ml-1">(skipped)</span>}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                  {!isSSEEnhancing && !currentStep && selectedProspect.ollama_processed_at && (
-                    <div className="mt-3 p-2 bg-green-50 border border-green-200 rounded text-sm text-green-800 font-medium">
-                      ✓ Enhancement completed successfully!
-                    </div>
-                  )}
-                </div>
-              )}
+              {/* Enhancement Progress */}
+              <EnhancementErrorBoundary>
+                <EnhancementProgress 
+                  status={getProspectStatus(selectedProspect?.id || '')}
+                  isVisible={(() => {
+                    if (!selectedProspect) return false;
+                    const status = getProspectStatus(selectedProspect.id);
+                    // Show progress only when actively queued or processing, not when completed
+                    return ['queued', 'processing'].includes(status?.status as string);
+                  })()}
+                />
+              </EnhancementErrorBoundary>
               
               {/* Enhancement Status */}
               {selectedProspect.ollama_processed_at && (
@@ -1153,8 +957,6 @@ export default function Dashboard() {
                     <Button
                       onClick={() => {
                         if (selectedProspect) {
-                          // Set the enhancing prospect ID to start SSE connection
-                          setEnhancingProspectId(selectedProspect.id);
                           addToQueue({
                             prospect_id: selectedProspect.id,
                             force_redo: true,
@@ -1166,8 +968,7 @@ export default function Dashboard() {
                         const queueStatus = getProspectStatus(selectedProspect?.id);
                         return queueStatus?.status === 'processing' || 
                                queueStatus?.status === 'queued' || 
-                               selectedProspect.enhancement_status === 'in_progress' ||
-                               (isSSEEnhancing && enhancingProspectId === selectedProspect?.id);
+                               selectedProspect.enhancement_status === 'in_progress';
                       })()}
                       variant="outline"
                       size="sm"
@@ -1175,25 +976,18 @@ export default function Dashboard() {
                     >
                       {(() => {
                         const queueStatus = getProspectStatus(selectedProspect?.id);
-                        if (isSSEEnhancing && enhancingProspectId === selectedProspect?.id) {
+                        if (queueStatus?.status === 'processing') {
                           return (
                             <>
                               <ReloadIcon className="mr-2 h-3 w-3 animate-spin" />
-                              {currentStep || 'Re-enhancing...'}
-                            </>
-                          );
-                        } else if (queueStatus?.status === 'processing') {
-                          return (
-                            <>
-                              <ReloadIcon className="mr-2 h-3 w-3 animate-spin" />
-                              Re-enhancing...
+                              {queueStatus?.currentStep || 'Re-enhancing...'}
                             </>
                           );
                         } else if (queueStatus?.status === 'queued') {
                           return (
                             <>
                               <ReloadIcon className="mr-2 h-3 w-3 animate-spin" />
-                              Queued (#{queueStatus.position})
+                              Queued (#{queueStatus.queuePosition})
                             </>
                           );
                         } else if (selectedProspect.enhancement_status === 'in_progress') {
@@ -1244,14 +1038,22 @@ export default function Dashboard() {
               <div>
                 <h3 className="text-lg font-semibold mb-3 text-gray-900">Basic Information</h3>
                 <div className="grid grid-cols-1 gap-4 bg-gray-50 p-4 rounded-lg">
-                  <div className={`${(currentStep?.includes('title') && enhancingProspectId === selectedProspect?.id) ? 'animate-pulse bg-blue-50 border border-blue-200 rounded p-2' : ''}`}>
+                  <div className={`${(() => {
+                    const status = getProspectStatus(selectedProspect.id);
+                    const isTitleActive = status?.currentStep?.toLowerCase().includes('title') || status?.currentStep?.toLowerCase().includes('enhancing');
+                    return isTitleActive ? 'animate-pulse bg-blue-50 border border-blue-200 rounded p-2' : '';
+                  })()}`}>
                     <span className="font-medium text-gray-700">Title:</span>
-                    {(currentStep?.includes('title') && enhancingProspectId === selectedProspect?.id) ? (
-                      <span className="ml-2 text-xs px-2 py-1 rounded bg-blue-100 text-blue-700 animate-pulse inline-flex items-center">
-                        <ReloadIcon className="w-3 h-3 mr-1 animate-spin" />
-                        Enhancing...
-                      </span>
-                    ) : null}
+                    {(() => {
+                      const status = getProspectStatus(selectedProspect.id);
+                      const isTitleActive = status?.currentStep?.toLowerCase().includes('title') || status?.currentStep?.toLowerCase().includes('enhancing');
+                      return isTitleActive ? (
+                        <span className="ml-2 text-xs px-2 py-1 rounded bg-blue-100 text-blue-700 animate-pulse inline-flex items-center">
+                          <ReloadIcon className="w-3 h-3 mr-1 animate-spin" />
+                          Enhancing...
+                        </span>
+                      ) : null;
+                    })()}
                     <p className="mt-1 text-gray-900">{(() => {
                       // Use AI-enhanced title if toggle is on and available
                       if (showAIEnhanced && selectedProspect.ai_enhanced_title) {
@@ -1268,7 +1070,11 @@ export default function Dashboard() {
                       }
                       return 'N/A';
                     })()}
-                    {showAIEnhanced && selectedProspect.ai_enhanced_title && selectedProspect.title && !(currentStep?.includes('title') && enhancingProspectId === selectedProspect?.id) && (
+                    {(() => {
+                      const status = getProspectStatus(selectedProspect.id);
+                      const isTitleActive = status?.currentStep?.toLowerCase().includes('title') || status?.currentStep?.toLowerCase().includes('enhancing');
+                      return showAIEnhanced && selectedProspect.ai_enhanced_title && selectedProspect.title && !isTitleActive;
+                    })() && (
                       <span className="ml-2 text-xs px-2 py-1 rounded bg-green-100 text-green-700">
                         AI Enhanced
                       </span>
@@ -1286,14 +1092,22 @@ export default function Dashboard() {
                       <span className="font-medium text-gray-700">Agency:</span>
                       <p className="mt-1 text-gray-900">{selectedProspect.agency || 'N/A'}</p>
                     </div>
-                    <div className={`${(currentStep?.includes('NAICS') && enhancingProspectId === selectedProspect?.id) ? 'animate-pulse bg-blue-50 border border-blue-200 rounded p-2' : ''}`}>
+                    <div className={`${(() => {
+                      const status = getProspectStatus(selectedProspect.id);
+                      const isNaicsActive = status?.currentStep?.toLowerCase().includes('naics') || status?.currentStep?.toLowerCase().includes('classifying');
+                      return isNaicsActive ? 'animate-pulse bg-blue-50 border border-blue-200 rounded p-2' : '';
+                    })()}`}>
                       <span className="font-medium text-gray-700">NAICS:</span>
-                      {(currentStep?.includes('NAICS') && enhancingProspectId === selectedProspect?.id) ? (
-                        <span className="ml-2 text-xs px-2 py-1 rounded bg-blue-100 text-blue-700 animate-pulse inline-flex items-center">
-                          <ReloadIcon className="w-3 h-3 mr-1 animate-spin" />
-                          Classifying...
-                        </span>
-                      ) : null}
+                      {(() => {
+                        const status = getProspectStatus(selectedProspect.id);
+                        const isNaicsActive = status?.currentStep?.toLowerCase().includes('naics') || status?.currentStep?.toLowerCase().includes('classifying');
+                        return isNaicsActive ? (
+                          <span className="ml-2 text-xs px-2 py-1 rounded bg-blue-100 text-blue-700 animate-pulse inline-flex items-center">
+                            <ReloadIcon className="w-3 h-3 mr-1 animate-spin" />
+                            Classifying...
+                          </span>
+                        ) : null;
+                      })()}
                       <p className="mt-1 text-gray-900">
                         {(() => {
                           // Show AI NAICS only if toggle is on and it's AI classified
@@ -1302,7 +1116,11 @@ export default function Dashboard() {
                           }
                           return selectedProspect.naics || 'N/A';
                         })()}
-                        {showAIEnhanced && selectedProspect.naics_source && !(currentStep?.includes('NAICS') && enhancingProspectId === selectedProspect?.id) && (
+                        {(() => {
+                          const status = getProspectStatus(selectedProspect.id);
+                          const isNaicsActive = status?.currentStep?.toLowerCase().includes('naics') || status?.currentStep?.toLowerCase().includes('classifying');
+                          return showAIEnhanced && selectedProspect.naics_source && !isNaicsActive;
+                        })() && (
                           <span className={`ml-2 text-xs px-2 py-1 rounded ${
                             selectedProspect.naics_source === 'llm_inferred' 
                               ? 'bg-blue-100 text-blue-700' 
@@ -1334,18 +1152,26 @@ export default function Dashboard() {
                   </div>
                   
                   {/* AI-parsed values with progress indicator */}
-                  {(currentStep?.includes('value') && enhancingProspectId === selectedProspect?.id) && (
-                    <div className="bg-blue-50 p-3 rounded-lg border border-blue-200 animate-pulse">
-                      <div className="flex items-center mb-2">
-                        <span className="font-medium text-blue-800">Parsing Contract Values</span>
-                        <ReloadIcon className="ml-2 w-4 h-4 animate-spin text-blue-600" />
+                  {(() => {
+                    const status = getProspectStatus(selectedProspect.id);
+                    const isValuesActive = status?.currentStep?.toLowerCase().includes('value') || status?.currentStep?.toLowerCase().includes('parsing');
+                    return isValuesActive ? (
+                      <div className="bg-blue-50 p-3 rounded-lg border border-blue-200 animate-pulse">
+                        <div className="flex items-center mb-2">
+                          <span className="font-medium text-blue-800">Parsing Contract Values</span>
+                          <ReloadIcon className="ml-2 w-4 h-4 animate-spin text-blue-600" />
+                        </div>
+                        <p className="text-sm text-blue-600">AI is analyzing the contract value text...</p>
                       </div>
-                      <p className="text-sm text-blue-600">AI is analyzing the contract value text...</p>
-                    </div>
-                  )}
+                    ) : null;
+                  })()}
                   
                   {/* AI-parsed values */}
-                  {showAIEnhanced && (selectedProspect.estimated_value_min || selectedProspect.estimated_value_max || selectedProspect.estimated_value_single) && !(currentStep?.includes('value') && enhancingProspectId === selectedProspect?.id) && (
+                  {(() => {
+                    const status = getProspectStatus(selectedProspect.id);
+                    const isValuesActive = status?.currentStep?.toLowerCase().includes('value') || status?.currentStep?.toLowerCase().includes('parsing');
+                    return showAIEnhanced && (selectedProspect.estimated_value_min || selectedProspect.estimated_value_max || selectedProspect.estimated_value_single) && !isValuesActive;
+                  })() && (
                     <div className="bg-green-50 p-3 rounded-lg border border-green-200">
                       <div className="flex items-center mb-2">
                         <span className="font-medium text-green-800">AI-Processed Values</span>
@@ -1421,21 +1247,29 @@ export default function Dashboard() {
               </div>
 
               {/* Contact Information with progress indicator */}
-              {(currentStep?.includes('contact') && enhancingProspectId === selectedProspect?.id) && (
-                <div>
-                  <div className="flex items-center mb-3">
-                    <h3 className="text-lg font-semibold text-gray-900">Contact Information</h3>
-                    <ReloadIcon className="ml-2 w-4 h-4 animate-spin text-blue-600" />
+              {(() => {
+                const status = getProspectStatus(selectedProspect.id);
+                const isContactsActive = status?.currentStep?.toLowerCase().includes('contact') || status?.currentStep?.toLowerCase().includes('extracting');
+                return isContactsActive ? (
+                  <div>
+                    <div className="flex items-center mb-3">
+                      <h3 className="text-lg font-semibold text-gray-900">Contact Information</h3>
+                      <ReloadIcon className="ml-2 w-4 h-4 animate-spin text-blue-600" />
+                    </div>
+                    <div className="bg-blue-50 p-4 rounded-lg border border-blue-200 animate-pulse">
+                      <p className="text-blue-600 font-medium">Extracting contact information...</p>
+                      <p className="text-sm text-blue-500">AI is analyzing available contact data</p>
+                    </div>
                   </div>
-                  <div className="bg-blue-50 p-4 rounded-lg border border-blue-200 animate-pulse">
-                    <p className="text-blue-600 font-medium">Extracting contact information...</p>
-                    <p className="text-sm text-blue-500">AI is analyzing available contact data</p>
-                  </div>
-                </div>
-              )}
+                ) : null;
+              })()}
 
               {/* Contact Information */}
-              {!(currentStep?.includes('contact') && enhancingProspectId === selectedProspect?.id) && (selectedProspect.primary_contact_email || selectedProspect.primary_contact_name) && (
+              {(() => {
+                const status = getProspectStatus(selectedProspect.id);
+                const isContactsActive = status?.currentStep?.toLowerCase().includes('contact') || status?.currentStep?.toLowerCase().includes('extracting');
+                return !isContactsActive && (selectedProspect.primary_contact_email || selectedProspect.primary_contact_name);
+              })() && (
                 <div>
                   {(() => {
                     // Determine if contact information was AI-extracted
