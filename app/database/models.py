@@ -2,6 +2,7 @@ from sqlalchemy import (Column, String, Text,
                           Numeric, Date, TIMESTAMP, JSON, ForeignKey, Float, Integer) # Keep create_engine for now, might be used by create_tables
 from sqlalchemy.orm import relationship # remove sessionmaker, declarative_base
 from sqlalchemy.sql import func
+from datetime import timezone
 from app.database import db # Import db from flask_sqlalchemy instance
 
 # Logging is now handled by app.utils.logger (Loguru)
@@ -98,7 +99,7 @@ class Prospect(db.Model): # Renamed back to Prospect
             "primary_contact_email": self.primary_contact_email,
             "primary_contact_name": self.primary_contact_name,
             "loaded_at": self.loaded_at.isoformat() if self.loaded_at else None,
-            "ollama_processed_at": self.ollama_processed_at.isoformat() if self.ollama_processed_at else None,
+            "ollama_processed_at": self.ollama_processed_at.replace(tzinfo=timezone.utc).isoformat().replace('+00:00', 'Z') if self.ollama_processed_at else None,
             "ollama_model_version": self.ollama_model_version,
             "enhancement_status": self.enhancement_status,
             "enhancement_started_at": self.enhancement_started_at.isoformat() if self.enhancement_started_at else None,

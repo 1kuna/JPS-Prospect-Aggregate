@@ -623,6 +623,15 @@ def _finalize_enhancement(prospect, llm_service, processed, enhancements, force_
         prospect.ollama_model_version = llm_service.model_name
         db.session.commit()
         
+        # Emit final completion event
+        emit_enhancement_progress(prospect.id, 'completed', {
+            'status': 'completed',
+            'processed': True,
+            'enhancements': enhancements,
+            'ollama_processed_at': prospect.ollama_processed_at.isoformat() if prospect.ollama_processed_at else None,
+            'model_version': prospect.ollama_model_version
+        })
+        
         return jsonify({
             "status": "success",
             "message": f"Successfully enhanced prospect with: {', '.join(enhancements)}",
@@ -630,6 +639,15 @@ def _finalize_enhancement(prospect, llm_service, processed, enhancements, force_
             "enhancements": enhancements
         }), 200
     else:
+        # Also emit completion event for cases where no processing was needed
+        emit_enhancement_progress(prospect.id, 'completed', {
+            'status': 'completed',
+            'processed': False,
+            'enhancements': [],
+            'ollama_processed_at': prospect.ollama_processed_at.isoformat() if prospect.ollama_processed_at else None,
+            'reason': 'Already fully enhanced or no data to enhance'
+        })
+        
         return jsonify({
             "status": "success",
             "message": "Prospect already fully enhanced or no data to enhance",
@@ -1007,24 +1025,34 @@ def enhancement_progress_stream(prospect_id):
                     yield f"data: {json.dumps(event)}\n\n"
                     sent_event_count += 1
                 
-                # Check if enhancement is complete
-                prospect = Prospect.query.get(prospect_id)
-                logger.info(f"SSE checking completion for prospect {prospect_id}: status={prospect.enhancement_status if prospect else 'NOT_FOUND'}")
+                # Check if we've already sent a completion event
+                has_completion_event = any(
+                    event.get('event_type') == 'completed' 
+                    for event in prospect_events
+                )
                 
-                if prospect and prospect.enhancement_status not in ['in_progress', 'queued']:
-                    # Send completion event if we haven't already
-                    completion_event = {
-                        'event_type': 'completed',
-                        'timestamp': datetime.now(timezone.utc).isoformat(),
-                        'data': {
-                            'status': prospect.enhancement_status,
-                            'ollama_processed_at': prospect.ollama_processed_at.isoformat() if prospect.ollama_processed_at else None
-                        }
-                    }
-                    logger.info(f"SSE sending completion event for prospect {prospect_id} with status {prospect.enhancement_status}")
-                    yield f"data: {json.dumps(completion_event)}\n\n"
-                    logger.info(f"SSE completion event sent for prospect {prospect_id}")
+                if has_completion_event and sent_event_count >= len(prospect_events):
+                    # All events including completion have been sent, close the connection
+                    logger.info(f"SSE all events sent including completion for prospect {prospect_id}, closing connection")
                     break
+                
+                # Also check if prospect has been processed (fallback check)
+                if not has_completion_event and current_time - last_queue_check > 2:
+                    prospect = Prospect.query.get(prospect_id)
+                    if prospect and prospect.ollama_processed_at:
+                        # Enhancement is complete but we haven't sent the event yet
+                        completion_event = {
+                            'event_type': 'completed',
+                            'timestamp': datetime.now(timezone.utc).isoformat(),
+                            'data': {
+                                'status': 'completed',
+                                'ollama_processed_at': prospect.ollama_processed_at.isoformat() if prospect.ollama_processed_at else None
+                            }
+                        }
+                        logger.info(f"SSE sending completion event for prospect {prospect_id}")
+                        yield f"data: {json.dumps(completion_event)}\n\n"
+                        logger.info(f"SSE completion event sent for prospect {prospect_id}")
+                        break
                 
                 # Wait before checking again (reduced for better responsiveness)
                 time.sleep(0.2)

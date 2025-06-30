@@ -26,8 +26,7 @@ export function useTimezoneDate() {
     return `AI Enhanced on ${formatDate(dateString, {
       timezone,
       locale,
-      format: 'date-with-time',
-      showTimezone: false
+      format: 'datetime'
     })}`;
   };
 
