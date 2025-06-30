@@ -1,4 +1,4 @@
-import { CheckIcon, ReloadIcon, Cross1Icon } from '@radix-ui/react-icons';
+import { CheckIcon, ReloadIcon } from '@radix-ui/react-icons';
 
 interface ProgressStep {
   key: string;
@@ -72,7 +72,9 @@ export function EnhancementProgress({ status, isVisible }: EnhancementProgressPr
               ) : step.completed ? (
                 <CheckIcon className="h-4 w-4 text-green-600" />
               ) : step.skipped ? (
-                <Cross1Icon className="h-4 w-4 text-gray-400" />
+                <div className="h-4 w-4 bg-gray-200 rounded-full flex items-center justify-center">
+                  <CheckIcon className="h-3 w-3 text-green-600" />
+                </div>
               ) : (
                 <div className="h-4 w-4 border border-gray-300 rounded-full"></div>
               )}
@@ -80,11 +82,11 @@ export function EnhancementProgress({ status, isVisible }: EnhancementProgressPr
             <span className={`text-sm ${
               step.active ? 'text-blue-700 font-medium' :
               step.completed ? 'text-green-700' :
-              step.skipped ? 'text-gray-500 line-through' :
+              step.skipped ? 'text-gray-600' :
               'text-gray-600'
             }`}>
               {step.label}
-              {step.skipped && <span className="ml-1 text-xs">(skipped)</span>}
+              {step.skipped && <span className="ml-1 text-xs text-green-600">(already complete)</span>}
               {step.active && status.currentStep && (
                 <span className="ml-1 text-xs">- {status.currentStep}</span>
               )}

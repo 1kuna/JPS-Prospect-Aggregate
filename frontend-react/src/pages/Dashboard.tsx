@@ -161,7 +161,7 @@ export default function Dashboard() {
   const { addToQueue, getProspectStatus } = useProspectEnhancement();
   
   // Timezone hook for date formatting
-  const { formatAIEnhanced, formatUserDate } = useTimezoneDate();
+  const { formatUserDate } = useTimezoneDate();
   
   // Polling-based real-time updates hook
   const { isPolling, hasActiveEnhancements, isProspectRecentlyUpdated } = usePollingUpdates({
@@ -195,7 +195,6 @@ export default function Dashboard() {
     if (found) {
       console.log(`Modal prospect data updated for ${selectedProspectId}:`, {
         ollama_processed_at: found.ollama_processed_at,
-        enhancement_status: found.enhancement_status,
         ai_enhanced_title: found.ai_enhanced_title,
         estimated_value_single: found.estimated_value_single
       });
@@ -903,7 +902,7 @@ export default function Dashboard() {
               {(() => {
                 if (!selectedProspect) return null;
                 const status = getProspectStatus(selectedProspect.id);
-                const isActive = ['queued', 'processing'].includes(status?.status as string) || selectedProspect.enhancement_status === 'in_progress';
+                const isActive = ['queued', 'processing'].includes(status?.status as string);
                 if (!isActive) return null;
                 
                 return (
@@ -940,8 +939,8 @@ export default function Dashboard() {
                   isVisible={(() => {
                     if (!selectedProspect) return false;
                     const status = getProspectStatus(selectedProspect.id);
-                    // Show progress only when actively queued or processing, not when completed
-                    return ['queued', 'processing'].includes(status?.status as string);
+                    // Show progress when queued, processing, or recently completed
+                    return ['queued', 'processing', 'completed'].includes(status?.status as string);
                   })()}
                 />
               </EnhancementErrorBoundary>
@@ -952,7 +951,10 @@ export default function Dashboard() {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center text-sm text-blue-800">
                       <div className="w-2 h-2 bg-blue-500 rounded-full mr-2"></div>
-                      {formatAIEnhanced(selectedProspect.ollama_processed_at)}
+                      {selectedProspect.ollama_processed_at ? 
+                        `AI Enhanced on ${formatUserDate(selectedProspect.ollama_processed_at, 'datetime')}` : 
+                        'Not enhanced'
+                      }
                     </div>
                     <Button
                       onClick={() => {
@@ -967,8 +969,7 @@ export default function Dashboard() {
                       disabled={(() => {
                         const queueStatus = getProspectStatus(selectedProspect?.id);
                         return queueStatus?.status === 'processing' || 
-                               queueStatus?.status === 'queued' || 
-                               selectedProspect.enhancement_status === 'in_progress';
+                               queueStatus?.status === 'queued';
                       })()}
                       variant="outline"
                       size="sm"
@@ -988,13 +989,6 @@ export default function Dashboard() {
                             <>
                               <ReloadIcon className="mr-2 h-3 w-3 animate-spin" />
                               Queued (#{queueStatus.queuePosition})
-                            </>
-                          );
-                        } else if (selectedProspect.enhancement_status === 'in_progress') {
-                          return (
-                            <>
-                              <ReloadIcon className="mr-2 h-3 w-3 animate-spin" />
-                              Being Enhanced...
                             </>
                           );
                         } else {
@@ -1040,14 +1034,22 @@ export default function Dashboard() {
                 <div className="grid grid-cols-1 gap-4 bg-gray-50 p-4 rounded-lg">
                   <div className={`${(() => {
                     const status = getProspectStatus(selectedProspect.id);
-                    const isTitleActive = status?.currentStep?.toLowerCase().includes('title') || status?.currentStep?.toLowerCase().includes('enhancing');
-                    return isTitleActive ? 'animate-pulse bg-blue-50 border border-blue-200 rounded p-2' : '';
+                    const isTitleActive = status?.currentStep?.toLowerCase().includes('title') || 
+                                        status?.currentStep?.toLowerCase().includes('enhancing');
+                    const isTitleCompleted = status?.progress?.titles?.completed;
+                    
+                    // Only show animation if actively processing titles and not yet completed
+                    return (isTitleActive && !isTitleCompleted) ? 'animate-pulse bg-blue-50 border border-blue-200 rounded p-2' : '';
                   })()}`}>
                     <span className="font-medium text-gray-700">Title:</span>
                     {(() => {
                       const status = getProspectStatus(selectedProspect.id);
-                      const isTitleActive = status?.currentStep?.toLowerCase().includes('title') || status?.currentStep?.toLowerCase().includes('enhancing');
-                      return isTitleActive ? (
+                      const isTitleActive = status?.currentStep?.toLowerCase().includes('title') || 
+                                          status?.currentStep?.toLowerCase().includes('enhancing');
+                      const isTitleCompleted = status?.progress?.titles?.completed;
+                      
+                      // Only show spinner if actively processing titles and not yet completed
+                      return (isTitleActive && !isTitleCompleted) ? (
                         <span className="ml-2 text-xs px-2 py-1 rounded bg-blue-100 text-blue-700 animate-pulse inline-flex items-center">
                           <ReloadIcon className="w-3 h-3 mr-1 animate-spin" />
                           Enhancing...
@@ -1072,8 +1074,11 @@ export default function Dashboard() {
                     })()}
                     {(() => {
                       const status = getProspectStatus(selectedProspect.id);
-                      const isTitleActive = status?.currentStep?.toLowerCase().includes('title') || status?.currentStep?.toLowerCase().includes('enhancing');
-                      return showAIEnhanced && selectedProspect.ai_enhanced_title && selectedProspect.title && !isTitleActive;
+                      const isTitleActive = status?.currentStep?.toLowerCase().includes('title') || 
+                                          status?.currentStep?.toLowerCase().includes('enhancing');
+                      const isTitleCompleted = status?.progress?.titles?.completed;
+                      
+                      return showAIEnhanced && selectedProspect.ai_enhanced_title && selectedProspect.title && !(isTitleActive && !isTitleCompleted);
                     })() && (
                       <span className="ml-2 text-xs px-2 py-1 rounded bg-green-100 text-green-700">
                         AI Enhanced
@@ -1094,14 +1099,20 @@ export default function Dashboard() {
                     </div>
                     <div className={`${(() => {
                       const status = getProspectStatus(selectedProspect.id);
-                      const isNaicsActive = status?.currentStep?.toLowerCase().includes('naics') || status?.currentStep?.toLowerCase().includes('classifying');
-                      return isNaicsActive ? 'animate-pulse bg-blue-50 border border-blue-200 rounded p-2' : '';
+                      const isNaicsActive = status?.currentStep?.toLowerCase().includes('naics') || 
+                                          status?.currentStep?.toLowerCase().includes('classifying');
+                      const isNaicsCompleted = status?.progress?.naics?.completed;
+                      
+                      return (isNaicsActive && !isNaicsCompleted) ? 'animate-pulse bg-blue-50 border border-blue-200 rounded p-2' : '';
                     })()}`}>
                       <span className="font-medium text-gray-700">NAICS:</span>
                       {(() => {
                         const status = getProspectStatus(selectedProspect.id);
-                        const isNaicsActive = status?.currentStep?.toLowerCase().includes('naics') || status?.currentStep?.toLowerCase().includes('classifying');
-                        return isNaicsActive ? (
+                        const isNaicsActive = status?.currentStep?.toLowerCase().includes('naics') || 
+                                            status?.currentStep?.toLowerCase().includes('classifying');
+                        const isNaicsCompleted = status?.progress?.naics?.completed;
+                        
+                        return (isNaicsActive && !isNaicsCompleted) ? (
                           <span className="ml-2 text-xs px-2 py-1 rounded bg-blue-100 text-blue-700 animate-pulse inline-flex items-center">
                             <ReloadIcon className="w-3 h-3 mr-1 animate-spin" />
                             Classifying...
@@ -1118,8 +1129,11 @@ export default function Dashboard() {
                         })()}
                         {(() => {
                           const status = getProspectStatus(selectedProspect.id);
-                          const isNaicsActive = status?.currentStep?.toLowerCase().includes('naics') || status?.currentStep?.toLowerCase().includes('classifying');
-                          return showAIEnhanced && selectedProspect.naics_source && !isNaicsActive;
+                          const isNaicsActive = status?.currentStep?.toLowerCase().includes('naics') || 
+                                              status?.currentStep?.toLowerCase().includes('classifying');
+                          const isNaicsCompleted = status?.progress?.naics?.completed;
+                          
+                          return showAIEnhanced && selectedProspect.naics_source && !(isNaicsActive && !isNaicsCompleted);
                         })() && (
                           <span className={`ml-2 text-xs px-2 py-1 rounded ${
                             selectedProspect.naics_source === 'llm_inferred' 
@@ -1154,8 +1168,11 @@ export default function Dashboard() {
                   {/* AI-parsed values with progress indicator */}
                   {(() => {
                     const status = getProspectStatus(selectedProspect.id);
-                    const isValuesActive = status?.currentStep?.toLowerCase().includes('value') || status?.currentStep?.toLowerCase().includes('parsing');
-                    return isValuesActive ? (
+                    const isValuesActive = status?.currentStep?.toLowerCase().includes('value') || 
+                                         status?.currentStep?.toLowerCase().includes('parsing');
+                    const isValuesCompleted = status?.progress?.values?.completed;
+                    
+                    return (isValuesActive && !isValuesCompleted) ? (
                       <div className="bg-blue-50 p-3 rounded-lg border border-blue-200 animate-pulse">
                         <div className="flex items-center mb-2">
                           <span className="font-medium text-blue-800">Parsing Contract Values</span>
@@ -1169,8 +1186,11 @@ export default function Dashboard() {
                   {/* AI-parsed values */}
                   {(() => {
                     const status = getProspectStatus(selectedProspect.id);
-                    const isValuesActive = status?.currentStep?.toLowerCase().includes('value') || status?.currentStep?.toLowerCase().includes('parsing');
-                    return showAIEnhanced && (selectedProspect.estimated_value_min || selectedProspect.estimated_value_max || selectedProspect.estimated_value_single) && !isValuesActive;
+                    const isValuesActive = status?.currentStep?.toLowerCase().includes('value') || 
+                                         status?.currentStep?.toLowerCase().includes('parsing');
+                    const isValuesCompleted = status?.progress?.values?.completed;
+                    
+                    return showAIEnhanced && (selectedProspect.estimated_value_min || selectedProspect.estimated_value_max || selectedProspect.estimated_value_single) && !(isValuesActive && !isValuesCompleted);
                   })() && (
                     <div className="bg-green-50 p-3 rounded-lg border border-green-200">
                       <div className="flex items-center mb-2">
@@ -1249,8 +1269,11 @@ export default function Dashboard() {
               {/* Contact Information with progress indicator */}
               {(() => {
                 const status = getProspectStatus(selectedProspect.id);
-                const isContactsActive = status?.currentStep?.toLowerCase().includes('contact') || status?.currentStep?.toLowerCase().includes('extracting');
-                return isContactsActive ? (
+                const isContactsActive = status?.currentStep?.toLowerCase().includes('contact') || 
+                                       status?.currentStep?.toLowerCase().includes('extracting');
+                const isContactsCompleted = status?.progress?.contacts?.completed;
+                
+                return (isContactsActive && !isContactsCompleted) ? (
                   <div>
                     <div className="flex items-center mb-3">
                       <h3 className="text-lg font-semibold text-gray-900">Contact Information</h3>
@@ -1267,8 +1290,11 @@ export default function Dashboard() {
               {/* Contact Information */}
               {(() => {
                 const status = getProspectStatus(selectedProspect.id);
-                const isContactsActive = status?.currentStep?.toLowerCase().includes('contact') || status?.currentStep?.toLowerCase().includes('extracting');
-                return !isContactsActive && (selectedProspect.primary_contact_email || selectedProspect.primary_contact_name);
+                const isContactsActive = status?.currentStep?.toLowerCase().includes('contact') || 
+                                       status?.currentStep?.toLowerCase().includes('extracting');
+                const isContactsCompleted = status?.progress?.contacts?.completed;
+                
+                return !(isContactsActive && !isContactsCompleted) && (selectedProspect.primary_contact_email || selectedProspect.primary_contact_name);
               })() && (
                 <div>
                   {(() => {

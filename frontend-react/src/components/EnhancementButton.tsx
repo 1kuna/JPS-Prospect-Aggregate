@@ -6,7 +6,6 @@ import { useEnhancementErrorHandler } from './EnhancementErrorBoundary';
 interface EnhancementButtonProps {
   prospect: {
     id: string;
-    enhancement_status?: string | null;
   };
   userId?: number;
   forceRedo?: boolean;
@@ -50,8 +49,7 @@ export function EnhancementButton({
   
   const isQueued = status?.status === 'queued';
   const isProcessing = status?.status === 'processing';
-  const isEnhancingByOther = prospect.enhancement_status === 'in_progress';
-  const isDisabled = isQueued || isProcessing || isEnhancingByOther;
+  const isDisabled = isQueued || isProcessing;
   
   const getButtonContent = () => {
     if (isProcessing) {
@@ -89,15 +87,6 @@ export function EnhancementButton({
             <Cross1Icon className="h-3 w-3 text-red-600" />
           </Button>
         </div>
-      );
-    }
-    
-    if (isEnhancingByOther) {
-      return (
-        <>
-          <ReloadIcon className="mr-2 h-4 w-4 animate-spin" />
-          Being Enhanced by Another User...
-        </>
       );
     }
     

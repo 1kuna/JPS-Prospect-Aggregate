@@ -341,7 +341,8 @@ class EnhancementQueueService:
             _process_contact_enhancement, 
             _process_naics_enhancement,
             _process_title_enhancement,
-            _ensure_extra_is_dict
+            _ensure_extra_is_dict,
+            emit_enhancement_progress
         )
         
         prospect = db_instance.session.query(Prospect).get(queue_item.prospect_id)
@@ -363,21 +364,94 @@ class EnhancementQueueService:
             enhancements = []
             
             # Process each enhancement type
+            # Values processing
+            emit_enhancement_progress(prospect.id, 'values_started', {
+                'force_redo': queue_item.force_redo,
+                'has_existing_value': bool(prospect.estimated_value_single)
+            })
+            
             if _process_value_enhancement(prospect, self.llm_service, queue_item.force_redo):
                 processed = True
                 enhancements.append('values')
+                # Emit values completion event
+                emit_enhancement_progress(prospect.id, 'values_completed', {
+                    'estimated_value_single': str(prospect.estimated_value_single) if prospect.estimated_value_single is not None else None,
+                    'estimated_value_min': str(prospect.estimated_value_min) if prospect.estimated_value_min is not None else None,
+                    'estimated_value_max': str(prospect.estimated_value_max) if prospect.estimated_value_max is not None else None,
+                    'skipped': False
+                })
+            else:
+                # Values were skipped
+                emit_enhancement_progress(prospect.id, 'values_completed', {
+                    'skipped': True,
+                    'reason': 'Already has parsed value' if prospect.estimated_value_single else 'No value text available to parse'
+                })
                 
+            # Contacts processing
+            emit_enhancement_progress(prospect.id, 'contacts_started', {
+                'force_redo': queue_item.force_redo,
+                'has_existing_contact': bool(prospect.primary_contact_email)
+            })
+            
             if _process_contact_enhancement(prospect, self.llm_service, queue_item.force_redo):
                 processed = True
                 enhancements.append('contacts')
+                # Emit contacts completion event
+                emit_enhancement_progress(prospect.id, 'contacts_completed', {
+                    'primary_contact_email': prospect.primary_contact_email,
+                    'primary_contact_name': prospect.primary_contact_name,
+                    'skipped': False
+                })
+            else:
+                # Contacts were skipped
+                emit_enhancement_progress(prospect.id, 'contacts_completed', {
+                    'skipped': True,
+                    'reason': 'Already has contact info' if prospect.primary_contact_email else 'No description available for contact extraction'
+                })
                 
+            # NAICS processing
+            emit_enhancement_progress(prospect.id, 'naics_started', {
+                'force_redo': queue_item.force_redo,
+                'has_existing_naics': bool(prospect.naics and prospect.naics_source == 'llm_inferred')
+            })
+            
             if _process_naics_enhancement(prospect, self.llm_service, queue_item.force_redo):
                 processed = True
                 enhancements.append('naics')
+                # Emit NAICS completion event
+                emit_enhancement_progress(prospect.id, 'naics_completed', {
+                    'naics': prospect.naics,
+                    'naics_description': prospect.naics_description,
+                    'naics_source': prospect.naics_source,
+                    'skipped': False
+                })
+            else:
+                # NAICS was skipped
+                emit_enhancement_progress(prospect.id, 'naics_completed', {
+                    'skipped': True,
+                    'reason': 'Already has LLM-inferred NAICS' if (prospect.naics and prospect.naics_source == 'llm_inferred') else 'No description available for NAICS classification'
+                })
                 
+            # Titles processing
+            emit_enhancement_progress(prospect.id, 'titles_started', {
+                'force_redo': queue_item.force_redo,
+                'has_existing_title': bool(prospect.ai_enhanced_title)
+            })
+            
             if _process_title_enhancement(prospect, self.llm_service, queue_item.force_redo):
                 processed = True
                 enhancements.append('titles')
+                # Emit titles completion event
+                emit_enhancement_progress(prospect.id, 'titles_completed', {
+                    'ai_enhanced_title': prospect.ai_enhanced_title,
+                    'skipped': False
+                })
+            else:
+                # Titles were skipped
+                emit_enhancement_progress(prospect.id, 'titles_completed', {
+                    'skipped': True,
+                    'reason': 'Already has enhanced title' if prospect.ai_enhanced_title else 'No title or description available for enhancement'
+                })
                 
             # Finalize
             if processed or queue_item.force_redo:
@@ -397,6 +471,25 @@ class EnhancementQueueService:
             prospect.enhancement_started_at = None
             prospect.enhancement_user_id = None
             db_instance.session.commit()
+            
+            # Emit completion event (similar to _finalize_enhancement)
+            if processed or queue_item.force_redo:
+                emit_enhancement_progress(prospect.id, 'completed', {
+                    'status': 'completed',
+                    'processed': True,
+                    'enhancements': enhancements,
+                    'ollama_processed_at': prospect.ollama_processed_at.isoformat() if prospect.ollama_processed_at else None,
+                    'model_version': prospect.ollama_model_version
+                })
+            else:
+                # Emit completion event for cases where no processing was needed
+                emit_enhancement_progress(prospect.id, 'completed', {
+                    'status': 'completed',
+                    'processed': False,
+                    'enhancements': [],
+                    'ollama_processed_at': prospect.ollama_processed_at.isoformat() if prospect.ollama_processed_at else None,
+                    'reason': 'Already fully enhanced or no data to enhance'
+                })
             
     def _process_bulk_item(self, queue_item: QueueItem):
         """Process a bulk enhancement operation with interruptibility"""

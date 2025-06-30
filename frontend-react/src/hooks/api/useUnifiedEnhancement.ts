@@ -117,6 +117,7 @@ export function useUnifiedEnhancement() {
             break;
 
           case 'values_completed':
+            console.log(`Values completed for ${prospectId}:`, sseEvent.data);
             newState = {
               progress: {
                 ...currentState.progress,
@@ -150,6 +151,7 @@ export function useUnifiedEnhancement() {
             break;
 
           case 'contacts_completed':
+            console.log(`Contacts completed for ${prospectId}:`, sseEvent.data);
             newState = {
               progress: {
                 ...currentState.progress,
@@ -180,6 +182,7 @@ export function useUnifiedEnhancement() {
             break;
 
           case 'naics_completed':
+            console.log(`NAICS completed for ${prospectId}:`, sseEvent.data);
             newState = {
               progress: {
                 ...currentState.progress,
@@ -210,7 +213,9 @@ export function useUnifiedEnhancement() {
             break;
 
           case 'titles_completed':
+            console.log(`Titles completed for ${prospectId}:`, sseEvent.data);
             newState = {
+              currentStep: undefined, // Clear currentStep immediately when titles complete
               progress: {
                 ...currentState.progress,
                 titles: {
@@ -237,13 +242,34 @@ export function useUnifiedEnhancement() {
 
           case 'completed':
             console.log(`*** COMPLETION EVENT RECEIVED for ${prospectId} ***`, sseEvent.data);
+            
+            // Only mark steps as completed if they actually have some state (were started)
+            // Preserve existing completed/skipped status, don't override steps that weren't touched
+            const finalProgress = { ...currentState.progress };
+            
+            // Only update steps that have been started (have some progress state)
+            if (finalProgress.values) {
+              finalProgress.values = { ...finalProgress.values, completed: true };
+            }
+            if (finalProgress.contacts) {
+              finalProgress.contacts = { ...finalProgress.contacts, completed: true };
+            }
+            if (finalProgress.naics) {
+              finalProgress.naics = { ...finalProgress.naics, completed: true };
+            }
+            if (finalProgress.titles) {
+              finalProgress.titles = { ...finalProgress.titles, completed: true };
+            }
+            
             newState = {
               status: 'completed',
               completedAt: sseEvent.timestamp,
-              currentStep: undefined
+              currentStep: undefined,
+              progress: finalProgress
             };
             
             console.log(`Setting enhancement state to completed for ${prospectId}`, newState);
+            console.log(`Final progress state:`, finalProgress);
             
             // Final cache update - invalidate all prospect queries to ensure fresh data
             console.log(`Invalidating all prospect queries for completed enhancement ${prospectId}`);
@@ -263,19 +289,22 @@ export function useUnifiedEnhancement() {
               });
             }
             
-            // Clean up completed enhancement immediately (no delay)
-            console.log(`Cleaning up SSE connection for completed enhancement ${prospectId}`);
-            setEnhancementStates(prev => {
-              const updated = { ...prev };
-              delete updated[prospectId];
-              console.log(`Removed ${prospectId} from enhancement states`);
-              return updated;
-            });
-            
-            // Disconnect SSE immediately
+            // Disconnect SSE immediately to stop backend from sending more events
+            console.log(`Closing SSE connection for completed enhancement ${prospectId}`);
             eventSource.close();
             sseConnectionsRef.current.delete(prospectId);
-            console.log(`SSE connection closed and removed for ${prospectId}`);
+            
+            // Clean up completed enhancement after a delay to allow UI to show completion
+            setTimeout(() => {
+              console.log(`Cleaning up completed enhancement state for ${prospectId} after delay`);
+              setEnhancementStates(prev => {
+                const updated = { ...prev };
+                delete updated[prospectId];
+                console.log(`Removed ${prospectId} from enhancement states`);
+                return updated;
+              });
+            }, 5000); // Keep completed state for 5 seconds
+            
             break;
 
           case 'failed':
