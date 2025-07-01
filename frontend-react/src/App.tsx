@@ -8,7 +8,6 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ProspectEnhancementProvider } from './contexts/ProspectEnhancementContext';
 import { TimezoneProvider } from './contexts/TimezoneContext';
 import { useAuth } from './components/AuthProvider';
-import styles from './App.module.css';
 
 // Lazy load pages
 const Prospects = lazy(() => import('./pages/Prospects'));
@@ -18,10 +17,19 @@ const DirectDatabaseAccess = lazy(() => import('./pages/DirectDatabaseAccess'));
 const Advanced = lazy(() => import('./pages/Advanced'));
 
 // Loading fallback - replaced complex skeleton with simple text
-const PageSkeleton = () => <div className={styles.pageSkeleton}>Loading page...</div>;
+const PageSkeleton = () => <div className="flex justify-center items-center min-h-[80vh] text-xl text-muted-foreground">Loading page...</div>;
 
-// Create a client
-const queryClient = new QueryClient();
+// Create a client with optimized defaults for auth queries
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      // Global defaults for all queries
+      retry: 1,
+      refetchOnWindowFocus: false,
+      staleTime: 5 * 60 * 1000, // 5 minutes for most data
+    },
+  },
+});
 
 // Wrapper component to pass user data to TimezoneProvider
 function AppWithProviders() {
@@ -32,7 +40,7 @@ function AppWithProviders() {
       <ProspectEnhancementProvider>
         <Router>
           <AuthGuard>
-            <div className={styles.appContainer}>
+            <div className="min-h-screen bg-background transition-colors duration-200">
               <Navigation />
               <Suspense fallback={<PageSkeleton />}>
                 <Routes>

@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { get, post } from '@/utils/apiUtils';
 import { 
   ApiResponse, 
   User, 
@@ -12,78 +13,41 @@ const API_BASE = '/api/auth';
 // Auth API functions
 const authApi = {
   signUp: async (data: SignUpRequest): Promise<ApiResponse<{ user: User; message: string }>> => {
-    const response = await fetch(`${API_BASE}/signup`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify(data),
-    });
-    
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.message || 'Sign up failed');
-    }
-    
-    return response.json();
+    return await post<ApiResponse<{ user: User; message: string }>>(
+      `${API_BASE}/signup`, 
+      data,
+      { credentials: 'include' }
+    );
   },
 
   signIn: async (data: SignInRequest): Promise<ApiResponse<{ user: User; message: string }>> => {
-    const response = await fetch(`${API_BASE}/signin`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify(data),
-    });
-    
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.message || 'Sign in failed');
-    }
-    
-    return response.json();
+    return await post<ApiResponse<{ user: User; message: string }>>(
+      `${API_BASE}/signin`,
+      data,
+      { credentials: 'include' }
+    );
   },
 
   signOut: async (): Promise<ApiResponse<{ message: string }>> => {
-    const response = await fetch(`${API_BASE}/signout`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-    });
-    
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.message || 'Sign out failed');
-    }
-    
-    return response.json();
+    return await post<ApiResponse<{ message: string }>>(
+      `${API_BASE}/signout`,
+      undefined,
+      { credentials: 'include' }
+    );
   },
 
   getStatus: async (): Promise<ApiResponse<AuthStatus>> => {
-    const response = await fetch(`${API_BASE}/status`, {
-      method: 'GET',
-      credentials: 'include',
-    });
-    
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.message || 'Failed to get auth status');
-    }
-    
-    return response.json();
+    return await get<ApiResponse<AuthStatus>>(
+      `${API_BASE}/status`,
+      { credentials: 'include' }
+    );
   },
 
   getCurrentUser: async (): Promise<ApiResponse<{ user: User }>> => {
-    const response = await fetch(`${API_BASE}/me`, {
-      method: 'GET',
-      credentials: 'include',
-    });
-    
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.message || 'Failed to get current user');
-    }
-    
-    return response.json();
+    return await get<ApiResponse<{ user: User }>>(
+      `${API_BASE}/me`,
+      { credentials: 'include' }
+    );
   },
 };
 
@@ -93,7 +57,8 @@ export const useAuthStatus = () => {
     queryKey: ['auth', 'status'],
     queryFn: authApi.getStatus,
     retry: false,
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: 0, // Always consider auth data stale for immediate updates
+    refetchOnWindowFocus: false, // Prevent unnecessary refetches on focus
   });
 };
 
@@ -141,9 +106,23 @@ export const useSignOut = () => {
   
   return useMutation({
     mutationFn: authApi.signOut,
-    onSuccess: () => {
-      // Clear all queries when user signs out
+    onSuccess: async () => {
+      // Set auth status to unauthenticated immediately for instant UI update
+      queryClient.setQueryData(['auth', 'status'], {
+        data: {
+          authenticated: false,
+          user: null
+        }
+      });
+      
+      // Clear all cached data
       queryClient.clear();
+      
+      // Force immediate refetch of auth status to ensure consistency
+      await queryClient.refetchQueries({ 
+        queryKey: ['auth', 'status'], 
+        type: 'active' 
+      });
     },
   });
 };
