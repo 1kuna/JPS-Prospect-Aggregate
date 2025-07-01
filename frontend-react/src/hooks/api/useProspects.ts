@@ -20,7 +20,7 @@ async function fetchProspectsAPI(
 ): Promise<PaginatedProspectsResponse> {
   console.log(`Fetching prospects... pageParam (0-indexed): ${pageParam}, filters:`, filters);
   
-  const params: Record<string, string | number | boolean> = {
+  const params: Record<string, string | number | boolean | Array<string | number>> = {
     page: pageParam + 1, // Backend is 1-indexed
     limit: 10,
     ...filters
@@ -29,7 +29,14 @@ async function fetchProspectsAPI(
   console.log(`Requesting backend page: ${params.page}`);
   
   const url = `/api/prospects${buildQueryString(params)}`;
-  const responseJson = await get(url);
+  const responseJson = await get<{
+    prospects: Prospect[];
+    pagination?: {
+      has_next: boolean;
+      page: number;
+      total_items: number;
+    };
+  }>(url);
   
   console.log('[useProspects.ts] Raw responseJson from backend:', responseJson);
 

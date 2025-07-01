@@ -164,7 +164,7 @@ export default function Dashboard() {
   const { formatUserDate } = useTimezoneDate();
   
   // Activity monitoring for intelligent polling and refresh
-  const { hasAnyActivity, getActivitySummary, refreshAll } = useEnhancementActivityMonitor();
+  const { hasAnyActivity } = useEnhancementActivityMonitor();
 
   // Enhancement system simplified - unified hooks handle progress and updates
 
@@ -809,7 +809,6 @@ export default function Dashboard() {
                       </TableHeader>
                       <TableBody className="bg-white divide-y divide-gray-200">
                         {table.getRowModel().rows.map((row, rowIndex) => {
-                          const prospect = row.original;
                           const isRecentlyUpdated = false; // Animation removed for performance
                           
                           return (
