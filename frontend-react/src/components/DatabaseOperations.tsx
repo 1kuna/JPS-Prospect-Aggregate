@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button } from '@/components/ui';
+import { Button, Card, CardContent, CardHeader, CardTitle } from '@/components/ui';
 import {
   useDatabaseStatus,
   useDatabaseBackups,
@@ -9,7 +9,6 @@ import {
   useCreateBackup,
   useRestoreBackup
 } from '@/hooks/api/useDatabase';
-import styles from './DatabaseOperations.module.css'; // Import CSS module
 
 export function DatabaseOperations() {
   const [isConfirmingReset, setIsConfirmingReset] = useState(false);
@@ -61,35 +60,35 @@ export function DatabaseOperations() {
                     isInitializing || isResetting || isBackingUp || isRestoring;
 
   return (
-    <div className={styles.cardContainer}>
-      <div className={styles.cardHeader}>
-        <h2 className={styles.cardTitle}>Database Operations</h2>
-      </div>
-      <div className={styles.cardContent}>
+    <Card>
+      <CardHeader>
+        <CardTitle>Database Operations</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
         {/* Database Status */}
         {status && (
-          <div className={styles.statusGrid}>
+          <div className="grid grid-cols-2 gap-4 mb-4">
             <div>
-              <p className={styles.statusLabel}>Database Size</p>
-              <p className={styles.statusValue}>{status.size}</p>
+              <p className="text-sm text-muted-foreground">Database Size</p>
+              <p className="text-lg font-semibold">{status.size}</p>
             </div>
             <div>
-              <p className={styles.statusLabel}>Last Backup</p>
-              <p className={styles.statusValue}>{status.lastBackup || 'Never'}</p>
+              <p className="text-sm text-muted-foreground">Last Backup</p>
+              <p className="text-lg font-semibold">{status.lastBackup || 'Never'}</p>
             </div>
             <div>
-              <p className={styles.statusLabel}>Uptime</p>
-              <p className={styles.statusValue}>{status.uptime}</p>
+              <p className="text-sm text-muted-foreground">Uptime</p>
+              <p className="text-lg font-semibold">{status.uptime}</p>
             </div>
             <div>
-              <p className={styles.statusLabel}>Health</p>
-              <p className={styles.statusValue}>{status.health}</p>
+              <p className="text-sm text-muted-foreground">Health</p>
+              <p className="text-lg font-semibold">{status.health}</p>
             </div>
           </div>
         )}
 
         {/* Operation Buttons */}
-        <div className={styles.buttonGroup}>
+        <div className="flex flex-wrap gap-2">
           <Button
             onClick={handleRebuild}
             disabled={isLoading}
@@ -113,11 +112,11 @@ export function DatabaseOperations() {
 
         {/* Reset Confirmation */}
         {isConfirmingReset ? (
-          <div className={`${styles.alert} ${styles.alertDestructive}`}>
-            <h4 className={styles.alertTitle}>Warning</h4>
-            <p className={styles.alertDescription}>
+          <div className="border border-red-600 bg-red-50 dark:bg-red-900/20 rounded-md p-4">
+            <h4 className="font-semibold text-red-800 dark:text-red-400 mb-1">Warning</h4>
+            <div className="text-sm text-red-700 dark:text-red-300">
               This will permanently delete all data. Are you sure?
-              <div className={styles.confirmButtonGroup}>
+              <div className="flex gap-2 mt-2">
                 <Button
                   variant="destructive"
                   onClick={handleReset}
@@ -133,7 +132,7 @@ export function DatabaseOperations() {
                   Cancel
                 </Button>
               </div>
-            </p>
+            </div>
           </div>
         ) : (
           <Button
@@ -147,17 +146,17 @@ export function DatabaseOperations() {
 
         {/* Backups List */}
         {backups && backups.length > 0 && (
-          <div className={styles.backupsSection}>
-            <h3 className={styles.sectionTitle}>Available Backups</h3>
-            <div className={styles.backupsList}>
+          <div className="mt-4">
+            <h3 className="text-lg font-semibold mb-2">Available Backups</h3>
+            <div className="space-y-2">
               {backups.map((backup: any) => (
                 <div
                   key={backup.id}
-                  className={styles.backupItem}
+                  className="flex items-center justify-between p-2 border rounded"
                 >
                   <div>
-                    <p className={styles.backupTimestamp}>{new Date(backup.timestamp).toLocaleString()}</p>
-                    <p className={styles.statusLabel}>{backup.size}</p>
+                    <p className="font-medium">{new Date(backup.timestamp).toLocaleString()}</p>
+                    <p className="text-sm text-muted-foreground">{backup.size}</p>
                   </div>
                   <Button
                     variant="outline"
@@ -172,7 +171,7 @@ export function DatabaseOperations() {
             </div>
           </div>
         )}
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   );
 } 

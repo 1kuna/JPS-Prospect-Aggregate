@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import axios from 'axios';
+import { get, post, ApiError } from '@/utils/apiUtils';
 
 interface QueueItem {
   id: string;
@@ -48,8 +48,7 @@ export function useEnhancementQueueStatus(refetchInterval: number = 1000) {
   return useQuery<QueueStatus>({
     queryKey: ['enhancement-queue-status'],
     queryFn: async () => {
-      const response = await axios.get('/api/llm/queue/status');
-      return response.data;
+      return await get<QueueStatus>('/api/llm/queue/status');
     },
     refetchInterval,
     staleTime: 500,
@@ -62,8 +61,7 @@ export function useQueueItemStatus(itemId: string | undefined, enabled: boolean 
     queryKey: ['queue-item-status', itemId],
     queryFn: async () => {
       if (!itemId) throw new Error('Item ID is required');
-      const response = await axios.get(`/api/llm/queue/item/${itemId}`);
-      return response.data;
+      return await get<QueueItem>(`/api/llm/queue/item/${itemId}`);
     },
     enabled: enabled && !!itemId,
     refetchInterval: 1000,
@@ -76,18 +74,16 @@ export function useCancelQueueItem() {
   
   return async (itemId: string) => {
     try {
-      const response = await axios.post(`/api/llm/queue/item/${itemId}/cancel`);
+      const response = await post(`/api/llm/queue/item/${itemId}/cancel`);
       
       // Invalidate queue status to refresh
       queryClient.invalidateQueries({ queryKey: ['enhancement-queue-status'] });
       queryClient.invalidateQueries({ queryKey: ['queue-item-status', itemId] });
       
-      return response.data;
+      return response;
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error && 'response' in error 
-        ? (error as { response?: { data?: { error?: string } } }).response?.data?.error 
-        : 'Failed to cancel queue item';
-      throw new Error(errorMessage || 'Failed to cancel queue item');
+      const apiError = error as ApiError;
+      throw new Error(apiError.message || 'Failed to cancel queue item');
     }
   };
 }
@@ -97,17 +93,15 @@ export function useStartQueueWorker() {
   
   return async () => {
     try {
-      const response = await axios.post('/api/llm/queue/start-worker');
+      const response = await post('/api/llm/queue/start-worker');
       
       // Invalidate queue status to refresh
       queryClient.invalidateQueries({ queryKey: ['enhancement-queue-status'] });
       
-      return response.data;
+      return response;
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error && 'response' in error 
-        ? (error as { response?: { data?: { error?: string } } }).response?.data?.error 
-        : 'Failed to start queue worker';
-      throw new Error(errorMessage || 'Failed to start queue worker');
+      const apiError = error as ApiError;
+      throw new Error(apiError.message || 'Failed to start queue worker');
     }
   };
 }
@@ -117,17 +111,15 @@ export function useStopQueueWorker() {
   
   return async () => {
     try {
-      const response = await axios.post('/api/llm/queue/stop-worker');
+      const response = await post('/api/llm/queue/stop-worker');
       
       // Invalidate queue status to refresh
       queryClient.invalidateQueries({ queryKey: ['enhancement-queue-status'] });
       
-      return response.data;
+      return response;
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error && 'response' in error 
-        ? (error as { response?: { data?: { error?: string } } }).response?.data?.error 
-        : 'Failed to stop queue worker';
-      throw new Error(errorMessage || 'Failed to stop queue worker');
+      const apiError = error as ApiError;
+      throw new Error(apiError.message || 'Failed to stop queue worker');
     }
   };
 }

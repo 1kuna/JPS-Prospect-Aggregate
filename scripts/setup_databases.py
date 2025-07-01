@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
 """
-Setup script to initialize both user and business databases.
-Run this to set up the complete Go/No-Go feature system.
+Comprehensive database setup script that:
+1. Initializes the user authentication database
+2. Runs Flask migrations for the business database
+3. Populates initial data sources
+4. Verifies database creation
+
+Run this for complete database setup.
 """
 
 import os
@@ -65,8 +70,17 @@ def main():
         print("\n❌ Failed to run migrations. Please check the error above.")
         return False
     
-    # Step 3: Check if databases were created
-    print("\n📦 Step 3: Verifying Database Creation")
+    # Step 3: Populate data sources
+    print("\n📦 Step 3: Populating Data Sources")
+    if not run_command(
+        "python scripts/populate_data_sources.py",
+        "Adding initial data sources"
+    ):
+        print("\n⚠️  Warning: Failed to populate data sources. You can run this manually later.")
+        # Don't fail the setup for this
+    
+    # Step 4: Check if databases were created
+    print("\n📦 Step 4: Verifying Database Creation")
     data_dir = Path("data")
     user_db = data_dir / "jps_users.db"
     business_db = data_dir / "jps_aggregate.db"

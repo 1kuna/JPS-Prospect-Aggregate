@@ -57,8 +57,11 @@ export const useAuthStatus = () => {
     queryKey: ['auth', 'status'],
     queryFn: authApi.getStatus,
     retry: false,
-    staleTime: 0, // Always consider auth data stale for immediate updates
-    refetchOnWindowFocus: false, // Prevent unnecessary refetches on focus
+    staleTime: 0, // Always fresh
+    gcTime: 0, // Never cache
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: true,
+    structuralSharing: false, // Ensure new object references trigger re-renders
   });
 };
 
@@ -106,8 +109,8 @@ export const useSignOut = () => {
   
   return useMutation({
     mutationFn: authApi.signOut,
-    onSuccess: async () => {
-      // Set auth status to unauthenticated immediately for instant UI update
+    onSuccess: () => {
+      // Immediately set auth status to false
       queryClient.setQueryData(['auth', 'status'], {
         data: {
           authenticated: false,
@@ -115,14 +118,15 @@ export const useSignOut = () => {
         }
       });
       
-      // Clear all cached data
-      queryClient.clear();
+      // Invalidate all queries to force refetch
+      queryClient.invalidateQueries();
       
-      // Force immediate refetch of auth status to ensure consistency
-      await queryClient.refetchQueries({ 
-        queryKey: ['auth', 'status'], 
-        type: 'active' 
-      });
+      // Clear all other cached data after a small delay
+      setTimeout(() => {
+        queryClient.removeQueries({
+          predicate: (query) => query.queryKey[0] !== 'auth'
+        });
+      }, 100);
     },
   });
 };

@@ -16,13 +16,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 3. Copy `.env.example` to `.env` and adjust settings if needed
 4. Initialize database:
    ```bash
-   # Complete database setup (recommended)
+   # Complete database setup (includes all initialization steps)
    python scripts/setup_databases.py
-   
-   # Or manual setup
-   python scripts/init_user_database.py
-   flask db upgrade
-   python scripts/populate_data_sources.py
    ```
 5. Install frontend dependencies:
    ```bash

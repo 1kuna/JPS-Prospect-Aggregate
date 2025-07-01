@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import axios from 'axios';
+import { get, post } from '@/utils/apiUtils';
 
 export type EnhancementType = 'all' | 'values' | 'contacts' | 'naics' | 'titles';
 
@@ -40,8 +40,7 @@ export function useStartIterativeEnhancement() {
   
   return useMutation<OperationResult, Error, StartEnhancementRequest>({
     mutationFn: async (data) => {
-      const response = await axios.post('/api/llm/iterative/start', data);
-      return response.data;
+      return await post<OperationResult>('/api/llm/iterative/start', data);
     },
     onSuccess: () => {
       // Invalidate progress query to trigger refresh
@@ -57,8 +56,7 @@ export function useStopIterativeEnhancement() {
   
   return useMutation<OperationResult, Error>({
     mutationFn: async () => {
-      const response = await axios.post('/api/llm/iterative/stop');
-      return response.data;
+      return await post<OperationResult>('/api/llm/iterative/stop');
     },
     onSuccess: () => {
       // Invalidate progress query
@@ -74,8 +72,7 @@ export function useIterativeProgress(enabled = true) {
   return useQuery<IterativeProgress>({
     queryKey: ['iterative-progress'],
     queryFn: async () => {
-      const response = await axios.get('/api/llm/iterative/progress');
-      return response.data;
+      return await get<IterativeProgress>('/api/llm/iterative/progress');
     },
     refetchInterval: (query) => {
       const data = query.state.data;

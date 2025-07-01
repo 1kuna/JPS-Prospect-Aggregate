@@ -297,8 +297,8 @@ class GoNoGoDecision(db.Model):
     def __repr__(self):
         return f"<GoNoGoDecision(id={self.id}, prospect_id='{self.prospect_id}', user_id={self.user_id}, decision='{self.decision}')>"
 
-    def to_dict(self):
-        return {
+    def to_dict(self, include_user=False, user_data=None):
+        result = {
             "id": self.id,
             "prospect_id": self.prospect_id,
             "user_id": self.user_id,
@@ -307,6 +307,11 @@ class GoNoGoDecision(db.Model):
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None
         }
+        
+        if include_user and user_data:
+            result["user"] = user_data
+            
+        return result
 
 
 class FileProcessingLog(db.Model):

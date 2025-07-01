@@ -1,8 +1,23 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import axios from 'axios';
-import { EnhancementState } from './useEnhancementSSE';
+import { post, del, ApiError } from '@/utils/apiUtils';
 import { useEnhancementQueueStatus } from './useEnhancementQueue';
 import { useQueryClient } from '@tanstack/react-query';
+
+export interface EnhancementState {
+  status: 'idle' | 'queued' | 'processing' | 'completed' | 'failed';
+  queuePosition?: number;
+  currentStep?: string;
+  progress: {
+    values?: { completed: boolean; skipped?: boolean; data?: any };
+    contacts?: { completed: boolean; skipped?: boolean; data?: any };
+    naics?: { completed: boolean; skipped?: boolean; data?: any };
+    titles?: { completed: boolean; skipped?: boolean; data?: any };
+  };
+  error?: string;
+  startedAt?: string;
+  completedAt?: string;
+  estimatedTimeRemaining?: number;
+}
 
 interface EnhancementRequest {
   prospect_id: string;
@@ -399,14 +414,14 @@ export function useUnifiedEnhancement() {
     
     try {
       // Add to backend queue
-      const response = await axios.post('/api/llm/enhance-single', {
+      const response = await post<{ queue_item_id: string; position?: number }>('/api/llm/enhance-single', {
         prospect_id: request.prospect_id,
         enhancement_type: 'all',
         force_redo: request.force_redo,
         user_id: request.user_id
       });
 
-      const queueItemId = response.data.queue_item_id;
+      const queueItemId = response.queue_item_id;
 
       // Update local state
       setEnhancementStates(prev => ({
@@ -414,7 +429,7 @@ export function useUnifiedEnhancement() {
         [prospect_id]: {
           queueItemId,
           status: 'queued',
-          queuePosition: response.data.position || (queueStatus?.queue_size || 0) + 1
+          queuePosition: response.position || (queueStatus?.queue_size || 0) + 1
         }
       }));
 
@@ -434,10 +449,10 @@ export function useUnifiedEnhancement() {
 
       return queueItemId;
     } catch (error: unknown) {
-      const axiosError = error as { response?: { status: number; data: { error: string } }; message?: string };
-      const errorMessage = axiosError.response?.status === 409 
-        ? `Enhancement blocked: ${axiosError.response.data.error}` 
-        : `Failed to queue enhancement: ${axiosError.message || 'Unknown error'}`;
+      const apiError = error as ApiError;
+      const errorMessage = apiError.status === 409 
+        ? `Enhancement blocked: ${apiError.message}` 
+        : `Failed to queue enhancement: ${apiError.message || 'Unknown error'}`;
 
       setEnhancementStates(prev => ({
         ...prev,
@@ -528,7 +543,7 @@ export function useUnifiedEnhancement() {
     }
 
     try {
-      await axios.delete(`/api/llm/enhancement-queue/${state.queueItemId}`);
+      await del(`/api/llm/enhancement-queue/${state.queueItemId}`);
       
       // Remove from local state
       setEnhancementStates(prev => {

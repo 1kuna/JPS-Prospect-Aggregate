@@ -1,5 +1,4 @@
 import React from 'react';
-// import styles from './PageLayout.module.css'; // Removed CSS module import
 
 interface PageLayoutProps {
   title?: string;
