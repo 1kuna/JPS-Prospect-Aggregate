@@ -38,6 +38,7 @@ export interface DuplicateScanProgress {
   elapsed_time?: number;
   eta?: number;
   duplicates_found?: number;
+  results?: unknown; // Results when scan is completed
 }
 
 // Scraper run response

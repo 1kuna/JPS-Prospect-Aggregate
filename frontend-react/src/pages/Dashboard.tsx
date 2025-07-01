@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/dialog";
 import { useProspectEnhancement } from '@/contexts/ProspectEnhancementContext';
 import { useTimezoneDate } from '@/hooks/useTimezoneDate';
-import { usePollingUpdates } from '@/hooks/usePollingUpdates';
+import { useEnhancementActivityMonitor } from '@/hooks/useEnhancementActivityMonitor';
 import { ReloadIcon } from '@radix-ui/react-icons';
 import { Switch } from '@/components/ui/switch';
 import { GoNoGoDecision } from '@/components/GoNoGoDecision';
@@ -163,13 +163,8 @@ export default function Dashboard() {
   // Timezone hook for date formatting
   const { formatUserDate } = useTimezoneDate();
   
-  // Polling-based real-time updates hook
-  const { isPolling, hasActiveEnhancements, isProspectRecentlyUpdated } = usePollingUpdates({
-    onProspectUpdate: (prospectId, updates) => {
-      console.log(`Prospect ${prospectId} updated:`, updates);
-    },
-    enableAnimations: true
-  });
+  // Activity monitoring for intelligent polling and refresh
+  const { hasAnyActivity, getActivitySummary, refreshAll } = useEnhancementActivityMonitor();
 
   // Enhancement system simplified - unified hooks handle progress and updates
 
@@ -184,7 +179,7 @@ export default function Dashboard() {
     queryFn: () => fetchProspects(currentPage, itemsPerPage, filters),
     placeholderData: keepPreviousData,
     staleTime: 5000, // Data stays fresh for 5 seconds
-    refetchInterval: 30000, // Default refetch every 30 seconds
+    refetchInterval: hasAnyActivity ? 2000 : 30000, // Faster refetch during activity
     refetchOnWindowFocus: false, // Don't refetch when tab gains focus
   });
 
@@ -233,7 +228,7 @@ export default function Dashboard() {
         return (
           <div className="w-full truncate" title={title}>
             <span className={isAIEnhanced ? 'text-blue-700 font-medium' : ''}>
-              {value || 'No Title'}
+              {String(value) || 'No Title'}
             </span>
           </div>
         );
@@ -245,7 +240,7 @@ export default function Dashboard() {
       header: 'Agency',
       cell: info => {
         const value = info.getValue();
-        return <div className="w-full truncate" title={value || 'N/A'}>{value || 'N/A'}</div>;
+        return <div className="w-full truncate" title={String(value) || 'N/A'}>{String(value) || 'N/A'}</div>;
       },
       size: 200,
     }),
@@ -335,7 +330,7 @@ export default function Dashboard() {
       header: 'Type',
       cell: info => {
         const value = info.getValue();
-        return <div className="w-full truncate" title={value || 'N/A'}>{value || 'N/A'}</div>;
+        return <div className="w-full truncate" title={String(value) || 'N/A'}>{String(value) || 'N/A'}</div>;
       },
       size: 150,
     }),
@@ -745,9 +740,9 @@ export default function Dashboard() {
               <div className="flex items-center space-x-4">
                 {/* Real-time connection status */}
                 <div className="flex items-center space-x-2">
-                  <div className={`w-2 h-2 rounded-full ${isPolling ? 'bg-green-500' : 'bg-red-500'} animate-pulse`}></div>
+                  <div className={`w-2 h-2 rounded-full ${hasAnyActivity ? 'bg-green-500' : 'bg-gray-500'} ${hasAnyActivity ? 'animate-pulse' : ''}`}></div>
                   <span className="text-xs text-gray-600">
-                    {isPolling ? 'Live updates' : 'Disconnected'}
+                    {hasAnyActivity ? 'Live updates' : 'Idle'}
                   </span>
                 </div>
                 
@@ -815,7 +810,7 @@ export default function Dashboard() {
                       <TableBody className="bg-white divide-y divide-gray-200">
                         {table.getRowModel().rows.map((row, rowIndex) => {
                           const prospect = row.original;
-                          const isRecentlyUpdated = isProspectRecentlyUpdated(prospect.id);
+                          const isRecentlyUpdated = false; // Animation removed for performance
                           
                           return (
                             <TableRow 
@@ -861,11 +856,11 @@ export default function Dashboard() {
                 </>
               )}
                {/* Show polling indicator when actively enhancing or fetching */}
-               {((hasActiveEnhancements && isPolling) || (isFetchingProspects && !isLoadingProspects)) && prospectsData && prospectsData.data.length > 0 && (
+               {(hasAnyActivity || (isFetchingProspects && !isLoadingProspects)) && prospectsData && prospectsData.data.length > 0 && (
                    <div className="absolute top-2 right-2 bg-blue-50/90 backdrop-blur-sm rounded-full px-2 py-1 shadow-sm border border-blue-200 flex items-center gap-1.5 z-10">
                       <div className="animate-spin rounded-full h-3 w-3 border-t-2 border-b-2 border-blue-500"></div>
                       <p className="text-xs font-medium text-blue-700">
-                        {hasActiveEnhancements ? 'AI Enhancing' : 'Updating'}
+                        {hasAnyActivity ? 'AI Enhancing' : 'Updating'}
                       </p>
                   </div>
               )}

@@ -1,5 +1,5 @@
 import { createContext, useContext, ReactNode } from 'react';
-import { useUnifiedEnhancement } from '@/hooks/api/useUnifiedEnhancement';
+import { useEnhancement } from '@/hooks/api/useEnhancement';
 import { EnhancementStepData } from '@/types';
 
 interface ProspectEnhancementStatus {
@@ -38,7 +38,7 @@ export function ProspectEnhancementProvider({ children }: { children: ReactNode 
     cancelEnhancement,
     queueLength,
     isProcessing
-  } = useUnifiedEnhancement();
+  } = useEnhancement();
 
   // Adapt the interface to match existing API
   const contextValue: ProspectEnhancementContextType = {
