@@ -2,5 +2,8 @@ export * from './button';
 export * from './input';
 export * from './label';
 export * from './switch';
-// Add exports for other existing ui components if needed, e.g.:
-// ... existing code ...
+export * from './card';
+export * from './dialog';
+export * from './select';
+export * from './separator';
+export * from './table';

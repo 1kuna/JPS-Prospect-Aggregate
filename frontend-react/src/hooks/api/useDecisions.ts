@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { get, post, del, buildQueryString } from '@/utils/apiUtils';
 import { 
   ApiResponse, 
   GoNoGoDecision, 
@@ -11,75 +12,40 @@ const API_BASE = '/api/decisions';
 // Decision API functions
 const decisionsApi = {
   createDecision: async (data: CreateDecisionRequest): Promise<ApiResponse<{ decision: GoNoGoDecision; message: string }>> => {
-    const response = await fetch(`${API_BASE}/`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify(data),
-    });
-    
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.message || 'Failed to save decision');
-    }
-    
-    return response.json();
+    return await post<ApiResponse<{ decision: GoNoGoDecision; message: string }>>(
+      `${API_BASE}/`,
+      data,
+      { credentials: 'include' }
+    );
   },
 
   getProspectDecisions: async (prospectId: string): Promise<ApiResponse<{ prospect_id: string; decisions: GoNoGoDecision[]; total_decisions: number }>> => {
-    const response = await fetch(`${API_BASE}/${prospectId}`, {
-      method: 'GET',
-      credentials: 'include',
-    });
-    
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.message || 'Failed to get prospect decisions');
-    }
-    
-    return response.json();
+    return await get<ApiResponse<{ prospect_id: string; decisions: GoNoGoDecision[]; total_decisions: number }>>(
+      `${API_BASE}/${prospectId}`,
+      { credentials: 'include' }
+    );
   },
 
   getMyDecisions: async (page = 1, perPage = 50): Promise<ApiResponse<{ decisions: GoNoGoDecision[]; pagination: any }>> => {
-    const response = await fetch(`${API_BASE}/my?page=${page}&per_page=${perPage}`, {
-      method: 'GET',
-      credentials: 'include',
-    });
-    
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.message || 'Failed to get decisions');
-    }
-    
-    return response.json();
+    const queryParams = buildQueryString({ page, per_page: perPage });
+    return await get<ApiResponse<{ decisions: GoNoGoDecision[]; pagination: any }>>(
+      `${API_BASE}/my${queryParams}`,
+      { credentials: 'include' }
+    );
   },
 
   getDecisionStats: async (): Promise<ApiResponse<DecisionStats>> => {
-    const response = await fetch(`${API_BASE}/stats`, {
-      method: 'GET',
-      credentials: 'include',
-    });
-    
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.message || 'Failed to get decision stats');
-    }
-    
-    return response.json();
+    return await get<ApiResponse<DecisionStats>>(
+      `${API_BASE}/stats`,
+      { credentials: 'include' }
+    );
   },
 
   deleteDecision: async (decisionId: number): Promise<ApiResponse<{ message: string }>> => {
-    const response = await fetch(`${API_BASE}/${decisionId}`, {
-      method: 'DELETE',
-      credentials: 'include',
-    });
-    
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.message || 'Failed to delete decision');
-    }
-    
-    return response.json();
+    return await del<ApiResponse<{ message: string }>>(
+      `${API_BASE}/${decisionId}`,
+      { credentials: 'include' }
+    );
   },
 };
 

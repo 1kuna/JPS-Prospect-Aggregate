@@ -1,6 +1,5 @@
 import React from 'react';
 import { PageLayout } from './PageLayout';
-import styles from './DataPageLayout.module.css'; // Import CSS module
 import { Button } from '@/components/ui'; // Updated import
 
 interface DataPageLayoutProps<T> {
@@ -32,8 +31,7 @@ export function DataPageLayout<T>({
   if (loading && (!data || (Array.isArray(data) && data.length === 0))) {
     return (
       <PageLayout title={title} subtitle={subtitle}>
-        {/* Apply loading styles */}
-        <div className={styles.loadingContainer}>
+        <div className="flex justify-center items-center h-[500px]">
           <div>Loading data...</div>
         </div>
       </PageLayout>
@@ -44,16 +42,14 @@ export function DataPageLayout<T>({
   if (error && (!data || (Array.isArray(data) && data.length === 0))) {
     return (
       <PageLayout title={title} subtitle={subtitle}>
-        {/* Apply error box styles */}
-        <div
-          className={styles.errorBox} // Apply CSS module class
-        >
-          <h3 className={styles.errorTitle}>Error loading data</h3>
+        <div className="space-y-4 p-4 border border-red-500 bg-red-50 dark:bg-red-900/20 rounded-md my-4">
+          <h3 className="text-red-700 dark:text-red-400 font-bold">Error loading data</h3>
           <p>{error.message}</p>
           {onRefresh && (
-            <Button // Replaced button
+            <Button
               variant="outline"
               onClick={onRefresh}
+              className="mt-4"
             >
               Retry
             </Button>
@@ -67,21 +63,19 @@ export function DataPageLayout<T>({
   if (!renderChildrenOnEmpty && (!data || (Array.isArray(data) && data.length === 0))) {
     return (
       <PageLayout title={title} subtitle={subtitle}>
-         {/* Apply empty box styles */}
-        <div
-          className={styles.emptyBox} // Apply CSS module class
-        >
-          <h3 className={styles.emptyTitle}>No data available</h3>
+        <div className="p-4 border border-yellow-500 bg-yellow-50 dark:bg-yellow-900/20 rounded-md my-4">
+          <h3 className="font-bold text-yellow-700 dark:text-yellow-400 mb-2">No data available</h3>
           <p>{emptyMessage}</p>
+          {onRefresh && (
+            <Button
+              variant="outline"
+              onClick={onRefresh}
+              className="mt-4"
+            >
+              Refresh
+            </Button>
+          )}
         </div>
-        {onRefresh && (
-          <Button // Replaced button
-            variant="outline"
-            onClick={onRefresh}
-          >
-            Refresh
-          </Button>
-        )}
       </PageLayout>
     );
   }
@@ -89,15 +83,13 @@ export function DataPageLayout<T>({
   // Main content
   return (
     <PageLayout title={title} subtitle={subtitle}>
-      {/* Apply content spacing */}
-      <div className={styles.contentWrapper}> {/* Use CSS module class */}
+      <div className="space-y-4">
         {renderHeader && (
-          // Apply header layout styles
-          <div className={styles.headerWrapper}> {/* Use CSS module class */}
+          <div className="flex justify-between items-center">
             {renderHeader()}
           </div>
         )}
-        {children} {/* Replaced renderContent(data) with children */}
+        {children}
       </div>
     </PageLayout>
   );

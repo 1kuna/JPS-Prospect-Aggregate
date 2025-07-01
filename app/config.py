@@ -19,55 +19,9 @@ ERROR_HTML_DIR = os.path.join(LOGS_DIR, 'error_html')
 for directory in [LOGS_DIR, DATA_DIR, RAW_DATA_DIR, TEMP_DIR, ERROR_SCREENSHOTS_DIR, ERROR_HTML_DIR]:
     os.makedirs(directory, exist_ok=True)
 
-# Define all configuration variables at the module level
-# Logging configuration
-LOG_FORMAT = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-LOG_FILE_MAX_BYTES = int(os.getenv("LOG_FILE_MAX_BYTES", 5 * 1024 * 1024))  # 5MB
-LOG_FILE_BACKUP_COUNT = int(os.getenv("LOG_FILE_BACKUP_COUNT", 3))  # Keep only 3 log files
-LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
-
-# Scraper URLs
-ACQUISITION_GATEWAY_URL = "https://acquisitiongateway.gov/forecast"
-SSA_CONTRACT_FORECAST_URL = "https://www.ssa.gov/osdbu/contract-forecast-intro.html"
-COMMERCE_FORECAST_URL = "https://www.commerce.gov/oam/industry/procurement-forecasts"
-HHS_FORECAST_URL = "https://osdbu.hhs.gov/industry/opportunity-forecast"
-DHS_FORECAST_URL = "https://apfs-cloud.dhs.gov/forecast/"
-DOJ_FORECAST_URL = "https://www.justice.gov/jmd/doj-forecast-contracting-opportunities"
-DOS_FORECAST_URL = "https://www.state.gov/procurement-forecast"
-TREASURY_FORECAST_URL = "https://osdbu.forecast.treasury.gov/"
-DOT_FORECAST_URL = "https://www.transportation.gov/osdbu/procurement-assistance/summary-forecast"
-
-# Database configuration
-# Use separate databases for security isolation
+# Database configuration paths
 DEFAULT_BUSINESS_DB_PATH = os.path.join(DATA_DIR, 'jps_aggregate.db')
 DEFAULT_USER_DB_PATH = os.path.join(DATA_DIR, 'jps_users.db')
-
-# Primary business database (prospects, decisions, etc.)
-DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{DEFAULT_BUSINESS_DB_PATH}")
-
-# Separate user/auth database for security isolation
-USER_DATABASE_URL = os.getenv("USER_DATABASE_URL", f"sqlite:///{DEFAULT_USER_DB_PATH}")
-
-# Redis configuration
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-
-# Scheduler configuration
-SCRAPE_INTERVAL_HOURS = int(os.getenv("SCRAPE_INTERVAL_HOURS", 24))
-HEALTH_CHECK_INTERVAL_MINUTES = int(os.getenv("HEALTH_CHECK_INTERVAL_MINUTES", 10))
-
-# AI data preservation configuration
-PRESERVE_AI_DATA_ON_REFRESH = os.getenv("PRESERVE_AI_DATA_ON_REFRESH", "true").lower() == "true"
-ENABLE_SMART_DUPLICATE_MATCHING = os.getenv("ENABLE_SMART_DUPLICATE_MATCHING", "true").lower() == "true"
-
-# File processing
-CSV_ENCODINGS = ['utf-8', 'latin-1', 'cp1252']
-FILE_FRESHNESS_SECONDS = int(os.getenv("FILE_FRESHNESS_SECONDS", 86400))   # 24 hours
-
-# Playwright timeouts (in milliseconds)
-PAGE_NAVIGATION_TIMEOUT = int(os.getenv("PAGE_NAVIGATION_TIMEOUT", 60000))  # 60 seconds
-PAGE_ELEMENT_TIMEOUT = int(os.getenv("PAGE_ELEMENT_TIMEOUT", 30000))     # 30 seconds
-TABLE_LOAD_TIMEOUT = int(os.getenv("TABLE_LOAD_TIMEOUT", 60000))       # 60 seconds
-DOWNLOAD_TIMEOUT = int(os.getenv("DOWNLOAD_TIMEOUT", 60000))         # 60 seconds
 
 # Application configuration
 class Config:
@@ -88,46 +42,46 @@ class Config:
     ERROR_HTML_DIR: str = ERROR_HTML_DIR
     
     # Playwright timeouts (in milliseconds)
-    PAGE_NAVIGATION_TIMEOUT: int = PAGE_NAVIGATION_TIMEOUT
-    PAGE_ELEMENT_TIMEOUT: int = PAGE_ELEMENT_TIMEOUT
-    TABLE_LOAD_TIMEOUT: int = TABLE_LOAD_TIMEOUT
-    DOWNLOAD_TIMEOUT: int = DOWNLOAD_TIMEOUT
+    PAGE_NAVIGATION_TIMEOUT: int = int(os.getenv("PAGE_NAVIGATION_TIMEOUT", 60000))  # 60 seconds
+    PAGE_ELEMENT_TIMEOUT: int = int(os.getenv("PAGE_ELEMENT_TIMEOUT", 30000))     # 30 seconds
+    TABLE_LOAD_TIMEOUT: int = int(os.getenv("TABLE_LOAD_TIMEOUT", 60000))       # 60 seconds
+    DOWNLOAD_TIMEOUT: int = int(os.getenv("DOWNLOAD_TIMEOUT", 60000))         # 60 seconds
 
     # File processing
-    CSV_ENCODINGS: List[str] = CSV_ENCODINGS
-    FILE_FRESHNESS_SECONDS: int = FILE_FRESHNESS_SECONDS
+    CSV_ENCODINGS: List[str] = ['utf-8', 'latin-1', 'cp1252']
+    FILE_FRESHNESS_SECONDS: int = int(os.getenv("FILE_FRESHNESS_SECONDS", 86400))   # 24 hours
 
     # Scraper URLs
-    ACQUISITION_GATEWAY_URL: str = ACQUISITION_GATEWAY_URL
-    SSA_CONTRACT_FORECAST_URL: str = SSA_CONTRACT_FORECAST_URL
-    COMMERCE_FORECAST_URL: str = COMMERCE_FORECAST_URL
-    HHS_FORECAST_URL: str = HHS_FORECAST_URL
-    DHS_FORECAST_URL: str = DHS_FORECAST_URL
-    DOJ_FORECAST_URL: str = DOJ_FORECAST_URL
-    DOS_FORECAST_URL: str = DOS_FORECAST_URL
-    TREASURY_FORECAST_URL: str = TREASURY_FORECAST_URL
-    DOT_FORECAST_URL: str = DOT_FORECAST_URL
+    ACQUISITION_GATEWAY_URL: str = "https://acquisitiongateway.gov/forecast"
+    SSA_CONTRACT_FORECAST_URL: str = "https://www.ssa.gov/osdbu/contract-forecast-intro.html"
+    COMMERCE_FORECAST_URL: str = "https://www.commerce.gov/oam/industry/procurement-forecasts"
+    HHS_FORECAST_URL: str = "https://osdbu.hhs.gov/industry/opportunity-forecast"
+    DHS_FORECAST_URL: str = "https://apfs-cloud.dhs.gov/forecast/"
+    DOJ_FORECAST_URL: str = "https://www.justice.gov/jmd/doj-forecast-contracting-opportunities"
+    DOS_FORECAST_URL: str = "https://www.state.gov/procurement-forecast"
+    TREASURY_FORECAST_URL: str = "https://osdbu.forecast.treasury.gov/"
+    DOT_FORECAST_URL: str = "https://www.transportation.gov/osdbu/procurement-assistance/summary-forecast"
 
     # Logging configuration
-    LOG_LEVEL: str = LOG_LEVEL
-    LOG_FORMAT: str = LOG_FORMAT
-    LOG_FILE_MAX_BYTES: int = LOG_FILE_MAX_BYTES
-    LOG_FILE_BACKUP_COUNT: int = LOG_FILE_BACKUP_COUNT
+    LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
+    LOG_FORMAT: str = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    LOG_FILE_MAX_BYTES: int = int(os.getenv("LOG_FILE_MAX_BYTES", 5 * 1024 * 1024))  # 5MB
+    LOG_FILE_BACKUP_COUNT: int = int(os.getenv("LOG_FILE_BACKUP_COUNT", 3))  # Keep only 3 log files
 
     # Database configuration
-    SQLALCHEMY_DATABASE_URI: str = DATABASE_URL
-    USER_DATABASE_URI: str = USER_DATABASE_URL
+    SQLALCHEMY_DATABASE_URI: str = os.getenv("DATABASE_URL", f"sqlite:///{DEFAULT_BUSINESS_DB_PATH}")
+    USER_DATABASE_URI: str = os.getenv("USER_DATABASE_URL", f"sqlite:///{DEFAULT_USER_DB_PATH}")
 
     # Scheduler configuration
-    SCRAPE_INTERVAL_HOURS: int = SCRAPE_INTERVAL_HOURS
-    HEALTH_CHECK_INTERVAL_MINUTES: int = HEALTH_CHECK_INTERVAL_MINUTES
+    SCRAPE_INTERVAL_HOURS: int = int(os.getenv("SCRAPE_INTERVAL_HOURS", 24))
+    HEALTH_CHECK_INTERVAL_MINUTES: int = int(os.getenv("HEALTH_CHECK_INTERVAL_MINUTES", 10))
     
     # AI data preservation configuration
-    PRESERVE_AI_DATA_ON_REFRESH: bool = PRESERVE_AI_DATA_ON_REFRESH
-    ENABLE_SMART_DUPLICATE_MATCHING: bool = ENABLE_SMART_DUPLICATE_MATCHING
+    PRESERVE_AI_DATA_ON_REFRESH: bool = os.getenv("PRESERVE_AI_DATA_ON_REFRESH", "true").lower() == "true"
+    ENABLE_SMART_DUPLICATE_MATCHING: bool = os.getenv("ENABLE_SMART_DUPLICATE_MATCHING", "true").lower() == "true"
     
     # Redis configuration
-    REDIS_URL: str = REDIS_URL
+    REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
 
 class DevelopmentConfig(Config):

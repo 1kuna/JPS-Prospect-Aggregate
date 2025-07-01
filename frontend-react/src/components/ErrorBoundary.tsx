@@ -1,5 +1,4 @@
 import React from 'react';
-import styles from './ErrorBoundary.module.css'; // Import CSS module
 
 interface ErrorBoundaryProps {
   fallback?: React.ReactNode;
@@ -65,26 +64,20 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
       
       // Render default fallback UI
       return (
-        <div className={styles.errorContainer}> {/* Use CSS module class */}
-          <h2 className={styles.errorTitle}>Something went wrong</h2>
-          <p className={styles.errorMessage}>{this.state.error?.message || 'An unexpected error occurred'}</p>
+        <div className="p-4 border border-red-500 bg-red-50 rounded-md shadow-md my-4 text-gray-700 dark:border-red-500 dark:bg-red-900/20 dark:text-gray-300">
+          <h2 className="text-red-700 text-lg font-semibold mb-2 dark:text-red-400">Something went wrong</h2>
+          <p className="mb-2">{this.state.error?.message || 'An unexpected error occurred'}</p>
           {this.state.error?.stack && (
-             // Use CSS module class for details container
-            <details className={styles.detailsContainer}>
-               {/* Use CSS module class for summary */}
-              <summary className={styles.detailsSummary}>View technical details</summary>
-              {/* Use CSS module class for pre */}
-              <pre
-                className={styles.detailsPre} // Use CSS module class
-              >
+            <details className="mt-2">
+              <summary className="cursor-pointer text-sm text-gray-600 dark:text-gray-400 list-none [&::-webkit-details-marker]:hidden before:content-['▶_'] before:text-[0.7em] before:mr-1 open:before:content-['▼_']">View technical details</summary>
+              <pre className="mt-2 text-xs overflow-auto p-2 bg-gray-100 dark:bg-gray-700 dark:text-gray-300 rounded whitespace-pre-wrap break-all max-h-[200px]">
                 {this.state.error.stack}
               </pre>
             </details>
           )}
-           {/* Use CSS module class for button container */}
-          <div className={styles.buttonContainer}>
-            <button // Replaced Button with standard <button>
-              className={styles.tryAgainButton} // Use CSS module class
+          <div className="mt-4">
+            <button
+              className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded cursor-pointer bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
               onClick={this.resetErrorState}
             >
               Try again

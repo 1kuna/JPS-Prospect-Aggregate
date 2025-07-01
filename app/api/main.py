@@ -137,8 +137,20 @@ def _execute_database_clear_operation(operation_name: str, clear_function):
         }), 500
 
 @main_bp.route('/database/clear', methods=['POST'])
-def clear_database():
-    """Clear all data from the database."""
+@main_bp.route('/database/clear/<clear_type>', methods=['POST'])
+def clear_database(clear_type='all'):
+    """
+    Clear data from the database based on type.
+    
+    Args:
+        clear_type: Type of data to clear ('all', 'ai', 'original')
+    """
+    if clear_type not in ['all', 'ai', 'original']:
+        return jsonify({
+            'status': 'error',
+            'message': f"Invalid clear type: {clear_type}. Must be 'all', 'ai', or 'original'"
+        }), 400
+    
     def _clear_all_data():
         # Delete all prospects first (due to foreign key constraints)
         prospect_count = db.session.query(func.count(Prospect.id)).scalar()
@@ -167,11 +179,6 @@ def clear_database():
             'response_message': f'Database cleared successfully. Removed {prospect_count} prospects and {status_count} status records.'
         }
     
-    return _execute_database_clear_operation("Database clear", _clear_all_data)
-
-@main_bp.route('/database/clear-ai', methods=['POST'])
-def clear_ai_entries():
-    """Clear only AI-enriched entries from the database."""
     def _clear_ai_data():
         # Count AI-enriched prospects
         ai_prospect_count = db.session.query(func.count(Prospect.id)).filter(
@@ -197,11 +204,6 @@ def clear_ai_entries():
             'response_message': f'AI entries cleared successfully. Removed {ai_prospect_count} AI-enriched prospects, {log_count} enrichment logs, and {output_count} LLM outputs.'
         }
     
-    return _execute_database_clear_operation("AI entries clear", _clear_ai_data)
-
-@main_bp.route('/database/clear-original', methods=['POST'])
-def clear_original_entries():
-    """Clear only non-AI-enriched (original) entries from the database."""
     def _clear_original_data():
         # Count non-AI-enriched prospects
         original_prospect_count = db.session.query(func.count(Prospect.id)).filter(
@@ -220,7 +222,34 @@ def clear_original_entries():
             'response_message': f'Original entries cleared successfully. Removed {original_prospect_count} non-AI-enriched prospects.'
         }
     
-    return _execute_database_clear_operation("Original entries clear", _clear_original_data)
+    # Map clear type to appropriate function
+    clear_functions = {
+        'all': _clear_all_data,
+        'ai': _clear_ai_data,
+        'original': _clear_original_data
+    }
+    
+    operation_names = {
+        'all': 'Database clear',
+        'ai': 'AI entries clear',
+        'original': 'Original entries clear'
+    }
+    
+    return _execute_database_clear_operation(
+        operation_names[clear_type], 
+        clear_functions[clear_type]
+    )
+
+# Legacy route mappings for backward compatibility
+@main_bp.route('/database/clear-ai', methods=['POST'])
+def clear_ai_entries():
+    """Legacy endpoint - redirects to /database/clear/ai"""
+    return clear_database('ai')
+
+@main_bp.route('/database/clear-original', methods=['POST'])
+def clear_original_entries():
+    """Legacy endpoint - redirects to /database/clear/original"""
+    return clear_database('original')
 
 @main_bp.route('/database/status', methods=['GET'])
 def database_status():

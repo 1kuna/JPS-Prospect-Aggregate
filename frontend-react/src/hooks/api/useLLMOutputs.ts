@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import axios from 'axios';
+import { get, buildQueryString } from '@/utils/apiUtils';
 
 export interface LLMOutput {
   id: number;
@@ -26,10 +26,8 @@ export function useLLMOutputs(params: LLMOutputsParams = {}) {
   return useQuery<LLMOutput[]>({
     queryKey: ['llm-outputs', limit, enhancement_type],
     queryFn: async () => {
-      const response = await axios.get('/api/llm/outputs', {
-        params: { limit, enhancement_type }
-      });
-      return response.data;
+      const queryParams = buildQueryString({ limit, enhancement_type });
+      return await get<LLMOutput[]>(`/api/llm/outputs${queryParams}`);
     },
     refetchInterval: 2000, // Refresh every 2 seconds to show new outputs
   });
