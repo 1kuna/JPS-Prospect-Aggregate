@@ -30,7 +30,7 @@ export interface Prospect {
   enhancementStatus?: string;
   enhancementStartedAt?: string;
   enhancementUserId?: number;
-  extra?: any;
+  extra?: Record<string, unknown>;
   link?: string;
   status: ProspectStatus;
   dataSource?: {
@@ -70,4 +70,14 @@ export interface ProspectFilters {
   keywords?: string;
   naics?: string;
   agency?: string;
+}
+
+// Query data structure for prospects
+export interface ProspectsQueryData {
+  data: Prospect[];
+  pagination?: {
+    page: number;
+    pageSize: number;
+    total: number;
+  };
 }

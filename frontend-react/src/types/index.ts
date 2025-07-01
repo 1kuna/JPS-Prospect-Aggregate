@@ -1,4 +1,10 @@
-// Placeholder types index
+// Re-export all types
+export * from './api';
+export * from './prospects';
+export * from './enhancement';
+export * from './database';
+
+// Legacy types - to be moved to appropriate files
 export interface DataSource {
   id: number;
   name: string;

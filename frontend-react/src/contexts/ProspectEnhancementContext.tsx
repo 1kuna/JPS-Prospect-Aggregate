@@ -1,5 +1,21 @@
 import { createContext, useContext, ReactNode } from 'react';
 import { useUnifiedEnhancement } from '@/hooks/api/useUnifiedEnhancement';
+import { EnhancementStepData } from '@/types';
+
+interface ProspectEnhancementStatus {
+  prospect_id: string;
+  status: 'idle' | 'queued' | 'processing' | 'completed' | 'failed';
+  queuePosition?: number;
+  estimatedTimeRemaining?: number;
+  currentStep?: string;
+  progress?: {
+    values?: EnhancementStepData;
+    contacts?: EnhancementStepData;
+    naics?: EnhancementStepData;
+    titles?: EnhancementStepData;
+  };
+  error?: string;
+}
 
 interface ProspectEnhancementContextType {
   addToQueue: (request: {
@@ -7,20 +23,7 @@ interface ProspectEnhancementContextType {
     force_redo?: boolean;
     user_id?: number;
   }) => void;
-  getProspectStatus: (prospect_id: string | undefined) => {
-    prospect_id: string;
-    status: 'idle' | 'queued' | 'processing' | 'completed' | 'failed';
-    queuePosition?: number;
-    estimatedTimeRemaining?: number;
-    currentStep?: string;
-    progress?: {
-      values?: { completed: boolean; skipped?: boolean; data?: any };
-      contacts?: { completed: boolean; skipped?: boolean; data?: any };
-      naics?: { completed: boolean; skipped?: boolean; data?: any };
-      titles?: { completed: boolean; skipped?: boolean; data?: any };
-    };
-    error?: string;
-  } | null;
+  getProspectStatus: (prospect_id: string | undefined) => ProspectEnhancementStatus | null;
   cancelEnhancement: (prospect_id: string) => Promise<boolean>;
   queueLength: number;
   isProcessing: boolean;

@@ -3,25 +3,27 @@ import { DataPageLayout } from '@/components/layout';
 import { useExecuteQuery } from '@/hooks/api/useDatabase';
 import { DatabaseOperations } from '@/components/DatabaseOperations';
 import { Button } from '@/components/ui';
+import { QueryResult } from '@/types';
+import { ApiError } from '@/utils/apiUtils';
 
 export default function DirectDatabaseAccess() {
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<any>(null);
+  const [results, setResults] = useState<QueryResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   
   const { mutate: executeQuery, isPending: isLoading } = useExecuteQuery();
 
   const handleExecute = () => {
     if (!query.trim()) {
-      setResults('Please enter a query.');
+      setError('Please enter a query.');
       return;
     }
     executeQuery({ query: query.trim() }, {
-      onSuccess: (data: any) => {
-        setResults(JSON.stringify(data, null, 2));
+      onSuccess: (data: QueryResult) => {
+        setResults(data);
         setError(null);
       },
-      onError: (error: any) => {
+      onError: (error: Error | ApiError) => {
         setResults(null);
         setError(error.message || 'Query execution failed');
       }
@@ -85,7 +87,7 @@ export default function DirectDatabaseAccess() {
           <div className="mt-4">
             <h3 className="text-lg font-semibold mb-2">Results</h3>
             <pre className="bg-gray-100 dark:bg-gray-800 p-4 rounded overflow-auto max-h-96 whitespace-pre-wrap break-all">
-              {results}
+              {JSON.stringify(results, null, 2)}
             </pre>
           </div>
         )}

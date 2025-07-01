@@ -67,3 +67,16 @@ export interface CreateDecisionRequest {
 }
 
 // Type definition for API error response
+export interface ApiErrorData {
+  error?: string;
+  message?: string;
+  status_code?: number;
+  details?: Record<string, unknown>;
+}
+
+// Extended pagination with optional fields
+export interface PaginationMeta extends PaginationData {
+  totalPages?: number;
+  hasNext?: boolean;
+  hasPrevious?: boolean;
+}

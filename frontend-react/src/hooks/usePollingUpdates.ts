@@ -1,8 +1,13 @@
 import { useEffect, useCallback, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { Prospect, ProspectsQueryData } from '@/types';
+
+interface ProspectUpdate {
+  [key: string]: unknown;
+}
 
 interface PollingOptions {
-  onProspectUpdate?: (prospectId: string, updates: any) => void;
+  onProspectUpdate?: (prospectId: string, updates: ProspectUpdate) => void;
   enableAnimations?: boolean;
   baseInterval?: number; // Base polling interval in ms
   activeInterval?: number; // Faster polling during active enhancements
@@ -48,16 +53,16 @@ export const usePollingUpdates = (options: PollingOptions = {}) => {
   const checkForUpdates = useCallback(async () => {
     try {
       // Get current prospects data
-      const currentData = queryClient.getQueryData(['prospects']);
-      if (!currentData || !(currentData as any).data) {
+      const currentData = queryClient.getQueryData<ProspectsQueryData>(['prospects']);
+      if (!currentData || !currentData.data) {
         return;
       }
 
-      const prospects = (currentData as any).data;
+      const prospects = currentData.data;
       const updatedProspects: string[] = [];
 
       // Check each prospect for updates
-      prospects.forEach((prospect: any) => {
+      prospects.forEach((prospect: Prospect) => {
         const lastSeen = lastSeenTimestamps.current.get(prospect.id);
         const currentTimestamp = prospect.ollama_processed_at || prospect.loaded_at;
         

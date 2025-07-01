@@ -70,7 +70,7 @@ interface Prospect {
   enhancement_status: string | null; // NEW: 'idle', 'in_progress', 'failed'
   enhancement_started_at: string | null; // NEW: When enhancement started
   enhancement_user_id: number | null; // NEW: User ID who started enhancement
-  extra: Record<string, any> | null; // JSON object
+  extra: Record<string, unknown> | null; // JSON object
   source_id: number | null;
   source_name: string | null; // Name of the data source
 }
