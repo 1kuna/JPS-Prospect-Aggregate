@@ -4,18 +4,10 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { useTimezoneDate } from '@/hooks/useTimezoneDate';
-
-import { 
-  useAIEnrichmentStatus
-} from '@/hooks/api/useAIEnrichment';
-import {
-  useStartIterativeEnhancement,
-  useStopIterativeEnhancement,
-  useIterativeProgress,
-  type EnhancementType
-} from '@/hooks/api/useIterativeEnrichment';
-import { useLLMOutputs } from '@/hooks/api/useLLMOutputs';
+import { useEnhancementQueueService } from '@/hooks/api/useEnhancementQueueService';
 import { PlayIcon, StopIcon, ChevronDownIcon, ChevronRightIcon } from '@radix-ui/react-icons';
+
+type EnhancementType = 'all' | 'values' | 'contacts' | 'naics' | 'titles';
 
 export function AIEnrichment() {
   const [enhancementType, setEnhancementType] = useState<EnhancementType>('all');
@@ -24,12 +16,19 @@ export function AIEnrichment() {
   
   const { formatLastProcessed, formatUserDate } = useTimezoneDate();
   
-  const { data: status, isLoading: isLoadingStatus } = useAIEnrichmentStatus();
-
-  const { data: progress } = useIterativeProgress();
-  const { data: llmOutputs, isLoading: isLoadingOutputs } = useLLMOutputs({ enhancement_type: enhancementType });
-  const startMutation = useStartIterativeEnhancement();
-  const stopMutation = useStopIterativeEnhancement();
+  const {
+    enrichmentStatus: status,
+    iterativeProgress: progress,
+    llmOutputs,
+    isLoadingEnrichment: isLoadingStatus,
+    isLoadingLLMOutputs: isLoadingOutputs,
+    startIterative,
+    stopIterative,
+    isStartingIterative,
+    isStoppingIterative
+  } = useEnhancementQueueService({
+    llmOutputsType: enhancementType
+  });
 
   const isProcessing = progress?.status === 'processing' || progress?.status === 'stopping';
   
@@ -38,14 +37,14 @@ export function AIEnrichment() {
   console.log('Is Processing:', isProcessing);
 
   const handleStart = () => {
-    startMutation.mutate({ 
+    startIterative({ 
       enhancement_type: enhancementType,
       skip_existing: skipExisting === 'skip'
     });
   };
 
   const handleStop = () => {
-    stopMutation.mutate();
+    stopIterative();
   };
 
   // Removed local formatDate function - using timezone-aware formatting
@@ -256,7 +255,7 @@ export function AIEnrichment() {
                 {!isProcessing ? (
                   <Button
                     onClick={handleStart}
-                    disabled={startMutation.isPending}
+                    disabled={isStartingIterative}
                     className="w-full bg-green-600 hover:bg-green-700 text-white"
                   >
                     <PlayIcon className="mr-2 h-4 w-4 text-white" />
@@ -265,7 +264,7 @@ export function AIEnrichment() {
                 ) : (
                   <Button
                     onClick={handleStop}
-                    disabled={stopMutation.isPending || progress?.status === 'stopping'}
+                    disabled={isStoppingIterative || progress?.status === 'stopping'}
                     variant="destructive"
                     className="w-full bg-red-600 hover:bg-red-700 text-white disabled:bg-gray-400 disabled:text-gray-200"
                   >
@@ -322,9 +321,9 @@ export function AIEnrichment() {
               )}
 
               {/* Error Messages */}
-              {(startMutation.isError || stopMutation.isError) && (
+              {progress?.error_message && (
                 <div className="text-red-600 text-sm">
-                  Error: {startMutation.error?.message || stopMutation.error?.message || 'Operation failed'}
+                  Error: {progress.error_message}
                 </div>
               )}
 
@@ -388,17 +387,17 @@ export function AIEnrichment() {
                           {/* Quick summary of result when collapsed */}
                           {!isExpanded && output.parsed_result && (
                             <div className="ml-6 mt-1 text-xs text-gray-600">
-                              {output.enhancement_type === 'naics' && output.parsed_result.code && (
-                                <span>NAICS: {output.parsed_result.code} - {output.parsed_result.description}</span>
+                              {output.enhancement_type === 'naics' && 'code' in output.parsed_result && (
+                                <span>NAICS: {String(output.parsed_result.code)} - {'description' in output.parsed_result ? String(output.parsed_result.description) : ''}</span>
                               )}
-                              {output.enhancement_type === 'values' && output.parsed_result.single && (
-                                <span>Value: ${output.parsed_result.single.toLocaleString()}</span>
+                              {output.enhancement_type === 'values' && 'single' in output.parsed_result && (
+                                <span>Value: ${Number(output.parsed_result.single).toLocaleString()}</span>
                               )}
-                              {output.enhancement_type === 'contacts' && (output.parsed_result.name || output.parsed_result.email) && (
-                                <span>Contact: {output.parsed_result.name} {output.parsed_result.email && `<${output.parsed_result.email}>`}</span>
+                              {output.enhancement_type === 'contacts' && ('name' in output.parsed_result || 'email' in output.parsed_result) && (
+                                <span>Contact: {'name' in output.parsed_result ? String(output.parsed_result.name) : ''} {'email' in output.parsed_result && output.parsed_result.email ? `<${String(output.parsed_result.email)}>` : ''}</span>
                               )}
-                              {output.enhancement_type === 'titles' && output.parsed_result.enhanced_title && (
-                                <span>Enhanced Title: {output.parsed_result.enhanced_title}</span>
+                              {output.enhancement_type === 'titles' && 'enhanced_title' in output.parsed_result && (
+                                <span>Enhanced Title: {String(output.parsed_result.enhanced_title)}</span>
                               )}
                             </div>
                           )}

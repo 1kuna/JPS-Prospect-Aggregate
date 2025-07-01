@@ -63,9 +63,9 @@ export function DuplicateReview() {
   });
 
   // Progress polling query
-  const { data: progressData } = useQuery({
+  const { data: progressData } = useQuery<{ data: DuplicateScanProgress } | null>({
     queryKey: ['duplicateProgress', currentScanId],
-    queryFn: () => currentScanId ? get(`/api/duplicates/progress/${currentScanId}`) : null,
+    queryFn: () => currentScanId ? get<{ data: DuplicateScanProgress }>(`/api/duplicates/progress/${currentScanId}`) : null,
     enabled: !!currentScanId,
     refetchInterval: currentScanId ? 1000 : false, // Poll every second when scanning
   });
@@ -82,7 +82,7 @@ export function DuplicateReview() {
       setScanProgress(null);
       setCurrentScanId(null);
       
-      const result = await post('/api/duplicates/detect', {
+      const result = await post<{ status: string; data: DuplicateDetectionResult & { scan_id?: string } }>('/api/duplicates/detect', {
         source_id: selectedSourceId,
         min_confidence: minConfidence,
         limit: scanLimit || 10000, // Use a high number when "All" is selected
@@ -285,7 +285,7 @@ export function DuplicateReview() {
     }
 
     // If we have actual progress data, show detailed progress
-    if (scanProgress && scanProgress.total > 0) {
+    if (scanProgress && scanProgress.total && scanProgress.total > 0) {
       const percentage = scanProgress.percentage || 0;
       const eta = scanProgress.eta;
 
@@ -446,12 +446,12 @@ export function DuplicateReview() {
             <div className="flex space-x-2">
               <button
                 onClick={() => {
-                  const allGroupIndexes = duplicateGroups.map((_, i) => i);
+                  const allGroupIndexes = duplicateGroups.map((_, i: number) => i);
                   setSelectedGroups(new Set(allGroupIndexes));
                   
                   // Initialize keep records for all groups (default to original)
                   const newKeepRecords = new Map(selectedKeepRecords);
-                  allGroupIndexes.forEach((groupIndex) => {
+                  allGroupIndexes.forEach((groupIndex: number) => {
                     if (!newKeepRecords.has(groupIndex)) {
                       newKeepRecords.set(groupIndex, duplicateGroups[groupIndex].original.id);
                     }
@@ -489,7 +489,7 @@ export function DuplicateReview() {
           </CardHeader>
           <CardContent>
             <div className="space-y-6">
-              {duplicateGroups.map((group, groupIndex) => (
+              {duplicateGroups.map((group: DuplicateGroup, groupIndex: number) => (
                 <div
                   key={groupIndex}
                   className={`border rounded-lg p-4 ${
@@ -569,7 +569,7 @@ export function DuplicateReview() {
                       🔄 Potential Duplicates ({group.matches.length})
                     </h4>
                     <div className="space-y-3">
-                      {group.matches.map((match, matchIndex) => (
+                      {group.matches.map((match: DuplicateMatch, matchIndex: number) => (
                         <div key={matchIndex} className={`rounded p-3 text-sm border ${
                           selectedGroups.has(groupIndex) && selectedKeepRecords.get(groupIndex) === match.id
                             ? 'bg-blue-100 border-blue-300'
