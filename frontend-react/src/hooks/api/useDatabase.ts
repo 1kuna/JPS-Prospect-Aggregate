@@ -21,9 +21,9 @@ export interface DatabaseBackup {
 
 export interface QueryResult {
   columns: string[];
-  rows: (string | number | boolean | null)[][];
+  rows: Array<Record<string, unknown>>;
   rowCount: number;
-  executionTime: number; // ms
+  executionTime?: number; // ms
   message?: string;
 }
 
@@ -99,7 +99,10 @@ async function executeQueryAPI({ query }: { query: string }): Promise<QueryResul
   if (query.toLowerCase().includes('error')) throw new Error('Simulated query error');
   return {
     columns: ['id', 'name', 'value'],
-    rows: [[1, 'Test', 100], [2, 'Sample', 200]],
+    rows: [
+      { id: 1, name: 'Test', value: 100 },
+      { id: 2, name: 'Sample', value: 200 }
+    ],
     rowCount: 2,
     executionTime: 150,
     message: 'Query executed successfully'

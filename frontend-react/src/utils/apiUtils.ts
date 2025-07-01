@@ -183,12 +183,19 @@ export const handleApiResponse = <T = unknown>(response: {
  * @param params - Object with query parameters
  * @returns URL-encoded query string
  */
-export const buildQueryString = (params: Record<string, string | number | boolean | undefined | null>): string => {
+export const buildQueryString = (params: Record<string, string | number | boolean | undefined | null | Array<string | number>>): string => {
   const searchParams = new URLSearchParams();
 
   Object.entries(params).forEach(([key, value]) => {
     if (value !== null && value !== undefined && value !== '') {
-      searchParams.append(key, String(value));
+      if (Array.isArray(value)) {
+        // Handle arrays by adding multiple params with the same key
+        value.forEach(item => {
+          searchParams.append(key, String(item));
+        });
+      } else {
+        searchParams.append(key, String(value));
+      }
     }
   });
 

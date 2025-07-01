@@ -95,7 +95,11 @@ export default function Advanced() {
 
   // Mutation for running all scrapers
   const runAllScrapersMutation = useMutation({
-    mutationFn: () => post('/api/data-sources/run-all'),
+    mutationFn: () => post<{
+      message: string;
+      total_duration: number;
+      results?: ScraperResult[];
+    }>('/api/data-sources/run-all'),
     onMutate: () => {
       setRunAllInProgress(true);
     },

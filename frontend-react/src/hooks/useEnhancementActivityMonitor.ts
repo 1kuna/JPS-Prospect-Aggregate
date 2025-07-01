@@ -19,7 +19,7 @@ interface ActivityState {
  */
 export function useEnhancementActivityMonitor() {
   const queryClient = useQueryClient();
-  const { enhancementStates, queueStatus } = useEnhancement();
+  const { enhancementStates } = useEnhancement();
   const { isWorkerRunning, isIterativeProcessing } = useEnhancementQueueService();
   
   const [activityState, setActivityState] = useState<ActivityState>({

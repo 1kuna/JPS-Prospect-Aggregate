@@ -5,8 +5,7 @@ import {
   EnhancementProgress,
   UnifiedEnhancementState as UnifiedEnhancementStateType,
   ProspectsQueryData,
-  Prospect,
-  EnhancementStepData
+  Prospect
 } from '@/types';
 
 // Unified enhancement state for a single prospect
