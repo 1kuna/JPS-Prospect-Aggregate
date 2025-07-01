@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatDate } from '@/utils/dateUtils';
 import { get, post } from '@/utils/apiUtils';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
+import { DuplicateScanProgress } from '@/types';
 
 interface DataSource {
   id: number;
@@ -53,7 +54,7 @@ export function DuplicateReview() {
   const [selectedGroups, setSelectedGroups] = useState<Set<number>>(new Set());
   const [selectedKeepRecords, setSelectedKeepRecords] = useState<Map<number, string>>(new Map()); // groupIndex -> recordId to keep
   const [currentScanId, setCurrentScanId] = useState<string | null>(null);
-  const [scanProgress, setScanProgress] = useState<any>(null);
+  const [scanProgress, setScanProgress] = useState<DuplicateScanProgress | null>(null);
 
   // Fetch data sources for filtering
   const { data: sourcesData } = useQuery<{ status: string; data: { sources: DataSource[] } }>({

@@ -2,17 +2,20 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { post, del, ApiError } from '@/utils/apiUtils';
 import { useEnhancementQueueStatus } from './useEnhancementQueue';
 import { useQueryClient } from '@tanstack/react-query';
+import { 
+  EnhancementStepData,
+  EnhancementProgress,
+  ProspectEnhancementState,
+  UnifiedEnhancementState as UnifiedEnhancementStateType,
+  ProspectsQueryData,
+  Prospect
+} from '@/types';
 
 export interface EnhancementState {
   status: 'idle' | 'queued' | 'processing' | 'completed' | 'failed';
   queuePosition?: number;
   currentStep?: string;
-  progress: {
-    values?: { completed: boolean; skipped?: boolean; data?: any };
-    contacts?: { completed: boolean; skipped?: boolean; data?: any };
-    naics?: { completed: boolean; skipped?: boolean; data?: any };
-    titles?: { completed: boolean; skipped?: boolean; data?: any };
-  };
+  progress: EnhancementProgress;
   error?: string;
   startedAt?: string;
   completedAt?: string;
@@ -25,24 +28,7 @@ interface EnhancementRequest {
   user_id?: number;
 }
 
-interface UnifiedEnhancementState {
-  [prospect_id: string]: {
-    queueItemId?: string;
-    status: 'idle' | 'queued' | 'processing' | 'completed' | 'failed';
-    queuePosition?: number;
-    estimatedTimeRemaining?: number;
-    currentStep?: string;
-    progress?: {
-      values?: { completed: boolean; skipped?: boolean; data?: any };
-      contacts?: { completed: boolean; skipped?: boolean; data?: any };
-      naics?: { completed: boolean; skipped?: boolean; data?: any };
-      titles?: { completed: boolean; skipped?: boolean; data?: any };
-    };
-    error?: string;
-    startedAt?: string;
-    completedAt?: string;
-  };
-}
+type UnifiedEnhancementState = UnifiedEnhancementStateType;
 
 export function useUnifiedEnhancement() {
   const [enhancementStates, setEnhancementStates] = useState<UnifiedEnhancementState>({});
@@ -147,11 +133,11 @@ export function useUnifiedEnhancement() {
             // Update query cache if not skipped - use wildcard to update all prospect queries
             if (!sseEvent.data?.skipped) {
               console.log(`Updating prospect cache for ${prospectId} with values data:`, sseEvent.data);
-              queryClient.setQueriesData({ queryKey: ['prospects'] }, (oldData: any) => {
+              queryClient.setQueriesData({ queryKey: ['prospects'] }, (oldData: ProspectsQueryData | undefined) => {
                 if (!oldData?.data) return oldData;
                 const updatedData = {
                   ...oldData,
-                  data: oldData.data.map((p: any) =>
+                  data: oldData.data.map((p: Prospect) =>
                     p.id === prospectId ? { ...p, ...sseEvent.data } : p
                   )
                 };
@@ -180,11 +166,11 @@ export function useUnifiedEnhancement() {
             
             if (!sseEvent.data?.skipped) {
               console.log(`Updating prospect cache for ${prospectId} with contacts data:`, sseEvent.data);
-              queryClient.setQueriesData({ queryKey: ['prospects'] }, (oldData: any) => {
+              queryClient.setQueriesData({ queryKey: ['prospects'] }, (oldData: ProspectsQueryData | undefined) => {
                 if (!oldData?.data) return oldData;
                 return {
                   ...oldData,
-                  data: oldData.data.map((p: any) =>
+                  data: oldData.data.map((p: Prospect) =>
                     p.id === prospectId ? { ...p, ...sseEvent.data } : p
                   )
                 };
@@ -211,11 +197,11 @@ export function useUnifiedEnhancement() {
             
             if (!sseEvent.data?.skipped) {
               console.log(`Updating prospect cache for ${prospectId} with naics data:`, sseEvent.data);
-              queryClient.setQueriesData({ queryKey: ['prospects'] }, (oldData: any) => {
+              queryClient.setQueriesData({ queryKey: ['prospects'] }, (oldData: ProspectsQueryData | undefined) => {
                 if (!oldData?.data) return oldData;
                 return {
                   ...oldData,
-                  data: oldData.data.map((p: any) =>
+                  data: oldData.data.map((p: Prospect) =>
                     p.id === prospectId ? { ...p, ...sseEvent.data } : p
                   )
                 };
@@ -243,11 +229,11 @@ export function useUnifiedEnhancement() {
             
             if (!sseEvent.data?.skipped) {
               console.log(`Updating prospect cache for ${prospectId} with titles data:`, sseEvent.data);
-              queryClient.setQueriesData({ queryKey: ['prospects'] }, (oldData: any) => {
+              queryClient.setQueriesData({ queryKey: ['prospects'] }, (oldData: ProspectsQueryData | undefined) => {
                 if (!oldData?.data) return oldData;
                 return {
                   ...oldData,
-                  data: oldData.data.map((p: any) =>
+                  data: oldData.data.map((p: Prospect) =>
                     p.id === prospectId ? { ...p, ...sseEvent.data } : p
                   )
                 };

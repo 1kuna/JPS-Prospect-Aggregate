@@ -9,6 +9,7 @@ import {
   useCreateBackup,
   useRestoreBackup
 } from '@/hooks/api/useDatabase';
+import { DatabaseBackup } from '@/types';
 
 export function DatabaseOperations() {
   const [isConfirmingReset, setIsConfirmingReset] = useState(false);
@@ -149,7 +150,7 @@ export function DatabaseOperations() {
           <div className="mt-4">
             <h3 className="text-lg font-semibold mb-2">Available Backups</h3>
             <div className="space-y-2">
-              {backups.map((backup: any) => (
+              {backups.map((backup: DatabaseBackup) => (
                 <div
                   key={backup.id}
                   className="flex items-center justify-between p-2 border rounded"

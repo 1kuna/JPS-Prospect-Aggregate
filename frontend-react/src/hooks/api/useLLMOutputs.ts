@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { get, buildQueryString } from '@/utils/apiUtils';
+import { LLMParsedResult } from '@/types';
 
 export interface LLMOutput {
   id: number;
@@ -9,7 +10,7 @@ export interface LLMOutput {
   enhancement_type: 'values' | 'contacts' | 'naics' | 'titles';
   prompt: string;
   response: string;
-  parsed_result: any;
+  parsed_result: LLMParsedResult;
   success: boolean;
   error_message: string | null;
   processing_time: number | null;

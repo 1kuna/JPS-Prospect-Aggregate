@@ -141,7 +141,7 @@ export default function Advanced() {
   };
 
   const setActiveTab = (tab: string, subtab?: string) => {
-    const params: any = { tab };
+    const params: { tab: string; subtab?: string } = { tab };
     if (subtab) {
       params.subtab = subtab;
     }

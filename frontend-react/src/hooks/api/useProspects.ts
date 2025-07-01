@@ -20,7 +20,7 @@ async function fetchProspectsAPI(
 ): Promise<PaginatedProspectsResponse> {
   console.log(`Fetching prospects... pageParam (0-indexed): ${pageParam}, filters:`, filters);
   
-  const params: Record<string, any> = {
+  const params: Record<string, string | number | boolean> = {
     page: pageParam + 1, // Backend is 1-indexed
     limit: 10,
     ...filters

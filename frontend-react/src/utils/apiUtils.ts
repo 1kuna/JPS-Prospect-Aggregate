@@ -18,7 +18,7 @@ export interface FetchOptions extends RequestInit {
  * @returns Promise resolving to parsed JSON response
  * @throws ApiError with detailed error information
  */
-export const fetchWithErrorHandling = async <T = any>(
+export const fetchWithErrorHandling = async <T = unknown>(
   url: string,
   options: FetchOptions = {}
 ): Promise<T> => {
@@ -38,7 +38,7 @@ export const fetchWithErrorHandling = async <T = any>(
 
     if (!response.ok) {
       // Try to get error details from response
-      let errorData: any = {};
+      let errorData: { error?: string; message?: string } = {};
       try {
         errorData = await response.json();
       } catch {
@@ -89,7 +89,7 @@ export const fetchWithErrorHandling = async <T = any>(
  * @param options - Fetch options
  * @returns Promise resolving to parsed JSON response
  */
-export const get = <T = any>(url: string, options: FetchOptions = {}): Promise<T> => {
+export const get = <T = unknown>(url: string, options: FetchOptions = {}): Promise<T> => {
   return fetchWithErrorHandling<T>(url, {
     ...options,
     method: 'GET',
@@ -103,9 +103,9 @@ export const get = <T = any>(url: string, options: FetchOptions = {}): Promise<T
  * @param options - Fetch options
  * @returns Promise resolving to parsed JSON response
  */
-export const post = <T = any>(
+export const post = <T = unknown>(
   url: string,
-  data?: any,
+  data?: unknown,
   options: FetchOptions = {}
 ): Promise<T> => {
   return fetchWithErrorHandling<T>(url, {
@@ -126,9 +126,9 @@ export const post = <T = any>(
  * @param options - Fetch options
  * @returns Promise resolving to parsed JSON response
  */
-export const put = <T = any>(
+export const put = <T = unknown>(
   url: string,
-  data?: any,
+  data?: unknown,
   options: FetchOptions = {}
 ): Promise<T> => {
   return fetchWithErrorHandling<T>(url, {
@@ -148,7 +148,7 @@ export const put = <T = any>(
  * @param options - Fetch options
  * @returns Promise resolving to parsed JSON response
  */
-export const del = <T = any>(url: string, options: FetchOptions = {}): Promise<T> => {
+export const del = <T = unknown>(url: string, options: FetchOptions = {}): Promise<T> => {
   return fetchWithErrorHandling<T>(url, {
     ...options,
     method: 'DELETE',
@@ -161,7 +161,7 @@ export const del = <T = any>(url: string, options: FetchOptions = {}): Promise<T
  * @returns The data portion of the response
  * @throws Error if response indicates failure
  */
-export const handleApiResponse = <T = any>(response: {
+export const handleApiResponse = <T = unknown>(response: {
   status: string;
   data?: T;
   message?: string;
@@ -183,7 +183,7 @@ export const handleApiResponse = <T = any>(response: {
  * @param params - Object with query parameters
  * @returns URL-encoded query string
  */
-export const buildQueryString = (params: Record<string, any>): string => {
+export const buildQueryString = (params: Record<string, string | number | boolean | undefined | null>): string => {
   const searchParams = new URLSearchParams();
 
   Object.entries(params).forEach(([key, value]) => {
@@ -205,7 +205,7 @@ export const buildQueryString = (params: Record<string, any>): string => {
  */
 export const buildApiUrl = (
   endpoint: string,
-  params?: Record<string, any>,
+  params?: Record<string, string | number | boolean | undefined | null>,
   baseUrl?: string
 ): string => {
   const base = baseUrl || '';

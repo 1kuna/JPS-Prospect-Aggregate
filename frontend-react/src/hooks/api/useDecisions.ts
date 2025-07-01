@@ -4,7 +4,8 @@ import {
   ApiResponse, 
   GoNoGoDecision, 
   DecisionStats,
-  CreateDecisionRequest 
+  CreateDecisionRequest,
+  PaginationMeta
 } from '../../types/api';
 
 const API_BASE = '/api/decisions';
@@ -26,9 +27,9 @@ const decisionsApi = {
     );
   },
 
-  getMyDecisions: async (page = 1, perPage = 50): Promise<ApiResponse<{ decisions: GoNoGoDecision[]; pagination: any }>> => {
+  getMyDecisions: async (page = 1, perPage = 50): Promise<ApiResponse<{ decisions: GoNoGoDecision[]; pagination: PaginationMeta }>> => {
     const queryParams = buildQueryString({ page, per_page: perPage });
-    return await get<ApiResponse<{ decisions: GoNoGoDecision[]; pagination: any }>>(
+    return await get<ApiResponse<{ decisions: GoNoGoDecision[]; pagination: PaginationMeta }>>(
       `${API_BASE}/my${queryParams}`,
       { credentials: 'include' }
     );
