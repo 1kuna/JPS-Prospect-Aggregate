@@ -3,6 +3,7 @@ export * from './api';
 export * from './prospects';
 export * from './enhancement';
 export * from './database';
+export * from './errors';
 
 // Legacy types - to be moved to appropriate files
 export interface DataSource {
