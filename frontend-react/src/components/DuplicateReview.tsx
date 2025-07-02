@@ -5,6 +5,9 @@ import { formatDate } from '@/utils/dateUtils';
 import { get, post } from '@/utils/apiUtils';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { DuplicateScanProgress } from '@/types';
+import { useToast } from '@/contexts/ToastContext';
+import { useConfirmationDialog } from '@/components/ui/ConfirmationDialog';
+import { ErrorSeverity, ErrorCategory } from '@/types/errors';
 
 interface DataSource {
   id: number;
@@ -48,6 +51,8 @@ interface DuplicateDetectionResult {
 
 export function DuplicateReview() {
   const queryClient = useQueryClient();
+  const { showSuccessToast, showErrorToast, showWarningToast } = useToast();
+  const { confirm, ConfirmationDialog } = useConfirmationDialog();
   const [selectedSourceId, setSelectedSourceId] = useState<number | null>(null);
   const [minConfidence, setMinConfidence] = useState(0.8);
   const [scanLimit, setScanLimit] = useState<number | null>(null); // null means "All" (default)
@@ -122,7 +127,7 @@ export function DuplicateReview() {
       return response.json();
     },
     onSuccess: (data) => {
-      alert(`Duplicates merged successfully!\n\n${data.data.message}`);
+      showSuccessToast('Duplicates Merged', data.data.message || 'Duplicates merged successfully!');
       // Refresh the detection results
       detectDuplicates();
       // Clear selections
@@ -132,7 +137,14 @@ export function DuplicateReview() {
       queryClient.invalidateQueries({ queryKey: ['prospects'] });
     },
     onError: (error: Error) => {
-      alert(`Failed to merge duplicates: ${error.message}`);
+      showErrorToast({
+        code: 'MERGE_DUPLICATES_ERROR',
+        message: error.message,
+        severity: ErrorSeverity.ERROR,
+        category: ErrorCategory.SYSTEM,
+        timestamp: new Date(),
+        userMessage: `Failed to merge duplicates: ${error.message}`,
+      });
     },
   });
 
@@ -162,9 +174,9 @@ export function DuplicateReview() {
     setSelectedKeepRecords(newKeepRecords);
   };
 
-  const handleMergeSelected = () => {
+  const handleMergeSelected = async () => {
     if (selectedGroups.size === 0) {
-      alert('Please select at least one duplicate group to merge.');
+      showWarningToast('No Selection', 'Please select at least one duplicate group to merge.');
       return;
     }
 
@@ -176,14 +188,21 @@ export function DuplicateReview() {
 
     const totalMerges = groupsToMerge.reduce((sum, group) => sum + group.matches.length, 0);
     
-    if (!window.confirm(
-      `Are you sure you want to merge ${totalMerges} duplicate record(s)?\n\n` +
-      'This action will:\n' +
-      '• Keep your selected record from each group\n' +
-      '• Delete all other duplicate matches\n' +
-      '• Preserve AI-enhanced data when possible\n\n' +
-      'This action cannot be undone.'
-    )) {
+    const confirmed = await confirm({
+      title: `Merge ${totalMerges} Duplicate Record${totalMerges !== 1 ? 's' : ''}`,
+      description: 'Are you sure you want to merge the selected duplicate records?',
+      details: [
+        'Keep your selected record from each group',
+        'Delete all other duplicate matches',
+        'Preserve AI-enhanced data when possible',
+        '',
+        'This action cannot be undone.'
+      ],
+      confirmLabel: 'Merge Duplicates',
+      variant: 'destructive'
+    });
+    
+    if (!confirmed) {
       return;
     }
 
@@ -640,6 +659,8 @@ export function DuplicateReview() {
           </CardContent>
         </Card>
       )}
+      
+      {ConfirmationDialog}
     </div>
   );
 }

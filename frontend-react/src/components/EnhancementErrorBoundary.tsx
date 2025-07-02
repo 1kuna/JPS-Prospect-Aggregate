@@ -1,6 +1,10 @@
 import { Component, ReactNode, ErrorInfo } from 'react';
 import { Button } from '@/components/ui/button';
 import { ExclamationTriangleIcon, ReloadIcon } from '@radix-ui/react-icons';
+import { errorService } from '@/services/errorService';
+import { createBoundaryError, createNetworkError, ErrorSeverity } from '@/types/errors';
+import { useToast } from '@/contexts/ToastContext';
+import { useCallback } from 'react';
 
 interface Props {
   children: ReactNode;
@@ -25,17 +29,30 @@ export class EnhancementErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('Enhancement Error Boundary caught an error:', error, errorInfo);
-    
     this.setState({
       error,
       errorInfo
     });
 
+    // Create a boundary error specific to enhancement system
+    const boundaryError = createBoundaryError(error, {
+      componentStack: errorInfo.componentStack || undefined,
+      errorBoundary: 'EnhancementErrorBoundary',
+      context: { feature: 'enhancement' },
+      userMessage: 'An error occurred in the enhancement system. Please try again.',
+      recoveryActions: [
+        { label: 'Try Again', action: () => this.handleRetry() },
+        { label: 'Reload Page', action: () => window.location.reload() }
+      ]
+    });
+    
+    // Handle through error service for centralized logging
+    errorService.handleError(boundaryError);
+
     // Call the onError callback if provided
     this.props.onError?.(error, errorInfo);
 
-    // Show error toast if available
+    // Show error toast using the centralized system
     if (window.showToast) {
       window.showToast({
         title: 'Enhancement Error',
@@ -114,45 +131,59 @@ export class EnhancementErrorBoundary extends Component<Props, State> {
 
 // Hook version for functional components
 export function useEnhancementErrorHandler() {
-  const handleError = (error: Error, context: string = 'Enhancement') => {
-    console.error(`${context} error:`, error);
-    
-    if (window.showToast) {
-      window.showToast({
-        title: `${context} Error`,
-        message: error.message || 'An unexpected error occurred',
-        type: 'error',
-        duration: 5000
-      });
-    }
-  };
+  const { showErrorToast } = useToast();
 
-  const handleSSEError = (error: Event | Error) => {
+  const handleError = useCallback((error: Error, context: string = 'Enhancement') => {
+    // Create a normalized error through error service
+    const normalizedError = errorService.normalizeError(error);
+    
+    // Add enhancement-specific context
+    const enhancementError = {
+      ...normalizedError,
+      context: { 
+        ...normalizedError.context,
+        feature: 'enhancement',
+        operation: context 
+      },
+      userMessage: normalizedError.userMessage || `${context} error occurred. Please try again.`
+    };
+    
+    // Handle through error service for logging
+    errorService.handleError(enhancementError);
+    
+    // Show toast notification
+    showErrorToast(enhancementError);
+  }, [showErrorToast]);
+
+  const handleSSEError = useCallback((error: Event | Error) => {
     const errorMessage = error instanceof Error ? error.message : 'SSE connection error';
-    console.error('SSE Error:', errorMessage);
     
-    if (window.showToast) {
-      window.showToast({
-        title: 'Connection Error',
-        message: 'Lost connection to enhancement progress. Trying to reconnect...',
-        type: 'error',
-        duration: 3000
-      });
-    }
-  };
+    const sseError = createNetworkError(errorMessage, {
+      code: 'SSE_CONNECTION_ERROR',
+      userMessage: 'Lost connection to enhancement progress. Trying to reconnect...',
+      severity: ErrorSeverity.WARNING,
+      recoveryActions: [
+        { label: 'Reconnect', action: () => {} }
+      ]
+    });
+    
+    errorService.handleError(sseError);
+    showErrorToast(sseError);
+  }, [showErrorToast]);
 
-  const handleNetworkError = (error: Error) => {
-    console.error('Network error:', error);
+  const handleNetworkError = useCallback((error: Error) => {
+    const networkError = createNetworkError(error.message, {
+      userMessage: 'Unable to connect to server. Please check your connection.',
+      severity: ErrorSeverity.ERROR,
+      recoveryActions: [
+        { label: 'Retry', action: () => {} },
+        { label: 'Reload Page', action: () => window.location.reload() }
+      ]
+    });
     
-    if (window.showToast) {
-      window.showToast({
-        title: 'Network Error',
-        message: 'Unable to connect to server. Please check your connection.',
-        type: 'error',
-        duration: 5000
-      });
-    }
-  };
+    errorService.handleError(networkError);
+    showErrorToast(networkError);
+  }, [showErrorToast]);
 
   return {
     handleError,

@@ -4,7 +4,6 @@ import { useExecuteQuery } from '@/hooks/api/useDatabase';
 import { DatabaseOperations } from '@/components/DatabaseOperations';
 import { Button } from '@/components/ui';
 import { QueryResult } from '@/types';
-import { ApiError } from '@/utils/apiUtils';
 
 export default function DirectDatabaseAccess() {
   const [query, setQuery] = useState('');
@@ -23,7 +22,8 @@ export default function DirectDatabaseAccess() {
         setResults(data);
         setError(null);
       },
-      onError: (error: Error | ApiError) => {
+      onError: (error: Error) => {
+        console.error('Query execution failed:', error);
         setResults(null);
         setError(error.message || 'Query execution failed');
       }

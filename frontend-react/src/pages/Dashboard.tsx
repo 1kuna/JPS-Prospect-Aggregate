@@ -103,28 +103,23 @@ const fetchProspects = async (page: number, limit: number, filters?: ProspectFil
   
   const url = `/api/prospects?${queryParams.toString()}`;
   
-  try {
-    const response = await fetch(url);
-    
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ message: 'Failed to fetch prospects and parse error response' }));
-      // Error response received
-      throw new Error(errorData.error || `Network response was not ok: ${response.statusText}`);
-    }
-    
-    const result: { prospects: Prospect[], pagination: { total_items: number, total_pages: number, page: number, per_page: number } } = await response.json();
-    
-    
-    // Map the backend response structure to what the frontend expects
-    return {
-      data: result.prospects,
-      total: result.pagination.total_items,
-      totalPages: result.pagination.total_pages
-    };
-  } catch (error) {
-    // Handle fetch error
-    throw error;
+  const response = await fetch(url);
+  
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ message: 'Failed to fetch prospects and parse error response' }));
+    // Error response received
+    throw new Error(errorData.error || `Network response was not ok: ${response.statusText}`);
   }
+  
+  const result: { prospects: Prospect[], pagination: { total_items: number, total_pages: number, page: number, per_page: number } } = await response.json();
+  
+  
+  // Map the backend response structure to what the frontend expects
+  return {
+    data: result.prospects,
+    total: result.pagination.total_items,
+    totalPages: result.pagination.total_pages
+  };
 };
 
 const columnHelper = createColumnHelper<Prospect>();

@@ -10,6 +10,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useToast } from '@/contexts/ToastContext';
+import { useError } from '@/hooks/useError';
 
 export default function DataSources() {
   const {
@@ -21,6 +23,8 @@ export default function DataSources() {
   } = useListDataSources();
   
   const data = dataSourcesData?.data || [];
+  const { showInfoToast } = useToast();
+  const { handleError } = useError();
 
   const deleteMutation = useDeleteDataSource();
 
@@ -28,7 +32,10 @@ export default function DataSources() {
     try {
       await deleteMutation.mutateAsync(id);
     } catch (err) {
-      console.error('Failed to delete data source:', err);
+      handleError(err, {
+        context: { operation: 'deleteDataSource', dataSourceId: id },
+        fallbackMessage: 'Failed to delete data source'
+      });
     }
   };
 
@@ -77,7 +84,7 @@ export default function DataSources() {
                       <Button 
                         variant="outline" 
                         size="sm" 
-                        onClick={() => alert('Edit form placeholder')}
+                        onClick={() => showInfoToast('Coming Soon', 'Edit functionality will be available in a future update.')}
                       >
                         Edit
                       </Button>

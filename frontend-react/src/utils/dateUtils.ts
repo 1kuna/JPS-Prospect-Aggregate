@@ -106,7 +106,7 @@ export const formatDate = (
     }
 
     return new Intl.DateTimeFormat(locale, formatOptions).format(date);
-  } catch (error) {
+  } catch (_error) {
     // Error formatting date, using fallback
     return fallback;
   }

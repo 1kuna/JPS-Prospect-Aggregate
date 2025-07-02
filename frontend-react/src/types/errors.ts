@@ -199,6 +199,53 @@ export function createNetworkError(
   };
 }
 
+export function createBusinessError(
+  message: string,
+  details?: Partial<BusinessErrorDetails>
+): BusinessErrorDetails {
+  return {
+    code: details?.code || ERROR_CODES.BUSINESS_RULE_VIOLATION,
+    message,
+    severity: details?.severity || ErrorSeverity.WARNING,
+    category: ErrorCategory.BUSINESS,
+    timestamp: new Date(),
+    userMessage: details?.userMessage || 'This operation cannot be completed due to business rules.',
+    ...details
+  };
+}
+
+export function createBoundaryError(
+  error: Error,
+  details?: {
+    componentStack?: string;
+    errorBoundary?: string;
+    context?: Record<string, unknown>;
+    userMessage?: string;
+    recoveryActions?: ErrorRecoveryAction[];
+    timestamp?: Date;
+  }
+): BaseError {
+  return {
+    code: 'REACT_ERROR_BOUNDARY',
+    message: error.message,
+    severity: ErrorSeverity.ERROR,
+    category: ErrorCategory.SYSTEM,
+    timestamp: details?.timestamp || new Date(),
+    context: {
+      ...details?.context,
+      errorBoundary: details?.errorBoundary,
+      componentStack: details?.componentStack,
+      stackTrace: error.stack,
+    },
+    technicalDetails: error.stack,
+    userMessage: details?.userMessage || 'An unexpected error occurred. Please refresh the page.',
+    recoveryActions: details?.recoveryActions || [
+      { label: 'Reload Page', action: () => window.location.reload() },
+      { label: 'Try Again', action: () => {} },
+    ],
+  };
+}
+
 // Helper to get default user-friendly messages
 function getDefaultUserMessage(category: ErrorCategory, status?: number): string {
   switch (category) {

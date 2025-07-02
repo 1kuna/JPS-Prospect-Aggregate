@@ -94,8 +94,9 @@ async function updateProspectAPI({ id, ...updatedData }: Partial<Prospect> & { i
   return mockUpdatedProspect;
 }
 
-async function deleteProspectAPI(_: Prospect['id']): Promise<void> {
-  // Deleting prospect
+async function deleteProspectAPI(id: Prospect['id']): Promise<void> {
+  // Deleting prospect with id: ${id}
+  console.log(`Deleting prospect: ${id}`);
   await new Promise(resolve => setTimeout(resolve, 500));
   // Simulate successful deletion (API typically returns 204 No Content or similar)
   // Deletion successful
@@ -175,7 +176,8 @@ export function useCreateProspect() {
       // This can be complex with infinite lists; often invalidation is simpler.
       // Invalidated prospects list after creation
     },
-    onError: () => {
+    onError: (error: Error) => {
+      console.error('Failed to create prospect:', error);
       // Handle creation error
     }
   });
@@ -212,7 +214,8 @@ export function useUpdateProspect() {
       // Invalidated prospects list after update
 
     },
-    onError: () => {
+    onError: (error: Error) => {
+      console.error('Failed to update prospect:', error);
       // Handle update error
     }
   });
@@ -229,7 +232,8 @@ export function useDeleteProspect() {
       // Similar to update, but removing the item.
       // Invalidated prospects list after deletion
     },
-    onError: () => {
+    onError: (error: Error) => {
+      console.error('Failed to delete prospect:', error);
       // Handle deletion error
     }
   });

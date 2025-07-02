@@ -42,8 +42,8 @@ export function DatabaseOperations() {
         // Intentionally empty
         setIsConfirmingReset(false);
       },
-      onError: () => {
-        // Intentionally empty
+      onError: (error: Error) => {
+        console.error('Failed to reset database:', error);
         setIsConfirmingReset(false);
       }
     });

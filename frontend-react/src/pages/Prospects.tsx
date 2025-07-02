@@ -14,6 +14,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useListDataSources } from '@/hooks/api/useDataSources';
 import { DataSource } from '@/types';
+import { useToast } from '@/contexts/ToastContext';
 
 export default function Prospects() {
   const [filters, setFilters] = useState<ProspectFilters>({
@@ -23,6 +24,7 @@ export default function Prospects() {
     dataSourceIds: []
   });
   const parentRef = useRef<HTMLDivElement>(null);
+  const { showInfoToast } = useToast();
   
   // Data sources hook
   const { data: dataSourcesData } = useListDataSources();
@@ -340,7 +342,7 @@ export default function Prospects() {
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  onClick={() => alert('View prospect details')}
+                                  onClick={() => showInfoToast('Coming Soon', 'Prospect details view will be available in a future update.')}
                                 >
                                   View
                                 </Button>
