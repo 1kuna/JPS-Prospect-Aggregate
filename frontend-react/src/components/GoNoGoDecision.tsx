@@ -4,6 +4,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
+import { useError } from '@/hooks/useError';
 
 interface GoNoGoDecisionProps {
   prospectId: string | number;
@@ -15,6 +16,7 @@ export const GoNoGoDecision = ({ prospectId, prospectTitle, compact }: GoNoGoDec
   const [showReasonDialog, setShowReasonDialog] = useState(false);
   const [pendingDecision, setPendingDecision] = useState<'go' | 'no-go' | null>(null);
   const [reason, setReason] = useState('');
+  const { handleError } = useError();
 
   const createDecisionMutation = useCreateDecision();
   const deleteDecisionMutation = useDeleteDecision();
@@ -45,7 +47,14 @@ export const GoNoGoDecision = ({ prospectId, prospectTitle, compact }: GoNoGoDec
       setPendingDecision(null);
       setReason('');
     } catch (error) {
-      console.error('Failed to save decision:', error);
+      handleError(error, {
+        context: { 
+          operation: 'saveDecision', 
+          prospectId, 
+          decision: pendingDecision 
+        },
+        fallbackMessage: 'Failed to save decision'
+      });
     }
   };
 
@@ -61,7 +70,14 @@ export const GoNoGoDecision = ({ prospectId, prospectTitle, compact }: GoNoGoDec
     try {
       await deleteDecisionMutation.mutateAsync(existingDecision.id);
     } catch (error) {
-      console.error('Failed to undo decision:', error);
+      handleError(error, {
+        context: { 
+          operation: 'undoDecision', 
+          decisionId: existingDecision.id,
+          prospectId 
+        },
+        fallbackMessage: 'Failed to undo decision'
+      });
     }
   };
 
@@ -77,7 +93,14 @@ export const GoNoGoDecision = ({ prospectId, prospectTitle, compact }: GoNoGoDec
 
   // Show error state (optional - could be silent)
   if (decisionsError) {
-    console.error('Error loading decisions:', decisionsError);
+    handleError(decisionsError, {
+      context: { 
+        operation: 'loadDecisions', 
+        prospectId 
+      },
+      fallbackMessage: 'Failed to load existing decisions',
+      showToast: false // Silent error - don't show toast for read operations
+    });
     // Continue to render without existing decisions
   }
 

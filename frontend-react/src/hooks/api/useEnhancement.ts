@@ -96,7 +96,7 @@ export function useEnhancement() {
       try {
         const status = await get<QueueStatus>('/api/llm/queue/status');
         setQueueStatus(status);
-      } catch (error) {
+      } catch (_error) {
         // Silently handle queue status fetch errors
       }
     };
@@ -138,7 +138,7 @@ export function useEnhancement() {
         };
         break;
 
-      case 'processing_started':
+      case 'processing_started': {
         newState = {
           status: 'processing',
           startedAt: event.timestamp,
@@ -170,6 +170,7 @@ export function useEnhancement() {
         
         enhancementTimeoutsRef.current.set(prospectId, newTimeout);
         break;
+      }
 
       case 'values_started':
         newState = { currentStep: 'Parsing contract values...' };
@@ -256,7 +257,7 @@ export function useEnhancement() {
         }
         break;
 
-      case 'completed':
+      case 'completed': {
         // Enhancement completed
         
         // Clear timeout
@@ -319,6 +320,7 @@ export function useEnhancement() {
           });
         }, 5000);
         break;
+      }
 
       case 'values_failed':
       case 'contacts_failed':
@@ -326,7 +328,7 @@ export function useEnhancement() {
       case 'titles_failed':
       case 'failed':
       case 'error':
-      case 'timeout':
+      case 'timeout': {
         const errorMsg = (event.data?.error as string) || 'Enhancement failed';
         
         // Clear timeout
@@ -365,6 +367,7 @@ export function useEnhancement() {
           sseConnectionsRef.current.delete(prospectId);
         }, 5000);
         break;
+      }
 
       case 'keepalive':
         // Just a heartbeat
@@ -404,7 +407,7 @@ export function useEnhancement() {
       try {
         const sseEvent = JSON.parse(event.data);
         handleSSEEvent(prospectId, sseEvent);
-      } catch (err) {
+      } catch (_err) {
         // Silently handle SSE parse errors
       }
     };
@@ -592,7 +595,7 @@ export function useEnhancement() {
       }
       
       return true;
-    } catch (error) {
+    } catch (_error) {
       // Failed to cancel enhancement
       return false;
     }

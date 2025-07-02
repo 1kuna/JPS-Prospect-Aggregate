@@ -1,6 +1,7 @@
 import React, { createContext, useContext, ReactNode } from 'react';
 
 // Define the shape of your context data
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 interface AppContextType {
   // Add your context values here
   // Example:

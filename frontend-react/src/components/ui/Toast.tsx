@@ -53,7 +53,7 @@ const Toast = React.forwardRef<
     [ErrorSeverity.ERROR]: 'destructive',
     [ErrorSeverity.WARNING]: 'warning',
     [ErrorSeverity.INFO]: 'info',
-  }[severity] as any : variant;
+  }[severity] as 'default' | 'destructive' | 'success' | 'warning' | 'info' : variant;
 
   return (
     <ToastPrimitives.Root

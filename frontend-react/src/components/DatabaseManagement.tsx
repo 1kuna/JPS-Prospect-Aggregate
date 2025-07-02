@@ -6,6 +6,9 @@ import { get } from '@/utils/apiUtils';
 import { LoadingButton } from '@/components/ui/LoadingButton';
 import { ErrorDisplay } from '@/components/ui/ErrorDisplay';
 import { CenteredSpinner } from '@/components/ui/LoadingSpinner';
+import { useToast } from '@/contexts/ToastContext';
+import { useConfirmationDialog } from '@/components/ui/ConfirmationDialog';
+import { ErrorSeverity, ErrorCategory } from '@/types/errors';
 
 interface DatabaseStatus {
   prospect_count: number;
@@ -27,6 +30,8 @@ interface AIPreservationConfig {
 
 export function DatabaseManagement() {
   const queryClient = useQueryClient();
+  const { showSuccessToast, showErrorToast } = useToast();
+  const { confirm, ConfirmationDialog } = useConfirmationDialog();
 
   // Fetch database status
   const { data: statusData, isLoading, error, refetch } = useQuery<{ status: string; data: DatabaseStatus }>({
@@ -55,7 +60,7 @@ export function DatabaseManagement() {
       // Loading state handled by mutation.isPending(true);
     },
     onSuccess: (data) => {
-      alert(`Database cleared successfully!\n\n${data.message}`);
+      showSuccessToast('Database Cleared', data.message || 'Database cleared successfully!');
       // Refetch all relevant data
       queryClient.invalidateQueries({ queryKey: ['databaseStatus'] });
       queryClient.invalidateQueries({ queryKey: ['dataSources'] });
@@ -64,7 +69,14 @@ export function DatabaseManagement() {
       queryClient.invalidateQueries({ queryKey: ['prospects'] });
     },
     onError: (error: Error) => {
-      alert(`Failed to clear database: ${error.message}`);
+      showErrorToast({
+        code: 'CLEAR_DATABASE_ERROR',
+        message: error.message,
+        severity: ErrorSeverity.ERROR,
+        category: ErrorCategory.SYSTEM,
+        timestamp: new Date(),
+        userMessage: `Failed to clear database: ${error.message}`,
+      });
     },
     onSettled: () => {
       // Loading state handled by mutation.isPending(false);
@@ -86,7 +98,7 @@ export function DatabaseManagement() {
       // Loading state handled by mutation.isPending(true);
     },
     onSuccess: (data) => {
-      alert(`AI entries cleared successfully!\n\n${data.message}`);
+      showSuccessToast('AI Entries Cleared', data.message || 'AI entries cleared successfully!');
       // Refetch all relevant data
       queryClient.invalidateQueries({ queryKey: ['databaseStatus'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
@@ -95,7 +107,14 @@ export function DatabaseManagement() {
       queryClient.invalidateQueries({ queryKey: ['ai-enrichment-status'] });
     },
     onError: (error: Error) => {
-      alert(`Failed to clear AI entries: ${error.message}`);
+      showErrorToast({
+        code: 'CLEAR_AI_ERROR',
+        message: error.message,
+        severity: ErrorSeverity.ERROR,
+        category: ErrorCategory.SYSTEM,
+        timestamp: new Date(),
+        userMessage: `Failed to clear AI entries: ${error.message}`,
+      });
     },
     onSettled: () => {
       // Loading state handled by mutation.isPending(false);
@@ -117,7 +136,7 @@ export function DatabaseManagement() {
       // Loading state handled by mutation.isPending(true);
     },
     onSuccess: (data) => {
-      alert(`Original entries cleared successfully!\n\n${data.message}`);
+      showSuccessToast('Original Entries Cleared', data.message || 'Original entries cleared successfully!');
       // Refetch all relevant data
       queryClient.invalidateQueries({ queryKey: ['databaseStatus'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
@@ -125,7 +144,14 @@ export function DatabaseManagement() {
       queryClient.invalidateQueries({ queryKey: ['prospects'] });
     },
     onError: (error: Error) => {
-      alert(`Failed to clear original entries: ${error.message}`);
+      showErrorToast({
+        code: 'CLEAR_ORIGINAL_ERROR',
+        message: error.message,
+        severity: ErrorSeverity.ERROR,
+        category: ErrorCategory.SYSTEM,
+        timestamp: new Date(),
+        userMessage: `Failed to clear original entries: ${error.message}`,
+      });
     },
     onSettled: () => {
       // Loading state handled by mutation.isPending(false);
@@ -148,11 +174,18 @@ export function DatabaseManagement() {
       return response.json();
     },
     onSuccess: (data) => {
-      alert(`Configuration updated!\n\n${data.data.message}`);
+      showSuccessToast('Configuration Updated', data.data.message || 'Configuration updated successfully!');
       queryClient.invalidateQueries({ queryKey: ['aiPreservationConfig'] });
     },
     onError: (error: Error) => {
-      alert(`Failed to update configuration: ${error.message}`);
+      showErrorToast({
+        code: 'UPDATE_CONFIG_ERROR',
+        message: error.message,
+        severity: ErrorSeverity.ERROR,
+        category: ErrorCategory.SYSTEM,
+        timestamp: new Date(),
+        userMessage: `Failed to update configuration: ${error.message}`,
+      });
     },
   });
 
@@ -280,14 +313,20 @@ export function DatabaseManagement() {
                 className="bg-purple-600 hover:bg-purple-700"
                 isLoading={clearAIMutation.isPending}
                 loadingText="Clearing AI Entries..."
-                onClick={() => {
-                  if (window.confirm(
-                    `Are you sure you want to clear all AI entries? This action cannot be undone.\n\n` +
-                    `This will delete:\n` +
-                    `• ${status?.ai_enriched_count.toLocaleString()} AI-enriched prospects\n` +
-                    `• All AI enrichment logs\n` +
-                    `• All LLM outputs`
-                  )) {
+                onClick={async () => {
+                  const confirmed = await confirm({
+                    title: 'Clear AI Entries',
+                    description: 'Are you sure you want to clear all AI entries? This action cannot be undone.',
+                    details: [
+                      `${status?.ai_enriched_count.toLocaleString()} AI-enriched prospects`,
+                      'All AI enrichment logs',
+                      'All LLM outputs'
+                    ],
+                    confirmLabel: 'Clear AI Entries',
+                    variant: 'destructive'
+                  });
+                  
+                  if (confirmed) {
                     clearAIMutation.mutate();
                   }
                 }}
@@ -307,12 +346,18 @@ export function DatabaseManagement() {
                 className="bg-orange-600 hover:bg-orange-700"
                 isLoading={clearOriginalMutation.isPending}
                 loadingText="Clearing Original Entries..."
-                onClick={() => {
-                  if (window.confirm(
-                    `Are you sure you want to clear all original entries? This action cannot be undone.\n\n` +
-                    `This will delete:\n` +
-                    `• ${status?.original_count.toLocaleString()} original prospects`
-                  )) {
+                onClick={async () => {
+                  const confirmed = await confirm({
+                    title: 'Clear Original Entries',
+                    description: 'Are you sure you want to clear all original entries? This action cannot be undone.',
+                    details: [
+                      `${status?.original_count.toLocaleString()} original prospects`
+                    ],
+                    confirmLabel: 'Clear Original Entries',
+                    variant: 'destructive'
+                  });
+                  
+                  if (confirmed) {
                     clearOriginalMutation.mutate();
                   }
                 }}
@@ -332,14 +377,20 @@ export function DatabaseManagement() {
                 variant="danger"
                 isLoading={clearDatabaseMutation.isPending}
                 loadingText="Clearing All..."
-                onClick={() => {
-                  if (window.confirm(
-                    `Are you sure you want to clear the ENTIRE database? This action cannot be undone.\n\n` +
-                    `This will delete:\n` +
-                    `• ${status?.prospect_count.toLocaleString()} total prospects\n` +
-                    `• ${status?.status_record_count.toLocaleString()} scraper status records\n` +
-                    `• All last_scraped timestamps`
-                  )) {
+                onClick={async () => {
+                  const confirmed = await confirm({
+                    title: 'Clear Entire Database',
+                    description: 'Are you sure you want to clear the ENTIRE database? This action cannot be undone.',
+                    details: [
+                      `${status?.prospect_count.toLocaleString()} total prospects`,
+                      `${status?.status_record_count.toLocaleString()} scraper status records`,
+                      'All last_scraped timestamps'
+                    ],
+                    confirmLabel: 'Clear All Database',
+                    variant: 'destructive'
+                  });
+                  
+                  if (confirmed) {
                     clearDatabaseMutation.mutate();
                   }
                 }}
@@ -394,15 +445,23 @@ export function DatabaseManagement() {
                   <button 
                     className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 bg-orange-600 text-white shadow-xs hover:bg-orange-700 h-9 px-4 py-2"
                     disabled={updateAIConfigMutation.isPending || !aiConfigData?.data?.preserve_ai_data_on_refresh}
-                    onClick={() => {
-                      if (window.confirm(
-                        'Are you sure you want to disable AI data preservation?\\n\\n' +
-                        'This will allow data source refreshes to overwrite AI-enhanced fields like:\\n' +
-                        '• NAICS codes and descriptions\\n' +
-                        '• Parsed contact information\\n' +
-                        '• LLM-enhanced values\\n\\n' +
-                        'Consider this carefully as it may undo AI processing work.'
-                      )) {
+                    onClick={async () => {
+                      const confirmed = await confirm({
+                        title: 'Disable AI Data Preservation',
+                        description: 'Are you sure you want to disable AI data preservation?',
+                        details: [
+                          'This will allow data source refreshes to overwrite AI-enhanced fields like:',
+                          '• NAICS codes and descriptions',
+                          '• Parsed contact information',
+                          '• LLM-enhanced values',
+                          '',
+                          'Consider this carefully as it may undo AI processing work.'
+                        ],
+                        confirmLabel: 'Disable Protection',
+                        variant: 'destructive'
+                      });
+                      
+                      if (confirmed) {
                         updateAIConfigMutation.mutate({ preserve_ai_data_on_refresh: false });
                       }
                     }}
@@ -449,11 +508,19 @@ export function DatabaseManagement() {
                   <button 
                     className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 bg-gray-600 text-white shadow-xs hover:bg-gray-700 h-9 px-4 py-2"
                     disabled={updateAIConfigMutation.isPending || !aiConfigData?.data?.enable_smart_duplicate_matching}
-                    onClick={() => {
-                      if (window.confirm(
-                        'Are you sure you want to disable smart duplicate matching?\\n\\n' +
-                        'This will use only exact hash matching for duplicates. Changes to titles or descriptions will create new records instead of updating existing ones.'
-                      )) {
+                    onClick={async () => {
+                      const confirmed = await confirm({
+                        title: 'Disable Smart Duplicate Matching',
+                        description: 'Are you sure you want to disable smart duplicate matching?',
+                        details: [
+                          'This will use only exact hash matching for duplicates.',
+                          'Changes to titles or descriptions will create new records instead of updating existing ones.'
+                        ],
+                        confirmLabel: 'Disable Smart Matching',
+                        variant: 'destructive'
+                      });
+                      
+                      if (confirmed) {
                         updateAIConfigMutation.mutate({ enable_smart_duplicate_matching: false });
                       }
                     }}
@@ -469,6 +536,7 @@ export function DatabaseManagement() {
           )}
         </CardContent>
       </Card>
+      {ConfirmationDialog}
     </div>
   );
 }

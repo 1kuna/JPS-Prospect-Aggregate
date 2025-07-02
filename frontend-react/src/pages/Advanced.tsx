@@ -22,6 +22,9 @@ import { CenteredSpinner } from '@/components/ui/LoadingSpinner';
 import { useClearDataSourceData } from '@/hooks/api/useDataSources';
 import { Button } from '@/components/ui';
 import { DataSource } from '@/types';
+import { useToast } from '@/contexts/ToastContext';
+import { useConfirmationDialog } from '@/components/ui/ConfirmationDialog';
+import { ErrorSeverity, ErrorCategory } from '@/types/errors';
 
 interface ScraperResult {
   source_name: string;
@@ -39,6 +42,8 @@ export default function Advanced() {
   const queryClient = useQueryClient();
   const [runningScrapers, setRunningScrapers] = useState<Set<number>>(new Set());
   const [runAllInProgress, setRunAllInProgress] = useState(false);
+  const { showSuccessToast, showErrorToast } = useToast();
+  const { confirm, ConfirmationDialog } = useConfirmationDialog();
   
   // Timezone hook for consistent date formatting
   const { formatUserDate } = useTimezoneDate();
@@ -107,11 +112,15 @@ export default function Advanced() {
       // All scrapers completed
       // Show results
       if (data.results) {
-        alert(`Scraper Results:\n${data.message}\nTotal Duration: ${data.total_duration}s\n\nDetails:\n${
-          data.results.map((r: ScraperResult) => 
-            `${r.source_name}: ${r.status} (${r.duration}s)${r.error ? ' - ' + r.error : ''}`
-          ).join('\n')
-        }`);
+        const failedScrapers = data.results.filter((r: ScraperResult) => r.error);
+        const successCount = data.results.length - failedScrapers.length;
+        
+        showSuccessToast(
+          'Scraper Run Complete',
+          `${successCount}/${data.results.length} scrapers completed successfully in ${data.total_duration}s${
+            failedScrapers.length > 0 ? `. ${failedScrapers.length} failed.` : ''
+          }`
+        );
       }
     },
     onSettled: () => {
@@ -125,21 +134,50 @@ export default function Advanced() {
     runScraperMutation.mutate(sourceId);
   };
 
-  const handleRunAllScrapers = () => {
-    if (window.confirm('This will run all scrapers synchronously. This may take several minutes. Continue?')) {
+  const handleRunAllScrapers = async () => {
+    const confirmed = await confirm({
+      title: 'Run All Scrapers',
+      description: 'This will run all scrapers synchronously. This may take several minutes.',
+      confirmLabel: 'Run All Scrapers',
+      variant: 'default'
+    });
+    
+    if (confirmed) {
       runAllScrapersMutation.mutate();
     }
   };
 
   const handleClearData = async (id: DataSource['id'], sourceName: string) => {
-    if (window.confirm(`Clear all scraped data from ${sourceName}? This will delete all prospects but keep the data source.`)) {
+    const confirmed = await confirm({
+      title: 'Clear Data Source',
+      description: `Clear all scraped data from ${sourceName}?`,
+      details: [
+        'This will delete all prospects from this source',
+        'The data source configuration will remain',
+        'This action cannot be undone'
+      ],
+      confirmLabel: 'Clear Data',
+      variant: 'destructive'
+    });
+    
+    if (confirmed) {
       try {
         const result = await clearDataMutation.mutateAsync(id);
-        alert(`Successfully cleared ${result.deleted_count} prospects from ${sourceName}.`);
+        showSuccessToast(
+          'Data Cleared',
+          `Successfully cleared ${result.deleted_count} prospects from ${sourceName}.`
+        );
         // Query invalidation is handled by the mutation's onSuccess
       } catch (err) {
         // Failed to clear data source data
-        alert('Failed to clear data source data. Please try again.');
+        showErrorToast({
+          code: 'CLEAR_DATA_ERROR',
+          message: err instanceof Error ? err.message : 'Failed to clear data source data',
+          severity: ErrorSeverity.ERROR,
+          category: ErrorCategory.SYSTEM,
+          timestamp: new Date(),
+          userMessage: 'Failed to clear data source data. Please try again.',
+        });
       }
     }
   };
@@ -384,6 +422,8 @@ export default function Advanced() {
         {/* Tab Content */}
         {renderTabContent()}
       </div>
+      
+      {ConfirmationDialog}
     </PageLayout>
   );
 }

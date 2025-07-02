@@ -3,11 +3,13 @@ import { cn } from '@/lib/utils';
 import { useAuth } from '../AuthProvider';
 import { useSignOut } from '../../hooks/api';
 import { Button } from '../ui/button';
+import { useError } from '@/hooks/useError';
 
 export function Navigation() {
   const location = useLocation();
   const { user } = useAuth();
   const signOutMutation = useSignOut();
+  const { handleError } = useError();
   
   const navItems = [
     { path: '/', label: 'Dashboard' },
@@ -18,7 +20,10 @@ export function Navigation() {
     try {
       await signOutMutation.mutateAsync();
     } catch (error) {
-      console.error('Sign out failed:', error);
+      handleError(error, {
+        context: { operation: 'signOut' },
+        fallbackMessage: 'Failed to sign out'
+      });
     }
   };
   

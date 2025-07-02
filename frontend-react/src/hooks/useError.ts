@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import { useToast } from '@/contexts/ToastContext';
 import { errorService } from '@/services/errorService';
-import { AppError, ErrorSeverity } from '@/types/errors';
+import { AppError, ErrorSeverity, ErrorCategory } from '@/types/errors';
 
 interface UseErrorOptions {
   showToast?: boolean;
@@ -96,7 +96,7 @@ export function useFormError(formName?: string) {
       code: 'VALIDATION_FORMAT',
       message: 'Please fix the errors below',
       severity: ErrorSeverity.WARNING,
-      category: 'validation' as any,
+      category: ErrorCategory.VALIDATION,
       timestamp: new Date(),
       fields,
       formName,

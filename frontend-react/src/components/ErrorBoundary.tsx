@@ -1,4 +1,6 @@
 import React from 'react';
+import { errorService } from '@/services/errorService';
+import { createBoundaryError } from '@/types/errors';
 
 interface ErrorBoundaryProps {
   fallback?: React.ReactNode;
@@ -27,16 +29,19 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
     // Update state with error info for more detailed reporting
     this.setState({ errorInfo });
     
+    // Create a boundary error and handle it through the error service
+    const boundaryError = createBoundaryError(error, {
+      componentStack: errorInfo.componentStack || undefined,
+      errorBoundary: 'ErrorBoundary',
+      timestamp: new Date(),
+    });
+    
+    // Handle through error service for centralized logging
+    errorService.handleError(boundaryError);
+    
     if (this.props.onError) {
       this.props.onError(error, errorInfo);
-    } else {
-      // Default logging if no onError handler is provided
-      console.error('ErrorBoundary caught an error:', error, errorInfo);
     }
-    
-    // Log to error reporting service
-    console.error('Error caught by boundary:', error);
-    console.error('Component stack:', errorInfo.componentStack);
   }
   
   // Reset error state when props change if resetOnPropsChange is true

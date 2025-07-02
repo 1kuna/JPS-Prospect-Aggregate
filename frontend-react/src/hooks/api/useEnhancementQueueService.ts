@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { get, post, ApiError, buildQueryString } from '@/utils/apiUtils';
+import { get, post, buildQueryString } from '@/utils/apiUtils';
 import { LLMParsedResult } from '@/types';
 
 /**
@@ -161,16 +161,14 @@ export function useEnhancementQueueService(options?: {
     refetchInterval: 2000, // Refresh every 2 seconds to show new outputs
   });
 
-  // Queue item details
-  const getQueueItem = (itemId: string | undefined) => {
-    return useQuery<QueueItem>({
-      queryKey: queryKeys.queueItem(itemId!),
-      queryFn: () => get<QueueItem>(`/api/llm/queue/item/${itemId}`),
-      enabled: !!itemId,
-      refetchInterval: 1000,
-      staleTime: 500
-    });
-  };
+  // Queue item details query options
+  const getQueueItemOptions = (itemId: string | undefined) => ({
+    queryKey: queryKeys.queueItem(itemId!),
+    queryFn: () => get<QueueItem>(`/api/llm/queue/item/${itemId}`),
+    enabled: !!itemId,
+    refetchInterval: 1000,
+    staleTime: 500
+  });
 
   // Cancel queue item
   const cancelQueueItem = useMutation({
@@ -182,12 +180,12 @@ export function useEnhancementQueueService(options?: {
       queryClient.invalidateQueries({ queryKey: queryKeys.queueStatus });
       queryClient.invalidateQueries({ queryKey: queryKeys.queueItem(itemId) });
     },
-    onError: (error: unknown) => {
-      const apiError = error as ApiError;
+    onError: (error: Error) => {
+      console.error('Failed to cancel queue item:', error);
       if (window.showToast) {
         window.showToast({
           title: 'Failed to cancel',
-          message: apiError.message || 'Unknown error',
+          message: error.message || 'Unknown error',
           type: 'error',
           duration: 3000
         });
@@ -209,12 +207,12 @@ export function useEnhancementQueueService(options?: {
         });
       }
     },
-    onError: (error: unknown) => {
-      const apiError = error as ApiError;
+    onError: (error: Error) => {
+      console.error('Failed to start worker:', error);
       if (window.showToast) {
         window.showToast({
           title: 'Failed to start worker',
-          message: apiError.message || 'Unknown error',
+          message: error.message || 'Unknown error',
           type: 'error',
           duration: 3000
         });
@@ -236,12 +234,12 @@ export function useEnhancementQueueService(options?: {
         });
       }
     },
-    onError: (error: unknown) => {
-      const apiError = error as ApiError;
+    onError: (error: Error) => {
+      console.error('Failed to stop worker:', error);
       if (window.showToast) {
         window.showToast({
           title: 'Failed to stop worker',
-          message: apiError.message || 'Unknown error',
+          message: error.message || 'Unknown error',
           type: 'error',
           duration: 3000
         });
@@ -269,12 +267,12 @@ export function useEnhancementQueueService(options?: {
         });
       }
     },
-    onError: (error: unknown) => {
-      const apiError = error as ApiError;
+    onError: (error: Error) => {
+      console.error('Failed to start enhancement:', error);
       if (window.showToast) {
         window.showToast({
           title: 'Failed to start enhancement',
-          message: apiError.message || 'Unknown error',
+          message: error.message || 'Unknown error',
           type: 'error',
           duration: 3000
         });
@@ -298,12 +296,12 @@ export function useEnhancementQueueService(options?: {
         });
       }
     },
-    onError: (error: unknown) => {
-      const apiError = error as ApiError;
+    onError: (error: Error) => {
+      console.error('Failed to stop enhancement:', error);
       if (window.showToast) {
         window.showToast({
           title: 'Failed to stop enhancement',
-          message: apiError.message || 'Unknown error',
+          message: error.message || 'Unknown error',
           type: 'error',
           duration: 3000
         });
@@ -349,7 +347,7 @@ export function useEnhancementQueueService(options?: {
     processedProspects,
     
     // Actions
-    getQueueItem,
+    getQueueItemOptions,
     cancelQueueItem: cancelQueueItem.mutate,
     startWorker: startWorker.mutate,
     stopWorker: stopWorker.mutate,
