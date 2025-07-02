@@ -7,6 +7,7 @@ import { AuthGuard } from './components/AuthGuard';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ProspectEnhancementProvider } from './contexts/ProspectEnhancementContext';
 import { TimezoneProvider } from './contexts/TimezoneContext';
+import { ToastProvider } from './contexts/ToastContext';
 import { useAuth } from './components/AuthProvider';
 
 // Lazy load pages
@@ -37,25 +38,27 @@ function AppWithProviders() {
   
   return (
     <TimezoneProvider user={user}>
-      <ProspectEnhancementProvider>
-        <Router>
-          <AuthGuard>
-            <div className="min-h-screen bg-background transition-colors duration-200">
-              <Navigation />
-              <Suspense fallback={<PageSkeleton />}>
-                <Routes>
-                  <Route path="/" element={<Dashboard />} />
-                  <Route path="/prospects" element={<Prospects />} />
-                  <Route path="/data-sources" element={<DataSources />} />
-                  <Route path="/database" element={<DirectDatabaseAccess />} />
-                  <Route path="/advanced" element={<Advanced />} />
-                  <Route path="*" element={<div>Page Not Found</div>} />
-                </Routes>
-              </Suspense>
-            </div>
-          </AuthGuard>
-        </Router>
-      </ProspectEnhancementProvider>
+      <ToastProvider>
+        <ProspectEnhancementProvider>
+          <Router>
+            <AuthGuard>
+              <div className="min-h-screen bg-background transition-colors duration-200">
+                <Navigation />
+                <Suspense fallback={<PageSkeleton />}>
+                  <Routes>
+                    <Route path="/" element={<Dashboard />} />
+                    <Route path="/prospects" element={<Prospects />} />
+                    <Route path="/data-sources" element={<DataSources />} />
+                    <Route path="/database" element={<DirectDatabaseAccess />} />
+                    <Route path="/advanced" element={<Advanced />} />
+                    <Route path="*" element={<div>Page Not Found</div>} />
+                  </Routes>
+                </Suspense>
+              </div>
+            </AuthGuard>
+          </Router>
+        </ProspectEnhancementProvider>
+      </ToastProvider>
     </TimezoneProvider>
   );
 }
