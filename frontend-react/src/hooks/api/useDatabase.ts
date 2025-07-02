@@ -1,7 +1,5 @@
 import { keepPreviousData, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
-// Remove unused API_BASE_URL variable
-// const API_BASE_URL = '/api/database'; // Base URL for database operations
 
 // --- Type Definitions (assuming these are representative) ---
 export interface DatabaseStatus {
@@ -30,19 +28,13 @@ export interface QueryResult {
 // --- API Call Functions (Placeholders) ---
 
 async function fetchDatabaseStatusAPI(): Promise<DatabaseStatus> {
-  console.log('Fetching database status...');
-  // const response = await fetch(`${API_BASE_URL}/status`);
-  // if (!response.ok) throw new Error('Failed to fetch database status');
-  // return response.json();
+  // Fetching database status
   await new Promise(resolve => setTimeout(resolve, 300));
   return { status: 'Online', lastBackup: new Date().toISOString(), size: '1.2 GB', health: 'Good', uptime: '7 days' };
 }
 
 async function fetchDatabaseBackupsAPI(): Promise<DatabaseBackup[]> {
-  console.log('Fetching database backups...');
-  // const response = await fetch(`${API_BASE_URL}/backups`);
-  // if (!response.ok) throw new Error('Failed to fetch database backups');
-  // return response.json();
+  // Fetching database backups
   await new Promise(resolve => setTimeout(resolve, 600));
   return [
     { id: 'backup-1', timestamp: new Date(Date.now() - 86400000).toISOString(), size: '1.2 GB', status: 'Completed' },
@@ -51,50 +43,33 @@ async function fetchDatabaseBackupsAPI(): Promise<DatabaseBackup[]> {
 }
 
 async function rebuildDatabaseAPI(): Promise<void> {
-  console.log('Rebuilding database...');
-  // const response = await fetch(`${API_BASE_URL}/rebuild`, { method: 'POST' });
-  // if (!response.ok) throw new Error('Failed to rebuild database');
+  // Rebuilding database
   await new Promise(resolve => setTimeout(resolve, 2000));
 }
 
 async function initializeDatabaseAPI(): Promise<void> {
-  console.log('Initializing database...');
-  // const response = await fetch(`${API_BASE_URL}/initialize`, { method: 'POST' });
-  // if (!response.ok) throw new Error('Failed to initialize database');
+  // Initializing database
   await new Promise(resolve => setTimeout(resolve, 3000));
 }
 
 async function resetDatabaseAPI(): Promise<void> {
-  console.log('Resetting database...');
-  // const response = await fetch(`${API_BASE_URL}/reset`, { method: 'POST' });
-  // if (!response.ok) throw new Error('Failed to reset database');
+  // Resetting database
   await new Promise(resolve => setTimeout(resolve, 1500));
 }
 
 async function createBackupAPI(): Promise<DatabaseBackup> { // Assuming API returns the created backup info
-  console.log('Creating database backup...');
-  // const response = await fetch(`${API_BASE_URL}/backups`, { method: 'POST' });
-  // if (!response.ok) throw new Error('Failed to create backup');
-  // return response.json();
+  // Creating database backup
   await new Promise(resolve => setTimeout(resolve, 2500));
   return { id: `backup-${Date.now()}`, timestamp: new Date().toISOString(), size: '1.3 GB', status: 'Completed' };
 }
 
-async function restoreBackupAPI({ backupId }: { backupId: string }): Promise<void> {
-  console.log(`Restoring backup ${backupId}...`);
-  // const response = await fetch(`${API_BASE_URL}/backups/restore`, { method: 'POST', body: JSON.stringify({ backupId }) });
-  // if (!response.ok) throw new Error('Failed to restore backup');
+async function restoreBackupAPI(_: { backupId: string }): Promise<void> {
+  // Restoring backup
   await new Promise(resolve => setTimeout(resolve, 4000));
 }
 
 async function executeQueryAPI({ query }: { query: string }): Promise<QueryResult> {
-  console.log('Executing query:', query);
-  // const response = await fetch(`${API_BASE_URL}/query`, { method: 'POST', body: JSON.stringify({ query }) });
-  // if (!response.ok) { 
-  //   const errorData = await response.json().catch(() => ({ message: 'Query execution failed' }));
-  //   throw new Error(errorData.message || 'Query execution failed');
-  // }
-  // return response.json();
+  // Executing query
   await new Promise(resolve => setTimeout(resolve, 1000));
   if (query.toLowerCase().includes('error')) throw new Error('Simulated query error');
   return {

@@ -31,10 +31,6 @@ export function AIEnrichment() {
   });
 
   const isProcessing = progress?.status === 'processing' || progress?.status === 'stopping';
-  
-  // Debug log
-  console.log('Progress:', progress);
-  console.log('Is Processing:', isProcessing);
 
   const handleStart = () => {
     startIterative({ 

@@ -88,8 +88,8 @@ export default function Advanced() {
       // Immediately refetch to get updated status
       queryClient.invalidateQueries({ queryKey: ['dataSources'] });
     },
-    onError: (error, sourceId) => {
-      console.error(`Scraper start failed for source ${sourceId}:`, error);
+    onError: () => {
+      // Scraper start failed
     },
   });
 
@@ -104,7 +104,7 @@ export default function Advanced() {
       setRunAllInProgress(true);
     },
     onSuccess: (data) => {
-      console.log('All scrapers completed:', data);
+      // All scrapers completed
       // Show results
       if (data.results) {
         alert(`Scraper Results:\n${data.message}\nTotal Duration: ${data.total_duration}s\n\nDetails:\n${
@@ -138,7 +138,7 @@ export default function Advanced() {
         alert(`Successfully cleared ${result.deleted_count} prospects from ${sourceName}.`);
         // Query invalidation is handled by the mutation's onSuccess
       } catch (err) {
-        console.error('Failed to clear data source data:', err);
+        // Failed to clear data source data
         alert('Failed to clear data source data. Please try again.');
       }
     }
