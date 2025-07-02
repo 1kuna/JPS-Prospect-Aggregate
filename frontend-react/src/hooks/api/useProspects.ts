@@ -3,10 +3,7 @@ import { Prospect, ProspectFilters, ProspectStatistics, ProspectStatus } from '@
 import { ApiResponse } from '@/types/api';
 import { get, buildQueryString } from '@/utils/apiUtils';
 
-// Placeholder API base URL - commented out to remove unused variable warning
-// const API_BASE_URL = '/api'; // Adjust as needed
-
-// --- API Call Functions (Placeholders) ---
+// --- API Call Functions ---
 
 // Simulate a paginated API response structure
 interface PaginatedProspectsResponse {
@@ -18,7 +15,7 @@ interface PaginatedProspectsResponse {
 async function fetchProspectsAPI(
   { pageParam = 0, filters }: { pageParam?: number; filters?: ProspectFilters }
 ): Promise<PaginatedProspectsResponse> {
-  console.log(`Fetching prospects... pageParam (0-indexed): ${pageParam}, filters:`, filters);
+  // Fetching prospects with pagination
   
   const params: Record<string, string | number | boolean | Array<string | number>> = {
     page: pageParam + 1, // Backend is 1-indexed
@@ -26,7 +23,7 @@ async function fetchProspectsAPI(
     ...filters
   };
   
-  console.log(`Requesting backend page: ${params.page}`);
+  // Backend uses 1-indexed pagination
   
   const url = `/api/prospects${buildQueryString(params)}`;
   const responseJson = await get<{
@@ -38,24 +35,20 @@ async function fetchProspectsAPI(
     };
   }>(url);
   
-  console.log('[useProspects.ts] Raw responseJson from backend:', responseJson);
+  // Transform backend response
 
   const transformedData = {
     data: responseJson.prospects || [],
     nextCursor: responseJson.pagination?.has_next ? responseJson.pagination.page : undefined,
     totalCount: responseJson.pagination?.total_items || 0,
   };
-  console.log('[useProspects.ts] Transformed data in fetchProspectsAPI:', transformedData);
+  // Return transformed data
   return transformedData;
 }
 
 async function fetchProspectStatisticsAPI(): Promise<ProspectStatistics> {
-  console.log('Fetching prospect statistics...');
-  // const response = await fetch(`/api/prospects/statistics`); // Commenting this out for now
-  // if (!response.ok) throw new Error('Network response was not ok');
-  // return response.json();
-  await new Promise(resolve => setTimeout(resolve, 300)); // Keep a small delay to avoid breaking the UI immediately
-  // Return mock/empty statistics data for now to prevent errors
+  // Fetching prospect statistics
+  await new Promise(resolve => setTimeout(resolve, 300));
   return {
     data: { 
         total: 0,
@@ -68,7 +61,7 @@ async function fetchProspectStatisticsAPI(): Promise<ProspectStatistics> {
 
 // --- Mock API functions for Prospect mutations ---
 async function createProspectAPI(newProspect: Omit<Prospect, 'id' | 'createdAt' | 'updatedAt'>): Promise<Prospect> {
-  console.log("Simulating create prospect:", newProspect);
+  // Creating new prospect
   await new Promise(resolve => setTimeout(resolve, 500));
   // Simulate API response
   const createdProspect: Prospect = {
@@ -77,12 +70,12 @@ async function createProspectAPI(newProspect: Omit<Prospect, 'id' | 'createdAt' 
     createdAt: new Date().toISOString(),
     status: newProspect.status || ProspectStatus.SUBMITTED, // Default status if not provided
   };
-  console.log("Simulated created prospect:", createdProspect);
+  // Return created prospect
   return createdProspect;
 }
 
 async function updateProspectAPI({ id, ...updatedData }: Partial<Prospect> & { id: Prospect['id'] }): Promise<Prospect> {
-  console.log(`Simulating update prospect ${id}:`, updatedData);
+  // Updating prospect
   await new Promise(resolve => setTimeout(resolve, 500));
   // Simulate API response, assuming the update is successful and returns the updated object
   // In a real API, you would fetch the prospect and merge updates or rely on the backend to do so.
@@ -97,15 +90,15 @@ async function updateProspectAPI({ id, ...updatedData }: Partial<Prospect> & { i
     updatedAt: new Date().toISOString(),
     status: updatedData.status || ProspectStatus.SUBMITTED,
   };
-  console.log("Simulated updated prospect:", mockUpdatedProspect);
+  // Return updated prospect
   return mockUpdatedProspect;
 }
 
-async function deleteProspectAPI(prospectId: Prospect['id']): Promise<void> {
-  console.log(`Simulating delete prospect ${prospectId}`);
+async function deleteProspectAPI(_: Prospect['id']): Promise<void> {
+  // Deleting prospect
   await new Promise(resolve => setTimeout(resolve, 500));
   // Simulate successful deletion (API typically returns 204 No Content or similar)
-  console.log(`Simulated deletion of prospect ${prospectId} successful.`);
+  // Deletion successful
 }
 
 // --- React Query Hooks ---
@@ -129,14 +122,14 @@ export function useInfiniteProspects(filters?: ProspectFilters) {
       // If it exists (meaning has_next was true), it means there's potentially another page.
       // react-query will pass this returned value as `pageParam` to `fetchProspectsAPI` for the next fetch.
       // The value itself should be the page number that was *just fetched* if a next page exists.
-      console.log('[useProspects.ts] getNextPageParam - lastPage:', lastPage);
+      // Calculate next page parameter
       return lastPage.nextCursor ? lastPage.nextCursor : undefined;
     },
   });
 
-  console.log('[useProspects.ts] result.data from useInfiniteQuery (before flattening):', result.data);
+  // Flatten paginated data
   const flattenedData = result.data?.pages.flatMap(page => page.data) ?? [];
-  console.log('[useProspects.ts] flattenedData:', flattenedData);
+  // Return flattened data
 
   return {
     ...result,
@@ -175,15 +168,15 @@ export function useCreateProspect() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: createProspectAPI,
-    onSuccess: (newProspect) => {
+    onSuccess: () => {
       // Invalidate and refetch the list of prospects
       queryClient.invalidateQueries({ queryKey: prospectQueryKeys.lists() });
       // Optionally, you could add the new prospect to the infinite list cache
       // This can be complex with infinite lists; often invalidation is simpler.
-      console.log('CreateProspect success, invalidated prospects list. New prospect:', newProspect);
+      // Invalidated prospects list after creation
     },
-    onError: (error) => {
-      console.error('CreateProspect error:', error);
+    onError: () => {
+      // Handle creation error
     }
   });
 }
@@ -192,7 +185,7 @@ export function useUpdateProspect() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: updateProspectAPI,
-    onSuccess: (_, variables) => {
+    onSuccess: () => {
       // Invalidate the list of prospects to refetch
       queryClient.invalidateQueries({ queryKey: prospectQueryKeys.lists() });
       // Optionally, invalidate the specific prospect detail query if you have one
@@ -216,11 +209,11 @@ export function useUpdateProspect() {
       //     };
       //   }
       // );
-      console.log('UpdateProspect success, invalidated prospects list. Updated prospect ID:', variables.id);
+      // Invalidated prospects list after update
 
     },
-    onError: (error, variables) => {
-      console.error('UpdateProspect error for ID:', variables.id, error);
+    onError: () => {
+      // Handle update error
     }
   });
 }
@@ -229,15 +222,15 @@ export function useDeleteProspect() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: deleteProspectAPI,
-    onSuccess: (_, prospectId) => {
+    onSuccess: () => {
       // Invalidate and refetch the list of prospects
       queryClient.invalidateQueries({ queryKey: prospectQueryKeys.lists() });
       // Optionally, optimistic update or direct cache manipulation
       // Similar to update, but removing the item.
-      console.log('DeleteProspect success, invalidated prospects list. Deleted prospect ID:', prospectId);
+      // Invalidated prospects list after deletion
     },
-    onError: (error, prospectId) => {
-      console.error('DeleteProspect error for ID:', prospectId, error);
+    onError: () => {
+      // Handle deletion error
     }
   });
 }

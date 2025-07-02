@@ -97,7 +97,7 @@ export function useEnhancement() {
         const status = await get<QueueStatus>('/api/llm/queue/status');
         setQueueStatus(status);
       } catch (error) {
-        console.error('Failed to fetch queue status:', error);
+        // Silently handle queue status fetch errors
       }
     };
 
@@ -127,7 +127,7 @@ export function useEnhancement() {
     
     switch (event.event_type) {
       case 'connected':
-        console.log(`SSE connected for ${prospectId}`);
+        // SSE connection established
         break;
 
       case 'queue_position_update':
@@ -150,7 +150,7 @@ export function useEnhancement() {
         if (existingTimeout) clearTimeout(existingTimeout);
         
         const newTimeout = setTimeout(() => {
-          console.warn(`Enhancement timeout for ${prospectId}`);
+          // Enhancement timeout
           setEnhancementStates(prev => ({
             ...prev,
             [prospectId]: {
@@ -257,7 +257,7 @@ export function useEnhancement() {
         break;
 
       case 'completed':
-        console.log(`Enhancement completed for ${prospectId}`, event.data);
+        // Enhancement completed
         
         // Clear timeout
         const completionTimeout = enhancementTimeoutsRef.current.get(prospectId);
@@ -384,11 +384,11 @@ export function useEnhancement() {
   const createSSEConnection = useCallback((prospectId: string) => {
     // Don't create duplicate connections
     if (sseConnectionsRef.current.has(prospectId)) {
-      console.log(`SSE connection already exists for prospect ${prospectId}`);
+      // SSE connection already exists
       return;
     }
 
-    console.log(`Creating SSE connection for prospect ${prospectId}`);
+    // Creating SSE connection
     
     const eventSource = new EventSource(`/api/llm/enhancement-progress/${prospectId}`);
     sseConnectionsRef.current.set(prospectId, eventSource);
@@ -397,7 +397,7 @@ export function useEnhancement() {
     setPollingInterval(5000);
 
     eventSource.onopen = () => {
-      console.log(`SSE connection established for prospect ${prospectId}`);
+      // Connection established
     };
 
     eventSource.onmessage = (event) => {
@@ -405,12 +405,12 @@ export function useEnhancement() {
         const sseEvent = JSON.parse(event.data);
         handleSSEEvent(prospectId, sseEvent);
       } catch (err) {
-        console.error('Failed to parse SSE event:', err);
+        // Silently handle SSE parse errors
       }
     };
 
-    eventSource.onerror = (err) => {
-      console.error(`SSE connection error for prospect ${prospectId}:`, err);
+    eventSource.onerror = () => {
+      // SSE connection error
       
       // Clean up failed connection
       eventSource.close();
@@ -535,11 +535,6 @@ export function useEnhancement() {
           
           // If item is being processed
           if (queueStatus.current_item === item.id) {
-            // Create SSE connection if not exists
-            if (!sseConnectionsRef.current.has(prospectId)) {
-              createSSEConnection(prospectId);
-            }
-            
             updated[prospectId] = {
               ...updated[prospectId],
               queueItemId: item.id,
@@ -598,7 +593,7 @@ export function useEnhancement() {
       
       return true;
     } catch (error) {
-      console.error('Failed to cancel enhancement:', error);
+      // Failed to cancel enhancement
       return false;
     }
   }, []);

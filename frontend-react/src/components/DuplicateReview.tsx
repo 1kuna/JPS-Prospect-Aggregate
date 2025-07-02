@@ -90,13 +90,13 @@ export function DuplicateReview() {
       
       // Set scan ID for progress tracking if provided
       if (result.data?.scan_id) {
-        console.log('Setting scan ID:', result.data.scan_id);
+        // Setting scan ID
         setCurrentScanId(result.data.scan_id);
       } else {
-        console.log('No scan_id in response:', result);
+        // No scan_id in response
       }
       
-      console.log('Full response data:', result.data);
+      // Response received
       
       return result;
     },
@@ -225,14 +225,14 @@ export function DuplicateReview() {
 
   // Update scan progress from polling
   React.useEffect(() => {
-    console.log('Progress polling effect triggered. progressData:', progressData);
+    // Progress polling effect triggered
     if (progressData?.data) {
-      console.log('Progress update:', progressData.data);
+      // Progress update received
       setScanProgress(progressData.data);
       
       // Stop polling when scan is complete and show results
       if (progressData.data.status === 'completed' && progressData.data.results) {
-        console.log('Scan finished with results, updating duplicate data');
+        // Scan finished with results, updating duplicate data
         
         // Update the duplicates query cache with the results
         queryClient.setQueryData(
@@ -245,7 +245,7 @@ export function DuplicateReview() {
         
         setCurrentScanId(null);
       } else if (progressData.data.status === 'error') {
-        console.log('Scan failed, stopping polling');
+        // Scan failed, stopping polling
         
         // Set error state in the duplicates query cache
         queryClient.setQueryData(
@@ -261,10 +261,6 @@ export function DuplicateReview() {
     }
   }, [progressData, queryClient, selectedSourceId, minConfidence, scanLimit]);
 
-  // Debug current scan ID changes
-  React.useEffect(() => {
-    console.log('Current scan ID changed to:', currentScanId);
-  }, [currentScanId]);
 
   const renderProgressBar = () => {
     // Show progress bar when detecting (regardless of progress data)

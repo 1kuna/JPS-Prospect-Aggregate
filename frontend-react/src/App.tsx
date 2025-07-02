@@ -61,7 +61,7 @@ function AppWithProviders() {
 }
 
 function App() {
-  console.log('App component loaded!');
+  // App component loaded
   // Effect to toggle .dark class on <html> based on OS/browser preference
   useEffect(() => {
     // Ensure the .dark class is not present if we're forcing light mode

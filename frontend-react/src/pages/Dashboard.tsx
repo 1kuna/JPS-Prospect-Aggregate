@@ -75,11 +75,6 @@ interface Prospect {
   source_name: string | null; // Name of the data source
 }
 
-// Mock API call functions - replace with actual API calls
-// const fetchProspectCount = async (): Promise<{ count: number }> => {
-//   await new Promise(resolve => setTimeout(resolve, 300));
-//   return { count: 583 }; // Example count
-// };
 
 interface ProspectFilters {
   naics?: string;
@@ -113,7 +108,7 @@ const fetchProspects = async (page: number, limit: number, filters?: ProspectFil
     
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ message: 'Failed to fetch prospects and parse error response' }));
-      console.error('Error response:', errorData);
+      // Error response received
       throw new Error(errorData.error || `Network response was not ok: ${response.statusText}`);
     }
     
@@ -127,7 +122,7 @@ const fetchProspects = async (page: number, limit: number, filters?: ProspectFil
       totalPages: result.pagination.total_pages
     };
   } catch (error) {
-    console.error('Fetch error:', error);
+    // Handle fetch error
     throw error;
   }
 };
@@ -188,11 +183,7 @@ export default function Dashboard() {
     if (!selectedProspectId || !prospectsData?.data) return null;
     const found = prospectsData.data.find((p: Prospect) => p.id === selectedProspectId) || null;
     if (found) {
-      console.log(`Modal prospect data updated for ${selectedProspectId}:`, {
-        ollama_processed_at: found.ollama_processed_at,
-        ai_enhanced_title: found.ai_enhanced_title,
-        estimated_value_single: found.estimated_value_single
-      });
+      // Modal prospect data updated
     }
     return found;
   }, [selectedProspectId, prospectsData?.data]);
@@ -853,15 +844,6 @@ export default function Dashboard() {
                     </div>
                   )}
                 </>
-              )}
-               {/* Show polling indicator when actively enhancing or fetching */}
-               {(hasAnyActivity || (isFetchingProspects && !isLoadingProspects)) && prospectsData && prospectsData.data.length > 0 && (
-                   <div className="absolute top-2 right-2 bg-blue-50/90 backdrop-blur-sm rounded-full px-2 py-1 shadow-sm border border-blue-200 flex items-center gap-1.5 z-10">
-                      <div className="animate-spin rounded-full h-3 w-3 border-t-2 border-b-2 border-blue-500"></div>
-                      <p className="text-xs font-medium text-blue-700">
-                        {hasAnyActivity ? 'AI Enhancing' : 'Updating'}
-                      </p>
-                  </div>
               )}
             </CardContent>
           </Card>

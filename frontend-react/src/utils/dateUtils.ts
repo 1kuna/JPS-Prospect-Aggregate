@@ -43,7 +43,7 @@ export const formatDate = (
 
     // Check if date is valid
     if (isNaN(date.getTime())) {
-      console.warn(`Invalid date string: ${dateString}`);
+      // Invalid date string, using fallback
       return fallback;
     }
 
@@ -107,7 +107,7 @@ export const formatDate = (
 
     return new Intl.DateTimeFormat(locale, formatOptions).format(date);
   } catch (error) {
-    console.warn(`Error formatting date: ${dateString}`, error);
+    // Error formatting date, using fallback
     return fallback;
   }
 };
