@@ -63,7 +63,7 @@ async function createBackupAPI(): Promise<DatabaseBackup> { // Assuming API retu
   return { id: `backup-${Date.now()}`, timestamp: new Date().toISOString(), size: '1.3 GB', status: 'Completed' };
 }
 
-async function restoreBackupAPI(params: { backupId: string }): Promise<void> {
+async function restoreBackupAPI(_params: { backupId: string }): Promise<void> {
   // Restoring backup with id: ${params.backupId}
   await new Promise(resolve => setTimeout(resolve, 4000));
 }

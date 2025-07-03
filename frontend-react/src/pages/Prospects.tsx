@@ -323,13 +323,13 @@ export default function Prospects() {
                                 {prospect?.title || 'Untitled'}
                               </div>
                               <div className="truncate">
-                                {prospect?.status || 'N/A'}
+                                {prospect?.agency || 'N/A'}
                               </div>
                               <div className="truncate">
-                                {prospect?.dataSource?.name || 'N/A'}
+                                {prospect?.source_name || 'N/A'}
                               </div>
                               <div className="text-sm text-gray-600">
-                                {formatUserDate(prospect?.createdAt, 'date')}
+                                {formatUserDate(prospect?.loaded_at, 'date')}
                               </div>
                               <div>
                                 <GoNoGoDecision 

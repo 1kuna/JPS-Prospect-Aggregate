@@ -1,4 +1,14 @@
 // Core hooks
+export { useProspectFilters } from './useProspectFilters';
+export type { ProspectFilters } from './useProspectFilters';
+export { usePaginatedProspects } from './usePaginatedProspects';
+export { useProspectModal } from './useProspectModal';
+export { useProspectColumns } from './useProspectColumns';
+
+// Advanced page hooks
+export { useDataSourceManagement } from './useDataSourceManagement';
+export { useScraperOperations } from './useScraperOperations';
+export { useTabNavigation } from './useTabNavigation';
 // ... existing code ...
 
 // Explicitly export from API hooks

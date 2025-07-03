@@ -42,7 +42,7 @@ export function DatabaseOperations() {
         // Intentionally empty
         setIsConfirmingReset(false);
       },
-      onError: (error: Error) => {
+      onError: (_error: Error) => {
         setIsConfirmingReset(false);
       }
     });
