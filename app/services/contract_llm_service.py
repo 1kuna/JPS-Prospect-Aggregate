@@ -39,7 +39,15 @@ class ContractLLMService:
             db.session.rollback()
         
     def parse_existing_naics(self, naics_str: Optional[str]) -> Dict[str, Optional[str]]:
-        """Parse existing NAICS codes from source data formats"""
+        """Parse existing NAICS codes from source data formats
+        
+        Handles various formats found across different agencies:
+        1. "334516 | Description" or "334516 - Description" (most common)
+        2. "334516 Description" (space-separated)
+        3. "334516" (just the 6-digit code)
+        
+        Returns dict with 'code' and 'description' keys.
+        """
         if not naics_str:
             return {'code': None, 'description': None}
         
@@ -187,8 +195,10 @@ class ContractLLMService:
             parsed = json.loads(cleaned_response)
             
             # Handle both array response (new) and single object (backward compatibility)
+            # Handle response format variations from the LLM
             if isinstance(parsed, list):
-                # Sort by confidence descending
+                # LLM returned multiple NAICS codes (common for multi-purpose contracts)
+                # Sort by confidence descending to pick the most relevant
                 codes = sorted(parsed, key=lambda x: x.get('confidence', 0), reverse=True)
                 # Primary code is the highest confidence one
                 primary = codes[0] if codes else {'code': None, 'description': None, 'confidence': 0.0}
@@ -196,10 +206,10 @@ class ContractLLMService:
                     'code': primary.get('code'),
                     'description': primary.get('description'),
                     'confidence': primary.get('confidence', 0.8),
-                    'all_codes': codes[:3]  # Store up to 3 codes
+                    'all_codes': codes[:3]  # Store up to 3 codes for future analysis
                 }
             else:
-                # Backward compatibility for single code response
+                # Single code response (older prompt format or single-purpose contract)
                 result = {
                     'code': parsed.get('code'),
                     'description': parsed.get('description'),
@@ -224,7 +234,16 @@ class ContractLLMService:
             return error_result
     
     def parse_contract_value_with_llm(self, value_text: str, prospect_id: str = None) -> Dict:
-        """Value parsing using qwen3:8b"""
+        """Value parsing using qwen3:8b
+        
+        Extracts contract values from messy text formats. Handles:
+        - Range values: "$100K - $500K" -> {min: 100000, max: 500000}
+        - Single values: "$250,000" -> {single: 250000}
+        - Complex formats: "between 100 and 500 thousand" -> {min: 100000, max: 500000}
+        
+        The LLM is trained to understand various number formats, abbreviations (K, M, B),
+        and contextual clues to extract accurate dollar amounts.
+        """
         if not value_text:
             return {'min': None, 'max': None, 'single': None}
 

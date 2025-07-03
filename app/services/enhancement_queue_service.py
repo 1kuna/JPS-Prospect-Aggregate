@@ -60,7 +60,17 @@ class QueueItem:
 
 
 class EnhancementQueueService:
-    """Service for managing prioritized enhancement queue"""
+    """Service for managing prioritized enhancement queue
+    
+    Queue Processing Workflow:
+    1. Individual requests get priority 1 (highest)
+    2. Bulk operations get priority 10 (lower)
+    3. Worker thread processes items in priority order
+    4. Bulk operations can be interrupted by high-priority individual requests
+    
+    This ensures responsive UI - users see their individual enhancements
+    processed immediately, while bulk operations run in the background.
+    """
     
     def __init__(self):
         self.llm_service = ContractLLMService()
@@ -149,9 +159,11 @@ class EnhancementQueueService:
             self._queue_items[item_id] = queue_item
             
         # Add to priority queue (priority, timestamp, item) for stable sorting
+        # The timestamp ensures FIFO ordering for items with same priority
         self._queue.put((queue_item.priority, time.time(), queue_item))
         
         # If bulk processing is running and we have high priority item, signal interruption
+        # This allows individual requests to "jump the queue" ahead of bulk operations
         if self._bulk_service and self._bulk_service.is_processing():
             logger.info(f"Individual enhancement request added - signaling bulk process to yield")
             # The bulk process should check for high priority items periodically
@@ -172,7 +184,7 @@ class EnhancementQueueService:
         queue_item = QueueItem(
             id=item_id,
             type=QueueItemType.BULK,
-            priority=10,  # Lower priority
+            priority=10,  # Lower priority than individual requests (1)
             prospect_ids=prospect_ids,
             enhancement_type=enhancement_type,
             user_id=user_id,

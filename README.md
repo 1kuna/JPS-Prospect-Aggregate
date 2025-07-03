@@ -30,27 +30,34 @@ Additional design notes are located in `docs/`.
 
 ## Setup
 
-1. Create and activate a Python virtual environment (Python 3.11 is recommended)
+1. Activate your conda environment (Python 3.11 recommended):
+   ```bash
+   conda activate your_environment_name
+   ```
+   Or create a Python virtual environment:
    ```bash
    python3 -m venv venv
-   source venv/bin/activate
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
    ```
-2. Install backend dependencies and Playwright browsers
+2. Install backend dependencies and Playwright browsers:
    ```bash
    pip install -r requirements.txt
    playwright install
    ```
-3. Copy `.env.example` to `.env` and adjust any settings if required.
-4. Initialize the database and populate data source records
+3. Copy `.env.example` to `.env` and adjust settings if needed
+4. Initialize database (complete setup including user database):
    ```bash
-   flask db upgrade
-   python scripts/populate_data_sources.py
+   python scripts/setup_databases.py
    ```
-5. Install front-end dependencies
+   Or manually:
    ```bash
-   cd frontend-react
-   npm install
-   cd ..
+   alembic upgrade head
+   python scripts/populate_data_sources.py
+   python scripts/init_user_database.py
+   ```
+5. Install frontend dependencies:
+   ```bash
+   cd frontend-react && npm install && cd ..
    ```
 
 ## Running
@@ -59,25 +66,53 @@ Start the Flask API using Waitress:
 ```bash
 python run.py
 ```
+
 The React application can be launched separately:
 ```bash
 cd frontend-react
-npm run dev
+npm run dev  # Includes automatic CSS watching with concurrently
 ```
-Scrapers are run via the helper script:
+
+Scrapers are run via helper scripts:
 ```bash
+# Run all scrapers
 python scripts/run_all_scrapers.py
+
+# Run specific scraper
+python -m scripts.run_scraper --source "DHS"
+
+# Test scrapers
+python run_scraper_tests.py  # Test all with web server
+python test_scraper_individual.py --scraper dhs  # Test individual
 ```
-LLM based enrichment can be executed when Ollama is available:
+
+LLM based enrichment requires Ollama with qwen3 model:
 ```bash
+# Install Ollama from https://ollama.ai/
+ollama pull qwen3:latest
+
+# Run enhancement
 python scripts/enrichment/enhance_prospects_with_llm.py values --limit 100
+
+# Check LLM status
+python scripts/enrichment/enhance_prospects_with_llm.py --check-status
 ```
 
 ## Testing
 
-Execute all unit tests with:
+Execute all unit tests with coverage:
 ```bash
-pytest
+python -m pytest  # Basic test run
+python -m pytest -v --cov=app --cov-report=html  # With coverage report
+python -m pytest tests/test_specific.py::test_function -v  # Single test
+```
+
+Frontend tests:
+```bash
+cd frontend-react
+npm run test  # Run tests
+npm run test:ui  # Run with UI
+npm run test:coverage  # Generate coverage report
 ```
 
 ## Current Data Sources
@@ -98,7 +133,7 @@ The following agencies are configured through `populate_data_sources.py`:
 - [General Services Administration](https://acquisitiongateway.gov/forecast)
 - [Nuclear Regulatory Commission](https://acquisitiongateway.gov/forecast)
 
-See `docs/scraper_architecture.md` and `docs/CONTRACT_MAPPING_LLM.md` for detailed implementation notes.
+See `docs/CONTRACT_MAPPING_LLM.md` for LLM implementation details. The scraper architecture uses a unified `ConsolidatedScraperBase` class (see inline documentation in `app/core/consolidated_scraper_base.py`).
 
 ## Data Retention
 

@@ -1,13 +1,34 @@
 """
-Configuration converter to transform existing complex configurations
-into the new unified ScraperConfig format.
+Configuration converter for the unified scraper architecture.
+
+This module creates ScraperConfig instances for each agency scraper, replacing
+the old mixin-based architecture with a single, configuration-driven approach.
+
+Key Benefits:
+1. All scraper behavior defined in one place (no inheritance hunting)
+2. Agency-specific customizations are data, not code
+3. ~90% code reduction compared to old architecture
+4. New scrapers can often be added with just configuration
+
+Each create_*_config() function returns a ScraperConfig with:
+- Agency-specific selectors and URLs
+- Custom data transformations
+- Field mapping rules
+- Timeout and retry strategies
 """
 from typing import Optional, List, Dict, Any
 from app.core.consolidated_scraper_base import ScraperConfig
 
 
 def create_acquisition_gateway_config() -> ScraperConfig:
-    """Create configuration for Acquisition Gateway scraper."""
+    """Create configuration for Acquisition Gateway scraper.
+    
+    Acquisition Gateway aggregates forecasts from multiple agencies.
+    Notable quirks:
+    - Requires non-headless mode for reliable downloads
+    - CSV format with extensive contact information fields
+    - Uses fiscal quarter notation (FY-QTR) that needs parsing
+    """
     return ScraperConfig(
         source_name="Acquisition Gateway",
         base_url=None,  # Set by runner from active_config.ACQUISITION_GATEWAY_URL
@@ -15,8 +36,10 @@ def create_acquisition_gateway_config() -> ScraperConfig:
         
         # Browser settings
         use_stealth=False,
-        debug_mode=True,  # Non-headless for monitoring
+        debug_mode=True,  # Non-headless required - headless mode causes download failures
         special_browser_args=[
+            # These args prevent Chrome from throttling background tabs
+            # Critical for scrapers that open multiple tabs/windows
             "--disable-features=VizDisplayCompositor",
             "--disable-backgrounding-occluded-windows",
             "--disable-renderer-backgrounding"
