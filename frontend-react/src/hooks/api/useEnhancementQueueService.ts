@@ -181,7 +181,6 @@ export function useEnhancementQueueService(options?: {
       queryClient.invalidateQueries({ queryKey: queryKeys.queueItem(itemId) });
     },
     onError: (error: Error) => {
-      console.error('Failed to cancel queue item:', error);
       if (window.showToast) {
         window.showToast({
           title: 'Failed to cancel',
@@ -208,7 +207,6 @@ export function useEnhancementQueueService(options?: {
       }
     },
     onError: (error: Error) => {
-      console.error('Failed to start worker:', error);
       if (window.showToast) {
         window.showToast({
           title: 'Failed to start worker',
@@ -235,7 +233,6 @@ export function useEnhancementQueueService(options?: {
       }
     },
     onError: (error: Error) => {
-      console.error('Failed to stop worker:', error);
       if (window.showToast) {
         window.showToast({
           title: 'Failed to stop worker',
@@ -268,7 +265,6 @@ export function useEnhancementQueueService(options?: {
       }
     },
     onError: (error: Error) => {
-      console.error('Failed to start enhancement:', error);
       if (window.showToast) {
         window.showToast({
           title: 'Failed to start enhancement',
@@ -297,7 +293,6 @@ export function useEnhancementQueueService(options?: {
       }
     },
     onError: (error: Error) => {
-      console.error('Failed to stop enhancement:', error);
       if (window.showToast) {
         window.showToast({
           title: 'Failed to stop enhancement',

@@ -65,7 +65,6 @@ async function createBackupAPI(): Promise<DatabaseBackup> { // Assuming API retu
 
 async function restoreBackupAPI(params: { backupId: string }): Promise<void> {
   // Restoring backup with id: ${params.backupId}
-  console.log(`Restoring backup: ${params.backupId}`);
   await new Promise(resolve => setTimeout(resolve, 4000));
 }
 

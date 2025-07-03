@@ -43,7 +43,6 @@ export function DatabaseOperations() {
         setIsConfirmingReset(false);
       },
       onError: (error: Error) => {
-        console.error('Failed to reset database:', error);
         setIsConfirmingReset(false);
       }
     });
