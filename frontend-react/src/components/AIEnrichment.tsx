@@ -5,6 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Label } from '@/components/ui/label';
 import { useTimezoneDate } from '@/hooks/useTimezoneDate';
 import { useEnhancementQueueService } from '@/hooks/api/useEnhancementQueueService';
+import { getStatusColor } from '@/utils/statusUtils';
 import { PlayIcon, StopIcon, ChevronDownIcon, ChevronRightIcon } from '@radix-ui/react-icons';
 
 type EnhancementType = 'all' | 'values' | 'contacts' | 'naics' | 'titles';
@@ -57,25 +58,6 @@ export function AIEnrichment() {
     });
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'success':
-      case 'completed':
-        return 'text-green-600';
-      case 'failed':
-      case 'error':
-        return 'text-red-600';
-      case 'in_progress':
-      case 'processing':
-        return 'text-blue-600';
-      case 'stopping':
-        return 'text-orange-600';
-      case 'stopped':
-        return 'text-yellow-600';
-      default:
-        return 'text-gray-600';
-    }
-  };
 
   return (
     <div className="space-y-6">

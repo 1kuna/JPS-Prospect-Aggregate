@@ -1,5 +1,5 @@
-import { useQuery, useInfiniteQuery, useQueryClient, useMutation } from '@tanstack/react-query';
-import { Prospect, ProspectFilters, ProspectStatistics, ProspectStatus } from '@/types/prospects';
+import { useQuery, useInfiniteQuery } from '@tanstack/react-query';
+import { Prospect, ProspectFilters, ProspectStatistics } from '@/types/prospects';
 import { ApiResponse } from '@/types/api';
 import { get, buildQueryString } from '@/utils/apiUtils';
 

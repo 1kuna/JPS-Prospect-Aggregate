@@ -74,7 +74,7 @@ const interceptors = {
 /**
  * Request deduplication storage
  */
-const pendingRequests = new Map<string, Promise<any>>();
+const pendingRequests = new Map<string, Promise<unknown>>();
 
 /**
  * Generate a deduplication key for a request
@@ -185,12 +185,7 @@ export const fetchWithErrorHandling = async <T = unknown>(
     ...fetchOptions 
   } = options;
 
-  const {
-    maxRetries = 3,
-    baseDelay = 1000,
-    maxDelay = 10000,
-    retryCondition = defaultRetryCondition
-  } = retry;
+  // Retry options will be handled in executeRequest function
 
   // Apply request interceptors
   let requestParams = { url, options: fetchOptions };
@@ -241,7 +236,7 @@ const executeRequest = async <T = unknown>(
     retryCondition = defaultRetryCondition
   } = retry;
 
-  let lastError: Error;
+  let lastError: Error = new Error('Unknown error');
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     // Create combined abort controller that responds to both timeout and external cancellation
@@ -687,7 +682,7 @@ export const combineAbortControllers = (controllers: AbortController[]): AbortCo
   };
   
   // Store cleanup function on the controller for later use
-  (combinedController as any).cleanup = cleanup;
+  (combinedController as AbortController & { cleanup: () => void }).cleanup = cleanup;
   
   return combinedController;
 };

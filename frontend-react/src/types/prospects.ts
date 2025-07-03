@@ -1,47 +1,42 @@
+// Updated Prospect interface based on backend model
 export interface Prospect {
-  id: string | number;
-  nativeId?: string;
-  title: string;
-  aiEnhancedTitle?: string;
-  description?: string;
-  agency?: string;
-  naicsCode?: string;
-  naicsDescription?: string;
-  naicsSource?: string;
-  estimatedValue?: string | number;
-  estValueUnit?: string;
-  valueOriginalText?: string;
-  valueMin?: number;
-  valueMax?: number;
-  valueSingleEstimate?: number;
-  releaseDate?: string;
-  awardDate?: string;
-  awardFiscalYear?: number;
-  placeCity?: string;
-  placeState?: string;
-  placeCountry?: string;
-  contractType?: string;
-  setAside?: string;
-  primaryContactEmail?: string;
-  primaryContactName?: string;
-  loadedAt?: string;
-  ollamaProcessedAt?: string;
-  ollamaModelVersion?: string;
-  enhancementStatus?: string;
-  enhancementStartedAt?: string;
-  enhancementUserId?: number;
-  extra?: Record<string, unknown>;
-  link?: string;
-  status: ProspectStatus;
-  dataSource?: {
-    id: string | number;
-    name: string;
-  };
-  dataSourceId?: number;
-  createdAt: string;
-  updatedAt?: string;
-  url?: string;
-  search?: string;
+  id: string; // Primary key, string (UUID)
+  native_id: string | null; // From source system
+  title: string; // Main title/name of the prospect
+  ai_enhanced_title: string | null; // NEW: AI-enhanced title
+  description: string | null;
+  agency: string | null;
+  naics: string | null;
+  naics_description: string | null; // NEW: NAICS description
+  naics_source: string | null; // NEW: 'original', 'llm_inferred', 'llm_enhanced'
+  estimated_value: string | null; // Represented as string in to_dict
+  est_value_unit: string | null;
+  estimated_value_text: string | null; // NEW: Original value as text
+  estimated_value_min: string | null; // NEW: LLM-parsed minimum
+  estimated_value_max: string | null; // NEW: LLM-parsed maximum
+  estimated_value_single: string | null; // NEW: LLM best estimate
+  release_date: string | null; // ISO date string
+  award_date: string | null; // ISO date string
+  award_fiscal_year: number | null;
+  // Animation properties for real-time updates
+  _recentlyUpdated?: string;
+  _updateTimestamp?: number;
+  place_city: string | null;
+  place_state: string | null;
+  place_country: string | null;
+  contract_type: string | null;
+  set_aside: string | null;
+  primary_contact_email: string | null; // NEW: LLM-extracted email
+  primary_contact_name: string | null; // NEW: LLM-extracted name
+  loaded_at: string | null; // ISO datetime string
+  ollama_processed_at: string | null; // NEW: When LLM processing completed
+  ollama_model_version: string | null; // NEW: Which LLM version was used
+  enhancement_status: string | null; // NEW: 'idle', 'in_progress', 'failed'
+  enhancement_started_at: string | null; // NEW: When enhancement started
+  enhancement_user_id: number | null; // NEW: User ID who started enhancement
+  extra: Record<string, unknown> | null; // JSON object
+  source_id: number | null;
+  source_name: string | null; // Name of the data source
 }
 
 export enum ProspectStatus {
