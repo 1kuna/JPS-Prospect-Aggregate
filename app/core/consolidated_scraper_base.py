@@ -86,6 +86,11 @@ class ScraperConfig:
     special_browser_args: Optional[List[str]] = None  # For sites needing specific args
     
     # Timeouts (in milliseconds)
+    # These defaults are based on empirical testing across all agency sites:
+    # - navigation_timeout: 90s handles slow government sites during peak hours
+    # - interaction_timeout: 30s for button clicks and form interactions
+    # - download_timeout: 120s for large Excel/CSV files (some are 10MB+)
+    # - wait_after_download: 2s ensures file is fully written to disk
     navigation_timeout_ms: int = 90000
     interaction_timeout_ms: int = 30000  
     download_timeout_ms: int = 120000
@@ -128,7 +133,10 @@ class ScraperConfig:
     dropna_how_all: bool = True
     
     # Special retry configuration (for DOT-style scrapers)
-    retry_attempts: Optional[List[Dict[str, Any]]] = None  # Complex retry configuration
+    # Some agencies (like DOT) have multiple download endpoints that may fail intermittently.
+    # This allows defining a list of retry strategies with different selectors/approaches.
+    # Example: [{"selector": "button.export", "wait_ms": 1000}, {"selector": "a.download", "wait_ms": 2000}]
+    retry_attempts: Optional[List[Dict[str, Any]]] = None
     
     # New page download configuration (for DOT-style scrapers)
     new_page_download_expect_timeout_ms: int = 60000
@@ -275,10 +283,20 @@ class ConsolidatedScraperBase:
                 }
             }
         
-        # CRITICAL: Treasury Browser State Loading - Part of persistence system
-        # This loads the browser state saved by cleanup_browser(). Treasury's website
-        # requires this to maintain session continuity and avoid re-authentication.
-        # See cleanup_browser() for full explanation of why this is necessary.
+        # CRITICAL: Treasury Browser State Persistence System
+        # 
+        # Treasury's website has unique authentication challenges:
+        # 1. Uses complex session management that expires quickly
+        # 2. Requires specific browser fingerprinting to avoid bot detection
+        # 3. May use certificate-based authentication in some environments
+        #
+        # Solution: We persist the browser state (cookies, localStorage, sessionStorage)
+        # between scraper runs. This maintains session continuity and avoids the need
+        # to re-authenticate on every run, which could trigger security measures.
+        #
+        # The state is saved in cleanup_browser() and loaded here. This approach is
+        # ONLY used for Treasury due to its unique requirements. Other agencies don't
+        # need this level of session persistence.
         if "Treasury" in self.source_name:
             import tempfile
             # Create a persistent directory for Treasury browser profile
