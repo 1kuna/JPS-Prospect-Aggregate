@@ -22,9 +22,6 @@ export {
 export {
   useInfiniteProspects,
   useProspectStatistics,
-  useCreateProspect,
-  useUpdateProspect,
-  useDeleteProspect,
 } from './api/useProspects';
 
 // Explicitly export from App-specific hooks

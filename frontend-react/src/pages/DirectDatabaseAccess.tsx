@@ -23,7 +23,6 @@ export default function DirectDatabaseAccess() {
         setError(null);
       },
       onError: (error: Error) => {
-        console.error('Query execution failed:', error);
         setResults(null);
         setError(error.message || 'Query execution failed');
       }
