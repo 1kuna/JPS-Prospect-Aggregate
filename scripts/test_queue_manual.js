@@ -1,4 +1,5 @@
-// Simple test to simulate frontend queue behavior
+// Manual test script to simulate queue behavior
+// Run with: node scripts/test_queue_manual.js
 const axios = require('axios');
 
 const API_BASE = 'http://localhost:5001/api';
