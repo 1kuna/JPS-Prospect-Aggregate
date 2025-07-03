@@ -9,7 +9,10 @@
     "build:css": "./node_modules/.bin/tailwindcss -i ./src/index.css -o ./src/tailwind-output.css --minify",
     "build": "npm run build:css && tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@radix-ui/react-alert-dialog": "^1.1.14",
@@ -49,6 +52,13 @@
     "tw-animate-css": "^1.3.0",
     "typescript": "~5.7.2",
     "typescript-eslint": "^8.24.1",
-    "vite": "^6.2.0"
+    "vite": "^6.2.0",
+    "vitest": "^2.1.0",
+    "@vitest/ui": "^2.1.0",
+    "@vitest/coverage-v8": "^2.1.0",
+    "@testing-library/react": "^16.0.0",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/user-event": "^14.5.2",
+    "jsdom": "^25.0.0"
   }
 }

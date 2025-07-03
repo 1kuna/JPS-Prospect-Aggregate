@@ -41,8 +41,8 @@ python -m scripts.run_scraper --source "DHS"
 alembic upgrade head
 alembic revision --autogenerate -m "description"
 
-# Run tests with coverage
-python -m pytest tests/ -v --cov=app --cov-report=html
+# Run tests with coverage (configuration in pytest.ini)
+python -m pytest
 
 # Run single test
 python -m pytest tests/test_specific.py::test_function -v
@@ -99,6 +99,15 @@ npm run lint
 
 # Preview production build
 npm run preview
+
+# Run tests
+npm run test
+
+# Run tests with UI
+npm run test:ui
+
+# Run tests with coverage
+npm run test:coverage
 ```
 
 ### Maintenance
