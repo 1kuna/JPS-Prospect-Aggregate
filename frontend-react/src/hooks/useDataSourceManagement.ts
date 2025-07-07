@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { get, post } from '@/utils/apiUtils';
+import { get, postProcessing } from '@/utils/apiUtils';
 import { useClearDataSourceData } from '@/hooks/api/useDataSources';
 import { useToast } from '@/contexts/ToastContext';
 import { formatScraperResults } from '@/utils/statusUtils';
@@ -30,11 +30,14 @@ export function useDataSourceManagement() {
 
   // Mutation for running all scrapers
   const runAllScrapersMutation = useMutation({
-    mutationFn: () => post<{
+    mutationFn: () => postProcessing<{
       message: string;
       total_duration: number;
       results?: ScraperResult[];
-    }>('/api/data-sources/run-all'),
+    }>('/api/data-sources/run-all', undefined, { 
+      deduplicate: true,
+      deduplicationKey: 'run-all-scrapers'
+    }),
     onSuccess: (data) => {
       // All scrapers completed - show results
       if (data.results) {

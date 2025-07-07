@@ -42,7 +42,7 @@ def init_user_database():
 if __name__ == '__main__':
     success = init_user_database()
     if success:
-        print("✅ User database initialized successfully!")
+        logger.success("✅ User database initialized successfully!")
     else:
-        print("❌ Failed to initialize user database")
+        logger.error("❌ Failed to initialize user database")
         sys.exit(1)

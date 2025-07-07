@@ -22,6 +22,7 @@ from app.constants.agency_mapping import (
     get_data_directory_mapping,
     standardize_file_name
 )
+from app.utils.logger import logger
 
 
 @dataclass
@@ -209,51 +210,51 @@ def main():
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     validator = FileNamingValidator(project_root)
     
-    print("🔍 JPS Prospect Aggregate - File Naming Validation")
-    print("=" * 60)
+    logger.info("🔍 JPS Prospect Aggregate - File Naming Validation")
+    logger.info("=" * 60)
     
     result = validator.validate_project()
     
-    # Print summary
-    print(f"\n📊 VALIDATION SUMMARY")
-    print(f"Valid files: {len(result.valid_files)}")
-    print(f"Invalid files: {len(result.invalid_files)}")
-    print(f"Naming issues: {len(result.naming_issues)}")
-    print(f"Directory issues: {len(result.directory_issues)}")
+    # Log summary
+    logger.info(f"\n📊 VALIDATION SUMMARY")
+    logger.info(f"Valid files: {len(result.valid_files)}")
+    logger.info(f"Invalid files: {len(result.invalid_files)}")
+    logger.info(f"Naming issues: {len(result.naming_issues)}")
+    logger.info(f"Directory issues: {len(result.directory_issues)}")
     
-    # Print details
+    # Log details
     if result.valid_files:
-        print(f"\n✅ VALID FILES ({len(result.valid_files)})")
+        logger.info(f"\n✅ VALID FILES ({len(result.valid_files)})")
         for file in result.valid_files[:10]:  # Show first 10
-            print(f"  ✓ {file}")
+            logger.info(f"  ✓ {file}")
         if len(result.valid_files) > 10:
-            print(f"  ... and {len(result.valid_files) - 10} more")
+            logger.info(f"  ... and {len(result.valid_files) - 10} more")
     
     if result.invalid_files or result.naming_issues:
-        print(f"\n❌ ISSUES FOUND")
+        logger.warning(f"\n❌ ISSUES FOUND")
         for issue in result.invalid_files + result.naming_issues:
-            print(f"  ❌ {issue}")
+            logger.warning(f"  ❌ {issue}")
     
     if result.directory_issues:
-        print(f"\n📁 DIRECTORY ISSUES")
+        logger.warning(f"\n📁 DIRECTORY ISSUES")
         for issue in result.directory_issues:
-            print(f"  📁 {issue}")
+            logger.warning(f"  📁 {issue}")
     
-    # Print recommendations
+    # Log recommendations
     if result.recommendations:
-        print(f"\n💡 RECOMMENDATIONS")
+        logger.info(f"\n💡 RECOMMENDATIONS")
         for rec in result.recommendations:
-            print(rec)
+            logger.info(rec)
     
-    # Print rename suggestions
+    # Log rename suggestions
     suggestions = validator.suggest_renames()
     if suggestions:
-        print(f"\n🔄 SUGGESTED RENAMES")
+        logger.info(f"\n🔄 SUGGESTED RENAMES")
         for old, new in suggestions.items():
-            print(f"  {old} → {new}")
+            logger.info(f"  {old} → {new}")
     
-    print(f"\n{'=' * 60}")
-    print(f"✨ Validation completed at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    logger.info(f"\n{'=' * 60}")
+    logger.success(f"✨ Validation completed at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     
     # Exit with appropriate code
     total_issues = len(result.invalid_files) + len(result.naming_issues) + len(result.directory_issues)

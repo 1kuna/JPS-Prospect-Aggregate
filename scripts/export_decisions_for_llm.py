@@ -270,18 +270,18 @@ def main():
         count = export_decisions_to_csv(str(csv_file))
         exported_files.append((str(csv_file), count, 'CSV'))
     
-    print("\nExport Summary:")
-    print("=" * 50)
+    logger.info("\nExport Summary:")
+    logger.info("=" * 50)
     for file_path, count, format_type in exported_files:
-        print(f"{format_type}: {count} records exported to {file_path}")
+        logger.info(f"{format_type}: {count} records exported to {file_path}")
     
     if exported_files:
-        print(f"\nFiles ready for LLM training!")
+        logger.success(f"\nFiles ready for LLM training!")
         if args.format in ['jsonl', 'both']:
-            print("\nFor LLM fine-tuning, use the JSONL file with frameworks like:")
-            print("- OpenAI fine-tuning API")
-            print("- Hugging Face transformers")
-            print("- Local fine-tuning with qwen3 or similar models")
+            logger.info("\nFor LLM fine-tuning, use the JSONL file with frameworks like:")
+            logger.info("- OpenAI fine-tuning API")
+            logger.info("- Hugging Face transformers")
+            logger.info("- Local fine-tuning with qwen3 or similar models")
 
 if __name__ == '__main__':
     main()

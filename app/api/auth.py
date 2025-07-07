@@ -29,6 +29,26 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
+def admin_required(f):
+    """Decorator to require admin role for endpoints."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session:
+            return jsonify({
+                'status': 'error',
+                'message': 'Authentication required'
+            }), 401
+        
+        user_role = session.get('user_role', 'user')
+        if user_role != 'admin':
+            return jsonify({
+                'status': 'error',
+                'message': 'Admin access required'
+            }), 403
+        
+        return f(*args, **kwargs)
+    return decorated_function
+
 @auth_bp.route('/signup', methods=['POST'])
 def signup():
     """Create a new user account with email and first name only."""
@@ -77,6 +97,7 @@ def signup():
         session['user_id'] = user.id
         session['user_email'] = user.email
         session['user_first_name'] = user.first_name
+        session['user_role'] = user.role
         
         logger.info(f"New user signed up: {email}")
         
@@ -137,6 +158,7 @@ def signin():
         session['user_id'] = user.id
         session['user_email'] = user.email
         session['user_first_name'] = user.first_name
+        session['user_role'] = user.role
         
         logger.info(f"User signed in: {email}")
         

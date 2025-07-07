@@ -20,3 +20,29 @@ def get_users_by_ids(user_ids):
 def get_user_data_dict(user):
     """Convert user object to dictionary if it exists."""
     return user.to_dict() if user else None
+
+def is_admin(user):
+    """Check if a user has admin role."""
+    return user and user.role == 'admin'
+
+def get_user_by_email(email):
+    """Get user data from the user database by email."""
+    return db.session.query(User).filter_by(email=email).first()
+
+def promote_user_to_admin(user_id):
+    """Promote a user to admin role."""
+    user = get_user_by_id(user_id)
+    if user:
+        user.role = 'admin'
+        db.session.commit()
+        return True
+    return False
+
+def demote_admin_to_user(user_id):
+    """Demote an admin to regular user role."""
+    user = get_user_by_id(user_id)
+    if user:
+        user.role = 'user'
+        db.session.commit()
+        return True
+    return False

@@ -1188,6 +1188,186 @@ class ConsolidatedScraperBase:
         
         return None
     
+    async def download_with_fallback(self, selector: str, **kwargs) -> Optional[str]:
+        """
+        Download file with automatic fallback to last successful file.
+        
+        This method tries to download a file normally, and if that fails,
+        falls back to using the most recent successfully processed file
+        from the same data source.
+        
+        Args:
+            selector: CSS selector for download button/link
+            **kwargs: Additional arguments passed to download_file_via_click
+            
+        Returns:
+            str: Path to downloaded file (new or fallback), or None if both fail
+        """
+        self.logger.info(f"Starting download with fallback for selector: {selector}")
+        
+        # Try normal download first
+        result = await self.download_file_via_click(selector, **kwargs)
+        
+        if result:
+            self.logger.info(f"Download successful: {result}")
+            return result
+        
+        self.logger.warning("Download failed, attempting to use fallback file")
+        
+        # Get data source for fallback lookup
+        data_source = self._get_data_source()
+        if not data_source:
+            self.logger.error("Could not determine data source for fallback")
+            return None
+        
+        # Get last successful file using existing validation service
+        from app.services.file_validation_service import file_validation_service
+        
+        try:
+            fallback_files = file_validation_service.get_last_successful_files(data_source.id, 1)
+            
+            if fallback_files and os.path.exists(fallback_files[0]):
+                fallback_path = fallback_files[0]
+                self.logger.warning(f"Using database-tracked fallback file: {fallback_path}")
+                
+                # Update last_downloaded_file to point to fallback
+                self.last_downloaded_file = fallback_path
+                
+                # Log fallback usage for monitoring
+                self.logger.warning(f"FALLBACK USED (DB): {self.source_name} scraper used database-tracked fallback file due to download failure")
+                
+                return fallback_path
+            else:
+                self.logger.warning("No database-tracked fallback file found, trying filesystem scan")
+                
+        except Exception as e:
+            self.logger.error(f"Error accessing database fallback file: {e}")
+        
+        # Database fallback failed, try filesystem-based fallback
+        filesystem_fallback = self._find_filesystem_fallback()
+        if filesystem_fallback:
+            self.logger.warning(f"Using filesystem-scanned fallback file: {filesystem_fallback}")
+            
+            # Update last_downloaded_file to point to fallback
+            self.last_downloaded_file = filesystem_fallback
+            
+            # Log fallback usage for monitoring
+            self.logger.warning(f"FALLBACK USED (FS): {self.source_name} scraper used filesystem-scanned fallback file due to download failure")
+            
+            return filesystem_fallback
+        
+        self.logger.error("Download failed and no fallback available (checked both database and filesystem)")
+        return None
+    
+    def _get_data_source(self):
+        """Get the data source record for this scraper."""
+        try:
+            from app.database import db
+            from app.database.models import DataSource
+            
+            return db.session.query(DataSource).filter(
+                DataSource.name == self.source_name
+            ).first()
+        except Exception as e:
+            self.logger.error(f"Error getting data source: {e}")
+            return None
+    
+    def _find_filesystem_fallback(self) -> Optional[str]:
+        """
+        Find most recent file in download directory as filesystem-based fallback.
+        
+        This method scans the download directory directly for files when the 
+        database-tracked approach fails, providing a secondary fallback mechanism.
+        """
+        try:
+            if not self.download_dir or not os.path.exists(self.download_dir):
+                self.logger.warning(f"Download directory not found: {self.download_dir}")
+                return None
+            
+            # Get all files in download directory
+            files = []
+            for filename in os.listdir(self.download_dir):
+                file_path = os.path.join(self.download_dir, filename)
+                if os.path.isfile(file_path):
+                    try:
+                        # Get file modification time
+                        mtime = os.path.getmtime(file_path)
+                        files.append((file_path, mtime, filename))
+                    except OSError as e:
+                        self.logger.warning(f"Could not get mtime for {file_path}: {e}")
+                        continue
+            
+            if not files:
+                self.logger.warning(f"No files found in download directory: {self.download_dir}")
+                return None
+            
+            # Sort by modification time (newest first)
+            files.sort(key=lambda x: x[1], reverse=True)
+            
+            # Try files starting with most recent
+            for file_path, mtime, filename in files:
+                if self._validate_fallback_file(file_path):
+                    self.logger.info(f"Found valid filesystem fallback: {filename} (modified: {mtime})")
+                    return file_path
+                else:
+                    self.logger.debug(f"Skipping invalid fallback file: {filename}")
+            
+            self.logger.warning("No valid fallback files found in filesystem scan")
+            return None
+            
+        except Exception as e:
+            self.logger.error(f"Error during filesystem fallback scan: {e}")
+            return None
+    
+    def _validate_fallback_file(self, file_path: str) -> bool:
+        """
+        Validate that a potential fallback file is usable.
+        
+        Args:
+            file_path: Path to file to validate
+            
+        Returns:
+            bool: True if file appears to be valid for processing
+        """
+        try:
+            # Check file exists and has reasonable size
+            if not os.path.exists(file_path):
+                return False
+            
+            file_size = os.path.getsize(file_path)
+            
+            # File should be at least 100 bytes (very small files are likely error pages)
+            if file_size < 100:
+                self.logger.debug(f"File too small ({file_size} bytes): {file_path}")
+                return False
+            
+            # Check file extension is supported
+            _, ext = os.path.splitext(file_path.lower())
+            supported_extensions = ['.csv', '.xlsx', '.xls', '.xlsm', '.html', '.htm']
+            if ext not in supported_extensions:
+                self.logger.debug(f"Unsupported file extension {ext}: {file_path}")
+                return False
+            
+            # For CSV files, do a quick content check
+            if ext == '.csv':
+                try:
+                    with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                        first_line = f.readline().lower()
+                        # Check if it looks like HTML error page
+                        if '<html' in first_line or '<title>error' in first_line:
+                            self.logger.debug(f"File appears to be HTML error page: {file_path}")
+                            return False
+                except Exception:
+                    # If we can't read it, assume it's binary/Excel and valid
+                    pass
+            
+            self.logger.debug(f"File passed validation: {file_path}")
+            return True
+            
+        except Exception as e:
+            self.logger.warning(f"Error validating fallback file {file_path}: {e}")
+            return False
+    
     # ============================================================================
     # DATA PROCESSING FUNCTIONALITY (from DataProcessingMixin)
     # ============================================================================
@@ -1933,8 +2113,8 @@ class ConsolidatedScraperBase:
         if self.config.explicit_wait_ms_before_download > 0:
             await self.wait_for_timeout(self.config.explicit_wait_ms_before_download)
         
-        # Perform download
-        return await self.download_file_via_click(
+        # Perform download with fallback
+        return await self.download_with_fallback(
             selector=selector,
             wait_after_click=self.config.default_wait_after_download_ms
         )
@@ -2060,16 +2240,45 @@ class ConsolidatedScraperBase:
             
             setup_success = await setup_method()
             if not setup_success:
-                self.logger.error("Setup phase failed")
-                await self.cleanup_browser()
-                raise Exception("Setup phase failed - unable to initialize scraper")
+                self.logger.error("Setup phase failed, attempting fallback")
+                
+                # Try filesystem fallback for setup failures
+                filesystem_fallback = self._find_filesystem_fallback()
+                if filesystem_fallback:
+                    self.logger.warning(f"Using filesystem fallback after setup failure: {filesystem_fallback}")
+                    # Log fallback usage for monitoring
+                    self.logger.warning(f"FALLBACK USED (SETUP): {self.source_name} scraper used filesystem fallback due to setup phase failure")
+                    
+                    # Skip extract phase and go directly to process phase with fallback file
+                    await self.cleanup_browser()
+                    
+                    # Process phase with fallback file
+                    if asyncio.iscoroutinefunction(process_method):
+                        loaded_count = await process_method(filesystem_fallback)
+                    else:
+                        loaded_count = process_method(filesystem_fallback)
+                    
+                    self.logger.info(f"Scrape completed for {self.source_name} using fallback: {loaded_count} records loaded")
+                    return loaded_count
+                else:
+                    await self.cleanup_browser()
+                    raise Exception("Setup phase failed - unable to initialize scraper and no fallback available")
             
             # Extract phase
             file_path = await extract_method()
             if not file_path:
-                self.logger.error("Extract phase failed")
-                await self.cleanup_browser()
-                raise Exception("Extract phase failed - unable to download file")
+                self.logger.error("Extract phase failed, attempting fallback")
+                
+                # Try filesystem fallback for extract failures
+                filesystem_fallback = self._find_filesystem_fallback()
+                if filesystem_fallback:
+                    self.logger.warning(f"Using filesystem fallback after extract failure: {filesystem_fallback}")
+                    file_path = filesystem_fallback
+                    # Log fallback usage for monitoring
+                    self.logger.warning(f"FALLBACK USED (EXTRACT): {self.source_name} scraper used filesystem fallback due to extract phase failure")
+                else:
+                    await self.cleanup_browser()
+                    raise Exception("Extract phase failed - unable to download file and no fallback available")
             
             # Process phase
             if asyncio.iscoroutinefunction(process_method):

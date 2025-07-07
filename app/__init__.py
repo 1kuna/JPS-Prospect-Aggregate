@@ -11,7 +11,7 @@ from app.config import active_config # Import active_config
 from app.database import db  # Import the db instance from database.py
 from app.database.user_db import init_user_db  # Import user database initialization
 from app.middleware.maintenance import maintenance_middleware
-# Logging is configured automatically on import of app.utils.logger
+from app.utils.logger import logger
 
 # Setup logging as early as possible
 # Logging is configured automatically on import of app.utils.logger
@@ -72,9 +72,9 @@ def create_app(config_name='default'): # config_name is no longer used but kept 
         try:
             cleanup_count = cleanup_all_in_progress_enhancements()
             if cleanup_count > 0:
-                print(f"✓ Cleaned up {cleanup_count} stuck enhancement requests on startup")
+                logger.info(f"Cleaned up {cleanup_count} stuck enhancement requests on startup")
         except Exception as e:
-            print(f"⚠ Warning: Failed to clean up stuck enhancements: {e}")
+            logger.warning(f"Failed to clean up stuck enhancements: {e}")
         
         # Set up cross-references between services
         enhancement_queue_service.set_bulk_service(iterative_service_v2)

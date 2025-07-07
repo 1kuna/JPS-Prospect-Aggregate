@@ -11,13 +11,14 @@ from app.database.models import Prospect
 from app.utils.value_and_date_parsing import normalize_naics_code
 from sqlalchemy import func
 import pandas as pd
+from app.utils.logger import logger
 
 def main():
     """Normalize all NAICS codes in the database."""
     app = create_app()
     
     with app.app_context():
-        print("Fetching prospects with NAICS codes...")
+        logger.info("Fetching prospects with NAICS codes...")
         
         # Get all prospects with non-null NAICS codes
         prospects = db.session.query(Prospect).filter(
@@ -25,7 +26,7 @@ def main():
             Prospect.naics != ''
         ).all()
         
-        print(f"Found {len(prospects)} prospects with NAICS codes")
+        logger.info(f"Found {len(prospects)} prospects with NAICS codes")
         
         # Track statistics
         stats = {
@@ -47,10 +48,10 @@ def main():
             if normalized_naics != original_naics:
                 if normalized_naics is None:
                     stats['invalidated'] += 1
-                    print(f"Invalid NAICS code cleared: '{original_naics}' -> None")
+                    logger.info(f"Invalid NAICS code cleared: '{original_naics}' -> None")
                 else:
                     stats['normalized'] += 1
-                    print(f"Normalized: '{original_naics}' -> '{normalized_naics}'")
+                    logger.info(f"Normalized: '{original_naics}' -> '{normalized_naics}'")
                 
                 prospect.naics = normalized_naics
             else:
@@ -58,23 +59,23 @@ def main():
         
         # Commit changes
         if stats['normalized'] > 0 or stats['invalidated'] > 0:
-            print("\nCommitting changes to database...")
+            logger.info("\nCommitting changes to database...")
             db.session.commit()
-            print("Changes committed successfully!")
+            logger.success("Changes committed successfully!")
         else:
-            print("\nNo changes needed.")
+            logger.info("\nNo changes needed.")
         
         # Print summary
-        print("\n" + "="*50)
-        print("SUMMARY:")
-        print(f"Total prospects processed: {stats['total']}")
-        print(f"NAICS codes normalized: {stats['normalized']}")
-        print(f"Invalid codes cleared: {stats['invalidated']}")
-        print(f"Already clean: {stats['already_clean']}")
+        logger.info("\n" + "="*50)
+        logger.info("SUMMARY:")
+        logger.info(f"Total prospects processed: {stats['total']}")
+        logger.info(f"NAICS codes normalized: {stats['normalized']}")
+        logger.info(f"Invalid codes cleared: {stats['invalidated']}")
+        logger.info(f"Already clean: {stats['already_clean']}")
         
         # Show sample of current NAICS codes
-        print("\n" + "="*50)
-        print("Sample of current NAICS codes in database:")
+        logger.info("\n" + "="*50)
+        logger.info("Sample of current NAICS codes in database:")
         sample_query = db.session.query(
             Prospect.naics, 
             func.count(Prospect.id).label('count')
@@ -87,7 +88,7 @@ def main():
         ).limit(10)
         
         for naics, count in sample_query:
-            print(f"  {naics}: {count} records")
+            logger.info(f"  {naics}: {count} records")
 
 if __name__ == "__main__":
     main()

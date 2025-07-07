@@ -22,6 +22,11 @@ export default function Advanced() {
 
   // Handle run all scrapers with confirmation
   const handleRunAllScrapersWithConfirm = async () => {
+    // Prevent multiple simultaneous requests
+    if (runAllInProgress || runAllScrapersMutation.isPending) {
+      return;
+    }
+    
     const confirmed = await confirm({
       title: 'Run All Scrapers',
       description: 'This will run all scrapers synchronously. This may take several minutes.',
@@ -75,7 +80,7 @@ export default function Advanced() {
             sources={sources}
             isLoading={isLoading}
             error={error}
-            runAllInProgress={runAllInProgress}
+            runAllInProgress={runAllInProgress || runAllScrapersMutation.isPending}
             onRunAllScrapers={handleRunAllScrapersWithConfirm}
             onRunScraper={handleRunScraper}
             onClearData={handleClearDataWithConfirm}

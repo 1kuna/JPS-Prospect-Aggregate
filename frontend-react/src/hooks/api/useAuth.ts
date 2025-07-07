@@ -130,3 +130,15 @@ export const useSignOut = () => {
     },
   });
 };
+
+// Helper function to check if user is admin
+export const useIsAdmin = () => {
+  const { data: authStatus } = useAuthStatus();
+  return authStatus?.data?.user?.role === 'admin';
+};
+
+// Helper function to get user role
+export const useUserRole = () => {
+  const { data: authStatus } = useAuthStatus();
+  return authStatus?.data?.user?.role || 'user';
+};

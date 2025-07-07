@@ -1,5 +1,6 @@
 import datetime
 import asyncio
+import threading
 from datetime import timezone
 from app.database import db
 from app.database.models import DataSource, ScraperStatus
@@ -13,18 +14,69 @@ from app.config import active_config
 logger = logger.bind(name="services.scraper_service")
 
 class ScraperService:
+    # Class-level lock to prevent multiple scrapers from running simultaneously
+    _scraper_locks = {}
+    _locks_mutex = threading.Lock()
+    
+    @staticmethod
+    def _get_or_create_lock(source_id: int) -> threading.Lock:
+        """Get or create a lock for a specific source ID."""
+        with ScraperService._locks_mutex:
+            if source_id not in ScraperService._scraper_locks:
+                ScraperService._scraper_locks[source_id] = threading.Lock()
+            return ScraperService._scraper_locks[source_id]
+    
     @staticmethod
     def trigger_scrape(source_id: int):
-        # Import Flask's current_app here to avoid circular imports
-        from flask import current_app
+        # Get lock for this source ID to prevent concurrent execution
+        scraper_lock = ScraperService._get_or_create_lock(source_id)
         
-        # Ensure we have an application context
-        if current_app is None:
-            from app import create_app
-            app = create_app()
-            with app.app_context():
-                return asyncio.run(ScraperService._execute_scrape(source_id))
-        else:
+        # Try to acquire lock without blocking
+        if not scraper_lock.acquire(blocking=False):
+            raise ScraperError(f"Scraper for source ID {source_id} is already running")
+        
+        try:
+            # Import Flask's current_app here to avoid circular imports
+            from flask import current_app
+            
+            # Ensure we have an application context
+            if current_app is None:
+                from app import create_app
+                app = create_app()
+                with app.app_context():
+                    return ScraperService._run_scrape_with_loop_handling(source_id)
+            else:
+                return ScraperService._run_scrape_with_loop_handling(source_id)
+        finally:
+            # Always release the lock
+            scraper_lock.release()
+    
+    @staticmethod
+    def _run_scrape_with_loop_handling(source_id: int):
+        """Handle event loop detection and execution properly."""
+        try:
+            # Check if we're already in an event loop
+            current_loop = asyncio.get_running_loop()
+            # If we get here, there's already a running loop
+            # We need to run in a thread to avoid the conflict
+            import concurrent.futures
+            
+            def run_in_new_loop():
+                # Create a new event loop for this thread
+                new_loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(new_loop)
+                try:
+                    return new_loop.run_until_complete(ScraperService._execute_scrape(source_id))
+                finally:
+                    new_loop.close()
+            
+            # Run in a separate thread with its own event loop
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(run_in_new_loop)
+                return future.result()
+                
+        except RuntimeError:
+            # No running loop, we can use asyncio.run() directly
             return asyncio.run(ScraperService._execute_scrape(source_id))
     
     @staticmethod
@@ -52,19 +104,9 @@ class ScraperService:
             try:
                 logger.info(f"Starting scrape for {data_source.name} (ID: {source_id})")
                 
-                # Try to detect if we're in an existing event loop
-                try:
-                    current_loop = asyncio.get_running_loop()
-                    logger.info("Detected existing event loop, using asyncio.create_task")
-                    
-                    # We're in an existing loop, need to run as task
-                    task = asyncio.create_task(scraper_instance.scrape())
-                    records_loaded = await task
-                    
-                except RuntimeError:
-                    # No running loop, we can use asyncio.run() directly
-                    logger.info("No existing event loop detected, using asyncio.run()")
-                    records_loaded = asyncio.run(scraper_instance.scrape())
+                # Since we handle event loop detection in _run_scrape_with_loop_handling,
+                # we can safely await the scraper directly
+                records_loaded = await scraper_instance.scrape()
                 
                 if records_loaded > 0:
                     # Successful scrape

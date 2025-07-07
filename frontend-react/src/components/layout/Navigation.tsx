@@ -1,19 +1,21 @@
 import { Link, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { useAuth } from '../AuthProvider';
-import { useSignOut } from '../../hooks/api';
+import { useSignOut, useIsAdmin } from '../../hooks/api';
 import { Button } from '../ui/button';
 import { useError } from '@/hooks/useError';
 
 export function Navigation() {
   const location = useLocation();
   const { user } = useAuth();
+  const isAdmin = useIsAdmin();
   const signOutMutation = useSignOut();
   const { handleError } = useError();
   
   const navItems = [
     { path: '/', label: 'Dashboard' },
     { path: '/advanced', label: 'Advanced' },
+    ...(isAdmin ? [{ path: '/admin', label: 'Admin' }] : []),
   ];
 
   const handleSignOut = async () => {
@@ -59,6 +61,11 @@ export function Navigation() {
               <>
                 <div className="text-sm text-gray-700">
                   Welcome, <span className="font-medium">{user.first_name}</span>
+                  {isAdmin && (
+                    <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                      Admin
+                    </span>
+                  )}
                 </div>
                 <Button
                   variant="outline"
