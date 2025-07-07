@@ -46,7 +46,7 @@ def create_acquisition_gateway_config() -> ScraperConfig:
         ],
         
         # Timeouts
-        download_timeout_ms=150000,  # Extended for slow downloads
+        download_timeout_ms=90000,  # 90 seconds as requested for export timeout
         
         # Selectors
         export_button_selector="button#export-0",

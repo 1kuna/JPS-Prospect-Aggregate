@@ -19,6 +19,8 @@ project_root = Path(__file__).resolve().parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
+from app.utils.logger import logger
+
 
 def run_all_tests(verbose=False):
     """Run all scraper tests."""
@@ -29,9 +31,9 @@ def run_all_tests(verbose=False):
         "--tb=short"
     ]
     
-    print("Running all scraper tests...")
-    print(f"Command: {' '.join(cmd)}")
-    print("-" * 60)
+    logger.info("Running all scraper tests...")
+    logger.info(f"Command: {' '.join(cmd)}")
+    logger.info("-" * 60)
     
     result = subprocess.run(cmd, capture_output=False)
     return result.returncode == 0
@@ -52,8 +54,8 @@ def run_single_scraper_test(scraper_name, verbose=False):
     }
     
     if scraper_name not in test_method_map:
-        print(f"Unknown scraper: {scraper_name}")
-        print(f"Available scrapers: {', '.join(test_method_map.keys())}")
+        logger.error(f"Unknown scraper: {scraper_name}")
+        logger.info(f"Available scrapers: {', '.join(test_method_map.keys())}")
         return False
     
     test_method = test_method_map[scraper_name]
@@ -65,9 +67,9 @@ def run_single_scraper_test(scraper_name, verbose=False):
         "--tb=short"
     ]
     
-    print(f"Running test for {scraper_name} scraper...")
-    print(f"Command: {' '.join(cmd)}")
-    print("-" * 60)
+    logger.info(f"Running test for {scraper_name} scraper...")
+    logger.info(f"Command: {' '.join(cmd)}")
+    logger.info("-" * 60)
     
     result = subprocess.run(cmd, capture_output=False)
     return result.returncode == 0
@@ -82,9 +84,9 @@ def run_initialization_test(verbose=False):
         "--tb=short"
     ]
     
-    print("Running scraper initialization test...")
-    print(f"Command: {' '.join(cmd)}")
-    print("-" * 60)
+    logger.info("Running scraper initialization test...")
+    logger.info(f"Command: {' '.join(cmd)}")
+    logger.info("-" * 60)
     
     result = subprocess.run(cmd, capture_output=False)
     return result.returncode == 0
@@ -99,9 +101,9 @@ def run_transformation_test(verbose=False):
         "--tb=short"
     ]
     
-    print("Running custom transformation test...")
-    print(f"Command: {' '.join(cmd)}")
-    print("-" * 60)
+    logger.info("Running custom transformation test...")
+    logger.info(f"Command: {' '.join(cmd)}")
+    logger.info("-" * 60)
     
     result = subprocess.run(cmd, capture_output=False)
     return result.returncode == 0
@@ -160,10 +162,10 @@ Examples:
         success = run_all_tests(args.verbose)
     
     if success:
-        print("\n✅ All tests passed!")
+        logger.success("\n✅ All tests passed!")
         sys.exit(0)
     else:
-        print("\n❌ Some tests failed!")
+        logger.error("\n❌ Some tests failed!")
         sys.exit(1)
 
 

@@ -125,7 +125,7 @@ async def test_acquisition_gateway_scraper():
         # Test configuration
         assert scraper.source_name == "Acquisition Gateway"
         assert scraper.config.debug_mode == True  # Should be non-headless
-        assert scraper.config.download_timeout_ms == 150000  # Extended timeout
+        assert scraper.config.download_timeout_ms == 90000  # 90 seconds as requested
         assert scraper.config.export_button_selector == "button#export-0"
         
         # Test custom transform function

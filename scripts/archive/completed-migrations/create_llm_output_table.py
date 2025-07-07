@@ -9,6 +9,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app.database import db
 from app.database.models import LLMOutput
 from app import create_app
+from app.utils.logger import logger
 
 def create_llm_output_table():
     """Create the LLMOutput table"""
@@ -17,7 +18,7 @@ def create_llm_output_table():
     with app.app_context():
         # Create the table
         db.create_all()
-        print("LLMOutput table created successfully!")
+        logger.success("LLMOutput table created successfully!")
 
 if __name__ == "__main__":
     create_llm_output_table()

@@ -184,8 +184,8 @@ class DOJForecastScraper(ConsolidatedScraperBase):
         )
         self.logger.info("Download link is visible.")
         
-        # Download via click
-        return await self.download_file_via_click(
+        # Download via click with fallback
+        return await self.download_with_fallback(
             selector=self.config.export_button_selector
         )
     

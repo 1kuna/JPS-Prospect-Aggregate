@@ -16,6 +16,7 @@ const DataSources = lazy(() => import('./pages/DataSources'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const DirectDatabaseAccess = lazy(() => import('./pages/DirectDatabaseAccess'));
 const Advanced = lazy(() => import('./pages/Advanced'));
+const AdminDecisions = lazy(() => import('./pages/AdminDecisions'));
 
 // Loading fallback - replaced complex skeleton with simple text
 const PageSkeleton = () => <div className="flex justify-center items-center min-h-[80vh] text-xl text-muted-foreground">Loading page...</div>;
@@ -51,6 +52,7 @@ function AppWithProviders() {
                     <Route path="/data-sources" element={<DataSources />} />
                     <Route path="/database" element={<DirectDatabaseAccess />} />
                     <Route path="/advanced" element={<Advanced />} />
+                    <Route path="/admin" element={<AdminDecisions />} />
                     <Route path="*" element={<div>Page Not Found</div>} />
                   </Routes>
                 </Suspense>

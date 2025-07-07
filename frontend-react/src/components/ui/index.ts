@@ -7,3 +7,5 @@ export * from './dialog';
 export * from './select';
 export * from './separator';
 export * from './table';
+export * from './badge';
+export * from './tabs';

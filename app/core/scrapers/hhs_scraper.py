@@ -154,7 +154,7 @@ class HHSForecastScraper(ConsolidatedScraperBase):
         """
         self.logger.info(f"Attempting to download by clicking export button: {self.config.csv_button_selector}")
         
-        return await self.download_file_via_click(
+        return await self.download_with_fallback(
             selector=self.config.csv_button_selector,
             wait_after_click=self.config.default_wait_after_download_ms
         )

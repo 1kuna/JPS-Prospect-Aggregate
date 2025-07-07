@@ -19,6 +19,7 @@ from app.constants.agency_mapping import (
     get_data_directory_mapping, 
     AGENCIES
 )
+from app.utils.logger import logger
 
 
 class DataDirectoryMigrator:
@@ -33,33 +34,33 @@ class DataDirectoryMigrator:
     def analyze_directories(self) -> Dict[str, str]:
         """Analyze current directories and create migration plan."""
         if not self.data_dir.exists():
-            print(f"❌ Data directory not found: {self.data_dir}")
+            logger.error(f"❌ Data directory not found: {self.data_dir}")
             return {}
         
         data_mapping = get_data_directory_mapping()
         forecast_mapping = get_forecast_directory_mapping()
         migration_plan = {}
         
-        print(f"📂 Analyzing directories in: {self.data_dir}")
-        print("=" * 60)
+        logger.info(f"📂 Analyzing directories in: {self.data_dir}")
+        logger.info("=" * 60)
         
         for item in self.data_dir.iterdir():
             if not item.is_dir():
                 continue
                 
             dir_name = item.name
-            print(f"📁 {dir_name}")
+            logger.info(f"📁 {dir_name}")
             
             # Check if already using new naming convention
             if dir_name.upper() in AGENCIES:
-                print(f"   ✅ Already using standard abbreviation: {dir_name.upper()}")
+                logger.info(f"   ✅ Already using standard abbreviation: {dir_name.upper()}")
                 continue
             
             # Check if it's a legacy directory name
             if dir_name in data_mapping:
                 new_name = data_mapping[dir_name].lower()
                 migration_plan[dir_name] = new_name
-                print(f"   🔄 Will rename to: {new_name}")
+                logger.info(f"   🔄 Will rename to: {new_name}")
                 continue
             
             # Check if it's a forecast directory
@@ -67,23 +68,23 @@ class DataDirectoryMigrator:
                 abbrev = forecast_mapping[dir_name]
                 new_name = f"{abbrev.lower()}_forecast"
                 migration_plan[dir_name] = new_name
-                print(f"   🔄 Will rename to: {new_name}")
+                logger.info(f"   🔄 Will rename to: {new_name}")
                 continue
             
             # Unknown directory
-            print(f"   ⚠️  Unknown directory (will be skipped)")
+            logger.warning(f"   ⚠️  Unknown directory (will be skipped)")
         
-        print(f"\n📋 Migration Plan: {len(migration_plan)} directories to rename")
+        logger.info(f"\n📋 Migration Plan: {len(migration_plan)} directories to rename")
         return migration_plan
     
     def execute_migration(self, migration_plan: Dict[str, str]) -> bool:
         """Execute the directory migration."""
         if not migration_plan:
-            print("✅ No directories need to be migrated.")
+            logger.info("✅ No directories need to be migrated.")
             return True
         
-        print(f"\n{'🔥 DRY RUN MODE' if self.dry_run else '🚀 EXECUTING MIGRATION'}")
-        print("=" * 60)
+        logger.info(f"\n{'🔥 DRY RUN MODE' if self.dry_run else '🚀 EXECUTING MIGRATION'}")
+        logger.info("=" * 60)
         
         success_count = 0
         error_count = 0
@@ -94,26 +95,26 @@ class DataDirectoryMigrator:
             
             try:
                 if new_path.exists():
-                    print(f"❌ {old_name} → {new_name} (Target already exists)")
+                    logger.error(f"❌ {old_name} → {new_name} (Target already exists)")
                     error_count += 1
                     continue
                 
                 if self.dry_run:
-                    print(f"🔄 {old_name} → {new_name} (Would rename)")
+                    logger.info(f"🔄 {old_name} → {new_name} (Would rename)")
                 else:
                     old_path.rename(new_path)
-                    print(f"✅ {old_name} → {new_name} (Renamed)")
+                    logger.success(f"✅ {old_name} → {new_name} (Renamed)")
                     self.migration_log.append(f"Renamed {old_name} to {new_name}")
                 
                 success_count += 1
                 
             except Exception as e:
-                print(f"❌ {old_name} → {new_name} (Error: {e})")
+                logger.error(f"❌ {old_name} → {new_name} (Error: {e})")
                 error_count += 1
         
-        print(f"\n📊 Migration Results:")
-        print(f"   ✅ Successful: {success_count}")
-        print(f"   ❌ Errors: {error_count}")
+        logger.info(f"\n📊 Migration Results:")
+        logger.info(f"   ✅ Successful: {success_count}")
+        logger.info(f"   ❌ Errors: {error_count}")
         
         if not self.dry_run and self.migration_log:
             self._write_migration_log()
@@ -122,7 +123,7 @@ class DataDirectoryMigrator:
     
     def validate_migration(self) -> bool:
         """Validate that migration was successful."""
-        print(f"\n🔍 Validating migration results...")
+        logger.info(f"\n🔍 Validating migration results...")
         
         data_mapping = get_data_directory_mapping()
         forecast_mapping = get_forecast_directory_mapping()
@@ -235,10 +236,10 @@ def main():
         migrator.validate_migration()
     
     if migrator.dry_run and migration_plan:
-        print(f"\\n💡 To execute migration, run:")
-        print(f"   python {__file__} --execute")
-        print(f"\\n💡 To generate bash script, run:")
-        print(f"   python {__file__} --generate-script")
+        logger.info(f"\\n💡 To execute migration, run:")
+        logger.info(f"   python {__file__} --execute")
+        logger.info(f"\\n💡 To generate bash script, run:")
+        logger.info(f"   python {__file__} --generate-script")
     
     sys.exit(0 if success else 1)
 

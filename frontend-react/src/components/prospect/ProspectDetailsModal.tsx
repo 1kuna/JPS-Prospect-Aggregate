@@ -374,8 +374,7 @@ export function ProspectDetailsModal({
                       )}
                       {(selectedProspect.estimated_value_min || selectedProspect.estimated_value_max) && (
                         <p className="text-gray-900">
-                          <span className="text-sm text-gray-600">Range:</span> 
-                          ${selectedProspect.estimated_value_min ? parseFloat(selectedProspect.estimated_value_min).toLocaleString() : '?'} - 
+                          <span className="text-sm text-gray-600">Range:</span> ${selectedProspect.estimated_value_min ? parseFloat(selectedProspect.estimated_value_min).toLocaleString() : '?'} - 
                           ${selectedProspect.estimated_value_max ? parseFloat(selectedProspect.estimated_value_max).toLocaleString() : '?'}
                         </p>
                       )}

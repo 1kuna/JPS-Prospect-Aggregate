@@ -156,8 +156,8 @@ class DocScraper(ConsolidatedScraperBase):
         
         self.logger.info(f"Found download link, attempting interactive download via click")
         
-        # Download by clicking the link (avoids 403 errors)
-        return await self.download_file_via_click(
+        # Download by clicking the link with fallback (avoids 403 errors)
+        return await self.download_with_fallback(
             selector=link_selector,
             timeout=self.config.download_timeout_ms
         )

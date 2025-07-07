@@ -13,14 +13,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Tuple
 import argparse
-import logging
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+from app.utils.logger import logger
 
 
 def extract_timestamp_from_filename(filename: str) -> datetime:
@@ -313,14 +306,14 @@ def main():
         dry_run=dry_run
     )
     
-    # Print final statistics
-    print("\n" + "="*60)
-    print("DATA RETENTION SUMMARY")
-    print("="*60)
+    # Log final statistics
+    logger.info("\n" + "="*60)
+    logger.info("DATA RETENTION SUMMARY")
+    logger.info("="*60)
     for source_name, source_stats in stats.items():
-        print(f"{source_name:35} | Kept: {source_stats['kept']:2} | "
-              f"{'Would delete' if dry_run else 'Deleted'}: {source_stats['deleted']:2}")
-    print("="*60)
+        logger.info(f"{source_name:35} | Kept: {source_stats['kept']:2} | "
+                   f"{'Would delete' if dry_run else 'Deleted'}: {source_stats['deleted']:2}")
+    logger.info("="*60)
 
 
 if __name__ == '__main__':

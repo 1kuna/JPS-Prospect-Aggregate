@@ -213,8 +213,8 @@ class TreasuryScraper(ConsolidatedScraperBase):
         
         self.logger.info(f"Download button '{selector}' is visible.")
         
-        # Simple download approach like other working scrapers
-        return await self.download_file_via_click(
+        # Simple download approach with fallback like other working scrapers
+        return await self.download_with_fallback(
             selector=selector,
             js_click_fallback=True,
             wait_after_click=2000,

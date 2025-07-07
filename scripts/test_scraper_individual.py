@@ -24,6 +24,7 @@ from app import create_app
 from app.database import db
 from app.database.models import Prospect, DataSource
 from sqlalchemy import select
+from app.utils.logger import logger
 
 # Import all scrapers
 from app.core.scrapers.acquisition_gateway import AcquisitionGatewayScraper
@@ -88,14 +89,14 @@ AVAILABLE_SCRAPERS = {
 
 def print_scraper_list():
     """Print list of available scrapers."""
-    print("Available scrapers:")
-    print("-" * 50)
+    logger.info("Available scrapers:")
+    logger.info("-" * 50)
     for key, info in AVAILABLE_SCRAPERS.items():
-        print(f"{key:15} - {info['name']}")
-        print(f"{'':15}   {info['description']}")
-    print("\nUsage:")
-    print("  python test_scraper_individual.py --scraper <scraper_name>")
-    print("  python test_scraper_individual.py --scraper all")
+        logger.info(f"{key:15} - {info['name']}")
+        logger.info(f"{'':15}   {info['description']}")
+    logger.info("\nUsage:")
+    logger.info("  python test_scraper_individual.py --scraper <scraper_name>")
+    logger.info("  python test_scraper_individual.py --scraper all")
 
 
 async def run_scraper(scraper_key: str, app):
@@ -106,17 +107,17 @@ async def run_scraper(scraper_key: str, app):
     scraper_info = AVAILABLE_SCRAPERS[scraper_key]
     scraper_class = scraper_info['class']
     
-    print(f"\n{'='*60}")
-    print(f"Testing: {scraper_info['name']}")
-    print(f"Description: {scraper_info['description']}")
-    print(f"{'='*60}")
+    logger.info(f"\n{'='*60}")
+    logger.info(f"Testing: {scraper_info['name']}")
+    logger.info(f"Description: {scraper_info['description']}")
+    logger.info(f"{'='*60}")
     
     try:
         # Initialize scraper
-        print("🔧 Initializing scraper...")
+        logger.info("🔧 Initializing scraper...")
         scraper = scraper_class()
-        print(f"✅ Scraper initialized: {scraper.source_name}")
-        print(f"   Base URL: {scraper.base_url}")
+        logger.info(f"✅ Scraper initialized: {scraper.source_name}")
+        logger.info(f"   Base URL: {scraper.base_url}")
         
         # Get count before scraping
         with app.app_context():
@@ -132,10 +133,10 @@ async def run_scraper(scraper_key: str, app):
             else:
                 prospects_before = []
                 count_before = 0
-            print(f"📊 Existing records in database: {count_before}")
+            logger.info(f"📊 Existing records in database: {count_before}")
         
         # Run scraper
-        print("🚀 Starting scraper execution...")
+        logger.info("🚀 Starting scraper execution...")
         start_time = asyncio.get_event_loop().time()
         
         records_loaded = await scraper.scrape()
@@ -163,10 +164,10 @@ async def run_scraper(scraper_key: str, app):
                     count_after = 0
         
         # Print results
-        print(f"\n📈 RESULTS:")
-        print(f"   Records loaded this run: {records_loaded}")
-        print(f"   Total records in DB: {count_after}")
-        print(f"   New records added: {count_after - count_before}")
+        logger.info(f"\n📈 RESULTS:")
+        logger.info(f"   Records loaded this run: {records_loaded}")
+        logger.info(f"   Total records in DB: {count_after}")
+        logger.info(f"   New records added: {count_after - count_before}")
         print(f"   Execution time: {duration:.2f} seconds")
         
         if records_loaded > 0:
@@ -196,10 +197,10 @@ async def run_scraper(scraper_key: str, app):
         }
         
     except Exception as e:
-        print(f"❌ ERROR: Scraper failed with exception:")
-        print(f"   {type(e).__name__}: {str(e)}")
+        logger.error(f"❌ ERROR: Scraper failed with exception:")
+        logger.error(f"   {type(e).__name__}: {str(e)}")
         import traceback
-        print(f"\n🔍 Full traceback:")
+        logger.error(f"\n🔍 Full traceback:")
         traceback.print_exc()
         
         return {
@@ -213,9 +214,9 @@ async def run_scraper(scraper_key: str, app):
 
 async def run_all_scrapers(app):
     """Run all scrapers and summarize results."""
-    print(f"\n{'='*60}")
-    print("RUNNING ALL SCRAPERS")
-    print(f"{'='*60}")
+    logger.info(f"\n{'='*60}")
+    logger.info("RUNNING ALL SCRAPERS")
+    logger.info(f"{'='*60}")
     
     results = {}
     total_start_time = asyncio.get_event_loop().time()
@@ -224,16 +225,16 @@ async def run_all_scrapers(app):
         results[scraper_key] = await run_scraper(scraper_key, app)
         
         # Brief pause between scrapers
-        print("⏸️  Pausing 2 seconds between scrapers...")
+        logger.info("⏸️  Pausing 2 seconds between scrapers...")
         await asyncio.sleep(2)
     
     total_end_time = asyncio.get_event_loop().time()
     total_duration = total_end_time - total_start_time
     
     # Summary report
-    print(f"\n{'='*60}")
-    print("SUMMARY REPORT")
-    print(f"{'='*60}")
+    logger.info(f"\n{'='*60}")
+    logger.info("SUMMARY REPORT")
+    logger.info(f"{'='*60}")
     
     successful_scrapers = []
     failed_scrapers = []
@@ -250,20 +251,20 @@ async def run_all_scrapers(app):
             failed_scrapers.append(scraper_key)
             status = "❌ FAILED"
         
-        print(f"{scraper_key:15} {status:10} {result['records_loaded']:>6} records  {result['duration']:>6.1f}s")
+        logger.info(f"{scraper_key:15} {status:10} {result['records_loaded']:>6} records  {result['duration']:>6.1f}s")
     
-    print(f"\n📊 OVERALL STATISTICS:")
-    print(f"   Total scrapers: {len(AVAILABLE_SCRAPERS)}")
-    print(f"   Successful: {len(successful_scrapers)}")
-    print(f"   Failed: {len(failed_scrapers)}")
-    print(f"   Total records loaded: {total_records}")
-    print(f"   Total execution time: {total_duration:.2f} seconds")
+    logger.info(f"\n📊 OVERALL STATISTICS:")
+    logger.info(f"   Total scrapers: {len(AVAILABLE_SCRAPERS)}")
+    logger.info(f"   Successful: {len(successful_scrapers)}")
+    logger.info(f"   Failed: {len(failed_scrapers)}")
+    logger.info(f"   Total records loaded: {total_records}")
+    logger.info(f"   Total execution time: {total_duration:.2f} seconds")
     
     if failed_scrapers:
-        print(f"\n❌ FAILED SCRAPERS:")
+        logger.error(f"\n❌ FAILED SCRAPERS:")
         for scraper_key in failed_scrapers:
             error = results[scraper_key]['error']
-            print(f"   {scraper_key}: {error}")
+            logger.error(f"   {scraper_key}: {error}")
     
     return results
 
@@ -305,14 +306,14 @@ Examples:
         return
     
     # Create Flask app (needed for database context, not running web server)
-    print("🔧 Initializing Flask application...")
-    print("   Note: This creates database context only - no web server is started")
+    logger.info("🔧 Initializing Flask application...")
+    logger.info("   Note: This creates database context only - no web server is started")
     app = create_app()
     
     with app.app_context():
         # Ensure database is set up
         db.create_all()
-        print("✅ Database initialized")
+        logger.info("✅ Database initialized")
         
         # Run scraper(s)
         if args.scraper == 'all':
