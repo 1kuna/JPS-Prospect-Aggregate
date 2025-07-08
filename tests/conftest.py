@@ -5,12 +5,7 @@ Pytest configuration and shared fixtures.
 import pytest
 from flask import Flask
 from app import create_app
-from app.database import db as _db # This is the Flask-SQLAlchemy extension instance
-# TestConfig is now sourced from active_config in create_app when FLASK_ENV='testing'
-# from app.config import TestConfig # No longer directly needed here
-
-# The local TestConfig class definition is removed as create_app uses active_config.
-# Ensure FLASK_ENV is set to 'testing' in the test environment.
+from app.database import db as _db
 
 @pytest.fixture(scope='session')
 def app(request):

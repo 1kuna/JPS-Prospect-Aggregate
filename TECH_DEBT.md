@@ -30,7 +30,7 @@ This document tracks technical debt and improvement opportunities across the JPS
 Replace print() statements with proper logger calls across Python scripts:
 - ✅ `/app/utils/data_retention.py` - Lines 317-323
 - ✅ `/scripts/validate_file_naming.py` - Multiple print statements  
-- ✅ `/scripts/migrate_data_directories.py` - Multiple print statements
+- ✅ `/scripts/migrate_data_directories.py` - Removed (obsolete migration script)
 - ✅ `/app/api/scrapers.py` - Contains print statements
 - ✅ `/scripts/run_scraper_tests.py` - Contains print statements
 - ✅ `/scripts/test_scraper_individual.py` - Contains print statements  

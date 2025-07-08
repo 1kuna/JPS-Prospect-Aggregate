@@ -30,32 +30,6 @@ SCRAPERS = {
     "DOT": DotScraper,                  # Department of Transportation
 }
 
-# Legacy mapping for backwards compatibility
-LEGACY_SCRAPER_NAMES = {
-    "acq_gateway": "ACQGW",
-    "doc": "DOC",
-    "dhs": "DHS",
-    "doj": "DOJ",
-    "dos": "DOS",
-    "hhs": "HHS",
-    "ssa": "SSA",
-    "treasury": "TREAS",
-    "dot": "DOT",
-}
-
-# Helper function to get scraper by name (supports legacy names)
-def get_scraper(name: str):
-    """Get scraper class by name, supporting both new and legacy naming."""
-    # Try new naming first
-    if name in SCRAPERS:
-        return SCRAPERS[name]
-    
-    # Try legacy naming
-    if name in LEGACY_SCRAPER_NAMES:
-        new_name = LEGACY_SCRAPER_NAMES[name]
-        return SCRAPERS[new_name]
-    
-    raise ValueError(f"Unknown scraper: {name}. Available: {list(SCRAPERS.keys())}")
 
 # Explicitly define what is exported when using 'from app.core.scrapers import *'
 __all__ = [
@@ -68,7 +42,5 @@ __all__ = [
     'SsaScraper',
     'TreasuryScraper',
     'DotScraper',
-    'SCRAPERS',
-    'LEGACY_SCRAPER_NAMES',
-    'get_scraper'
+    'SCRAPERS'
 ]

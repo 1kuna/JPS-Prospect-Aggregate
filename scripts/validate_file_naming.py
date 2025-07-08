@@ -18,7 +18,7 @@ from datetime import datetime
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.constants.agency_mapping import (
-    AGENCIES, LEGACY_MAPPINGS,
+    AGENCIES,
     get_data_directory_mapping,
     standardize_file_name
 )

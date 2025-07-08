@@ -16,7 +16,7 @@ from app.utils.logger import logger
 # Setup logging as early as possible
 # Logging is configured automatically on import of app.utils.logger
 
-def create_app(config_name='default'): # config_name is no longer used but kept for compatibility
+def create_app():
     """Create and configure an instance of the Flask application."""
     app = Flask(__name__)
     app.config.from_object(active_config) # Use active_config directly

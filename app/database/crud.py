@@ -280,9 +280,6 @@ def bulk_upsert_prospects(df_in: pd.DataFrame, preserve_ai_data: bool = True, en
         logging.error(f"An unexpected error occurred during bulk upsert: {e}", exc_info=True)
         session.rollback()
 
-# The old get_prospects_paginated function has been removed.
-# Trailing comments and artifacts from previous attempts are also cleaned up.
-
 def get_prospects_for_llm_enhancement(enhancement_type: str = 'all', limit: int = None):
     """
     Get prospects that need LLM enhancement.
