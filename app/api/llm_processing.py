@@ -517,12 +517,60 @@ def _process_naics_enhancement(prospect, llm_service, force_redo):
         'has_description': bool(prospect.description)
     })
     
-    # Check if we should process NAICS
-    should_process = force_redo or not prospect.naics
+    # CRITICAL: Source NAICS codes should NEVER be overwritten by AI
+    # AI classification should ONLY run when there's no NAICS code at all
+    should_classify = not prospect.naics  # Removed force_redo to preserve source data
     
-    if prospect.description and should_process:
+    # Check if we should backfill description for existing NAICS code
+    should_backfill = prospect.naics and not prospect.naics_description
+    
+    if should_backfill:
+        # PRIORITY: Backfill description for existing source NAICS code
+        from app.utils.naics_lookup import get_naics_description
         
-        classification = llm_service.classify_naics_with_llm(prospect.title, prospect.description, prospect_id=prospect.id)
+        official_description = get_naics_description(prospect.naics)
+        
+        if official_description:
+            prospect.naics_description = official_description
+            
+            # Add backfill tracking to extras
+            _ensure_extra_is_dict(prospect)
+            prospect.extra['naics_description_backfilled'] = {
+                'backfilled_at': datetime.now(timezone.utc).isoformat(),
+                'backfilled_by': 'individual_enhancement',
+                'original_source': prospect.naics_source or 'unknown'
+            }
+            
+            # Commit to database immediately for real-time updates
+            db.session.commit()
+            
+            # Emit completion event with backfilled description
+            emit_enhancement_progress(prospect.id, 'naics_completed', {
+                'naics': prospect.naics,
+                'naics_description': official_description,
+                'naics_source': prospect.naics_source or 'unknown',
+                'action': 'backfilled'
+            })
+            return True
+        else:
+            # NAICS code not in our lookup table
+            emit_enhancement_progress(prospect.id, 'naics_completed', {
+                'skipped': True,
+                'reason': f'No description available for NAICS code {prospect.naics}'
+            })
+            return False
+    
+    elif prospect.description and should_classify:
+        # Run AI classification ONLY for prospects without NAICS codes
+        classification = llm_service.classify_naics_with_llm(
+            title=prospect.title,
+            description=prospect.description,
+            prospect_id=prospect.id,
+            agency=prospect.agency,
+            contract_type=prospect.contract_type,
+            set_aside=prospect.set_aside,
+            estimated_value=prospect.estimated_value_text or prospect.estimated_value
+        )
         
         if classification['code']:
             prospect.naics = classification['code']
@@ -547,18 +595,23 @@ def _process_naics_enhancement(prospect, llm_service, force_redo):
                 'naics': classification['code'],
                 'naics_description': classification['description'],
                 'naics_source': 'llm_inferred',
-                'confidence': classification['confidence']
+                'confidence': classification['confidence'],
+                'action': 'classified'
             })
             return True
         else:
             emit_enhancement_progress(prospect.id, 'naics_failed', {'error': 'No valid NAICS classification found'})
             return False
+    
     else:
         # Not processing NAICS - emit skipped completion
-        if not should_process:
-            reason = 'Already has NAICS classification'
+        if prospect.naics and prospect.naics_description:
+            reason = 'Already has NAICS code and description'
+        elif prospect.naics:
+            reason = 'Has NAICS code but no description available in lookup table'
         else:
-            reason = 'No description available for classification'
+            reason = 'No description available for AI classification'
+        
         emit_enhancement_progress(prospect.id, 'naics_completed', {
             'skipped': True,
             'reason': reason

@@ -41,15 +41,6 @@ export function useProspectColumns(showAIEnhanced: boolean) {
       },
       size: 350,
     }),
-    columnHelper.accessor((row) => row.extra?.agency || row.agency, {
-      id: 'agency',
-      header: 'Agency',
-      cell: info => {
-        const value = info.getValue();
-        return <div className="w-full truncate" title={String(value) || 'N/A'}>{String(value) || 'N/A'}</div>;
-      },
-      size: 200,
-    }),
     columnHelper.accessor((row) => {
       const naics = showAIEnhanced ? row.naics : (row.naics_source === 'llm_inferred' ? null : row.naics);
       const description = showAIEnhanced ? row.naics_description : (row.naics_source !== 'llm_inferred' ? row.naics_description : null);
@@ -132,9 +123,40 @@ export function useProspectColumns(showAIEnhanced: boolean) {
       },
       size: 120,
     }),
-    columnHelper.accessor((row) => row.extra?.acquisition_phase || row.contract_type, {
-      id: 'contract_type',
-      header: 'Type',
+    columnHelper.accessor((row) => {
+      // Determine which date is earlier (due date)
+      const awardDate = row.award_date ? new Date(row.award_date) : null;
+      const releaseDate = row.release_date ? new Date(row.release_date) : null;
+      
+      if (!awardDate && !releaseDate) return null;
+      if (!awardDate) return { date: releaseDate, type: 'release' };
+      if (!releaseDate) return { date: awardDate, type: 'award' };
+      
+      // Return the earlier date
+      return awardDate <= releaseDate 
+        ? { date: awardDate, type: 'award' }
+        : { date: releaseDate, type: 'release' };
+    }, {
+      id: 'due_date',
+      header: 'Due Date',
+      cell: info => {
+        const value = info.getValue();
+        if (!value || !value.date) return <div>N/A</div>;
+        
+        const dateStr = value.date.toLocaleDateString();
+        const typeLabel = value.type === 'award' ? 'Award' : 'Release';
+        
+        return (
+          <div className="w-full truncate" title={`${typeLabel}: ${dateStr}`}>
+            {dateStr}
+          </div>
+        );
+      },
+      size: 120,
+    }),
+    columnHelper.accessor((row) => row.set_aside, {
+      id: 'set_aside',
+      header: 'Set Aside',
       cell: info => {
         const value = info.getValue();
         return <div className="w-full truncate" title={String(value) || 'N/A'}>{String(value) || 'N/A'}</div>;

@@ -2,33 +2,43 @@
 Optimized prompts for LLM enhancement operations
 """
 
-NAICS_CLASSIFICATION_PROMPT = """You are a NAICS classification expert. Analyze the contract title and description to determine the TOP 3 most appropriate NAICS codes.
+NAICS_CLASSIFICATION_PROMPT = """You are a NAICS classification expert. Analyze ALL available procurement information to determine the TOP 3 most appropriate NAICS codes.
 
+PROCUREMENT INFORMATION:
 Title: "{title}"
 Description: "{description}"
+Agency: "{agency}"
+Contract Type: "{contract_type}"
+Set Aside: "{set_aside}"
+Estimated Value: "{estimated_value}"
+Additional Details: "{additional_info}"
 
-Important Guidelines:
-1. Use NAICS 2022 edition codes (6-digit)
-2. Provide up to 3 relevant codes, ranked by confidence
-3. Common government categories:
+Classification Guidelines:
+1. Use NAICS 2022 edition codes (6-digit) - RETURN CODES ONLY, NO DESCRIPTIONS
+2. Analyze ALL provided information - title, description, agency, contract type, etc.
+3. Consider agency context (DOD=defense, HHS=healthcare, etc.)
+4. Common government categories:
    - IT Services: 541511, 541512, 541513, 541519
-   - Construction: 236xxx, 237xxx
-   - Professional Services: 541xxx
-   - Manufacturing: 31xxxx-33xxxx
-   - Healthcare: 621xxx, 622xxx
-4. Consider the procuring agency context
-5. Be specific - use 6-digit codes, not 2-4 digit categories
-6. Many contracts involve multiple services - capture all relevant codes
+   - Construction: 236220, 237110, 237310, 237990
+   - Professional Services: 541330, 541611, 541618, 541690, 541715
+   - Manufacturing: 334111, 334220, 334511, 334516
+   - Healthcare: 621111, 621511, 621610
+   - Administrative: 561110, 561210, 561320, 561612
+5. Set-aside programs may indicate specific industry focus
+6. Contract value can indicate complexity/scope
+7. Be specific - use 6-digit codes, not 2-4 digit categories
+
+IMPORTANT: Return ONLY codes - descriptions will be looked up separately from official NAICS database.
 
 Return ONLY valid JSON array with up to 3 codes:
 [
-  {{"code": "541511", "description": "Custom Computer Programming Services", "confidence": 0.85}},
-  {{"code": "541512", "description": "Computer Systems Design Services", "confidence": 0.70}},
-  {{"code": "541519", "description": "Other Computer Related Services", "confidence": 0.60}}
+  {{"code": "541511", "confidence": 0.85}},
+  {{"code": "541512", "confidence": 0.70}},
+  {{"code": "541519", "confidence": 0.60}}
 ]
 
-Your confidence should reflect:
-- 0.9-1.0: Clear industry match with specific keywords
+Confidence scoring:
+- 0.9-1.0: Clear industry match with specific keywords/context
 - 0.7-0.89: Good match but some ambiguity
 - 0.5-0.69: Possible match, secondary service
 - <0.5: Weak match but potentially relevant"""
@@ -141,11 +151,18 @@ Confidence guidelines:
 - 0.5-0.69: Minor improvement, original was somewhat clear
 - <0.5: Original title was already clear, minimal changes needed"""
 
-def get_naics_prompt(title: str, description: str) -> str:
-    """Get optimized NAICS classification prompt"""
+def get_naics_prompt(title: str, description: str, agency: str = None, 
+                     contract_type: str = None, set_aside: str = None, 
+                     estimated_value: str = None, additional_info: str = None) -> str:
+    """Get optimized NAICS classification prompt with all available information"""
     prompt = NAICS_CLASSIFICATION_PROMPT
-    prompt = prompt.replace("{title}", title or "")
-    prompt = prompt.replace("{description}", description or "")
+    prompt = prompt.replace("{title}", title or "Not provided")
+    prompt = prompt.replace("{description}", description or "Not provided")
+    prompt = prompt.replace("{agency}", agency or "Not provided")
+    prompt = prompt.replace("{contract_type}", contract_type or "Not provided")
+    prompt = prompt.replace("{set_aside}", set_aside or "Not provided")
+    prompt = prompt.replace("{estimated_value}", estimated_value or "Not provided")
+    prompt = prompt.replace("{additional_info}", additional_info or "Not provided")
     return prompt
 
 def get_value_prompt(value_text: str) -> str:

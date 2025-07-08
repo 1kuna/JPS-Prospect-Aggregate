@@ -14,6 +14,7 @@ from app.utils.llm_utils import call_ollama
 from app.database import db
 from app.database.models import Prospect, InferredProspectData, LLMOutput
 from app.services.optimized_prompts import get_naics_prompt, get_value_prompt, get_contact_prompt, get_title_prompt
+from app.utils.naics_lookup import get_naics_description, validate_naics_code
 import time
 
 logger = logging.getLogger(__name__)
@@ -47,6 +48,7 @@ class ContractLLMService:
         3. "334516 : Description" (colon separator - HHS format)
         4. "334516 Description" (space-separated)
         5. "334516" (just the 6-digit code)
+        6. "334516.0" (numeric with decimal point - DOT/SSA format)
         
         Returns dict with 'code', 'description', and 'standardized_format' keys.
         The standardized_format will always be "334516 | Description" format.
@@ -55,6 +57,12 @@ class ContractLLMService:
             return {'code': None, 'description': None, 'standardized_format': None}
         
         naics_str = str(naics_str).strip()
+        
+        # Preprocess: Handle numeric NAICS codes with decimal points (e.g., "336510.0" -> "336510")
+        # This fixes issues from data sources that parse NAICS as numeric values
+        # Only process valid 6-digit NAICS codes, ignore invalid ones like "0.0", "2025.0", etc.
+        if re.match(r'^[1-9]\d{5}\.0+$', naics_str):
+            naics_str = naics_str.split('.')[0]
         
         # Handle different NAICS formats from source data - ordered by specificity
         patterns = [
@@ -71,6 +79,10 @@ class ContractLLMService:
                 code = match.group(1)
                 description = match.group(2).strip() if len(match.groups()) > 1 and match.group(2) else None
                 
+                # If no description found, try to get official description from lookup
+                if not description:
+                    description = get_naics_description(code)
+                
                 # Create standardized format
                 if description:
                     standardized_format = f"{code} | {description}"
@@ -84,11 +96,17 @@ class ContractLLMService:
                     'original_format': format_type
                 }
         
-        # Fallback for unexpected formats
+        # Fallback for unexpected formats - try to get description if it looks like a valid code
+        description = None
+        if validate_naics_code(naics_str):
+            description = get_naics_description(naics_str)
+        
+        standardized_format = f"{naics_str} | {description}" if description else naics_str
+        
         return {
             'code': naics_str,
-            'description': None,
-            'standardized_format': naics_str,
+            'description': description,
+            'standardized_format': standardized_format,
             'original_format': 'unknown'
         }
     
@@ -196,9 +214,28 @@ class ContractLLMService:
             logger.error(f"Failed to log LLM output: {e}")
             db.session.rollback()
     
-    def classify_naics_with_llm(self, title: str, description: str, prospect_id: str = None) -> Dict:
-        """NAICS Classification using qwen3:8b - returns multiple codes"""
-        prompt = get_naics_prompt(title, description)
+    def classify_naics_with_llm(self, title: str, description: str, prospect_id: str = None, 
+                               agency: str = None, contract_type: str = None, set_aside: str = None, 
+                               estimated_value: str = None, additional_info: str = None) -> Dict:
+        """
+        NAICS Classification using qwen3:8b with all available prospect information.
+        
+        New approach:
+        1. LLM analyzes ALL available info to determine NAICS codes
+        2. Descriptions are looked up from official NAICS database
+        3. Separates classification from description for accuracy
+        """
+        # Build comprehensive prompt with all available information
+        prompt = get_naics_prompt(
+            title=title,
+            description=description,
+            agency=agency,
+            contract_type=contract_type,
+            set_aside=set_aside,
+            estimated_value=estimated_value,
+            additional_info=additional_info
+        )
+        
         start_time = time.time()
         response = call_ollama(prompt, self.model_name)
         processing_time = time.time() - start_time
@@ -212,27 +249,51 @@ class ContractLLMService:
             parsed = json.loads(cleaned_response)
             
             # Handle both array response (new) and single object (backward compatibility)
-            # Handle response format variations from the LLM
             if isinstance(parsed, list):
-                # LLM returned multiple NAICS codes (common for multi-purpose contracts)
-                # Sort by confidence descending to pick the most relevant
+                # LLM returned multiple NAICS codes
                 codes = sorted(parsed, key=lambda x: x.get('confidence', 0), reverse=True)
-                # Primary code is the highest confidence one
-                primary = codes[0] if codes else {'code': None, 'description': None, 'confidence': 0.0}
+                
+                # Process each code and get official description
+                processed_codes = []
+                for code_info in codes[:3]:  # Limit to top 3
+                    code = code_info.get('code')
+                    if code and validate_naics_code(code):
+                        # Get official description from lookup
+                        official_description = get_naics_description(code)
+                        processed_codes.append({
+                            'code': code,
+                            'description': official_description,
+                            'confidence': code_info.get('confidence', 0.8)
+                        })
+                
+                # Primary code is the highest confidence valid one
+                primary = processed_codes[0] if processed_codes else {'code': None, 'description': None, 'confidence': 0.0}
                 result = {
                     'code': primary.get('code'),
                     'description': primary.get('description'),
-                    'confidence': primary.get('confidence', 0.8),
-                    'all_codes': codes[:3]  # Store up to 3 codes for future analysis
+                    'confidence': primary.get('confidence', 0.0),
+                    'all_codes': processed_codes
                 }
             else:
-                # Single code response (older prompt format or single-purpose contract)
-                result = {
-                    'code': parsed.get('code'),
-                    'description': parsed.get('description'),
-                    'confidence': parsed.get('confidence', 0.8),
-                    'all_codes': [parsed] if parsed.get('code') else []
-                }
+                # Single code response (backward compatibility)
+                code = parsed.get('code')
+                if code and validate_naics_code(code):
+                    official_description = get_naics_description(code)
+                    confidence = parsed.get('confidence', 0.8)
+                    
+                    result = {
+                        'code': code,
+                        'description': official_description,
+                        'confidence': confidence,
+                        'all_codes': [{'code': code, 'description': official_description, 'confidence': confidence}]
+                    }
+                else:
+                    result = {
+                        'code': None,
+                        'description': None,
+                        'confidence': 0.0,
+                        'all_codes': []
+                    }
             
             # Log successful output
             if prospect_id:
@@ -588,7 +649,40 @@ class ContractLLMService:
             if not prospect.title or not prospect.description:
                 return False
             
-            classification = self.classify_naics_with_llm(prospect.title, prospect.description)
+            # Gather all available information for enhanced classification
+            agency = prospect.agency or (prospect.extra.get('agency') if prospect.extra else None)
+            contract_type = prospect.contract_type
+            set_aside = prospect.set_aside
+            estimated_value = prospect.estimated_value_text or prospect.estimated_value
+            
+            # Build additional info from extra field
+            additional_info = ""
+            if prospect.extra:
+                extra_data = prospect.extra
+                if isinstance(extra_data, str):
+                    try:
+                        extra_data = json.loads(extra_data)
+                    except (json.JSONDecodeError, TypeError):
+                        extra_data = {}
+                
+                # Extract relevant fields that might help classification
+                info_fields = []
+                for key in ['summary', 'scope', 'requirements', 'keywords', 'technology', 'industry']:
+                    if key in extra_data and extra_data[key]:
+                        info_fields.append(f"{key}: {extra_data[key]}")
+                
+                additional_info = " | ".join(info_fields)
+            
+            classification = self.classify_naics_with_llm(
+                title=prospect.title,
+                description=prospect.description,
+                prospect_id=prospect.id,
+                agency=agency,
+                contract_type=contract_type,
+                set_aside=set_aside,
+                estimated_value=estimated_value,
+                additional_info=additional_info
+            )
             
             if classification['code']:
                 prospect.naics = classification['code']
@@ -610,7 +704,8 @@ class ContractLLMService:
                 prospect.extra['llm_classification'] = {
                     'naics_confidence': classification['confidence'],
                     'model_used': self.model_name,
-                    'classified_at': datetime.now(timezone.utc).isoformat()
+                    'classified_at': datetime.now(timezone.utc).isoformat(),
+                    'all_codes': classification['all_codes']  # Store all suggested codes
                 }
                 
                 # Update timestamp for polling detection
@@ -626,6 +721,59 @@ class ContractLLMService:
         logger.info(f"Total NAICS enhancement complete: {prospects_with_extra_naics} from extra field + {llm_enhanced} from LLM = {total_enhanced}")
         
         return total_enhanced
+    
+    def backfill_naics_descriptions(self, prospects: List[Prospect]) -> int:
+        """
+        Backfill missing NAICS descriptions for prospects that have codes but no descriptions.
+        Uses official NAICS lookup to ensure standardized descriptions.
+        """
+        backfilled_count = 0
+        
+        for prospect in prospects:
+            # Skip if no NAICS code or already has description
+            if not prospect.naics or prospect.naics_description:
+                continue
+            
+            # Get official description from lookup
+            official_description = get_naics_description(prospect.naics)
+            
+            if official_description:
+                prospect.naics_description = official_description
+                
+                # Mark as processed if not already marked
+                if not prospect.ollama_processed_at:
+                    prospect.ollama_processed_at = datetime.now(timezone.utc)
+                    prospect.ollama_model_version = self.model_name
+                
+                # Add to extra field to track backfill
+                if not prospect.extra:
+                    prospect.extra = {}
+                elif isinstance(prospect.extra, str):
+                    try:
+                        prospect.extra = json.loads(prospect.extra)
+                    except (json.JSONDecodeError, TypeError):
+                        prospect.extra = {}
+                
+                prospect.extra['naics_description_backfilled'] = {
+                    'backfilled_at': datetime.now(timezone.utc).isoformat(),
+                    'backfilled_by': 'naics_lookup_service',
+                    'original_source': prospect.naics_source or 'unknown'
+                }
+                
+                backfilled_count += 1
+                logger.info(f"Backfilled NAICS description for {prospect.naics}: {official_description}")
+        
+        # Commit all backfills
+        if backfilled_count > 0:
+            try:
+                db.session.commit()
+                logger.info(f"Successfully backfilled {backfilled_count} NAICS descriptions")
+            except Exception as e:
+                logger.error(f"Error committing NAICS description backfills: {e}")
+                db.session.rollback()
+                backfilled_count = 0
+        
+        return backfilled_count
     
     def enhance_all_prospects(self, limit: Optional[int] = None) -> Dict[str, int]:
         """
@@ -646,7 +794,8 @@ class ContractLLMService:
             'total_prospects': len(prospects),
             'values_enhanced': 0,
             'contacts_enhanced': 0,
-            'naics_enhanced': 0
+            'naics_enhanced': 0,
+            'naics_descriptions_backfilled': 0
         }
         
         if not prospects:
@@ -656,5 +805,14 @@ class ContractLLMService:
         results['values_enhanced'] = self.enhance_prospect_values(prospects)
         results['contacts_enhanced'] = self.enhance_prospect_contacts(prospects)
         results['naics_enhanced'] = self.enhance_prospect_naics(prospects)
+        
+        # Backfill missing NAICS descriptions for all prospects (not just unprocessed ones)
+        all_prospects = Prospect.query.filter(
+            Prospect.naics.isnot(None),
+            Prospect.naics_description.is_(None)
+        ).all()
+        
+        if all_prospects:
+            results['naics_descriptions_backfilled'] = self.backfill_naics_descriptions(all_prospects)
         
         return results
