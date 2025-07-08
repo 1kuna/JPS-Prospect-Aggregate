@@ -98,6 +98,10 @@ export const useCreateDecision = () => {
       queryClient.invalidateQueries({ 
         queryKey: ['decisions', 'stats'] 
       });
+      // Invalidate admin queries to refresh admin dashboard
+      queryClient.invalidateQueries({ 
+        queryKey: ['admin'] 
+      });
     },
   });
 };
@@ -112,6 +116,10 @@ export const useDeleteDecision = () => {
       // Invalidate all decision queries
       queryClient.invalidateQueries({ 
         queryKey: ['decisions'] 
+      });
+      // Invalidate admin queries to refresh admin dashboard
+      queryClient.invalidateQueries({ 
+        queryKey: ['admin'] 
       });
     },
   });
