@@ -3,7 +3,7 @@ Admin API endpoints for system administration.
 """
 
 from flask import Blueprint, request, jsonify, session
-from sqlalchemy import desc, func
+from sqlalchemy import desc, func, case
 from app.database import db
 from app.database.models import Settings, GoNoGoDecision, Prospect
 from app.database.user_models import User
@@ -331,8 +331,8 @@ def get_admin_decision_stats():
         user_stats = db.session.query(
             GoNoGoDecision.user_id,
             func.count(GoNoGoDecision.id).label('total'),
-            func.sum(func.case((GoNoGoDecision.decision == 'go', 1), else_=0)).label('go_count'),
-            func.sum(func.case((GoNoGoDecision.decision == 'no-go', 1), else_=0)).label('nogo_count')
+            func.sum(case((GoNoGoDecision.decision == 'go', 1), else_=0)).label('go_count'),
+            func.sum(case((GoNoGoDecision.decision == 'no-go', 1), else_=0)).label('nogo_count')
         ).group_by(GoNoGoDecision.user_id).all()
         
         # Get user data for the stats
@@ -445,8 +445,8 @@ def get_all_users():
         decision_counts = db.session.query(
             GoNoGoDecision.user_id,
             func.count(GoNoGoDecision.id).label('total_decisions'),
-            func.sum(func.case((GoNoGoDecision.decision == 'go', 1), else_=0)).label('go_count'),
-            func.sum(func.case((GoNoGoDecision.decision == 'no-go', 1), else_=0)).label('nogo_count')
+            func.sum(case((GoNoGoDecision.decision == 'go', 1), else_=0)).label('go_count'),
+            func.sum(case((GoNoGoDecision.decision == 'no-go', 1), else_=0)).label('nogo_count')
         ).filter(GoNoGoDecision.user_id.in_(user_ids)).group_by(GoNoGoDecision.user_id).all()
         
         # Create lookup dict for decision counts
