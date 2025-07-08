@@ -101,10 +101,8 @@ def update_data_source(source_id):
         session.commit()
         return jsonify({"status": "success", "message": "Data source updated", "data": source.to_dict()})
     except ValidationError as ve:
-        # db.session.rollback() # Removed
         raise ve
     except Exception as e:
-        # db.session.rollback() # Removed
         logger.error(f"Error in update_data_source: {str(e)}", exc_info=True) 
         raise DatabaseError("Failed to update data source")
 
@@ -155,10 +153,8 @@ def create_data_source():
 
         return jsonify({"status": "success", "message": "Data source created", "data": new_source.to_dict()}), 201
     except ValidationError as ve:
-        # db.session.rollback() # Removed
         raise ve
     except Exception as e:
-        # db.session.rollback() # Removed
         logger.error(f"Error creating data source: {e}", exc_info=True)
         raise DatabaseError("Could not create data source")
 
@@ -208,9 +204,7 @@ def delete_data_source(source_id):
         session.commit()
         return jsonify({"status": "success", "message": f"Data source {source_id} and related data deleted"})
     except NotFoundError as nfe:
-        # db.session.rollback() # Removed
         raise nfe
     except Exception as e:
-        # db.session.rollback() # Removed
         logger.error(f"Error deleting data source {source_id}: {e}", exc_info=True)
         raise DatabaseError(f"Could not delete data source {source_id}") 

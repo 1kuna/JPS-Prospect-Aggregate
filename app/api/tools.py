@@ -239,13 +239,6 @@ SCRIPT_CONFIGS = [
         category=ScriptCategory.DATABASE_SETUP
     ),
     ScriptConfig(
-        id="migrate_data_directories",
-        name="Migrate Data Directories",
-        description="Handle data directory structure migrations",
-        script_path="scripts/migrate_data_directories.py",
-        category=ScriptCategory.DATABASE_SETUP
-    ),
-    ScriptConfig(
         id="standardize_naics",
         name="Standardize NAICS Codes",
         description="Format all NAICS codes to standard format",

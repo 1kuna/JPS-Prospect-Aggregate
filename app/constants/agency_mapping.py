@@ -79,30 +79,6 @@ AGENCIES = {
 # NOTE: Forecast data is now consolidated into main agency directories
 # No separate forecast directories - all data goes into agency abbreviation folders
 
-# Legacy name mappings for backwards compatibility during migration
-LEGACY_MAPPINGS = {
-    # Old directory names -> New abbreviations
-    "department_of_homeland_security": "DHS",
-    "social_security_administration": "SSA", 
-    "department_of_commerce": "DOC",
-    "department_of_state": "DOS",
-    "health_and_human_services": "HHS",
-    "department_of_justice": "DOJ",
-    "department_of_treasury": "TREAS",
-    "department_of_transportation": "DOT",
-    "acquisition_gateway": "ACQGW",
-    
-    # Old scraper names -> New abbreviations
-    "dhs_scraper": "DHS",
-    "ssa_scraper": "SSA",
-    "doc_scraper": "DOC", 
-    "dos_scraper": "DOS",
-    "hhs_scraper": "HHS",
-    "doj_scraper": "DOJ",
-    "treasury_scraper": "TREAS",
-    "dot_scraper": "DOT",
-}
-
 
 def get_agency_by_abbreviation(abbrev: str) -> AgencyInfo:
     """Get agency information by abbreviation."""
@@ -110,13 +86,6 @@ def get_agency_by_abbreviation(abbrev: str) -> AgencyInfo:
         raise ValueError(f"Unknown agency abbreviation: {abbrev}")
     return AGENCIES[abbrev]
 
-
-def get_agency_by_legacy_name(legacy_name: str) -> AgencyInfo:
-    """Get agency information by legacy name (for migration purposes)."""
-    if legacy_name not in LEGACY_MAPPINGS:
-        raise ValueError(f"Unknown legacy name: {legacy_name}")
-    abbrev = LEGACY_MAPPINGS[legacy_name]
-    return AGENCIES[abbrev]
 
 
 def get_all_abbreviations() -> List[str]:
