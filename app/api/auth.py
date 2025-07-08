@@ -214,6 +214,11 @@ def get_current_user():
                 'message': 'User not found'
             }), 404
         
+        # Sync session data with current database state
+        session['user_role'] = user.role
+        session['user_email'] = user.email
+        session['user_first_name'] = user.first_name
+        
         return jsonify({
             'status': 'success',
             'data': {
@@ -237,6 +242,11 @@ def get_auth_status():
             user = db.session.query(User).filter_by(id=user_id).first()
             
             if user:
+                # Sync session data with current database state
+                session['user_role'] = user.role
+                session['user_email'] = user.email
+                session['user_first_name'] = user.first_name
+                
                 return jsonify({
                     'status': 'success',
                     'data': {
@@ -261,4 +271,35 @@ def get_auth_status():
         return jsonify({
             'status': 'error',
             'message': 'Failed to check authentication status'
+        }), 500
+
+@auth_bp.route('/debug-session', methods=['GET'])
+@login_required
+def debug_session():
+    """Debug endpoint to check current session state (admin only in production)."""
+    try:
+        # Only allow in development or for admins
+        user_role = session.get('user_role', 'user')
+        if user_role != 'admin':
+            return jsonify({
+                'status': 'error',
+                'message': 'Admin access required'
+            }), 403
+        
+        return jsonify({
+            'status': 'success',
+            'data': {
+                'session': {
+                    'user_id': session.get('user_id'),
+                    'user_email': session.get('user_email'),
+                    'user_first_name': session.get('user_first_name'),
+                    'user_role': session.get('user_role')
+                }
+            }
+        })
+    except Exception as e:
+        logger.error(f"Error in debug session: {str(e)}", exc_info=True)
+        return jsonify({
+            'status': 'error',
+            'message': 'Failed to debug session'
         }), 500

@@ -67,6 +67,7 @@ from app.database.crud import bulk_upsert_prospects
 from app.database import db
 from app.database.models import DataSource
 from app.services.file_validation_service import file_validation_service
+from app.services.contract_llm_service import ContractLLMService
 
 
 @dataclass
@@ -1562,18 +1563,21 @@ class ConsolidatedScraperBase:
         if self.config.fiscal_year_configs:
             df = self._process_fiscal_year_columns(df, self.config.fiscal_year_configs)
         
-        # 8. Collect unmapped columns into extras_json before db column renaming
+        # 8. Process NAICS columns to standardize formatting
+        df = self._process_naics_columns(df)
+        
+        # 9. Collect unmapped columns into extras_json before db column renaming
         df = self._collect_unmapped_columns_to_extras(df)
         
-        # 9. Apply database column renaming (this will rename extras_json to extra)
+        # 10. Apply database column renaming (this will rename extras_json to extra)
         if self.config.db_column_rename_map:
             df = self._apply_column_renaming(df, self.config.db_column_rename_map)
         
-        # 10. Generate ID hash
+        # 11. Generate ID hash
         if self.config.fields_for_id_hash:
             df = self._generate_id_hash(df, self.config.fields_for_id_hash)
         
-        # 11. Clean up - keep only columns that are in the db_column_rename_map values (final columns)
+        # 12. Clean up - keep only columns that are in the db_column_rename_map values (final columns)
         if self.config.db_column_rename_map:
             final_columns = list(self.config.db_column_rename_map.values())
             # Also keep id and any other essential columns (extras_json gets renamed to extra via mapping)
@@ -1855,6 +1859,55 @@ class ConsolidatedScraperBase:
             except Exception as e:
                 self.logger.error(f"Error processing fiscal year config {config}: {e}")
                 continue
+        
+        return df
+    
+    def _process_naics_columns(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Process NAICS columns to standardize formatting and separate code from description."""
+        try:
+            # Check for standard NAICS columns that need processing
+            naics_columns_to_process = []
+            
+            # Common NAICS column names from scrapers
+            naics_column_candidates = ['naics_code', 'naics', 'primary_naics']
+            for col in naics_column_candidates:
+                if col in df.columns:
+                    naics_columns_to_process.append(col)
+            
+            if not naics_columns_to_process:
+                return df
+            
+            # Initialize LLM service for NAICS parsing (only when needed)
+            llm_service = ContractLLMService()
+            
+            processed_count = 0
+            for col in naics_columns_to_process:
+                # Process each NAICS column
+                for idx, naics_value in df[col].items():
+                    if pd.isna(naics_value) or not str(naics_value).strip():
+                        continue
+                    
+                    # Parse the NAICS value using the standardized parser
+                    parsed = llm_service.parse_existing_naics(str(naics_value).strip())
+                    
+                    if parsed['code']:
+                        # Update the NAICS code column with just the code
+                        df.at[idx, col] = parsed['code']
+                        
+                        # Set description in appropriate column if it exists and is empty
+                        desc_col = 'naics_description'
+                        if desc_col in df.columns and parsed['description']:
+                            current_desc = df.at[idx, desc_col]
+                            if pd.isna(current_desc) or not str(current_desc).strip():
+                                df.at[idx, desc_col] = parsed['description']
+                        
+                        processed_count += 1
+            
+            if processed_count > 0:
+                self.logger.info(f"Standardized NAICS formatting for {processed_count} records")
+            
+        except Exception as e:
+            self.logger.error(f"Error processing NAICS columns: {e}")
         
         return df
     

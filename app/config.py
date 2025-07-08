@@ -76,6 +76,10 @@ class Config:
     SCRAPE_INTERVAL_HOURS: int = int(os.getenv("SCRAPE_INTERVAL_HOURS", 24))
     HEALTH_CHECK_INTERVAL_MINUTES: int = int(os.getenv("HEALTH_CHECK_INTERVAL_MINUTES", 10))
     
+    # Scraper timeout configuration
+    SCRAPER_TIMEOUT_HOURS: int = int(os.getenv("SCRAPER_TIMEOUT_HOURS", 2))  # 2 hours default
+    SCRAPER_CLEANUP_ENABLED: bool = os.getenv("SCRAPER_CLEANUP_ENABLED", "true").lower() == "true"
+    
     # AI data preservation configuration
     PRESERVE_AI_DATA_ON_REFRESH: bool = os.getenv("PRESERVE_AI_DATA_ON_REFRESH", "true").lower() == "true"
     ENABLE_SMART_DUPLICATE_MATCHING: bool = os.getenv("ENABLE_SMART_DUPLICATE_MATCHING", "true").lower() == "true"

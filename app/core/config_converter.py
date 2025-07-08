@@ -90,8 +90,8 @@ def create_acquisition_gateway_config() -> ScraperConfig:
             {'column': 'release_date_raw', 'target_column': 'release_date', 'parse_type': 'datetime', 'store_as_date': True},
             {'column': 'award_date_raw', 'target_column': 'award_date', 'parse_type': 'datetime', 'store_as_date': True},
             {'column': 'award_fyqtr_raw', 
-             'target_date_col': 'award_date_from_fyqtr', 
-             'target_fy_col': 'award_fiscal_year_from_fyqtr',
+             'target_date_col': 'award_date', 
+             'target_fy_col': 'award_fiscal_year',
              'parse_type': 'fiscal_quarter'
             }
         ],
