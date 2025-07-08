@@ -36,6 +36,16 @@ class ScraperService:
             raise ScraperError(f"Scraper for source ID {source_id} is already running")
         
         try:
+            # Clean up any stuck scrapers before starting new ones
+            if active_config.SCRAPER_CLEANUP_ENABLED:
+                from app.utils.scraper_cleanup import cleanup_stuck_scrapers
+                try:
+                    cleanup_count = cleanup_stuck_scrapers(max_age_hours=active_config.SCRAPER_TIMEOUT_HOURS)
+                    if cleanup_count > 0:
+                        logger.info(f"Cleaned up {cleanup_count} stuck scrapers before starting new scrape")
+                except Exception as e:
+                    logger.warning(f"Failed to clean up stuck scrapers: {e}")
+            
             # Import Flask's current_app here to avoid circular imports
             from flask import current_app
             

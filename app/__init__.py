@@ -47,6 +47,7 @@ def create_app(config_name='default'): # config_name is no longer used but kept 
     from app.api.admin import admin_bp  # Import admin blueprint
     from app.api.auth import auth_bp  # Import auth blueprint
     from app.api.decisions import decisions_bp  # Import decisions blueprint
+    from app.api.tools import tools_bp  # Import tools blueprint
     from app.web.routes import main as web_main_bp # Import the web blueprint
 
     app.register_blueprint(web_main_bp) # Register the web blueprint
@@ -58,6 +59,7 @@ def create_app(config_name='default'): # config_name is no longer used but kept 
     app.register_blueprint(admin_bp)  # Register admin blueprint
     app.register_blueprint(auth_bp)  # Register auth blueprint
     app.register_blueprint(decisions_bp)  # Register decisions blueprint
+    app.register_blueprint(tools_bp)  # Register tools blueprint
 
     # Register maintenance middleware
     maintenance_middleware(app)
@@ -67,6 +69,7 @@ def create_app(config_name='default'): # config_name is no longer used but kept 
         from app.services.enhancement_queue_service import enhancement_queue_service
         from app.services.iterative_llm_service_v2 import iterative_service_v2
         from app.utils.enhancement_cleanup import cleanup_all_in_progress_enhancements
+        from app.utils.scraper_cleanup import cleanup_all_working_scrapers
         
         # Clean up any stuck enhancement statuses from previous server runs
         try:
@@ -75,6 +78,15 @@ def create_app(config_name='default'): # config_name is no longer used but kept 
                 logger.info(f"Cleaned up {cleanup_count} stuck enhancement requests on startup")
         except Exception as e:
             logger.warning(f"Failed to clean up stuck enhancements: {e}")
+        
+        # Clean up any stuck scraper statuses from previous server runs
+        if active_config.SCRAPER_CLEANUP_ENABLED:
+            try:
+                scraper_cleanup_count = cleanup_all_working_scrapers()
+                if scraper_cleanup_count > 0:
+                    logger.info(f"Cleaned up {scraper_cleanup_count} stuck scrapers on startup")
+            except Exception as e:
+                logger.warning(f"Failed to clean up stuck scrapers: {e}")
         
         # Set up cross-references between services
         enhancement_queue_service.set_bulk_service(iterative_service_v2)

@@ -39,34 +39,58 @@ class ContractLLMService:
             db.session.rollback()
         
     def parse_existing_naics(self, naics_str: Optional[str]) -> Dict[str, Optional[str]]:
-        """Parse existing NAICS codes from source data formats
+        """Parse existing NAICS codes from source data formats and standardize them
         
         Handles various formats found across different agencies:
-        1. "334516 | Description" or "334516 - Description" (most common)
-        2. "334516 Description" (space-separated)
-        3. "334516" (just the 6-digit code)
+        1. "334516 | Description" (pipe separator - preferred format)
+        2. "334516 - Description" (hyphen separator)
+        3. "334516 : Description" (colon separator - HHS format)
+        4. "334516 Description" (space-separated)
+        5. "334516" (just the 6-digit code)
         
-        Returns dict with 'code' and 'description' keys.
+        Returns dict with 'code', 'description', and 'standardized_format' keys.
+        The standardized_format will always be "334516 | Description" format.
         """
         if not naics_str:
-            return {'code': None, 'description': None}
+            return {'code': None, 'description': None, 'standardized_format': None}
         
-        # Handle different NAICS formats from source data
+        naics_str = str(naics_str).strip()
+        
+        # Handle different NAICS formats from source data - ordered by specificity
         patterns = [
-            r'(\d{6})\s*[|\-]\s*(.*)',  # "334516 | Description" or "334516 - Description"
-            r'(\d{6})\s+(.*)',          # "334516 Description"
-            r'(\d{6})'                  # Just the code
+            (r'(\d{6})\s*\|\s*(.*)', 'pipe'),      # "334516 | Description" (already standardized)
+            (r'(\d{6})\s*:\s*(.*)', 'colon'),      # "334516 : Description" (HHS format)
+            (r'(\d{6})\s*-\s*(.*)', 'hyphen'),     # "334516 - Description"
+            (r'(\d{6})\s+([^0-9].*)', 'space'),    # "334516 Description" (space + non-digit)
+            (r'(\d{6})$', 'code_only')             # Just the code
         ]
         
-        for pattern in patterns:
-            match = re.match(pattern, str(naics_str).strip())
+        for pattern, format_type in patterns:
+            match = re.match(pattern, naics_str)
             if match:
+                code = match.group(1)
+                description = match.group(2).strip() if len(match.groups()) > 1 and match.group(2) else None
+                
+                # Create standardized format
+                if description:
+                    standardized_format = f"{code} | {description}"
+                else:
+                    standardized_format = code
+                
                 return {
-                    'code': match.group(1),
-                    'description': match.group(2).strip() if len(match.groups()) > 1 else None
+                    'code': code,
+                    'description': description,
+                    'standardized_format': standardized_format,
+                    'original_format': format_type
                 }
         
-        return {'code': str(naics_str), 'description': None}
+        # Fallback for unexpected formats
+        return {
+            'code': naics_str,
+            'description': None,
+            'standardized_format': naics_str,
+            'original_format': 'unknown'
+        }
     
     def extract_naics_from_extra_field(self, extra_data: Any) -> Dict[str, Optional[str]]:
         """Extract NAICS information from the extra field JSON data"""
@@ -97,15 +121,10 @@ class ContractLLMService:
         elif 'primary_naics' in extra_data and extra_data['primary_naics']:
             primary_naics = str(extra_data['primary_naics']).strip()
             if primary_naics.upper() != 'TBD':  # Skip "To Be Determined" entries
-                # Look for pattern "334516 : Description"
-                match = re.match(r'^(\d{6})\s*:\s*(.*)', primary_naics)
-                if match:
-                    code = match.group(1)
-                    description = match.group(2).strip()
-                # Look for just a 6-digit code without description
-                elif re.match(r'^\d{6}$', primary_naics):
-                    code = primary_naics
-                    description = None
+                # Use standardized parser for all formats
+                parsed = self.parse_existing_naics(primary_naics)
+                code = parsed['code']
+                description = parsed['description']
         
         # 3. Fallback: Search for other common NAICS field names
         if not code:
@@ -118,17 +137,11 @@ class ContractLLMService:
                     if potential_value.upper() in ['TBD', 'TO BE DETERMINED', 'N/A', 'NULL', '']:
                         continue
                         
-                    # Check for code : description pattern
-                    match = re.match(r'^(\d{6})\s*[:\|\-]\s*(.*)', potential_value)
-                    if match:
-                        code = match.group(1)
-                        description = match.group(2).strip()
-                        break
-                    
-                    # Check for just a 6-digit code
-                    elif re.match(r'^\d{6}$', potential_value):
-                        code = potential_value
-                        description = None
+                    # Use standardized parser for consistent handling
+                    parsed = self.parse_existing_naics(potential_value)
+                    if parsed['code']:
+                        code = parsed['code']
+                        description = parsed['description']
                         break
         
         # 4. Last resort: Search all values for any 6-digit numbers that could be NAICS codes
@@ -141,12 +154,16 @@ class ContractLLMService:
                     for potential_code in matches:
                         # Basic validation - NAICS codes start with digits 1-9 (not 0)
                         if potential_code[0] in '123456789':
-                            code = potential_code
-                            # Try to extract description from the same field
-                            desc_match = re.search(rf'{code}\s*[:\|\-]\s*([^,\n]+)', value_str)
-                            if desc_match:
-                                description = desc_match.group(1).strip()
-                            break
+                            # Try to parse the full value to get description if present
+                            parsed = self.parse_existing_naics(value_str)
+                            if parsed['code'] == potential_code:
+                                code = parsed['code']
+                                description = parsed['description']
+                                break
+                            else:
+                                # Fallback to just the code
+                                code = potential_code
+                                break
                 
                 if code:  # Break outer loop if found
                     break

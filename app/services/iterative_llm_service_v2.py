@@ -517,7 +517,7 @@ class IterativeLLMServiceV2:
             extra_naics = self.llm_service.extract_naics_from_extra_field(prospect.extra)
             
             if extra_naics['found_in_extra'] and extra_naics['code']:
-                # Found NAICS in extra field - populate main fields
+                # Found NAICS in extra field - populate main fields with standardized format
                 prospect.naics = extra_naics['code']
                 prospect.naics_description = extra_naics['description']
                 prospect.naics_source = 'original'  # Mark as original since it was in source data

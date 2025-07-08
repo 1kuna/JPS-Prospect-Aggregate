@@ -15,12 +15,18 @@ from app.utils.enhancement_cleanup import (
     cleanup_all_in_progress_enhancements,
     get_enhancement_statistics
 )
+from app.utils.scraper_cleanup import (
+    cleanup_stuck_scrapers,
+    cleanup_all_working_scrapers,
+    get_scraper_statistics
+)
 import datetime
 
 admin_bp = Blueprint('admin', __name__, url_prefix='/api/admin')
 
 
 @admin_bp.route('/maintenance', methods=['GET', 'POST'])
+@admin_required
 def toggle_maintenance():
     """
     GET: Get current maintenance mode status
@@ -86,6 +92,7 @@ def toggle_maintenance():
 
 
 @admin_bp.route('/settings', methods=['GET'])
+@admin_required
 def get_all_settings():
     """Get all system settings."""
     try:
@@ -99,6 +106,7 @@ def get_all_settings():
 
 
 @admin_bp.route('/health', methods=['GET'])
+@admin_required
 def admin_health():
     """Health check endpoint that works even in maintenance mode."""
     try:
@@ -124,6 +132,7 @@ def admin_health():
 
 
 @admin_bp.route('/enhancement-cleanup', methods=['POST'])
+@admin_required
 def cleanup_enhancements():
     """
     Clean up stuck enhancement requests.
@@ -164,6 +173,7 @@ def cleanup_enhancements():
 
 
 @admin_bp.route('/enhancement-stats', methods=['GET'])
+@admin_required
 def enhancement_statistics():
     """Get statistics about current enhancement statuses."""
     try:
@@ -174,6 +184,62 @@ def enhancement_statistics():
         })
     except Exception as e:
         logger.error(f"Error getting enhancement statistics: {str(e)}")
+        return jsonify({"error": f"Failed to get statistics: {str(e)}"}), 500
+
+
+@admin_bp.route('/scraper-cleanup', methods=['POST'])
+@admin_required
+def cleanup_scrapers():
+    """
+    Clean up stuck scraper processes.
+    
+    POST Body (optional):
+    {
+        "type": "stuck" | "all",  // Default: "stuck"
+        "max_age_hours": 2        // Only for "stuck" type, default: 2
+    }
+    """
+    try:
+        data = request.get_json() or {}
+        cleanup_type = data.get('type', 'stuck')
+        max_age_hours = data.get('max_age_hours', 2)
+        
+        if cleanup_type not in ['stuck', 'all']:
+            return jsonify({"error": "cleanup type must be 'stuck' or 'all'"}), 400
+            
+        if cleanup_type == 'all':
+            count = cleanup_all_working_scrapers()
+            message = f"Reset {count} working scrapers to failed"
+        else:
+            count = cleanup_stuck_scrapers(max_age_hours=max_age_hours)
+            message = f"Cleaned up {count} stuck scrapers (older than {max_age_hours} hours)"
+            
+        logger.info(f"Scraper cleanup completed: {message}")
+        
+        return jsonify({
+            "success": True,
+            "count": count,
+            "message": message,
+            "type": cleanup_type
+        })
+        
+    except Exception as e:
+        logger.error(f"Error during scraper cleanup: {str(e)}")
+        return jsonify({"error": f"Cleanup failed: {str(e)}"}), 500
+
+
+@admin_bp.route('/scraper-stats', methods=['GET'])
+@admin_required
+def scraper_statistics():
+    """Get statistics about current scraper statuses."""
+    try:
+        stats = get_scraper_statistics()
+        return jsonify({
+            "success": True,
+            "statistics": stats
+        })
+    except Exception as e:
+        logger.error(f"Error getting scraper statistics: {str(e)}")
         return jsonify({"error": f"Failed to get statistics: {str(e)}"}), 500
 
 
@@ -461,6 +527,11 @@ def update_user_role(user_id):
                 'status': 'error',
                 'message': 'User not found'
             }), 404
+        
+        # If the current user's role was updated, update their session
+        if current_user_id == user_id:
+            session['user_role'] = new_role
+            logger.info(f"Updated session role for current user to: {new_role}")
         
         logger.info(f"User {user_id} role updated to {new_role} by admin {current_user_id}")
         
