@@ -52,11 +52,12 @@ export function useProspectColumns(showAIEnhanced: boolean) {
     }),
     columnHelper.accessor((row) => {
       const naics = showAIEnhanced ? row.naics : (row.naics_source === 'llm_inferred' ? null : row.naics);
-      const description = showAIEnhanced ? row.naics_description : null;
+      const description = showAIEnhanced ? row.naics_description : (row.naics_source !== 'llm_inferred' ? row.naics_description : null);
       
       if (!naics) return 'N/A';
       
-      const display = description ? `${naics} - ${description}` : naics;
+      // Use standardized pipe format: "334516 | Description"
+      const display = description ? `${naics} | ${description}` : naics;
       
       return display;
     }, {

@@ -21,7 +21,8 @@ const tabs: TabConfig[] = [
       { id: 'duplicates', label: 'Duplicate Review' }
     ]
   },
-  { id: 'ai-enrichment', label: 'AI Enhancement', description: 'AI enrichment controls and status monitoring' }
+  { id: 'ai-enrichment', label: 'AI Enhancement', description: 'AI enrichment controls and status monitoring' },
+  { id: 'tools', label: 'Tools', description: 'System utilities and maintenance scripts' }
 ];
 
 export function useTabNavigation() {

@@ -3,7 +3,7 @@ import { PageLayout } from '@/components/layout';
 import { AIEnrichment } from '@/components/AIEnrichment';
 import { useConfirmationDialog } from '@/components/ui/ConfirmationDialog';
 import { useDataSourceManagement, useScraperOperations, useTabNavigation } from '@/hooks';
-import { DataSourcesTab, DatabaseTab, TabNavigation } from '@/components/advanced';
+import { DataSourcesTab, DatabaseTab, TabNavigation, ToolsTab } from '@/components/advanced';
 
 export default function Advanced() {
   const { confirm, ConfirmationDialog } = useConfirmationDialog();
@@ -73,6 +73,8 @@ export default function Advanced() {
       }
       case 'ai-enrichment':
         return <AIEnrichment />;
+      case 'tools':
+        return <ToolsTab />;
       case 'data-sources':
       default:
         return (

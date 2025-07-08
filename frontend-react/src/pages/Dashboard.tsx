@@ -13,7 +13,6 @@ import { ProspectFilters } from '@/components/prospect/ProspectFilters';
 import { ProspectTablePagination } from '@/components/prospect/ProspectTablePagination';
 import { ProspectTable } from '@/components/prospect/ProspectTable';
 import { ProspectDetailsModal } from '@/components/prospect/ProspectDetailsModal';
-import { EnhancementStatusBadge } from '@/components/prospect/EnhancementStatusBadge';
 
 export default function Dashboard() {
   const [showAIEnhanced, setShowAIEnhanced] = useState(true);
@@ -57,10 +56,8 @@ export default function Dashboard() {
   const dataSources = dataSourcesData?.data || [];
 
   // Enhancement hook
-  const { addToQueue, getProspectStatus, isProcessing } = useProspectEnhancement();
+  const { addToQueue, getProspectStatus } = useProspectEnhancement();
   
-  // Create hasAnyActivity based on available data
-  const hasAnyActivity = isProcessing;
   
   // Timezone hook for date formatting
   const { formatUserDate } = useTimezoneDate();
@@ -126,9 +123,6 @@ export default function Dashboard() {
             <CardHeader className="flex flex-row items-center justify-between py-5 px-6 border-b border-gray-200">
               <CardTitle className="text-2xl font-bold text-black">Prospects List</CardTitle>
               <div className="flex items-center space-x-4">
-                {/* Real-time connection status */}
-                <EnhancementStatusBadge hasAnyActivity={hasAnyActivity} />
-                
                 <div className="flex items-center space-x-2">
                   <span className="text-sm font-medium text-gray-600">Rows per page:</span>
                   <Select value={itemsPerPage.toString()} onValueChange={(value) => handlePageSizeChange(Number(value))}>
