@@ -391,22 +391,72 @@ def export_all_decisions():
         user_ids = list(set([d.user_id for d in decisions]))
         users_data = get_users_by_ids(user_ids)
         
-        # Build CSV data
+        # Build CSV data with full prospect details
         csv_data = []
         for decision in decisions:
             user = users_data.get(decision.user_id)
+            prospect = decision.prospect
             csv_data.append({
+                # Decision fields
                 'decision_id': decision.id,
-                'prospect_id': decision.prospect_id,
-                'prospect_title': decision.prospect.title if decision.prospect else '',
-                'prospect_agency': decision.prospect.agency if decision.prospect else '',
+                'decision': decision.decision,
+                'reason': decision.reason or '',
+                'decision_created_at': decision.created_at.isoformat() if decision.created_at else '',
+                'decision_updated_at': decision.updated_at.isoformat() if decision.updated_at else '',
+                
+                # User fields
                 'user_id': decision.user_id,
                 'user_email': user.email if user else 'Unknown',
                 'user_name': user.first_name if user else 'Unknown',
-                'decision': decision.decision,
-                'reason': decision.reason or '',
-                'created_at': decision.created_at.isoformat() if decision.created_at else '',
-                'updated_at': decision.updated_at.isoformat() if decision.updated_at else ''
+                
+                # Prospect identification
+                'prospect_id': decision.prospect_id,
+                'prospect_native_id': prospect.native_id if prospect else '',
+                
+                # Prospect basic info
+                'prospect_title': prospect.title if prospect else '',
+                'prospect_ai_enhanced_title': prospect.ai_enhanced_title if prospect else '',
+                'prospect_description': prospect.description if prospect else '',
+                'prospect_agency': prospect.agency if prospect else '',
+                
+                # NAICS classification
+                'prospect_naics': prospect.naics if prospect else '',
+                'prospect_naics_description': prospect.naics_description if prospect else '',
+                'prospect_naics_source': prospect.naics_source if prospect else '',
+                
+                # Financial information
+                'prospect_estimated_value': str(prospect.estimated_value) if prospect and prospect.estimated_value else '',
+                'prospect_est_value_unit': prospect.est_value_unit if prospect else '',
+                'prospect_estimated_value_text': prospect.estimated_value_text if prospect else '',
+                'prospect_estimated_value_min': str(prospect.estimated_value_min) if prospect and prospect.estimated_value_min else '',
+                'prospect_estimated_value_max': str(prospect.estimated_value_max) if prospect and prospect.estimated_value_max else '',
+                'prospect_estimated_value_single': str(prospect.estimated_value_single) if prospect and prospect.estimated_value_single else '',
+                
+                # Important dates
+                'prospect_release_date': prospect.release_date.isoformat() if prospect and prospect.release_date else '',
+                'prospect_award_date': prospect.award_date.isoformat() if prospect and prospect.award_date else '',
+                'prospect_award_fiscal_year': str(prospect.award_fiscal_year) if prospect and prospect.award_fiscal_year else '',
+                
+                # Location information
+                'prospect_place_city': prospect.place_city if prospect else '',
+                'prospect_place_state': prospect.place_state if prospect else '',
+                'prospect_place_country': prospect.place_country if prospect else '',
+                
+                # Contract details
+                'prospect_contract_type': prospect.contract_type if prospect else '',
+                'prospect_set_aside': prospect.set_aside if prospect else '',
+                
+                # Contact information
+                'prospect_primary_contact_email': prospect.primary_contact_email if prospect else '',
+                'prospect_primary_contact_name': prospect.primary_contact_name if prospect else '',
+                
+                # Processing metadata
+                'prospect_loaded_at': prospect.loaded_at.isoformat() if prospect and prospect.loaded_at else '',
+                'prospect_ollama_processed_at': prospect.ollama_processed_at.isoformat() if prospect and prospect.ollama_processed_at else '',
+                'prospect_ollama_model_version': prospect.ollama_model_version if prospect else '',
+                'prospect_enhancement_status': prospect.enhancement_status if prospect else '',
+                'prospect_enhancement_started_at': prospect.enhancement_started_at.isoformat() if prospect and prospect.enhancement_started_at else '',
+                'prospect_enhancement_user_id': str(prospect.enhancement_user_id) if prospect and prospect.enhancement_user_id else ''
             })
         
         return jsonify({

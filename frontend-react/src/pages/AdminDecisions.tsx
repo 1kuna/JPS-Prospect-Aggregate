@@ -47,22 +47,107 @@ export default function AdminDecisions() {
       // Convert to CSV and download
       if (result.data?.decisions) {
         const headers = [
-          'Decision ID', 'Prospect ID', 'Prospect Title', 'Agency', 
-          'User Email', 'User Name', 'Decision', 'Reason', 'Created At'
+          // Decision fields
+          'Decision ID', 'Decision', 'Reason', 'Decision Created At', 'Decision Updated At',
+          
+          // User fields
+          'User ID', 'User Email', 'User Name',
+          
+          // Prospect identification
+          'Prospect ID', 'Prospect Native ID',
+          
+          // Prospect basic info
+          'Prospect Title', 'AI Enhanced Title', 'Description', 'Agency',
+          
+          // NAICS classification
+          'NAICS Code', 'NAICS Description', 'NAICS Source',
+          
+          // Financial information
+          'Estimated Value', 'Est Value Unit', 'Estimated Value Text',
+          'Estimated Value Min', 'Estimated Value Max', 'Estimated Value Single',
+          
+          // Important dates
+          'Release Date', 'Award Date', 'Award Fiscal Year',
+          
+          // Location information
+          'Place City', 'Place State', 'Place Country',
+          
+          // Contract details
+          'Contract Type', 'Set Aside',
+          
+          // Contact information
+          'Primary Contact Email', 'Primary Contact Name',
+          
+          // Processing metadata
+          'Loaded At', 'Ollama Processed At', 'Ollama Model Version',
+          'Enhancement Status', 'Enhancement Started At', 'Enhancement User ID'
         ];
+        
+        const escapeCSV = (text: string) => `"${(text || '').replace(/"/g, '""')}"`;
         
         const csvContent = [
           headers.join(','),
           ...result.data.decisions.map(decision => [
+            // Decision fields
             decision.decision_id,
-            decision.prospect_id,
-            `"${decision.prospect_title.replace(/"/g, '""')}"`,
-            `"${decision.prospect_agency.replace(/"/g, '""')}"`,
+            decision.decision,
+            escapeCSV(decision.reason),
+            decision.decision_created_at,
+            decision.decision_updated_at,
+            
+            // User fields
+            decision.user_id,
             decision.user_email,
             decision.user_name,
-            decision.decision,
-            `"${(decision.reason || '').replace(/"/g, '""')}"`,
-            decision.created_at
+            
+            // Prospect identification
+            decision.prospect_id,
+            escapeCSV(decision.prospect_native_id),
+            
+            // Prospect basic info
+            escapeCSV(decision.prospect_title),
+            escapeCSV(decision.prospect_ai_enhanced_title),
+            escapeCSV(decision.prospect_description),
+            escapeCSV(decision.prospect_agency),
+            
+            // NAICS classification
+            escapeCSV(decision.prospect_naics),
+            escapeCSV(decision.prospect_naics_description),
+            escapeCSV(decision.prospect_naics_source),
+            
+            // Financial information
+            escapeCSV(decision.prospect_estimated_value),
+            escapeCSV(decision.prospect_est_value_unit),
+            escapeCSV(decision.prospect_estimated_value_text),
+            escapeCSV(decision.prospect_estimated_value_min),
+            escapeCSV(decision.prospect_estimated_value_max),
+            escapeCSV(decision.prospect_estimated_value_single),
+            
+            // Important dates
+            decision.prospect_release_date,
+            decision.prospect_award_date,
+            decision.prospect_award_fiscal_year,
+            
+            // Location information
+            escapeCSV(decision.prospect_place_city),
+            escapeCSV(decision.prospect_place_state),
+            escapeCSV(decision.prospect_place_country),
+            
+            // Contract details
+            escapeCSV(decision.prospect_contract_type),
+            escapeCSV(decision.prospect_set_aside),
+            
+            // Contact information
+            escapeCSV(decision.prospect_primary_contact_email),
+            escapeCSV(decision.prospect_primary_contact_name),
+            
+            // Processing metadata
+            decision.prospect_loaded_at,
+            decision.prospect_ollama_processed_at,
+            escapeCSV(decision.prospect_ollama_model_version),
+            escapeCSV(decision.prospect_enhancement_status),
+            decision.prospect_enhancement_started_at,
+            decision.prospect_enhancement_user_id
           ].join(','))
         ].join('\n');
 
