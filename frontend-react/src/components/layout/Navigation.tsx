@@ -14,8 +14,10 @@ export function Navigation() {
   
   const navItems = [
     { path: '/', label: 'Dashboard' },
-    { path: '/advanced', label: 'Advanced' },
-    ...(isAdmin ? [{ path: '/admin', label: 'Admin' }] : []),
+    ...(isAdmin ? [
+      { path: '/advanced', label: 'Advanced' },
+      { path: '/admin', label: 'Admin' }
+    ] : []),
   ];
 
   const handleSignOut = async () => {

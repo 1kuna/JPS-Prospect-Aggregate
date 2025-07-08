@@ -4,6 +4,7 @@ from app.database.models import DataSource, ScraperStatus
 from app.exceptions import NotFoundError, ScraperError, DatabaseError
 from app.utils.logger import logger
 from app.services.scraper_service import ScraperService
+from app.api.auth import admin_required
 import threading
 import time
 
@@ -13,6 +14,7 @@ scrapers_bp = Blueprint('scrapers', __name__)
 logger = logger.bind(name="api.scrapers")
 
 @scrapers_bp.route('/<int:source_id>/pull', methods=['POST'])
+@admin_required
 def pull_data_source(source_id):
     """Trigger a data pull for a specific data source via ScraperService."""
     try:
@@ -42,6 +44,7 @@ def pull_data_source(source_id):
         }), 500
 
 @scrapers_bp.route('/<int:source_id>/status', methods=['GET'])
+@admin_required
 def check_scraper_status(source_id):
     """Check the status of a scraper for a given data source."""
     session = db.session
@@ -75,6 +78,7 @@ def check_scraper_status(source_id):
         raise DatabaseError(f"Could not retrieve status for data source {source_id}")
 
 @scrapers_bp.route('/run-all', methods=['POST'])
+@admin_required
 def run_all_scrapers():
     """Run all scrapers synchronously in order."""
     try:

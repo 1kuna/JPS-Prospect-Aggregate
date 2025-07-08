@@ -4,14 +4,28 @@ import { AIEnrichment } from '@/components/AIEnrichment';
 import { useConfirmationDialog } from '@/components/ui/ConfirmationDialog';
 import { useDataSourceManagement, useScraperOperations, useTabNavigation } from '@/hooks';
 import { DataSourcesTab, DatabaseTab, TabNavigation, ToolsTab } from '@/components/advanced';
+import { useIsAdmin } from '@/hooks/api';
 
 export default function Advanced() {
+  const isAdmin = useIsAdmin();
   const { confirm, ConfirmationDialog } = useConfirmationDialog();
   
   // Use extracted hooks
   const { tabs, activeTab, activeSubTab, currentTab, setActiveTab } = useTabNavigation();
   const { sources, isLoading, error, runAllScrapersMutation, clearDataMutation, handleClearData } = useDataSourceManagement();
   const { runAllInProgress, handleRunScraper, handleRunAllScrapers, updateWorkingScrapers, getScraperButtonState } = useScraperOperations();
+
+  // Redirect if not admin
+  if (!isAdmin) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-red-600 mb-4">Access Denied</h1>
+          <p className="text-gray-600">You need admin privileges to access this page.</p>
+        </div>
+      </div>
+    );
+  }
 
   // Update working scrapers when sources data changes
   useEffect(() => {

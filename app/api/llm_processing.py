@@ -4,6 +4,7 @@ from app.utils.logger import logger
 from app.services.contract_llm_service import ContractLLMService
 from app.services.iterative_llm_service_v2 import iterative_service_v2 as iterative_service
 from app.services.enhancement_queue_service import enhancement_queue_service
+from app.api.auth import admin_required
 from sqlalchemy import func
 from datetime import datetime, timedelta, timezone
 import time
@@ -13,6 +14,7 @@ import json
 llm_bp = Blueprint('llm_api', __name__, url_prefix='/api/llm')
 
 @llm_bp.route('/status', methods=['GET'])
+@admin_required
 def get_llm_status():
     """Get current LLM processing status and statistics"""
     try:
@@ -99,6 +101,7 @@ def get_llm_status():
         return jsonify({"error": "Failed to get LLM status"}), 500
 
 @llm_bp.route('/enhance', methods=['POST'])
+@admin_required
 def trigger_llm_enhancement():
     """Trigger LLM enhancement for prospects using Ollama and qwen3:8b"""
     try:
@@ -163,6 +166,7 @@ def trigger_llm_enhancement():
         return jsonify({"error": f"Failed to trigger LLM enhancement: {str(e)}"}), 500
 
 @llm_bp.route('/preview', methods=['POST'])
+@admin_required
 def preview_llm_enhancement():
     """Preview LLM enhancement for a single prospect without saving"""
     try:
@@ -249,6 +253,7 @@ def preview_llm_enhancement():
         return jsonify({"error": f"Failed to generate LLM preview: {str(e)}"}), 500
 
 @llm_bp.route('/iterative/start', methods=['POST'])
+@admin_required
 def start_iterative_enhancement():
     """Start iterative one-by-one LLM enhancement"""
     try:
@@ -275,6 +280,7 @@ def start_iterative_enhancement():
         return jsonify({"error": f"Failed to start iterative enhancement: {str(e)}"}), 500
 
 @llm_bp.route('/iterative/stop', methods=['POST'])
+@admin_required
 def stop_iterative_enhancement():
     """Stop the current iterative enhancement process"""
     try:
@@ -289,6 +295,7 @@ def stop_iterative_enhancement():
         return jsonify({"error": f"Failed to stop iterative enhancement: {str(e)}"}), 500
 
 @llm_bp.route('/iterative/progress', methods=['GET'])
+@admin_required
 def get_iterative_progress():
     """Get current progress of iterative enhancement"""
     try:
@@ -307,6 +314,7 @@ def get_iterative_progress():
         return jsonify({"error": "Failed to get progress"}), 500
 
 @llm_bp.route('/logs', methods=['GET'])
+@admin_required
 def get_enhancement_logs():
     """Get recent AI enrichment logs"""
     try:
@@ -336,6 +344,7 @@ def get_enhancement_logs():
         return jsonify({"error": "Failed to get logs"}), 500
 
 @llm_bp.route('/outputs', methods=['GET'])
+@admin_required
 def get_llm_outputs():
     """Get recent LLM outputs for display"""
     try:
@@ -656,6 +665,7 @@ def _finalize_enhancement(prospect, llm_service, processed, enhancements, force_
         }), 200
 
 @llm_bp.route('/enhance-single', methods=['POST'])
+@admin_required
 def enhance_single_prospect():
     """Enhance a single prospect with all AI enhancements using the priority queue system"""
     try:
@@ -747,6 +757,7 @@ def enhance_single_prospect():
         return jsonify({"error": f"Failed to queue prospect enhancement: {str(e)}"}), 500
 
 @llm_bp.route('/enhance-single-direct', methods=['POST'])
+@admin_required
 def enhance_single_prospect_direct():
     """Enhance a single prospect directly (original implementation) - for backward compatibility"""
     try:
@@ -834,6 +845,7 @@ def enhance_single_prospect_direct():
         return jsonify({"error": f"Failed to enhance prospect: {str(e)}"}), 500
 
 @llm_bp.route('/cleanup-stale-locks', methods=['POST'])
+@admin_required
 def cleanup_stale_enhancement_locks():
     """Clean up enhancement locks that are older than 10 minutes"""
     try:
@@ -867,6 +879,7 @@ def cleanup_stale_enhancement_locks():
         return jsonify({"error": f"Failed to cleanup stale locks: {str(e)}"}), 500
 
 @llm_bp.route('/queue/status', methods=['GET'])
+@admin_required
 def get_queue_status():
     """Get current enhancement queue status"""
     try:
@@ -877,6 +890,7 @@ def get_queue_status():
         return jsonify({"error": f"Failed to get queue status: {str(e)}"}), 500
 
 @llm_bp.route('/queue/item/<item_id>', methods=['GET'])
+@admin_required
 def get_queue_item_status(item_id):
     """Get status of a specific queue item"""
     try:
@@ -889,6 +903,7 @@ def get_queue_item_status(item_id):
         return jsonify({"error": f"Failed to get queue item status: {str(e)}"}), 500
 
 @llm_bp.route('/queue/item/<item_id>/cancel', methods=['POST'])
+@admin_required
 def cancel_queue_item(item_id):
     """Cancel a specific queue item"""
     try:
@@ -902,6 +917,7 @@ def cancel_queue_item(item_id):
         return jsonify({"error": f"Failed to cancel queue item: {str(e)}"}), 500
 
 @llm_bp.route('/queue/start-worker', methods=['POST'])
+@admin_required
 def start_queue_worker():
     """Start the enhancement queue worker"""
     try:
@@ -912,6 +928,7 @@ def start_queue_worker():
         return jsonify({"error": f"Failed to start queue worker: {str(e)}"}), 500
 
 @llm_bp.route('/queue/stop-worker', methods=['POST'])
+@admin_required
 def stop_queue_worker():
     """Stop the enhancement queue worker"""
     try:
@@ -939,6 +956,7 @@ def emit_enhancement_progress(prospect_id, event_type, data):
     logger.info(f"Emitted enhancement progress for prospect {prospect_id}: {event_type}")
 
 @llm_bp.route('/enhancement-progress/<prospect_id>')
+@admin_required
 def enhancement_progress_stream(prospect_id):
     """Enhanced Server-Sent Events endpoint for real-time enhancement progress"""
     def generate():
@@ -1089,6 +1107,7 @@ def enhancement_progress_stream(prospect_id):
 
 
 @llm_bp.route('/enhancement-queue/<queue_item_id>', methods=['DELETE'])
+@admin_required
 def cancel_enhancement(queue_item_id):
     """Cancel a queued enhancement request"""
     try:
