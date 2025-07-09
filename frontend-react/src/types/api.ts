@@ -18,7 +18,7 @@ export interface User {
   id: number;
   email: string;
   first_name: string;
-  role: 'user' | 'admin';
+  role: 'user' | 'admin' | 'super_admin';
   created_at: string;
   last_login_at: string | null;
   timezone?: string; // User's preferred timezone (e.g., 'America/New_York')
