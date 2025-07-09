@@ -40,10 +40,30 @@ def admin_required(f):
             }), 401
         
         user_role = session.get('user_role', 'user')
-        if user_role != 'admin':
+        if user_role not in ['admin', 'super_admin']:
             return jsonify({
                 'status': 'error',
                 'message': 'Admin access required'
+            }), 403
+        
+        return f(*args, **kwargs)
+    return decorated_function
+
+def super_admin_required(f):
+    """Decorator to require super_admin role for endpoints."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session:
+            return jsonify({
+                'status': 'error',
+                'message': 'Authentication required'
+            }), 401
+        
+        user_role = session.get('user_role', 'user')
+        if user_role != 'super_admin':
+            return jsonify({
+                'status': 'error',
+                'message': 'Super admin access required'
             }), 403
         
         return f(*args, **kwargs)

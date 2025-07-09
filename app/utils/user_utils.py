@@ -46,3 +46,15 @@ def demote_admin_to_user(user_id):
         db.session.commit()
         return True
     return False
+
+def update_user_role(user_id, new_role):
+    """Update a user's role to any valid role."""
+    if new_role not in ['user', 'admin', 'super_admin']:
+        return False
+    
+    user = get_user_by_id(user_id)
+    if user:
+        user.role = new_role
+        db.session.commit()
+        return True
+    return False

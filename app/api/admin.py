@@ -8,8 +8,8 @@ from app.database import db
 from app.database.models import Settings, GoNoGoDecision, Prospect
 from app.database.user_models import User
 from app.utils.logger import logger
-from app.utils.user_utils import get_users_by_ids, get_user_data_dict, promote_user_to_admin, demote_admin_to_user
-from app.api.auth import admin_required
+from app.utils.user_utils import get_users_by_ids, get_user_data_dict, promote_user_to_admin, demote_admin_to_user, update_user_role, get_user_by_id
+from app.api.auth import admin_required, super_admin_required
 from app.utils.enhancement_cleanup import (
     cleanup_stuck_enhancements, 
     cleanup_all_in_progress_enhancements,
@@ -543,8 +543,8 @@ def get_all_users():
 
 
 @admin_bp.route('/users/<int:user_id>/role', methods=['PUT'])
-@admin_required
-def update_user_role(user_id):
+@super_admin_required
+def update_user_role_endpoint(user_id):
     """Update a user's role (promote/demote admin)."""
     try:
         data = request.get_json()
@@ -561,6 +561,21 @@ def update_user_role(user_id):
                 'message': 'Role must be either "user" or "admin"'
             }), 400
         
+        # Get the target user to check their current role
+        target_user = get_user_by_id(user_id)
+        if not target_user:
+            return jsonify({
+                'status': 'error',
+                'message': 'User not found'
+            }), 404
+        
+        # Don't allow demoting super_admin users
+        if target_user.role == 'super_admin':
+            return jsonify({
+                'status': 'error',
+                'message': 'Cannot modify super admin users'
+            }), 403
+        
         # Don't allow users to demote themselves
         current_user_id = session.get('user_id')
         if current_user_id == user_id and new_role == 'user':
@@ -570,7 +585,7 @@ def update_user_role(user_id):
             }), 400
         
         # Update the user role
-        success = promote_user_to_admin(user_id) if new_role == 'admin' else demote_admin_to_user(user_id)
+        success = update_user_role(user_id, new_role)
         
         if not success:
             return jsonify({

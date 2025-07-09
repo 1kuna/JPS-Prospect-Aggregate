@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useIsAdmin } from '@/hooks/api';
+import { useIsAdmin, useIsSuperAdmin } from '@/hooks/api';
 import { useAdminDecisions, useAdminDecisionStats, useExportDecisions, useAdminUsers } from '@/hooks/api/useAdmin';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -7,12 +7,14 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Download, Users, BarChart3, FileText } from 'lucide-react';
+import { Download, Users, BarChart3, FileText, Settings } from 'lucide-react';
 import { useError } from '@/hooks/useError';
 import { GoNoGoDecision, UserWithStats } from '@/types/api';
+import UserManagement from '@/components/UserManagement';
 
 export default function AdminDecisions() {
   const isAdmin = useIsAdmin();
+  const isSuperAdmin = useIsSuperAdmin();
   const { handleError } = useError();
   const [decisionFilter, setDecisionFilter] = useState<'go' | 'no-go' | 'all'>('all');
   const [selectedUserId, setSelectedUserId] = useState<number | undefined>();
@@ -245,6 +247,12 @@ export default function AdminDecisions() {
         <TabsList>
           <TabsTrigger value="decisions">All Decisions</TabsTrigger>
           <TabsTrigger value="users">User Analytics</TabsTrigger>
+          {isSuperAdmin && (
+            <TabsTrigger value="user-management">
+              <Settings className="w-4 h-4 mr-2" />
+              User Management
+            </TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="decisions" className="space-y-4">
@@ -397,6 +405,12 @@ export default function AdminDecisions() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        {isSuperAdmin && (
+          <TabsContent value="user-management">
+            <UserManagement />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );
