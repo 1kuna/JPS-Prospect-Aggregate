@@ -24,6 +24,7 @@ var/
 # venv/ - removed since using Conda
 ENV/
 .env
+.env.production
 
 # Conda Environment
 .conda/
