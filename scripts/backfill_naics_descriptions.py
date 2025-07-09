@@ -26,7 +26,7 @@ from app.database import db
 from app.database.models import Prospect
 from app.services.contract_llm_service import ContractLLMService
 from app.utils.naics_lookup import get_naics_description, validate_naics_code
-from app.database.database_manager import DatabaseManager
+from app import create_app
 
 def get_prospects_needing_descriptions(limit=None):
     """Get prospects that have NAICS codes but no descriptions"""
@@ -102,71 +102,74 @@ def main():
     parser = argparse.ArgumentParser(description='Backfill NAICS descriptions')
     parser.add_argument('--dry-run', action='store_true', help='Preview changes without applying them')
     parser.add_argument('--limit', type=int, help='Limit number of prospects to process')
+    parser.add_argument('--yes', action='store_true', help='Auto-confirm without prompting')
     
     args = parser.parse_args()
     
-    # Initialize database
-    db_manager = DatabaseManager()
+    # Initialize Flask app and database
+    app = create_app()
     
-    print("NAICS Description Backfill Script")
-    print("=" * 40)
-    
-    # Analyze current coverage
-    print("\\nAnalyzing current NAICS coverage...")
-    coverage = analyze_naics_coverage()
-    
-    print(f"Total prospects: {coverage['total_prospects']:,}")
-    print(f"Prospects with NAICS codes: {coverage['prospects_with_naics']:,}")
-    print(f"Prospects with descriptions: {coverage['prospects_with_descriptions']:,}")
-    print(f"Prospects needing descriptions: {coverage['prospects_needing_descriptions']:,}")
-    
-    if coverage['prospects_needing_descriptions'] == 0:
-        print("\\n✅ All prospects with NAICS codes already have descriptions!")
-        return
-    
-    # Get prospects needing descriptions
-    prospects = get_prospects_needing_descriptions(args.limit)
-    
-    if not prospects:
-        print("\\n✅ No prospects found needing description backfill!")
-        return
-    
-    # Preview what would be changed
-    preview_backfill(prospects)
-    
-    if args.dry_run:
-        print("\\n🔍 DRY RUN: No changes were made")
-        return
-    
-    # Confirm before proceeding
-    confirm = input(f"\\n❓ Proceed with backfilling {len(prospects)} prospects? (y/N): ")
-    if confirm.lower() != 'y':
-        print("❌ Operation cancelled")
-        return
-    
-    # Perform backfill
-    print(f"\\n🔄 Starting backfill process...")
-    start_time = datetime.now()
-    
-    llm_service = ContractLLMService()
-    backfilled_count = llm_service.backfill_naics_descriptions(prospects)
-    
-    end_time = datetime.now()
-    duration = end_time - start_time
-    
-    print(f"\\n✅ Backfill complete!")
-    print(f"   • Processed: {len(prospects)} prospects")
-    print(f"   • Backfilled: {backfilled_count} descriptions")
-    print(f"   • Duration: {duration.total_seconds():.1f} seconds")
-    
-    # Final coverage analysis
-    print("\\n📊 Final coverage analysis:")
-    final_coverage = analyze_naics_coverage()
-    print(f"   • Prospects with descriptions: {final_coverage['prospects_with_descriptions']:,}")
-    print(f"   • Prospects still needing descriptions: {final_coverage['prospects_needing_descriptions']:,}")
-    
-    if final_coverage['prospects_needing_descriptions'] == 0:
-        print("\\n🎉 All prospects with NAICS codes now have descriptions!")
+    with app.app_context():
+        print("NAICS Description Backfill Script")
+        print("=" * 40)
+        
+        # Analyze current coverage
+        print("\\nAnalyzing current NAICS coverage...")
+        coverage = analyze_naics_coverage()
+        
+        print(f"Total prospects: {coverage['total_prospects']:,}")
+        print(f"Prospects with NAICS codes: {coverage['prospects_with_naics']:,}")
+        print(f"Prospects with descriptions: {coverage['prospects_with_descriptions']:,}")
+        print(f"Prospects needing descriptions: {coverage['prospects_needing_descriptions']:,}")
+        
+        if coverage['prospects_needing_descriptions'] == 0:
+            print("\\n✅ All prospects with NAICS codes already have descriptions!")
+            return
+        
+        # Get prospects needing descriptions
+        prospects = get_prospects_needing_descriptions(args.limit)
+        
+        if not prospects:
+            print("\\n✅ No prospects found needing description backfill!")
+            return
+        
+        # Preview what would be changed
+        preview_backfill(prospects)
+        
+        if args.dry_run:
+            print("\\n🔍 DRY RUN: No changes were made")
+            return
+        
+        # Confirm before proceeding
+        if not args.yes:
+            confirm = input(f"\\n❓ Proceed with backfilling {len(prospects)} prospects? (y/N): ")
+            if confirm.lower() != 'y':
+                print("❌ Operation cancelled")
+                return
+        
+        # Perform backfill
+        print(f"\\n🔄 Starting backfill process...")
+        start_time = datetime.now()
+        
+        llm_service = ContractLLMService()
+        backfilled_count = llm_service.backfill_naics_descriptions(prospects)
+        
+        end_time = datetime.now()
+        duration = end_time - start_time
+        
+        print(f"\\n✅ Backfill complete!")
+        print(f"   • Processed: {len(prospects)} prospects")
+        print(f"   • Backfilled: {backfilled_count} descriptions")
+        print(f"   • Duration: {duration.total_seconds():.1f} seconds")
+        
+        # Final coverage analysis
+        print("\\n📊 Final coverage analysis:")
+        final_coverage = analyze_naics_coverage()
+        print(f"   • Prospects with descriptions: {final_coverage['prospects_with_descriptions']:,}")
+        print(f"   • Prospects still needing descriptions: {final_coverage['prospects_needing_descriptions']:,}")
+        
+        if final_coverage['prospects_needing_descriptions'] == 0:
+            print("\\n🎉 All prospects with NAICS codes now have descriptions!")
 
 if __name__ == "__main__":
     main()

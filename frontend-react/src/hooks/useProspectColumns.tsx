@@ -43,7 +43,7 @@ export function useProspectColumns(showAIEnhanced: boolean) {
     }),
     columnHelper.accessor((row) => {
       const naics = showAIEnhanced ? row.naics : (row.naics_source === 'llm_inferred' ? null : row.naics);
-      const description = showAIEnhanced ? row.naics_description : (row.naics_source !== 'llm_inferred' ? row.naics_description : null);
+      const description = row.naics_description;
       
       if (!naics) return 'N/A';
       
