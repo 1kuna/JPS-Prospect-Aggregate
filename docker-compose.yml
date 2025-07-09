@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  postgres-business:
+    image: postgres:15-alpine
+    container_name: jps_postgres_business
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: jps_aggregate
+      POSTGRES_USER: ${POSTGRES_BUSINESS_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_BUSINESS_PASSWORD}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --lc-collate=en_US.utf8 --lc-ctype=en_US.utf8"
+    volumes:
+      - postgres_business_data:/var/lib/postgresql/data
+      - ./backups/postgres-business:/backups
+      - ./scripts/postgres/init-business.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_BUSINESS_USER} -d jps_aggregate"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - jps_network
+
+  postgres-users:
+    image: postgres:15-alpine
+    container_name: jps_postgres_users
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: jps_users
+      POSTGRES_USER: ${POSTGRES_USERS_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_USERS_PASSWORD}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --lc-collate=en_US.utf8 --lc-ctype=en_US.utf8"
+    volumes:
+      - postgres_users_data:/var/lib/postgresql/data
+      - ./backups/postgres-users:/backups
+      - ./scripts/postgres/init-users.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USERS_USER} -d jps_users"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - jps_network
+
+volumes:
+  postgres_business_data:
+  postgres_users_data:
+
+networks:
+  jps_network:
+    driver: bridge
