@@ -313,7 +313,7 @@ export function ProspectDetailsModal({
                         </span>
                       )}
                     </p>
-                    {showAIEnhanced && selectedProspect.naics_description && (
+                    {selectedProspect.naics_description && (
                       <p className="mt-1 text-sm text-gray-600">{selectedProspect.naics_description}</p>
                     )}
                   </div>
