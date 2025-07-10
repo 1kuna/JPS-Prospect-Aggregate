@@ -8,12 +8,14 @@ import {
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { ReloadIcon } from '@radix-ui/react-icons';
+import { ReloadIcon, ChevronDownIcon } from '@radix-ui/react-icons';
 import { GoNoGoDecision } from '@/components/GoNoGoDecision';
 import { EnhancementButton } from '@/components/EnhancementButton';
 import { EnhancementProgress } from '@/components/EnhancementProgress';
 import { EnhancementErrorBoundary } from '@/components/EnhancementErrorBoundary';
+import { useIsSuperAdmin } from '@/hooks/api/useAuth';
 import type { Prospect } from '@/types/prospects';
+import { useState } from 'react';
 
 interface ProspectDetailsModalProps {
   isOpen: boolean;
@@ -46,6 +48,8 @@ export function ProspectDetailsModal({
   addToQueue,
   formatUserDate
 }: ProspectDetailsModalProps) {
+  const isSuperAdmin = useIsSuperAdmin();
+  const [showRawData, setShowRawData] = useState(false);
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
@@ -571,6 +575,27 @@ export function ProspectDetailsModal({
                     })()}
                   </pre>
                 </div>
+              </div>
+            )}
+
+            {/* Super Admin Raw Data Debug Section */}
+            {isSuperAdmin && (
+              <div className="mt-6 border-t pt-4">
+                <button 
+                  onClick={() => setShowRawData(!showRawData)}
+                  className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 transition-colors"
+                >
+                  <ChevronDownIcon className={`w-4 h-4 transition-transform ${showRawData ? 'rotate-180' : ''}`} />
+                  {showRawData ? 'Hide' : 'Show'} Raw Data (Debug)
+                </button>
+                {showRawData && (
+                  <div className="mt-3 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                    <div className="text-xs font-medium text-gray-700 mb-2">Complete Raw Prospect Object:</div>
+                    <pre className="text-xs font-mono text-gray-800 overflow-auto max-h-96 whitespace-pre-wrap">
+                      {JSON.stringify(selectedProspect, null, 2)}
+                    </pre>
+                  </div>
+                )}
               </div>
             )}
 
