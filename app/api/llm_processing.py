@@ -141,13 +141,13 @@ def trigger_llm_enhancement():
         # Run the appropriate enhancement
         if enhancement_type == 'values':
             processed_count = llm_service.enhance_prospect_values(prospects)
-        elif enhancement_type == 'contacts':
-            processed_count = llm_service.enhance_prospect_contacts(prospects)
+        elif enhancement_type == 'titles':
+            processed_count = llm_service.enhance_prospect_titles(prospects)
         elif enhancement_type == 'naics':
             processed_count = llm_service.enhance_prospect_naics(prospects)
         elif enhancement_type == 'all':
             results = llm_service.enhance_all_prospects(limit=limit)
-            processed_count = results['values_enhanced'] + results['contacts_enhanced'] + results['naics_enhanced']
+            processed_count = results['titles_enhanced'] + results['values_enhanced'] + results['naics_enhanced']
         
         duration = time.time() - start_time
         
@@ -203,26 +203,17 @@ def preview_llm_enhancement():
                 })
                 confidence_scores['values'] = 0.85  # Could be enhanced to return actual confidence
         
-        if 'contacts' in enhancement_types and prospect.extra:
-            # Extract contact data from extra field
-            contact_data = {}
-            if 'contacts' in prospect.extra:
-                contact_data = prospect.extra['contacts']
-            else:
-                contact_data = {
-                    'email': prospect.extra.get('contact_email') or prospect.extra.get('poc_email'),
-                    'name': prospect.extra.get('contact_name') or prospect.extra.get('poc_name'),
-                    'phone': prospect.extra.get('contact_phone') or prospect.extra.get('poc_phone'),
-                }
-            
-            if any(contact_data.values()):
-                extracted_contact = llm_service.extract_contact_with_llm(contact_data)
-                if extracted_contact['email'] or extracted_contact['name']:
-                    preview_enhancements.update({
-                        'primary_contact_email': extracted_contact['email'],
-                        'primary_contact_name': extracted_contact['name']
-                    })
-                    confidence_scores['contacts'] = extracted_contact.get('confidence', 0.8)
+        if 'titles' in enhancement_types and prospect.title and prospect.description:
+            enhanced_title = llm_service.enhance_title_with_llm(
+                prospect.title, 
+                prospect.description,
+                prospect.agency or ""
+            )
+            if enhanced_title['enhanced_title']:
+                preview_enhancements.update({
+                    'ai_enhanced_title': enhanced_title['enhanced_title']
+                })
+                confidence_scores['titles'] = enhanced_title.get('confidence', 0.8)
         
         if 'naics' in enhancement_types and not prospect.naics and prospect.title and prospect.description:
             classification = llm_service.classify_naics_with_llm(prospect.title, prospect.description)
@@ -447,67 +438,6 @@ def _process_value_enhancement(prospect, llm_service, force_redo):
     
     return False
 
-def _process_contact_enhancement(prospect, llm_service, force_redo):
-    """Process contact extraction enhancement for a prospect."""
-    # Always emit start event first
-    emit_enhancement_progress(prospect.id, 'contacts_started', {
-        'force_redo': force_redo,
-        'has_existing_contact': bool(prospect.primary_contact_name or prospect.primary_contact_email)
-    })
-    
-    # Check if we should process contacts
-    should_process = force_redo or (not prospect.primary_contact_name and not prospect.primary_contact_email)
-    
-    if prospect.extra and should_process:
-        _ensure_extra_is_dict(prospect)
-        extra_data = prospect.extra
-        
-        # Get contact data
-        if extra_data and 'contacts' in extra_data:
-            contact_data = extra_data['contacts']
-        elif extra_data:
-            contact_data = {
-                'email': extra_data.get('contact_email') or extra_data.get('poc_email'),
-                'name': extra_data.get('contact_name') or extra_data.get('poc_name'),
-                'phone': extra_data.get('contact_phone') or extra_data.get('poc_phone'),
-            }
-        else:
-            contact_data = {}
-        
-        if any(contact_data.values()):
-            extracted_contact = llm_service.extract_contact_with_llm(contact_data, prospect_id=prospect.id)
-            
-            if extracted_contact['email'] or extracted_contact['name']:
-                prospect.primary_contact_email = extracted_contact['email']
-                prospect.primary_contact_name = extracted_contact['name']
-                
-                # Commit to database immediately for real-time updates
-                db.session.commit()
-                
-                # Emit completion event with new contact data
-                emit_enhancement_progress(prospect.id, 'contacts_completed', {
-                    'primary_contact_email': extracted_contact['email'],
-                    'primary_contact_name': extracted_contact['name']
-                })
-                return True
-            else:
-                emit_enhancement_progress(prospect.id, 'contacts_failed', {'error': 'No valid contact data extracted'})
-                return False
-        else:
-            # No contact data available
-            emit_enhancement_progress(prospect.id, 'contacts_completed', {
-                'skipped': True,
-                'reason': 'No contact data available in extra field'
-            })
-    else:
-        # Not processing contacts - emit skipped completion
-        reason = 'Already has contact information' if not should_process else 'No extra field data available'
-        emit_enhancement_progress(prospect.id, 'contacts_completed', {
-            'skipped': True,
-            'reason': reason
-        })
-    
-    return False
 
 def _process_naics_enhancement(prospect, llm_service, force_redo):
     """Process NAICS classification enhancement for a prospect."""
@@ -857,22 +787,18 @@ def enhance_single_prospect_direct():
             processed = False
             enhancements = []
             
-            # Process each enhancement type
+            # Process each enhancement type in new order: Title → Value → NAICS
+            if _process_title_enhancement(prospect, llm_service, force_redo):
+                processed = True
+                enhancements.append('titles')
+            
             if _process_value_enhancement(prospect, llm_service, force_redo):
                 processed = True
                 enhancements.append('values')
             
-            if _process_contact_enhancement(prospect, llm_service, force_redo):
-                processed = True
-                enhancements.append('contacts')
-            
             if _process_naics_enhancement(prospect, llm_service, force_redo):
                 processed = True
                 enhancements.append('naics')
-            
-            if _process_title_enhancement(prospect, llm_service, force_redo):
-                processed = True
-                enhancements.append('titles')
             
             # Mark as completed
             prospect.enhancement_status = 'idle'
