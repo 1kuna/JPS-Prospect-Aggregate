@@ -58,10 +58,6 @@ def get_enhancement_stats() -> dict:
             Prospect.estimated_value_text.isnot(None),
             Prospect.estimated_value_single.is_(None)
         ).count(),
-        'missing_contact': Prospect.query.filter(
-            Prospect.primary_contact_email.is_(None),
-            Prospect.extra.isnot(None)
-        ).count()
     }
     
     # Additional stats for NAICS extracted from extra field
@@ -91,7 +87,7 @@ def run_targeted_enhancement(
     Run a specific type of enhancement.
     
     Args:
-        enhancement_type: One of 'values', 'contacts', 'naics', or 'all'
+        enhancement_type: One of 'values', 'titles', 'naics', or 'all'
         limit: Maximum number of prospects to process
         batch_size: Number of prospects to process per batch
     
@@ -107,10 +103,10 @@ def run_targeted_enhancement(
             Prospect.estimated_value_text.isnot(None),
             Prospect.estimated_value_single.is_(None)
         )
-    elif enhancement_type == 'contacts':
+    elif enhancement_type == 'titles':
         query = Prospect.query.filter(
-            Prospect.primary_contact_email.is_(None),
-            Prospect.extra.isnot(None)
+            Prospect.title.isnot(None),
+            Prospect.description.isnot(None)
         )
     elif enhancement_type == 'naics':
         query = Prospect.query.filter(
@@ -135,8 +131,8 @@ def run_targeted_enhancement(
     # Run enhancement based on type
     if enhancement_type == 'values':
         return llm_service.enhance_prospect_values(prospects)
-    elif enhancement_type == 'contacts':
-        return llm_service.enhance_prospect_contacts(prospects)
+    elif enhancement_type == 'titles':
+        return llm_service.enhance_prospect_titles(prospects)
     elif enhancement_type == 'naics':
         return llm_service.enhance_prospect_naics(prospects)
     elif enhancement_type == 'all':
@@ -150,7 +146,7 @@ def main():
     )
     parser.add_argument(
         'enhancement_type',
-        choices=['values', 'contacts', 'naics', 'all'],
+        choices=['values', 'titles', 'naics', 'all'],
         help='Type of enhancement to run'
     )
     parser.add_argument(
@@ -189,7 +185,6 @@ def main():
             logger.info(f"  Missing NAICS: {stats['missing_naics']:,}")
             logger.info(f"  NAICS extracted from extra field: {stats['naics_extracted_from_extra']:,}")
             logger.info(f"  Missing value parsing: {stats['missing_value_parsing']:,}")
-            logger.info(f"  Missing contact extraction: {stats['missing_contact']:,}")
             return
         
         # Check Ollama status

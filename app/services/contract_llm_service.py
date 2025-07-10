@@ -13,7 +13,7 @@ from decimal import Decimal
 from app.utils.llm_utils import call_ollama
 from app.database import db
 from app.database.models import Prospect, InferredProspectData, LLMOutput
-from app.services.optimized_prompts import get_naics_prompt, get_value_prompt, get_contact_prompt, get_title_prompt
+from app.services.optimized_prompts import get_naics_prompt, get_value_prompt, get_title_prompt
 from app.utils.naics_lookup import get_naics_description, validate_naics_code
 import time
 
@@ -359,42 +359,6 @@ class ContractLLMService:
             
             return error_result
     
-    def extract_contact_with_llm(self, contact_data: Dict, prospect_id: str = None) -> Dict:
-        """Contact extraction using qwen3:8b"""
-        prompt = get_contact_prompt(contact_data)
-        start_time = time.time()
-        response = call_ollama(prompt, self.model_name)
-        processing_time = time.time() - start_time
-        
-        try:
-            # Clean response of any think tags
-            cleaned_response = response
-            if response:
-                cleaned_response = re.sub(r'<think>.*?</think>', '', response, flags=re.DOTALL | re.IGNORECASE).strip()
-                
-            parsed = json.loads(cleaned_response)
-            result = {
-                'email': parsed.get('email'),
-                'name': parsed.get('name'),
-                'confidence': parsed.get('confidence', 0.8)
-            }
-            
-            # Log successful output
-            if prospect_id:
-                self._log_llm_output(prospect_id, 'contacts', prompt, response, result, True, processing_time=processing_time)
-            
-            return result
-        except (json.JSONDecodeError, TypeError) as e:
-            logger.warning(f"Error parsing contact response: {e}")
-            error_result = {'email': None, 'name': None, 'confidence': 0.0}
-            
-            # Log failed output
-            if prospect_id:
-                self._log_llm_output(prospect_id, 'contacts', prompt, response, error_result, False,
-                                   error_message=str(e), processing_time=processing_time)
-            
-            return error_result
-    
     def enhance_title_with_llm(self, title: str, description: str, agency: str, prospect_id: str = None) -> Dict:
         """Title enhancement using qwen3:8b"""
         prompt = get_title_prompt(title, description, agency)
@@ -522,54 +486,64 @@ class ContractLLMService:
         
         return self._process_enhancement_batch(prospects, "value parsing", process_value_enhancement, commit_batch_size)
     
-    def enhance_prospect_contacts(self, prospects: List[Prospect], commit_batch_size: int = 100) -> int:
+    def enhance_prospect_titles(self, prospects: List[Prospect], commit_batch_size: int = 100) -> int:
         """
-        Enhance prospects with extracted contact information.
+        Enhance prospects with improved titles.
         Returns count of successfully processed prospects.
         """
-        def process_contact_enhancement(prospect: Prospect) -> bool:
-            # Skip if already processed
-            if prospect.primary_contact_email is not None:
+        def process_title_enhancement(prospect: Prospect) -> bool:
+            # Skip if title and description are missing
+            if not prospect.title or not prospect.description:
                 return False
             
-            # Extract contact data from extra field
+            # Skip if already enhanced (check for enhanced title in extra field)
             extra_data = prospect.extra
             if isinstance(extra_data, str):
-                # Handle case where extra is stored as JSON string
                 try:
                     extra_data = json.loads(extra_data)
                 except (json.JSONDecodeError, TypeError):
                     extra_data = {}
             
-            if extra_data and 'contacts' in extra_data:
-                contact_data = extra_data['contacts']
-            elif extra_data:
-                # Try to find contact info in extra data
-                contact_data = {
-                    'email': extra_data.get('contact_email') or extra_data.get('poc_email'),
-                    'name': extra_data.get('contact_name') or extra_data.get('poc_name'),
-                    'phone': extra_data.get('contact_phone') or extra_data.get('poc_phone'),
-                }
-            else:
+            if extra_data and extra_data.get('llm_enhanced_title'):
                 return False
             
-            if any(contact_data.values()):
-                extracted_contact = self.extract_contact_with_llm(contact_data)
+            enhanced_title_result = self.enhance_title_with_llm(
+                title=prospect.title,
+                description=prospect.description,
+                agency=prospect.agency,
+                prospect_id=prospect.id
+            )
+            
+            if enhanced_title_result['enhanced_title']:
+                # Store enhanced title in extra field
+                if not prospect.extra:
+                    prospect.extra = {}
+                elif isinstance(prospect.extra, str):
+                    try:
+                        prospect.extra = json.loads(prospect.extra)
+                    except (json.JSONDecodeError, TypeError):
+                        prospect.extra = {}
                 
-                if extracted_contact['email'] or extracted_contact['name']:
-                    prospect.primary_contact_email = extracted_contact['email']
-                    prospect.primary_contact_name = extracted_contact['name']
-                    prospect.ollama_processed_at = datetime.now(timezone.utc)
-                    prospect.ollama_model_version = self.model_name
-                    
-                    # Update timestamp for polling detection
-                    self._update_prospect_timestamp(prospect)
-                    
-                    return True
+                prospect.extra['llm_enhanced_title'] = {
+                    'enhanced_title': enhanced_title_result['enhanced_title'],
+                    'confidence': enhanced_title_result['confidence'],
+                    'reasoning': enhanced_title_result['reasoning'],
+                    'original_title': prospect.title,
+                    'enhanced_at': datetime.now(timezone.utc).isoformat(),
+                    'model_used': self.model_name
+                }
+                
+                prospect.ollama_processed_at = datetime.now(timezone.utc)
+                prospect.ollama_model_version = self.model_name
+                
+                # Update timestamp for polling detection
+                self._update_prospect_timestamp(prospect)
+                
+                return True
             
             return False
         
-        return self._process_enhancement_batch(prospects, "contact extraction", process_contact_enhancement, commit_batch_size)
+        return self._process_enhancement_batch(prospects, "title enhancement", process_title_enhancement, commit_batch_size)
     
     def enhance_prospect_naics(self, prospects: List[Prospect], commit_batch_size: int = 100) -> int:
         """
@@ -790,8 +764,8 @@ class ContractLLMService:
         
         results = {
             'total_prospects': len(prospects),
+            'titles_enhanced': 0,
             'values_enhanced': 0,
-            'contacts_enhanced': 0,
             'naics_enhanced': 0,
             'naics_descriptions_backfilled': 0
         }
@@ -799,9 +773,9 @@ class ContractLLMService:
         if not prospects:
             return results
         
-        # Run enhancement modules
+        # Run enhancement modules in new order: Title → Value → NAICS
+        results['titles_enhanced'] = self.enhance_prospect_titles(prospects)
         results['values_enhanced'] = self.enhance_prospect_values(prospects)
-        results['contacts_enhanced'] = self.enhance_prospect_contacts(prospects)
         results['naics_enhanced'] = self.enhance_prospect_naics(prospects)
         
         # Backfill missing NAICS descriptions for all prospects (not just unprocessed ones)

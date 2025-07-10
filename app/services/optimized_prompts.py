@@ -73,37 +73,6 @@ Parsing Rules:
 Return ONLY valid JSON (numbers only, no formatting):
 {{"min": 1000000, "max": 5000000, "single": 3000000}}"""
 
-CONTACT_EXTRACTION_PROMPT = """You are a government contact information extractor. Identify the PRIMARY point of contact for this procurement.
-
-Contact Data:
-{contact_data}
-
-Selection Priorities:
-1. Program/Technical POCs > Administrative contacts
-2. Contracting Officers > General contacts
-3. People with procurement-specific titles
-4. Most complete contact info (both name and email)
-
-Common government email patterns:
-- firstname.lastname@agency.gov
-- firstname.m.lastname@agency.mil
-- firstname.lastname.civ@mail.mil
-
-Titles indicating primary contacts:
-- Contracting Officer (CO)
-- Contract Specialist (CS)
-- Program Manager (PM)
-- Technical POC
-- Requirements POC
-
-Return ONLY valid JSON:
-{{"email": "john.smith@agency.gov", "name": "John Smith", "confidence": 0.9}}
-
-Confidence guidelines:
-- 0.9-1.0: Clear primary contact with full info
-- 0.7-0.89: Likely primary contact, may be missing some info
-- 0.5-0.69: Multiple contacts, unclear which is primary
-- <0.5: No clear contact information"""
 
 TITLE_ENHANCEMENT_PROMPT = """You are a government procurement title optimizer. Your job is to rewrite vague, unclear, or generic procurement titles into clear, descriptive, actionable titles that accurately reflect what is being procured.
 
@@ -171,14 +140,6 @@ def get_value_prompt(value_text: str) -> str:
     prompt = prompt.replace("{value_text}", value_text or "")
     return prompt
 
-def get_contact_prompt(contact_data: str) -> str:
-    """Get optimized contact extraction prompt"""
-    import json
-    if isinstance(contact_data, dict):
-        contact_data = json.dumps(contact_data, indent=2)
-    prompt = CONTACT_EXTRACTION_PROMPT
-    prompt = prompt.replace("{contact_data}", contact_data or "")
-    return prompt
 
 def get_title_prompt(title: str, description: str, agency: str) -> str:
     """Get optimized title enhancement prompt"""

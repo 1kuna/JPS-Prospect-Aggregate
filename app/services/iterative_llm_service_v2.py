@@ -15,7 +15,7 @@ from app.services.contract_llm_service import ContractLLMService
 from app.utils.logger import logger
 from app.database import db
 
-EnhancementType = Literal["all", "values", "contacts", "naics", "titles"]
+EnhancementType = Literal["all", "values", "titles", "naics"]
 
 
 class IterativeLLMServiceV2:
@@ -164,14 +164,17 @@ class IterativeLLMServiceV2:
                     Prospect.estimated_value_text.isnot(None),
                     Prospect.estimated_value.isnot(None)
                 )
-        elif enhancement_type == "contacts":
+        elif enhancement_type == "titles":
             if skip_existing:
                 return and_(
-                    Prospect.extra.isnot(None),
-                    Prospect.primary_contact_name.is_(None)
+                    Prospect.title.isnot(None),
+                    Prospect.description.isnot(None)
                 )
             else:
-                return Prospect.extra.isnot(None)
+                return and_(
+                    Prospect.title.isnot(None),
+                    Prospect.description.isnot(None)
+                )
         elif enhancement_type == "naics":
             if skip_existing:
                 return and_(
@@ -427,6 +430,56 @@ class IterativeLLMServiceV2:
         prospect.ollama_processed_at = datetime.now(timezone.utc)
         prospect.ollama_model_version = self.llm_service.model_name
     
+    def _process_titles_for_iterative(self, prospect, enhancement_type):
+        """Process title enhancement for iterative enhancement."""
+        if enhancement_type not in ["titles", "all"]:
+            return False
+            
+        if prospect.title and prospect.description:
+            # Check if already enhanced (look for enhanced title in extra field)
+            extra_data = prospect.extra
+            if isinstance(extra_data, str):
+                try:
+                    import json
+                    extra_data = json.loads(extra_data)
+                except (json.JSONDecodeError, TypeError):
+                    extra_data = {}
+            
+            if extra_data and extra_data.get('llm_enhanced_title'):
+                return False  # Already enhanced
+            
+            enhanced_title = self.llm_service.enhance_title_with_llm(
+                prospect.title, 
+                prospect.description,
+                prospect.agency or "",
+                prospect_id=prospect.id
+            )
+            
+            if enhanced_title['enhanced_title']:
+                # Store enhanced title in extra field
+                if not prospect.extra:
+                    prospect.extra = {}
+                elif isinstance(prospect.extra, str):
+                    try:
+                        import json
+                        prospect.extra = json.loads(prospect.extra)
+                    except (json.JSONDecodeError, TypeError):
+                        prospect.extra = {}
+                
+                prospect.extra['llm_enhanced_title'] = {
+                    'enhanced_title': enhanced_title['enhanced_title'],
+                    'confidence': enhanced_title['confidence'],
+                    'reasoning': enhanced_title.get('reasoning', ''),
+                    'original_title': prospect.title,
+                    'enhanced_at': datetime.now(timezone.utc).isoformat(),
+                    'model_used': self.llm_service.model_name
+                }
+                
+                self._update_prospect_timestamps(prospect)
+                return True
+        
+        return False
+    
     def _process_values_for_iterative(self, prospect, enhancement_type):
         """Process value parsing for iterative enhancement."""
         if enhancement_type not in ["values", "all"]:
@@ -459,51 +512,6 @@ class IterativeLLMServiceV2:
                 })
                 
                 return True
-        
-        return False
-    
-    def _process_contacts_for_iterative(self, prospect, enhancement_type):
-        """Process contact extraction for iterative enhancement."""
-        if enhancement_type not in ["contacts", "all"]:
-            return False
-            
-        if prospect.extra and not prospect.primary_contact_name:
-            # Extract contact data from extra field
-            extra_data = prospect.extra
-            if isinstance(extra_data, str):
-                try:
-                    import json
-                    extra_data = json.loads(extra_data)
-                except (json.JSONDecodeError, TypeError):
-                    extra_data = {}
-            
-            # Get contact data from various possible locations
-            if extra_data and 'contacts' in extra_data:
-                contact_data = extra_data['contacts']
-            elif extra_data:
-                contact_data = {
-                    'email': extra_data.get('contact_email') or extra_data.get('poc_email'),
-                    'name': extra_data.get('contact_name') or extra_data.get('poc_name'),
-                    'phone': extra_data.get('contact_phone') or extra_data.get('poc_phone'),
-                }
-            else:
-                contact_data = {}
-            
-            if any(contact_data.values()):
-                extracted_contact = self.llm_service.extract_contact_with_llm(contact_data, prospect_id=prospect.id)
-                
-                if extracted_contact['email'] or extracted_contact['name']:
-                    prospect.primary_contact_email = extracted_contact['email']
-                    prospect.primary_contact_name = extracted_contact['name']
-                    self._update_prospect_timestamps(prospect)
-                    
-                    # Emit real-time update
-                    self.llm_service._emit_field_update(prospect.id, 'contacts', {
-                        'primary_contact_email': prospect.primary_contact_email,
-                        'primary_contact_name': prospect.primary_contact_name
-                    })
-                    
-                    return True
         
         return False
     
@@ -619,16 +627,14 @@ class IterativeLLMServiceV2:
             processed = False
             
             # Process each enhancement type
+            # Process in new order: Title → Value → NAICS
+            if self._process_titles_for_iterative(prospect, enhancement_type):
+                processed = True
+            
             if self._process_values_for_iterative(prospect, enhancement_type):
                 processed = True
             
-            if self._process_contacts_for_iterative(prospect, enhancement_type):
-                processed = True
-            
             if self._process_naics_for_iterative(prospect, enhancement_type):
-                processed = True
-            
-            if self._process_titles_for_iterative(prospect, enhancement_type):
                 processed = True
             
             return processed

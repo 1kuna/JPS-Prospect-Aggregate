@@ -18,7 +18,7 @@ from app.services.contract_llm_service import ContractLLMService
 from app.database.models import Prospect, db
 from app.database import db as db_instance
 
-EnhancementType = Literal["all", "values", "contacts", "naics", "titles"]
+EnhancementType = Literal["all", "values", "titles", "naics"]
 
 
 class QueueItemType(Enum):
@@ -350,7 +350,6 @@ class EnhancementQueueService:
         """Process an individual prospect enhancement"""
         from app.api.llm_processing import (
             _process_value_enhancement,
-            _process_contact_enhancement, 
             _process_naics_enhancement,
             _process_title_enhancement,
             _ensure_extra_is_dict,
@@ -376,25 +375,21 @@ class EnhancementQueueService:
             enhancements = []
             
             # Process each enhancement type
+            # Process in new order: Title → Value → NAICS
+            # Titles processing
+            if _process_title_enhancement(prospect, self.llm_service, queue_item.force_redo):
+                processed = True
+                enhancements.append('titles')
+                
             # Values processing
             if _process_value_enhancement(prospect, self.llm_service, queue_item.force_redo):
                 processed = True
                 enhancements.append('values')
                 
-            # Contacts processing
-            if _process_contact_enhancement(prospect, self.llm_service, queue_item.force_redo):
-                processed = True
-                enhancements.append('contacts')
-                
             # NAICS processing
             if _process_naics_enhancement(prospect, self.llm_service, queue_item.force_redo):
                 processed = True
                 enhancements.append('naics')
-                
-            # Titles processing
-            if _process_title_enhancement(prospect, self.llm_service, queue_item.force_redo):
-                processed = True
-                enhancements.append('titles')
                 
             # Finalize
             if processed or queue_item.force_redo:
@@ -438,7 +433,6 @@ class EnhancementQueueService:
         """Process a bulk enhancement operation with interruptibility"""
         from app.api.llm_processing import (
             _process_value_enhancement,
-            _process_contact_enhancement,
             _process_naics_enhancement, 
             _process_title_enhancement
         )
@@ -479,16 +473,14 @@ class EnhancementQueueService:
                 # Process prospect
                 processed = False
                 
+                # Process in new order: Title → Value → NAICS
+                if _process_title_enhancement(prospect, self.llm_service, False):
+                    processed = True
+                    
                 if _process_value_enhancement(prospect, self.llm_service, False):
                     processed = True
                     
-                if _process_contact_enhancement(prospect, self.llm_service, False):
-                    processed = True
-                    
                 if _process_naics_enhancement(prospect, self.llm_service, False):
-                    processed = True
-                    
-                if _process_title_enhancement(prospect, self.llm_service, False):
                     processed = True
                     
                 if processed:
