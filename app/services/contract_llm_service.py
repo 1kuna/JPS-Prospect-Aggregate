@@ -740,10 +740,8 @@ class ContractLLMService:
             if official_description:
                 prospect.naics_description = official_description
                 
-                # Mark as processed if not already marked
-                if not prospect.ollama_processed_at:
-                    prospect.ollama_processed_at = datetime.now(timezone.utc)
-                    prospect.ollama_model_version = self.model_name
+                # Don't set ollama_processed_at for programmatic backfill
+                # This timestamp should only be set for actual LLM processing
                 
                 # Add to extra field to track backfill
                 if not prospect.extra:

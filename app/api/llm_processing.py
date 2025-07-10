@@ -21,9 +21,10 @@ def get_llm_status():
         # Get total prospects count
         total_prospects = db.session.query(func.count(Prospect.id)).scalar()
         
-        # Get processed prospects count
-        processed_prospects = db.session.query(func.count(Prospect.id)).filter(
-            Prospect.ollama_processed_at.isnot(None)
+        # Get processed prospects count - only count those with actual LLM outputs
+        # This excludes prospects that only have programmatic NAICS description mapping
+        processed_prospects = db.session.query(func.count(func.distinct(LLMOutput.prospect_id))).filter(
+            LLMOutput.success == True
         ).scalar()
         
         # Get NAICS coverage statistics
