@@ -367,15 +367,16 @@ export function ProspectDetailsModal({
                       <div className="w-2 h-2 bg-green-500 rounded-full ml-2"></div>
                     </div>
                     <div className="mt-1 space-y-1">
-                      {selectedProspect.estimated_value_single && (
+                      {/* Show range if min/max exist and single is null */}
+                      {selectedProspect.estimated_value_min && selectedProspect.estimated_value_max && !selectedProspect.estimated_value_single && (
                         <p className="text-gray-900">
-                          <span className="text-sm text-gray-600">Best Estimate:</span> ${parseFloat(selectedProspect.estimated_value_single).toLocaleString()}
+                          <span className="text-sm text-gray-600">Range:</span> ${parseFloat(selectedProspect.estimated_value_min).toLocaleString()} - ${parseFloat(selectedProspect.estimated_value_max).toLocaleString()}
                         </p>
                       )}
-                      {(selectedProspect.estimated_value_min || selectedProspect.estimated_value_max) && (
+                      {/* Show single value if it exists */}
+                      {selectedProspect.estimated_value_single && (
                         <p className="text-gray-900">
-                          <span className="text-sm text-gray-600">Range:</span> ${selectedProspect.estimated_value_min ? parseFloat(selectedProspect.estimated_value_min).toLocaleString() : '?'} - 
-                          ${selectedProspect.estimated_value_max ? parseFloat(selectedProspect.estimated_value_max).toLocaleString() : '?'}
+                          <span className="text-sm text-gray-600">Value:</span> ${parseFloat(selectedProspect.estimated_value_single).toLocaleString()}
                         </p>
                       )}
                     </div>
@@ -417,6 +418,19 @@ export function ProspectDetailsModal({
                     {selectedProspect.award_date 
                       ? formatUserDate(selectedProspect.award_date, 'date')
                       : 'N/A'}
+                    {/* Tentative date indicator following AI Enhanced pattern */}
+                    {Boolean(selectedProspect.extra?.award_date_is_tentative) && (
+                      <span className="ml-2 text-xs px-2 py-1 rounded bg-orange-100 text-orange-700">
+                        Tentative (Q{(() => {
+                          const quarterStr = selectedProspect.extra?.award_quarter_original;
+                          if (typeof quarterStr === 'string') {
+                            const match = quarterStr.match(/Q([1-4])/);
+                            return match?.[1] || '?';
+                          }
+                          return '?';
+                        })()})
+                      </span>
+                    )}
                   </p>
                 </div>
               </div>

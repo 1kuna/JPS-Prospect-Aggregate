@@ -78,15 +78,29 @@ export function useProspectColumns(showAIEnhanced: boolean) {
       size: 200,
     }),
     columnHelper.accessor((row) => {
-      // Show enhanced estimated value if available and toggle is on, otherwise fall back to original
-      if (showAIEnhanced && row.estimated_value_single) {
-        const single = parseFloat(row.estimated_value_single);
-        if (single >= 1000000) {
-          return `$${(single / 1000000).toFixed(1)}M`;
-        } else if (single >= 1000) {
-          return `$${(single / 1000).toFixed(0)}K`;
+      // Helper function to format dollar amounts
+      const formatAmount = (amount: number) => {
+        if (amount >= 1000000) {
+          return `$${(amount / 1000000).toFixed(1)}M`;
+        } else if (amount >= 1000) {
+          return `$${(amount / 1000).toFixed(0)}K`;
         } else {
-          return `$${single.toFixed(0)}`;
+          return `$${amount.toFixed(0)}`;
+        }
+      };
+
+      // Show enhanced estimated value if available and toggle is on, otherwise fall back to original
+      if (showAIEnhanced) {
+        // Check for range (min/max populated, single is null)
+        if (row.estimated_value_min && row.estimated_value_max && !row.estimated_value_single) {
+          const min = parseFloat(row.estimated_value_min);
+          const max = parseFloat(row.estimated_value_max);
+          return `${formatAmount(min)} - ${formatAmount(max)}`;
+        }
+        // Check for single value
+        else if (row.estimated_value_single) {
+          const single = parseFloat(row.estimated_value_single);
+          return formatAmount(single);
         }
       }
       
@@ -95,13 +109,7 @@ export function useProspectColumns(showAIEnhanced: boolean) {
         return row.estimated_value_text;
       } else if (row.estimated_value) {
         const value = parseFloat(row.estimated_value);
-        if (value >= 1000000) {
-          return `$${(value / 1000000).toFixed(1)}M`;
-        } else if (value >= 1000) {
-          return `$${(value / 1000).toFixed(0)}K`;
-        } else {
-          return `$${value.toFixed(0)}`;
-        }
+        return formatAmount(value);
       }
       return 'N/A';
     }, {
@@ -110,7 +118,7 @@ export function useProspectColumns(showAIEnhanced: boolean) {
       cell: info => {
         const value = info.getValue();
         const row = info.row.original;
-        const isAIEnhanced = showAIEnhanced && !!row.estimated_value_single;
+        const isAIEnhanced = showAIEnhanced && (!!row.estimated_value_single || (!!row.estimated_value_min && !!row.estimated_value_max));
         
         return (
           <div title={value} className={isAIEnhanced ? 'text-green-700 font-medium' : ''}>
@@ -145,10 +153,27 @@ export function useProspectColumns(showAIEnhanced: boolean) {
         
         const dateStr = value.date.toLocaleDateString();
         const typeLabel = value.type === 'award' ? 'Award' : 'Release';
+        const row = info.row.original;
+        
+        // Check if this is a tentative award date from fiscal quarter
+        const isTentativeAward = value.type === 'award' && row.extra?.award_date_is_tentative;
+        const quarterNumber = (() => {
+          const quarterStr = row.extra?.award_quarter_original;
+          if (typeof quarterStr === 'string') {
+            const match = quarterStr.match(/Q([1-4])/);
+            return match?.[1];
+          }
+          return undefined;
+        })();
         
         return (
-          <div className="w-full truncate" title={`${typeLabel}: ${dateStr}`}>
-            {dateStr}
+          <div className="w-full truncate" title={`${typeLabel}: ${dateStr}${isTentativeAward ? ' (Tentative from quarter)' : ''}`}>
+            <span>{dateStr}</span>
+            {Boolean(isTentativeAward) && (
+              <span className="ml-1 text-xs px-1 py-0.5 rounded bg-orange-100 text-orange-700">
+                Q{quarterNumber || '?'}
+              </span>
+            )}
           </div>
         );
       },
