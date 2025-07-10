@@ -1,5 +1,5 @@
 from flask import Blueprint, jsonify, request, Response, stream_with_context
-from app.database.models import Prospect, db, AIEnrichmentLog, LLMOutput
+from app.database.models import Prospect, db, AIEnrichmentLog, LLMOutput, InferredProspectData
 from app.utils.logger import logger
 from app.services.contract_llm_service import ContractLLMService
 from app.services.iterative_llm_service_v2 import iterative_service_v2 as iterative_service
@@ -48,12 +48,6 @@ def get_llm_status():
         
         value_parsing_percentage = (value_parsed_count / total_prospects * 100) if total_prospects > 0 else 0
         
-        # Get contact extraction statistics
-        contact_extracted_count = db.session.query(func.count(Prospect.id)).filter(
-            Prospect.primary_contact_email.isnot(None)
-        ).scalar()
-        
-        contact_extraction_percentage = (contact_extracted_count / total_prospects * 100) if total_prospects > 0 else 0
         
         # Get title enhancement statistics
         title_enhanced_count = db.session.query(func.count(Prospect.id)).filter(
@@ -81,10 +75,6 @@ def get_llm_status():
             "value_parsing": {
                 "parsed_count": value_parsed_count,
                 "total_percentage": round(value_parsing_percentage, 1)
-            },
-            "contact_extraction": {
-                "extracted_count": contact_extracted_count,
-                "total_percentage": round(contact_extraction_percentage, 1)
             },
             "title_enhancement": {
                 "enhanced_count": title_enhanced_count,
@@ -114,7 +104,7 @@ def trigger_llm_enhancement():
         limit = data.get('limit', 10)  # Changed default from 100 to 10
         
         # Validate enhancement type
-        valid_types = ['values', 'contacts', 'naics', 'titles', 'all']
+        valid_types = ['values', 'naics', 'titles', 'set_asides', 'all']
         if enhancement_type not in valid_types:
             return jsonify({"error": f"Invalid enhancement type. Must be one of: {valid_types}"}), 400
             
@@ -176,7 +166,7 @@ def preview_llm_enhancement():
             return jsonify({"error": "Request body required"}), 400
             
         prospect_id = data.get('prospect_id')
-        enhancement_types = data.get('enhancement_types', ['values', 'contacts', 'naics'])
+        enhancement_types = data.get('enhancement_types', ['values', 'naics', 'titles'])
         
         if not prospect_id:
             return jsonify({"error": "prospect_id is required"}), 400
@@ -257,7 +247,7 @@ def start_iterative_enhancement():
         skip_existing = data.get('skip_existing', True)
         
         # Validate enhancement type
-        valid_types = ['values', 'contacts', 'naics', 'titles', 'all']
+        valid_types = ['values', 'naics', 'titles', 'set_asides', 'all']
         if enhancement_type not in valid_types:
             return jsonify({"error": f"Invalid enhancement type. Must be one of: {valid_types}"}), 400
         
@@ -608,6 +598,71 @@ def _process_title_enhancement(prospect, llm_service, force_redo):
     
     return False
 
+def _process_set_aside_enhancement(prospect, llm_service, force_redo):
+    """Process set aside standardization and enhancement for a prospect."""
+    # Always emit start event first
+    emit_enhancement_progress(prospect.id, 'set_asides_started', {
+        'force_redo': force_redo,
+        'has_existing_set_aside': bool(prospect.set_aside),
+        'has_inferred_set_aside': bool(getattr(prospect, 'inferred_prospect_data', None) and 
+                                      prospect.inferred_prospect_data.inferred_set_aside)
+    })
+    
+    # Check if we should process set asides
+    existing_inferred = None
+    if hasattr(prospect, 'inferred_prospect_data') and prospect.inferred_prospect_data:
+        existing_inferred = prospect.inferred_prospect_data.inferred_set_aside
+    
+    should_process = force_redo or not existing_inferred
+    
+    if should_process and prospect.set_aside:
+        # Process set aside using the LLM service
+        try:
+            processed_count = llm_service.enhance_prospect_set_asides([prospect])
+            
+            if processed_count > 0:
+                # Refresh the prospect to get updated inferred data
+                db.session.refresh(prospect)
+                
+                # Get the inferred set aside data
+                if hasattr(prospect, 'inferred_prospect_data') and prospect.inferred_prospect_data:
+                    inferred_data = prospect.inferred_prospect_data
+                    
+                    # Emit completion event with new set aside data
+                    emit_enhancement_progress(prospect.id, 'set_asides_completed', {
+                        'inferred_set_aside': inferred_data.inferred_set_aside,
+                        'original_set_aside': prospect.set_aside,
+                        'confidence': inferred_data.set_aside_confidence,
+                        'standardization_method': inferred_data.set_aside_standardization_method
+                    })
+                    return True
+                else:
+                    emit_enhancement_progress(prospect.id, 'set_asides_failed', {'error': 'No inferred data created'})
+                    return False
+            else:
+                emit_enhancement_progress(prospect.id, 'set_asides_failed', {'error': 'Set aside processing failed'})
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error processing set aside for prospect {prospect.id}: {e}")
+            emit_enhancement_progress(prospect.id, 'set_asides_failed', {'error': str(e)})
+            return False
+    else:
+        # Not processing set aside - emit skipped completion
+        if not prospect.set_aside:
+            reason = 'No set aside data available to process'
+        elif existing_inferred and not force_redo:
+            reason = 'Already has inferred set aside data'
+        else:
+            reason = 'Set aside processing not needed'
+        
+        emit_enhancement_progress(prospect.id, 'set_asides_completed', {
+            'skipped': True,
+            'reason': reason
+        })
+    
+    return False
+
 def _finalize_enhancement(prospect, llm_service, processed, enhancements, force_redo):
     """Finalize the enhancement process and return appropriate response."""
     # Always update timestamp for force_redo, even if no new enhancements
@@ -799,6 +854,10 @@ def enhance_single_prospect_direct():
             if _process_naics_enhancement(prospect, llm_service, force_redo):
                 processed = True
                 enhancements.append('naics')
+            
+            if _process_set_aside_enhancement(prospect, llm_service, force_redo):
+                processed = True
+                enhancements.append('set_asides')
             
             # Mark as completed
             prospect.enhancement_status = 'idle'

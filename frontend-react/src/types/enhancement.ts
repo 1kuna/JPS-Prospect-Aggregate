@@ -12,10 +12,6 @@ export interface EnhancementStepData {
     estimated_value_min?: string;
     estimated_value_max?: string;
     
-    // Contacts step data
-    primary_contact_email?: string;
-    primary_contact_name?: string;
-    
     // NAICS step data
     naics?: string;
     naics_description?: string;
@@ -23,6 +19,10 @@ export interface EnhancementStepData {
     
     // Titles step data
     ai_enhanced_title?: string;
+    
+    // Set-aside step data
+    inferred_set_aside?: string;
+    standardized_set_aside?: string;
     
     // Common fields
     skipped?: boolean;
@@ -32,10 +32,10 @@ export interface EnhancementStepData {
 
 // Progress tracking for enhancement operations
 export interface EnhancementProgress {
-  values?: EnhancementStepData;
-  contacts?: EnhancementStepData;
-  naics?: EnhancementStepData;
   titles?: EnhancementStepData;
+  values?: EnhancementStepData;
+  naics?: EnhancementStepData;
+  set_asides?: EnhancementStepData;
 }
 
 // Full enhancement state
@@ -75,10 +75,6 @@ export interface ValuesResult {
   estimated_value_max?: string;
 }
 
-export interface ContactsResult {
-  primary_contact_email?: string;
-  primary_contact_name?: string;
-}
 
 export interface NaicsResult {
   naics?: string;
@@ -90,9 +86,14 @@ export interface TitlesResult {
   ai_enhanced_title?: string;
 }
 
+export interface SetAsidesResult {
+  inferred_set_aside?: string;
+  standardized_set_aside?: string;
+}
+
 export type LLMParsedResult = 
   | ValuesResult 
-  | ContactsResult 
   | NaicsResult 
   | TitlesResult 
+  | SetAsidesResult
   | Record<string, unknown>;
