@@ -317,15 +317,15 @@ class ContractLLMService:
         """Value parsing using qwen3:8b
         
         Extracts contract values from messy text formats. Handles:
-        - Range values: "$100K - $500K" -> {min: 100000, max: 500000}
-        - Single values: "$250,000" -> {single: 250000}
-        - Complex formats: "between 100 and 500 thousand" -> {min: 100000, max: 500000}
+        - Range values: "$100K - $500K" -> {min: 100000, max: 500000, single: null, is_range: true}
+        - Single values: "$250,000" -> {min: null, max: null, single: 250000, is_range: false}
+        - Complex formats: "between 100 and 500 thousand" -> {min: 100000, max: 500000, single: null, is_range: true}
         
         The LLM is trained to understand various number formats, abbreviations (K, M, B),
-        and contextual clues to extract accurate dollar amounts.
+        and contextual clues to extract accurate dollar amounts while preserving ranges.
         """
         if not value_text:
-            return {'min': None, 'max': None, 'single': None}
+            return {'min': None, 'max': None, 'single': None, 'is_range': False}
 
         prompt = get_value_prompt(value_text)
         start_time = time.time()
@@ -342,7 +342,8 @@ class ContractLLMService:
             result = {
                 'min': parsed.get('min'),
                 'max': parsed.get('max'),
-                'single': parsed.get('single')
+                'single': parsed.get('single'),
+                'is_range': parsed.get('is_range', False)
             }
             
             # Log successful output
@@ -352,7 +353,7 @@ class ContractLLMService:
             return result
         except (json.JSONDecodeError, TypeError) as e:
             logger.warning(f"Error parsing value response: {e}")
-            error_result = {'min': None, 'max': None, 'single': None}
+            error_result = {'min': None, 'max': None, 'single': None, 'is_range': False}
             
             # Log failed output
             if prospect_id:
@@ -453,8 +454,8 @@ class ContractLLMService:
         Returns count of successfully processed prospects.
         """
         def process_value_enhancement(prospect: Prospect) -> bool:
-            # Skip if already processed
-            if prospect.estimated_value_min is not None:
+            # Skip if already processed (check for either min/max or single)
+            if prospect.estimated_value_min is not None or prospect.estimated_value_single is not None:
                 return False
             
             # Try to parse from estimated_value_text first, then extra data
@@ -470,12 +471,25 @@ class ContractLLMService:
                 value_text = extra_data.get('estimated_value_text', '') if extra_data else ''
             
             if value_text:
-                parsed_value = self.parse_contract_value_with_llm(value_text)
+                parsed_value = self.parse_contract_value_with_llm(value_text, prospect.id)
                 
-                if parsed_value['single'] is not None:
-                    prospect.estimated_value_min = Decimal(str(parsed_value['min'])) if parsed_value['min'] else None
-                    prospect.estimated_value_max = Decimal(str(parsed_value['max'])) if parsed_value['max'] else None
-                    prospect.estimated_value_single = Decimal(str(parsed_value['single']))
+                # Check if we got valid results (either range or single)
+                has_range = parsed_value['min'] is not None and parsed_value['max'] is not None
+                has_single = parsed_value['single'] is not None
+                
+                if has_range or has_single:
+                    # IMPORTANT: If we have both min and max, it's ALWAYS a range
+                    # regardless of is_range flag or presence of single value
+                    if has_range:
+                        prospect.estimated_value_min = Decimal(str(parsed_value['min']))
+                        prospect.estimated_value_max = Decimal(str(parsed_value['max']))
+                        prospect.estimated_value_single = None  # Always null for ranges
+                    # Only treat as single value if we have single but NOT min/max
+                    elif has_single and not has_range:
+                        prospect.estimated_value_min = None
+                        prospect.estimated_value_max = None
+                        prospect.estimated_value_single = Decimal(str(parsed_value['single']))
+                    
                     prospect.ollama_processed_at = datetime.now(timezone.utc)
                     prospect.ollama_model_version = self.model_name
                     
@@ -856,14 +870,19 @@ class ContractLLMService:
         try:
             prompt = self.set_aside_standardizer.get_llm_prompt().format(set_aside_value)
             
+            start_time = time.time()
             result = call_ollama(
                 prompt=prompt,
                 model_name=self.model_name,
                 options={'temperature': 0.1}  # Low temperature for consistent classification
             )
+            processing_time = time.time() - start_time
             
             if not result:
                 logger.warning(f"Empty LLM response for set-aside enhancement: {set_aside_value}")
+                if prospect_id:
+                    self._log_llm_output(prospect_id, 'set_asides', prompt, '', {}, False, 
+                                       error_message="Empty LLM response", processing_time=processing_time)
                 return {}
             
             response_text = result.strip()
@@ -889,40 +908,32 @@ class ContractLLMService:
             if response_text in valid_responses:
                 confidence = 0.8  # Medium-high confidence for LLM results
                 
-                # Log the enhancement for debugging
-                log_data = {
-                    'prospect_id': prospect_id,
-                    'enhancement_type': 'set_aside',
-                    'input_data': {'set_aside': set_aside_value},
-                    'llm_response': response_text,
-                    'confidence': confidence,
-                    'model': self.model_name
-                }
-                
-                try:
-                    llm_output = LLMOutput(
-                        prospect_id=prospect_id,
-                        model_name=self.model_name,
-                        prompt_type='set_aside_classification',
-                        input_data=log_data['input_data'],
-                        output_data={'standardized_set_aside': response_text},
-                        confidence_score=confidence
-                    )
-                    db.session.add(llm_output)
-                    db.session.flush()
-                except Exception as e:
-                    logger.warning(f"Failed to log LLM output: {e}")
-                
-                return {
+                result_data = {
                     'standardized_set_aside': response_text,
                     'confidence': confidence
                 }
+                
+                # Log successful output
+                if prospect_id:
+                    self._log_llm_output(prospect_id, 'set_asides', prompt, result, result_data, True, processing_time=processing_time)
+                
+                return result_data
             else:
                 logger.warning(f"Invalid LLM response for set-aside: '{response_text}' not in valid categories")
+                
+                # Log failed output
+                if prospect_id:
+                    self._log_llm_output(prospect_id, 'set_asides', prompt, result, {}, False, 
+                                       error_message=f"Invalid response: {response_text}", processing_time=processing_time)
                 return {}
                 
         except Exception as e:
             logger.error(f"Error in LLM set-aside enhancement: {e}")
+            
+            # Log failed output
+            if prospect_id:
+                self._log_llm_output(prospect_id, 'set_asides', prompt if 'prompt' in locals() else '', '', {}, False, 
+                                   error_message=str(e), processing_time=processing_time if 'processing_time' in locals() else None)
             return {}
     
     def enhance_all_prospects(self, limit: Optional[int] = None) -> Dict[str, int]:

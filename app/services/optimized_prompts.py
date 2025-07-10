@@ -47,31 +47,56 @@ VALUE_PARSING_PROMPT = """You are a contract value parser. Extract and normalize
 
 Value Text: "{value_text}"
 
+CRITICAL RULE: A value is EITHER a range OR a single value - NEVER BOTH!
+- If it's a RANGE: Only populate min/max, single MUST be null
+- If it's a SINGLE: Only populate single, min/max MUST be null
+- NEVER calculate midpoints for ranges!
+
 Parsing Rules:
 1. Common patterns to recognize:
-   - Ranges: "$1M-$5M", ">$250K to <$750K", "between $X and $Y", "$250,000 to $700,000"
+   - Ranges: "$1M-$5M", ">$250K to <$750K", "between $X and $Y", "$250,000 to $700,000", "0K to 250K"
    - Single values: "$2.5 million", "NTE $500K", "up to $10M"
    - Abbreviations: K=thousand, M/MM=million, B=billion
    - Multi-year: "5-year $10M" = $10M total (not $50M)
    
-2. For ranges:
-   - min: lower bound
-   - max: upper bound  
-   - single: midpoint or best estimate
-   - IMPORTANT: ">$250K to <$750K" means min=250000, max=750000
-   - IMPORTANT: "$250,000 to $700,000" means min=250000, max=700000
+2. RANGE DETECTION (Two distinct amounts = RANGE):
+   Examples of RANGES:
+   - "$100K to $500K" → RANGE
+   - "$100K - $500K" → RANGE  
+   - "between $100K and $500K" → RANGE
+   - "0K to 250K" → RANGE
+   - ">$250K to <$750K" → RANGE
    
-3. For single values:
-   - Use the same value for min, max, and single
+3. For RANGES:
+   - min: lower bound amount
+   - max: upper bound amount
+   - single: MUST BE null (DO NOT calculate midpoint!)
+   - is_range: true
+   Examples:
+   - "0K to 250K" → min=0, max=250000, single=null
+   - "$100K-$500K" → min=100000, max=500000, single=null
    
-4. Special cases:
-   - "Greater than X": min=X, max=X*2, single=X*1.5
-   - "Less than X": min=X*0.5, max=X, single=X*0.75
-   - "Up to X" or "NTE X": min=X*0.5, max=X, single=X*0.75
-   - IMPORTANT: Parse each number in a range separately - don't repeat the first number
+4. For SINGLE values:
+   - single: the amount
+   - min: MUST BE null
+   - max: MUST BE null
+   - is_range: false
+   Examples:
+   - "$250K" → single=250000, min=null, max=null
+   
+5. Special cases (these are SINGLE values, not ranges):
+   - "Greater than X": single=X*1.5, min=null, max=null
+   - "Less than X" or "Below X": single=X*0.75, min=null, max=null
+   - "Up to X" or "NTE X": single=X*0.75, min=null, max=null
 
-Return ONLY valid JSON (numbers only, no formatting):
-{{"min": 1000000, "max": 5000000, "single": 3000000}}"""
+VALIDATION: Your response MUST have either:
+- (min + max) with single=null OR
+- (single) with min=null and max=null
+NEVER return all three values!
+
+Return ONLY valid JSON:
+For ranges: {{"min": 0, "max": 250000, "single": null, "is_range": true}}
+For single: {{"min": null, "max": null, "single": 250000, "is_range": false}}"""
 
 
 TITLE_ENHANCEMENT_PROMPT = """You are a government procurement title optimizer. Your job is to rewrite vague, unclear, or generic procurement titles into clear, descriptive, actionable titles that accurately reflect what is being procured.

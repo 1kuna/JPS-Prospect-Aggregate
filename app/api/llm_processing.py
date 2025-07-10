@@ -21,10 +21,10 @@ def get_llm_status():
         # Get total prospects count
         total_prospects = db.session.query(func.count(Prospect.id)).scalar()
         
-        # Get processed prospects count - only count those with actual LLM outputs
-        # This excludes prospects that only have programmatic NAICS description mapping
-        processed_prospects = db.session.query(func.count(func.distinct(LLMOutput.prospect_id))).filter(
-            LLMOutput.success == True
+        # Get processed prospects count - only count those that have been fully processed
+        # This counts prospects with ollama_processed_at timestamp, indicating complete AI processing
+        processed_prospects = db.session.query(func.count(Prospect.id)).filter(
+            Prospect.ollama_processed_at.isnot(None)
         ).scalar()
         
         # Get NAICS coverage statistics
@@ -56,6 +56,13 @@ def get_llm_status():
         
         title_enhancement_percentage = (title_enhanced_count / total_prospects * 100) if total_prospects > 0 else 0
         
+        # Get set-aside standardization statistics
+        set_aside_standardized_count = db.session.query(func.count(InferredProspectData.prospect_id)).filter(
+            InferredProspectData.inferred_set_aside.isnot(None)
+        ).scalar()
+        
+        set_aside_percentage = (set_aside_standardized_count / total_prospects * 100) if total_prospects > 0 else 0
+        
         # Get last processed timestamp and model version
         last_processed_prospect = db.session.query(Prospect).filter(
             Prospect.ollama_processed_at.isnot(None)
@@ -80,11 +87,15 @@ def get_llm_status():
                 "enhanced_count": title_enhanced_count,
                 "total_percentage": round(title_enhancement_percentage, 1)
             },
+            "set_aside_standardization": {
+                "standardized_count": set_aside_standardized_count,
+                "total_percentage": round(set_aside_percentage, 1)
+            },
             "last_processed": last_processed,
             "model_version": model_version
         }
         
-        logger.info(f"Retrieved LLM status: {processed_prospects}/{total_prospects} processed")
+        logger.info(f"Retrieved LLM status: {processed_prospects}/{total_prospects} fully processed")
         return jsonify(response_data), 200
         
     except Exception as e:
