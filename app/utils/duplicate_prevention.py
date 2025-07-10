@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from sqlalchemy.orm import Session
 from app.database.models import Prospect
 from app.utils.logger import logger
+from app.config import active_config
 from functools import lru_cache
 
 logger = logger.bind(name="utils.duplicate_prevention")
@@ -270,14 +271,20 @@ class DuplicateDetector:
                 location_sim * location_weight
             )
             
-            # For native_id matches, start with a lower base score and require content similarity
+            # For native_id matches, require significant content similarity
             # This prevents false positives when IDs match but content is completely different
-            if title_sim < 0.2 and desc_sim < 0.2:
+            min_content_sim = active_config.DUPLICATE_NATIVE_ID_MIN_CONTENT_SIM
+            
+            if title_sim < min_content_sim and desc_sim < min_content_sim:
                 # If both title AND description are very different, this is likely NOT a duplicate
                 # even if native_id matches (could be reused ID or different positions)
-                confidence_score = 0.2 + (weighted_similarity * 0.3)
+                # Set very low confidence to avoid false positives
+                confidence_score = 0.1 + (weighted_similarity * 0.2)
+            elif title_sim < 0.5 or desc_sim < 0.5:
+                # Moderate content difference - use cautious scoring
+                confidence_score = 0.3 + (weighted_similarity * 0.5)
             else:
-                # Normal calculation: base 40% for ID match + weighted content similarity
+                # Good content similarity - normal calculation
                 confidence_score = 0.4 + (weighted_similarity * 0.6)
             
             # Strong penalties for very low content similarity
@@ -291,10 +298,6 @@ class DuplicateDetector:
             
             if agency_sim < 0.3:
                 confidence_score *= 0.85
-            
-            # Debug logging for this specific native_id
-            if native_id == "19AQMM19D0120":
-                logger.info(f"Debug 19AQMM19D0120 match: title_sim={title_sim:.3f}, desc_sim={desc_sim:.3f}, agency_sim={agency_sim:.3f}, location_sim={location_sim:.3f}, weighted_sim={weighted_similarity:.3f}, confidence={confidence_score:.3f}")
             
             # Determine match type based on confidence
             if confidence_score >= 0.95:
@@ -344,7 +347,7 @@ class DuplicateDetector:
                 continue
                 
             title_similarity = self._calculate_text_similarity(new_title, match.title)
-            if title_similarity >= 0.7:  # 70% title similarity threshold
+            if title_similarity >= active_config.DUPLICATE_TITLE_SIMILARITY_THRESHOLD:
                 # Base confidence from native_id match (40%) + title similarity contribution
                 confidence = 0.4 + (title_similarity * 0.6 * strategy.weight)
                 confidence = min(confidence, 1.0)  # Cap at 1.0
@@ -491,7 +494,7 @@ class DuplicateDetector:
             title_sim = self._calculate_text_similarity(new_title, match.title)
             
             # Very high title similarity required for content-only matching
-            if title_sim >= 0.9:
+            if title_sim >= active_config.DUPLICATE_FUZZY_CONTENT_THRESHOLD:
                 desc_sim = 0
                 if match.description and new_desc:
                     desc_sim = self._calculate_text_similarity(new_desc, match.description)
@@ -538,7 +541,15 @@ class DuplicateDetector:
         
         # Handle very short strings (less than 3 characters)
         if len(text1_norm) < 3 or len(text2_norm) < 3:
-            # For very short strings, use exact match only
+            # For very short strings, check if one is contained in the other
+            # This helps with cases like "IT" vs "I.T." or "AI" vs "A.I."
+            if text1_norm in text2_norm or text2_norm in text1_norm:
+                return 0.9  # High similarity for contained short strings
+            # Check without punctuation
+            text1_alpha = ''.join(c for c in text1_norm if c.isalnum())
+            text2_alpha = ''.join(c for c in text2_norm if c.isalnum())
+            if text1_alpha == text2_alpha and text1_alpha:
+                return 0.95  # Very high similarity for same alphanumeric content
             return 1.0 if text1_norm == text2_norm else 0.0
         
         # Use difflib for sequence matching
@@ -610,7 +621,7 @@ def enhanced_bulk_upsert_prospects(df_in, session: Session, source_id: int,
             # No exact match, try advanced matching
             potential_matches = detector.find_potential_matches(session, record_data, source_id)
             
-            if potential_matches and potential_matches[0].confidence_score >= 0.80:
+            if potential_matches and potential_matches[0].confidence_score >= active_config.DUPLICATE_MIN_CONFIDENCE:
                 # High-confidence match found
                 best_match = potential_matches[0]
                 existing_prospect = session.query(Prospect).filter_by(id=best_match.prospect_id).first()

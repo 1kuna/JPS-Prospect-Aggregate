@@ -84,6 +84,12 @@ class Config:
     PRESERVE_AI_DATA_ON_REFRESH: bool = os.getenv("PRESERVE_AI_DATA_ON_REFRESH", "true").lower() == "true"
     ENABLE_SMART_DUPLICATE_MATCHING: bool = os.getenv("ENABLE_SMART_DUPLICATE_MATCHING", "true").lower() == "true"
     
+    # Duplicate matching thresholds
+    DUPLICATE_MIN_CONFIDENCE: float = float(os.getenv("DUPLICATE_MIN_CONFIDENCE", "0.80"))  # Minimum confidence to consider a match
+    DUPLICATE_NATIVE_ID_MIN_CONTENT_SIM: float = float(os.getenv("DUPLICATE_NATIVE_ID_MIN_CONTENT_SIM", "0.30"))  # Min content similarity for native_id matches
+    DUPLICATE_TITLE_SIMILARITY_THRESHOLD: float = float(os.getenv("DUPLICATE_TITLE_SIMILARITY_THRESHOLD", "0.70"))  # Title similarity threshold
+    DUPLICATE_FUZZY_CONTENT_THRESHOLD: float = float(os.getenv("DUPLICATE_FUZZY_CONTENT_THRESHOLD", "0.90"))  # Very high threshold for content-only matching
+    
     # Redis configuration
     REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
