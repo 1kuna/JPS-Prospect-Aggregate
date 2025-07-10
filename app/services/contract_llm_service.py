@@ -15,6 +15,7 @@ from app.database import db
 from app.database.models import Prospect, InferredProspectData, LLMOutput
 from app.services.optimized_prompts import get_naics_prompt, get_value_prompt, get_title_prompt
 from app.utils.naics_lookup import get_naics_description, validate_naics_code
+from app.services.set_aside_standardization import SetAsideStandardizer, StandardSetAside
 import time
 
 logger = logging.getLogger(__name__)
@@ -29,6 +30,7 @@ class ContractLLMService:
     def __init__(self, model_name: str = 'qwen3:latest'):
         self.model_name = model_name
         self.batch_size = 50
+        self.set_aside_standardizer = SetAsideStandardizer()
     
     def _update_prospect_timestamp(self, prospect: Prospect):
         """Update prospect's ollama_processed_at timestamp for polling detection"""
@@ -747,6 +749,182 @@ class ContractLLMService:
         
         return backfilled_count
     
+    def enhance_prospect_set_asides(self, prospects: List[Prospect], commit_batch_size: int = 100) -> int:
+        """
+        Enhance set-aside field values using LLM classification and rule-based standardization.
+        
+        Args:
+            prospects: List of Prospect objects to enhance
+            commit_batch_size: Number of prospects to commit in each batch
+            
+        Returns:
+            Number of prospects enhanced
+        """
+        enhanced_count = 0
+        
+        # Filter prospects that need set-aside enhancement
+        prospects_to_enhance = [
+            p for p in prospects 
+            if p.set_aside and p.set_aside.strip() and 
+            (not p.inferred_data or not p.inferred_data.inferred_set_aside)
+        ]
+        
+        if not prospects_to_enhance:
+            logger.info("No prospects with set-aside data need enhancement")
+            return 0
+        
+        logger.info(f"Enhancing set-aside data for {len(prospects_to_enhance)} prospects")
+        
+        for i, prospect in enumerate(prospects_to_enhance):
+            try:
+                # First try rule-based standardization
+                standardized = self.set_aside_standardizer.standardize_set_aside(prospect.set_aside)
+                confidence = self.set_aside_standardizer.get_confidence_score(prospect.set_aside, standardized)
+                
+                # Use LLM for low-confidence cases or ambiguous values
+                if confidence < 0.7 or standardized == StandardSetAside.NOT_AVAILABLE:
+                    llm_result = self._enhance_set_aside_with_llm(prospect.set_aside, prospect.id)
+                    if llm_result and llm_result.get('standardized_set_aside'):
+                        inferred_set_aside = llm_result['standardized_set_aside']
+                        llm_confidence = llm_result.get('confidence', 0.5)
+                    else:
+                        inferred_set_aside = standardized.value
+                        llm_confidence = confidence
+                else:
+                    # Use rule-based result
+                    inferred_set_aside = standardized.value
+                    llm_confidence = confidence
+                
+                # Ensure prospect has inferred_data record
+                if not prospect.inferred_data:
+                    inferred_data = InferredProspectData(prospect_id=prospect.id)
+                    db.session.add(inferred_data)
+                    db.session.flush()  # Get the ID
+                    prospect.inferred_data = inferred_data
+                
+                # Update the inferred set-aside
+                prospect.inferred_data.inferred_set_aside = inferred_set_aside
+                
+                # Update confidence scores
+                if not prospect.inferred_data.llm_confidence_scores:
+                    prospect.inferred_data.llm_confidence_scores = {}
+                
+                prospect.inferred_data.llm_confidence_scores['set_aside'] = llm_confidence
+                prospect.inferred_data.inferred_by_model = self.model_name
+                
+                enhanced_count += 1
+                
+                # Commit in batches
+                if (i + 1) % commit_batch_size == 0:
+                    try:
+                        db.session.commit()
+                        logger.info(f"Committed batch of {commit_batch_size} set-aside enhancements")
+                    except Exception as e:
+                        logger.error(f"Error committing set-aside enhancement batch: {e}")
+                        db.session.rollback()
+                        enhanced_count -= min(commit_batch_size, enhanced_count)
+                
+            except Exception as e:
+                logger.error(f"Error enhancing set-aside for prospect {prospect.id}: {e}")
+                continue
+        
+        # Commit remaining prospects
+        remaining = len(prospects_to_enhance) % commit_batch_size
+        if remaining > 0:
+            try:
+                db.session.commit()
+                logger.info(f"Committed final batch of {remaining} set-aside enhancements")
+            except Exception as e:
+                logger.error(f"Error committing final set-aside enhancement batch: {e}")
+                db.session.rollback()
+                enhanced_count -= remaining
+        
+        logger.info(f"Successfully enhanced set-aside data for {enhanced_count} prospects")
+        return enhanced_count
+    
+    def _enhance_set_aside_with_llm(self, set_aside_value: str, prospect_id: str = None) -> Dict:
+        """
+        Use LLM to classify and standardize a set-aside value.
+        
+        Args:
+            set_aside_value: Raw set-aside value to enhance
+            prospect_id: Optional prospect ID for logging
+            
+        Returns:
+            Dict with 'standardized_set_aside' and 'confidence' keys
+        """
+        try:
+            prompt = self.set_aside_standardizer.get_llm_prompt().format(set_aside_value)
+            
+            result = call_ollama(
+                prompt=prompt,
+                model_name=self.model_name,
+                options={'temperature': 0.1}  # Low temperature for consistent classification
+            )
+            
+            if not result:
+                logger.warning(f"Empty LLM response for set-aside enhancement: {set_aside_value}")
+                return {}
+            
+            response_text = result.strip()
+            
+            # Extract the actual answer from LLM response (handle thinking tokens)
+            # Look for the last occurrence of a valid response
+            valid_responses = [e.value for e in StandardSetAside]
+            
+            # First try to find the response at the end (after any thinking)
+            lines = response_text.split('\n')
+            for line in reversed(lines):
+                line = line.strip()
+                if line in valid_responses:
+                    response_text = line
+                    break
+            else:
+                # If not found at end, check if any valid response appears anywhere
+                for valid_response in valid_responses:
+                    if valid_response in response_text:
+                        response_text = valid_response
+                        break
+            
+            if response_text in valid_responses:
+                confidence = 0.8  # Medium-high confidence for LLM results
+                
+                # Log the enhancement for debugging
+                log_data = {
+                    'prospect_id': prospect_id,
+                    'enhancement_type': 'set_aside',
+                    'input_data': {'set_aside': set_aside_value},
+                    'llm_response': response_text,
+                    'confidence': confidence,
+                    'model': self.model_name
+                }
+                
+                try:
+                    llm_output = LLMOutput(
+                        prospect_id=prospect_id,
+                        model_name=self.model_name,
+                        prompt_type='set_aside_classification',
+                        input_data=log_data['input_data'],
+                        output_data={'standardized_set_aside': response_text},
+                        confidence_score=confidence
+                    )
+                    db.session.add(llm_output)
+                    db.session.flush()
+                except Exception as e:
+                    logger.warning(f"Failed to log LLM output: {e}")
+                
+                return {
+                    'standardized_set_aside': response_text,
+                    'confidence': confidence
+                }
+            else:
+                logger.warning(f"Invalid LLM response for set-aside: '{response_text}' not in valid categories")
+                return {}
+                
+        except Exception as e:
+            logger.error(f"Error in LLM set-aside enhancement: {e}")
+            return {}
+    
     def enhance_all_prospects(self, limit: Optional[int] = None) -> Dict[str, int]:
         """
         Run all enhancement modules on prospects.
@@ -767,16 +945,18 @@ class ContractLLMService:
             'titles_enhanced': 0,
             'values_enhanced': 0,
             'naics_enhanced': 0,
+            'set_asides_enhanced': 0,
             'naics_descriptions_backfilled': 0
         }
         
         if not prospects:
             return results
         
-        # Run enhancement modules in new order: Title → Value → NAICS
+        # Run enhancement modules in new order: Title → Value → NAICS → Set-Asides
         results['titles_enhanced'] = self.enhance_prospect_titles(prospects)
         results['values_enhanced'] = self.enhance_prospect_values(prospects)
         results['naics_enhanced'] = self.enhance_prospect_naics(prospects)
+        results['set_asides_enhanced'] = self.enhance_prospect_set_asides(prospects)
         
         # Backfill missing NAICS descriptions for all prospects (not just unprocessed ones)
         all_prospects = Prospect.query.filter(

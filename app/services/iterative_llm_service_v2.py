@@ -15,7 +15,7 @@ from app.services.contract_llm_service import ContractLLMService
 from app.utils.logger import logger
 from app.database import db
 
-EnhancementType = Literal["all", "values", "titles", "naics"]
+EnhancementType = Literal["all", "values", "titles", "naics", "set_asides"]
 
 
 class IterativeLLMServiceV2:
@@ -186,14 +186,11 @@ class IterativeLLMServiceV2:
                 )
             else:
                 return Prospect.description.isnot(None)
-        elif enhancement_type == "titles":
+        elif enhancement_type == "set_asides":
             if skip_existing:
-                return and_(
-                    Prospect.title.isnot(None),
-                    Prospect.ai_enhanced_title.is_(None)
-                )
+                return Prospect.set_aside.isnot(None)
             else:
-                return Prospect.title.isnot(None)
+                return Prospect.set_aside.isnot(None)
         elif enhancement_type == "all":
             if skip_existing:
                 # Prospects that need ANY type of enhancement
@@ -616,6 +613,36 @@ class IterativeLLMServiceV2:
         
         return False
     
+    def _process_set_asides_for_iterative(self, prospect: Prospect, enhancement_type: EnhancementType) -> bool:
+        """Process set-aside enhancement for a single prospect"""
+        if enhancement_type not in ["set_asides", "all"]:
+            return False
+        
+        if not prospect.set_aside or not prospect.set_aside.strip():
+            return False
+        
+        # Check if already processed
+        if prospect.inferred_data and prospect.inferred_data.inferred_set_aside:
+            return False
+        
+        try:
+            # Use the set-aside enhancement from the LLM service
+            enhanced_count = self.llm_service.enhance_prospect_set_asides([prospect])
+            
+            if enhanced_count > 0:
+                # Emit real-time update if we have the method
+                if hasattr(self.llm_service, '_emit_field_update'):
+                    self.llm_service._emit_field_update(prospect.id, 'set_asides', {
+                        'inferred_set_aside': prospect.inferred_data.inferred_set_aside if prospect.inferred_data else None
+                    })
+                
+                return True
+        
+        except Exception as e:
+            logger.error(f"Error processing set-aside for prospect {prospect.id}: {e}")
+        
+        return False
+    
     def _process_single_prospect(
         self, 
         prospect: Prospect, 
@@ -627,7 +654,7 @@ class IterativeLLMServiceV2:
             processed = False
             
             # Process each enhancement type
-            # Process in new order: Title → Value → NAICS
+            # Process in new order: Title → Value → NAICS → Set-Asides
             if self._process_titles_for_iterative(prospect, enhancement_type):
                 processed = True
             
@@ -635,6 +662,9 @@ class IterativeLLMServiceV2:
                 processed = True
             
             if self._process_naics_for_iterative(prospect, enhancement_type):
+                processed = True
+            
+            if self._process_set_asides_for_iterative(prospect, enhancement_type):
                 processed = True
             
             return processed

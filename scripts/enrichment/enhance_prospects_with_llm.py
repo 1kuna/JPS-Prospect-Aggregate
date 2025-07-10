@@ -112,6 +112,11 @@ def run_targeted_enhancement(
         query = Prospect.query.filter(
             Prospect.naics.is_(None)
         )
+    elif enhancement_type == 'set_asides':
+        query = Prospect.query.filter(
+            Prospect.set_aside.isnot(None),
+            Prospect.set_aside != ''
+        )
     elif enhancement_type == 'all':
         query = Prospect.query.filter(
             Prospect.ollama_processed_at.is_(None)
@@ -135,6 +140,8 @@ def run_targeted_enhancement(
         return llm_service.enhance_prospect_titles(prospects)
     elif enhancement_type == 'naics':
         return llm_service.enhance_prospect_naics(prospects)
+    elif enhancement_type == 'set_asides':
+        return llm_service.enhance_prospect_set_asides(prospects)
     elif enhancement_type == 'all':
         results = llm_service.enhance_all_prospects(limit=limit)
         return sum(results.values()) - results['total_prospects']
@@ -146,7 +153,7 @@ def main():
     )
     parser.add_argument(
         'enhancement_type',
-        choices=['values', 'titles', 'naics', 'all'],
+        choices=['values', 'titles', 'naics', 'set_asides', 'all'],
         help='Type of enhancement to run'
     )
     parser.add_argument(

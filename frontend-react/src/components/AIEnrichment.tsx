@@ -8,7 +8,7 @@ import { useEnhancementQueueService } from '@/hooks/api/useEnhancementQueueServi
 import { getStatusColor } from '@/utils/statusUtils';
 import { PlayIcon, StopIcon, ChevronDownIcon, ChevronRightIcon } from '@radix-ui/react-icons';
 
-type EnhancementType = 'all' | 'values' | 'contacts' | 'naics' | 'titles';
+type EnhancementType = 'all' | 'values' | 'contacts' | 'naics' | 'titles' | 'set_asides';
 
 export function AIEnrichment() {
   const [enhancementType, setEnhancementType] = useState<EnhancementType>('all');
@@ -190,6 +190,7 @@ export function AIEnrichment() {
                     <SelectItem value="contacts">Contact Extraction</SelectItem>
                     <SelectItem value="naics">NAICS Classification</SelectItem>
                     <SelectItem value="titles">Title Enhancement</SelectItem>
+                    <SelectItem value="set_asides">Set-Aside Standardization</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -376,6 +377,9 @@ export function AIEnrichment() {
                               )}
                               {output.enhancement_type === 'titles' && 'enhanced_title' in output.parsed_result && (
                                 <span>Enhanced Title: {String(output.parsed_result.enhanced_title)}</span>
+                              )}
+                              {output.enhancement_type === 'set_asides' && 'standardized_set_aside' in output.parsed_result && (
+                                <span>Set-Aside: {String(output.parsed_result.standardized_set_aside)}</span>
                               )}
                             </div>
                           )}
