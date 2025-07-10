@@ -94,7 +94,7 @@ export interface LLMOutput {
   timestamp: string;
   prospect_id: string;
   prospect_title: string | null;
-  enhancement_type: 'values' | 'contacts' | 'naics' | 'titles';
+  enhancement_type: 'values' | 'contacts' | 'naics' | 'titles' | 'set_asides';
   prompt: string;
   response: string;
   parsed_result: LLMParsedResult;
@@ -117,7 +117,7 @@ const queryKeys = {
  */
 export function useEnhancementQueueService(options?: {
   llmOutputsLimit?: number;
-  llmOutputsType?: 'all' | 'values' | 'contacts' | 'naics' | 'titles';
+  llmOutputsType?: 'all' | 'values' | 'contacts' | 'naics' | 'titles' | 'set_asides';
 }) {
   const queryClient = useQueryClient();
   const { llmOutputsLimit = 50, llmOutputsType = 'all' } = options || {};
@@ -247,7 +247,7 @@ export function useEnhancementQueueService(options?: {
   // Start iterative enhancement
   const startIterative = useMutation({
     mutationFn: async (params: {
-      enhancement_type: 'all' | 'values' | 'contacts' | 'naics' | 'titles';
+      enhancement_type: 'all' | 'values' | 'contacts' | 'naics' | 'titles' | 'set_asides';
       skip_existing?: boolean;
     }) => {
       return await post('/api/llm/iterative/start', params);

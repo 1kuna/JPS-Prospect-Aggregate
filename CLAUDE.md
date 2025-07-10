@@ -258,12 +258,11 @@ Run `python -m pytest tests/ -v --cov=app --cov-report=html` for full test suite
 
 ## Data Sources
 
-System currently scrapes 14+ federal agencies including:
+System currently scrapes 9 federal agencies:
 
 - Acquisition Gateway, Social Security Administration, Department of Commerce
-- Health and Human Services, Homeland Security, Justice
-- Labor, State, Interior, Treasury, Transportation, Veterans Affairs
-- General Services Administration, Nuclear Regulatory Commission
+- Health and Human Services, Homeland Security, Justice  
+- State, Treasury, Transportation
 
 ## Data Retention
 
