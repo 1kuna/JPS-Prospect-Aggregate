@@ -12,10 +12,10 @@ interface EnhancementProgressProps {
   status: {
     currentStep?: string;
     progress?: {
-      values?: { completed: boolean; skipped?: boolean };
-      contacts?: { completed: boolean; skipped?: boolean };
-      naics?: { completed: boolean; skipped?: boolean };
       titles?: { completed: boolean; skipped?: boolean };
+      values?: { completed: boolean; skipped?: boolean };
+      naics?: { completed: boolean; skipped?: boolean };
+      set_asides?: { completed: boolean; skipped?: boolean };
     };
   } | null;
   isVisible: boolean;
@@ -26,6 +26,14 @@ export function EnhancementProgress({ status, isVisible }: EnhancementProgressPr
   
   const steps: ProgressStep[] = [
     {
+      key: 'titles',
+      label: 'Enhance Title',
+      completed: status.progress?.titles?.completed || false,
+      skipped: status.progress?.titles?.skipped || false,
+      active: status.currentStep?.toLowerCase().includes('enhancing') ||
+              status.currentStep?.toLowerCase().includes('title') || false
+    },
+    {
       key: 'values',
       label: 'Parse Contract Values',
       completed: status.progress?.values?.completed || false,
@@ -33,14 +41,6 @@ export function EnhancementProgress({ status, isVisible }: EnhancementProgressPr
       active: status.currentStep?.toLowerCase().includes('parsing') || 
               status.currentStep?.toLowerCase().includes('contract') ||
               status.currentStep?.toLowerCase().includes('values') || false
-    },
-    {
-      key: 'contacts',
-      label: 'Extract Contact Information',
-      completed: status.progress?.contacts?.completed || false,
-      skipped: status.progress?.contacts?.skipped || false,
-      active: status.currentStep?.toLowerCase().includes('extracting') ||
-              status.currentStep?.toLowerCase().includes('contact') || false
     },
     {
       key: 'naics',
@@ -51,12 +51,13 @@ export function EnhancementProgress({ status, isVisible }: EnhancementProgressPr
               status.currentStep?.toLowerCase().includes('naics') || false
     },
     {
-      key: 'titles',
-      label: 'Enhance Title',
-      completed: status.progress?.titles?.completed || false,
-      skipped: status.progress?.titles?.skipped || false,
-      active: status.currentStep?.toLowerCase().includes('enhancing') ||
-              status.currentStep?.toLowerCase().includes('title') || false
+      key: 'set_asides',
+      label: 'Process Set Asides',
+      completed: status.progress?.set_asides?.completed || false,
+      skipped: status.progress?.set_asides?.skipped || false,
+      active: status.currentStep?.toLowerCase().includes('processing') ||
+              status.currentStep?.toLowerCase().includes('set') ||
+              status.currentStep?.toLowerCase().includes('aside') || false
     }
   ];
   

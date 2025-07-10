@@ -55,10 +55,10 @@ interface QueueStatus {
 // SSE event type
 interface EnhancementProgressEvent {
   event_type: 'connected' | 'queue_position_update' | 'processing_started' | 
-              'values_started' | 'values_completed' | 'values_failed' |
-              'contacts_started' | 'contacts_completed' | 'contacts_failed' |
-              'naics_started' | 'naics_completed' | 'naics_failed' |
               'titles_started' | 'titles_completed' | 'titles_failed' |
+              'values_started' | 'values_completed' | 'values_failed' |
+              'naics_started' | 'naics_completed' | 'naics_failed' |
+              'set_asides_started' | 'set_asides_completed' | 'set_asides_failed' |
               'completed' | 'failed' | 'error' | 'timeout' | 'keepalive';
   timestamp: string;
   prospect_id?: string;
@@ -172,15 +172,15 @@ export function useEnhancement() {
         break;
       }
 
-      case 'values_started':
-        newState = { currentStep: 'Parsing contract values...' };
+      case 'titles_started':
+        newState = { currentStep: 'Enhancing title...' };
         break;
 
-      case 'values_completed':
+      case 'titles_completed':
         newState = {
           progress: {
             ...currentState.progress,
-            values: {
+            titles: {
               completed: true,
               skipped: event.data?.skipped as boolean,
               data: event.data
@@ -193,15 +193,15 @@ export function useEnhancement() {
         }
         break;
 
-      case 'contacts_started':
-        newState = { currentStep: 'Extracting contact information...' };
+      case 'values_started':
+        newState = { currentStep: 'Parsing contract values...' };
         break;
 
-      case 'contacts_completed':
+      case 'values_completed':
         newState = {
           progress: {
             ...currentState.progress,
-            contacts: {
+            values: {
               completed: true,
               skipped: event.data?.skipped as boolean,
               data: event.data
@@ -235,16 +235,16 @@ export function useEnhancement() {
         }
         break;
 
-      case 'titles_started':
-        newState = { currentStep: 'Enhancing title...' };
+      case 'set_asides_started':
+        newState = { currentStep: 'Processing set asides...' };
         break;
 
-      case 'titles_completed':
+      case 'set_asides_completed':
         newState = {
           currentStep: undefined,
           progress: {
             ...currentState.progress,
-            titles: {
+            set_asides: {
               completed: true,
               skipped: event.data?.skipped as boolean,
               data: event.data
@@ -269,7 +269,7 @@ export function useEnhancement() {
         
         // Finalize progress
         const finalProgress = { ...currentState.progress } as EnhancementProgress;
-        const steps: Array<keyof EnhancementProgress> = ['values', 'contacts', 'naics', 'titles'];
+        const steps: Array<keyof EnhancementProgress> = ['titles', 'values', 'naics', 'set_asides'];
         steps.forEach(step => {
           if (finalProgress[step]) {
             finalProgress[step] = { ...finalProgress[step], completed: true };
@@ -322,10 +322,10 @@ export function useEnhancement() {
         break;
       }
 
-      case 'values_failed':
-      case 'contacts_failed':
-      case 'naics_failed':
       case 'titles_failed':
+      case 'values_failed':
+      case 'naics_failed':
+      case 'set_asides_failed':
       case 'failed':
       case 'error':
       case 'timeout': {
