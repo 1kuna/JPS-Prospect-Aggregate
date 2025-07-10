@@ -8,7 +8,7 @@ import { useEnhancementQueueService } from '@/hooks/api/useEnhancementQueueServi
 import { getStatusColor } from '@/utils/statusUtils';
 import { PlayIcon, StopIcon, ChevronDownIcon, ChevronRightIcon } from '@radix-ui/react-icons';
 
-type EnhancementType = 'all' | 'values' | 'contacts' | 'naics' | 'titles' | 'set_asides';
+type EnhancementType = 'all' | 'values' | 'naics' | 'titles' | 'set_asides';
 
 export function AIEnrichment() {
   const [enhancementType, setEnhancementType] = useState<EnhancementType>('all');
@@ -116,17 +116,17 @@ export function AIEnrichment() {
                   </div>
                 </div>
 
-                {/* Contact Extraction */}
+                {/* Set-Aside Standardization */}
                 <div className="bg-orange-50 p-4 rounded-lg border border-orange-200">
-                  <h4 className="font-semibold text-orange-800 mb-2">Contact Extraction</h4>
+                  <h4 className="font-semibold text-orange-800 mb-2">Set-Aside Standardization</h4>
                   <div className="space-y-1 text-sm">
                     <div className="flex justify-between">
-                      <span>Extracted Contacts:</span>
-                      <span className="font-medium text-orange-700">{status.contact_extraction.extracted_count.toLocaleString()}</span>
+                      <span>Standardized Set-Asides:</span>
+                      <span className="font-medium text-orange-700">{status.set_aside_standardization.standardized_count.toLocaleString()}</span>
                     </div>
                     <div className="flex justify-between border-t border-orange-300 pt-1 font-medium">
                       <span>Coverage:</span>
-                      <span>{status.contact_extraction.total_percentage.toFixed(1)}%</span>
+                      <span>{status.set_aside_standardization.total_percentage.toFixed(1)}%</span>
                     </div>
                   </div>
                 </div>
@@ -187,7 +187,6 @@ export function AIEnrichment() {
                   <SelectContent>
                     <SelectItem value="all">All Enhancements</SelectItem>
                     <SelectItem value="values">Value Parsing</SelectItem>
-                    <SelectItem value="contacts">Contact Extraction</SelectItem>
                     <SelectItem value="naics">NAICS Classification</SelectItem>
                     <SelectItem value="titles">Title Enhancement</SelectItem>
                     <SelectItem value="set_asides">Set-Aside Standardization</SelectItem>
@@ -371,9 +370,6 @@ export function AIEnrichment() {
                               )}
                               {output.enhancement_type === 'values' && 'single' in output.parsed_result && (
                                 <span>Value: ${Number(output.parsed_result.single).toLocaleString()}</span>
-                              )}
-                              {output.enhancement_type === 'contacts' && ('name' in output.parsed_result || 'email' in output.parsed_result) && (
-                                <span>Contact: {'name' in output.parsed_result ? String(output.parsed_result.name) : ''} {'email' in output.parsed_result && output.parsed_result.email ? `<${String(output.parsed_result.email)}>` : ''}</span>
                               )}
                               {output.enhancement_type === 'titles' && 'enhanced_title' in output.parsed_result && (
                                 <span>Enhanced Title: {String(output.parsed_result.enhanced_title)}</span>

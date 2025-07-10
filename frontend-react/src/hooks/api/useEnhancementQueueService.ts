@@ -46,7 +46,7 @@ export interface QueueStatus {
 // Iterative enhancement progress
 export interface IterativeProgress {
   status: 'idle' | 'processing' | 'completed' | 'stopped' | 'stopping' | 'error';
-  current_type: 'all' | 'values' | 'contacts' | 'naics' | 'titles' | null;
+  current_type: 'all' | 'values' | 'naics' | 'titles' | null;
   processed: number;
   total: number;
   percentage: number;
@@ -76,8 +76,8 @@ export interface AIEnrichmentStatus {
     parsed_count: number;
     total_percentage: number;
   };
-  contact_extraction: {
-    extracted_count: number;
+  set_aside_standardization: {
+    standardized_count: number;
     total_percentage: number;
   };
   title_enhancement: {
@@ -94,7 +94,7 @@ export interface LLMOutput {
   timestamp: string;
   prospect_id: string;
   prospect_title: string | null;
-  enhancement_type: 'values' | 'contacts' | 'naics' | 'titles' | 'set_asides';
+  enhancement_type: 'values' | 'naics' | 'titles' | 'set_asides';
   prompt: string;
   response: string;
   parsed_result: LLMParsedResult;
@@ -117,7 +117,7 @@ const queryKeys = {
  */
 export function useEnhancementQueueService(options?: {
   llmOutputsLimit?: number;
-  llmOutputsType?: 'all' | 'values' | 'contacts' | 'naics' | 'titles' | 'set_asides';
+  llmOutputsType?: 'all' | 'values' | 'naics' | 'titles' | 'set_asides';
 }) {
   const queryClient = useQueryClient();
   const { llmOutputsLimit = 50, llmOutputsType = 'all' } = options || {};
@@ -247,7 +247,7 @@ export function useEnhancementQueueService(options?: {
   // Start iterative enhancement
   const startIterative = useMutation({
     mutationFn: async (params: {
-      enhancement_type: 'all' | 'values' | 'contacts' | 'naics' | 'titles' | 'set_asides';
+      enhancement_type: 'all' | 'values' | 'naics' | 'titles' | 'set_asides';
       skip_existing?: boolean;
     }) => {
       return await post('/api/llm/iterative/start', params);
