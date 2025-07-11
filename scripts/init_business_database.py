@@ -13,34 +13,25 @@ app_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(app_dir))
 
 from app import create_app
-from app.database import db
+from app.database.init_db import initialize_business_database
 from app.utils.logger import logger
 
 def init_business_database():
     """Initialize the business database with all tables."""
     app = create_app()
+    success = initialize_business_database(app)
     
-    with app.app_context():
-        logger.info("Initializing business database...")
-        
-        try:
-            # Create all tables for the main bind
-            db.create_all()
-            
-            logger.info("Business database initialized successfully!")
-            logger.info("Created tables:")
-            
-            # List the tables that were created
+    if success:
+        # List the tables that were created for verification
+        from app.database import db
+        with app.app_context():
             inspector = db.inspect(db.engine)
             tables = inspector.get_table_names()
+            logger.info("Created tables:")
             for table in sorted(tables):
                 logger.info(f"- {table}")
-            
-            return True
-            
-        except Exception as e:
-            logger.error(f"Error initializing business database: {str(e)}")
-            return False
+    
+    return success
 
 if __name__ == '__main__':
     success = init_business_database()

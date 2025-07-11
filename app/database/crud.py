@@ -1,4 +1,3 @@
-import logging
 import pandas as pd
 from sqlalchemy import insert # Changed to core SQLAlchemy insert
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
@@ -8,8 +7,7 @@ import math
 from app.database import db
 from app.database.models import Prospect # Changed back to Prospect
 from app.exceptions import ValidationError
-
-# Logging is now handled by app.utils.logger (Loguru)
+from app.utils.logger import logger
 
 def paginate_sqlalchemy_query(query, page: int, per_page: int):
     """
@@ -36,7 +34,7 @@ def paginate_sqlalchemy_query(query, page: int, per_page: int):
     try:
         total_items = query.count()
     except SQLAlchemyError as e:
-        logging.error(f"Database error counting items for pagination: {e}", exc_info=True)
+        logger.exception(f"Database error counting items for pagination: {e}")
         # Depending on desired behavior, could re-raise, or return an error state
         raise # Re-raise to be handled by the caller or a global error handler
 
@@ -53,7 +51,7 @@ def paginate_sqlalchemy_query(query, page: int, per_page: int):
             items_query = query.offset(offset).limit(per_page)
             items = items_query.all()
         except SQLAlchemyError as e:
-            logging.error(f"Database error fetching paginated items: {e}", exc_info=True)
+            logger.exception(f"Database error fetching paginated items: {e}")
             # Depending on desired behavior, could re-raise, or return an error state
             raise # Re-raise
 
@@ -81,12 +79,12 @@ def _try_enhanced_matching(df_in, preserve_ai_data, enable_smart_matching):
             stats = enhanced_bulk_upsert_prospects(
                 df_in, db.session, source_id, preserve_ai_data, enable_smart_matching
             )
-            logging.info(f"Enhanced upsert stats: {stats}")
+            logger.info(f"Enhanced upsert stats: {stats}")
             return stats
         else:
-            logging.warning("No source_id found, falling back to standard upsert")
+            logger.warning("No source_id found, falling back to standard upsert")
     except Exception as e:
-        logging.error(f"Enhanced matching failed, falling back to standard upsert: {e}")
+        logger.error(f"Enhanced matching failed, falling back to standard upsert: {e}")
     
     return None
 
@@ -101,14 +99,14 @@ def _preprocess_dataframe(df_in):
         if col in df.columns:
             if pd.api.types.is_datetime64_any_dtype(df[col]):
                 df[col] = df[col].apply(lambda x: x.date() if pd.notna(x) else None)
-                logging.debug(f"Converted column '{col}' to Python date objects.")
+                logger.debug(f"Converted column '{col}' to Python date objects.")
             else:
-                logging.debug(f"Column '{col}' is not datetime type ({df[col].dtype}). Attempting conversion.")
+                logger.debug(f"Column '{col}' is not datetime type ({df[col].dtype}). Attempting conversion.")
                 try:
                     df[col] = pd.to_datetime(df[col], errors='coerce').dt.date
-                    logging.debug(f"Successfully converted column '{col}' to date objects.")
+                    logger.debug(f"Successfully converted column '{col}' to date objects.")
                 except Exception as e:
-                    logging.error(f"Failed to convert column '{col}' to date: {e}")
+                    logger.error(f"Failed to convert column '{col}' to date: {e}")
                     df[col] = None
 
     # Handle NaN/null values
@@ -116,9 +114,9 @@ def _preprocess_dataframe(df_in):
         with pd.option_context('future.no_silent_downcasting', True):
             df = df.fillna(value=np.nan).replace([np.nan], [None])
         df = df.infer_objects(copy=False)
-        logging.debug("DataFrame NaN/null values replaced with None using fillna/replace.")
+        logger.debug("DataFrame NaN/null values replaced with None using fillna/replace.")
     except ImportError:
-        logging.error("Numpy not found. Cannot perform robust NaN replacement. Falling back to df.where().")
+        logger.error("Numpy not found. Cannot perform robust NaN replacement. Falling back to df.where().")
         df = df.where(pd.notna(df), None)
 
     if 'loaded_at' in df.columns:
@@ -141,7 +139,7 @@ def _remove_batch_duplicates(data_to_insert):
             duplicates_count += 1
     
     if duplicates_count > 0:
-        logging.warning(f"Removed {duplicates_count} duplicate records within the same batch")
+        logger.warning(f"Removed {duplicates_count} duplicate records within the same batch")
     
     return unique_data_to_insert
 
@@ -154,7 +152,7 @@ def _process_ai_safe_upserts(session, data_to_insert, ids_to_upsert):
     ).all()
     
     ai_processed_ids = {record.id for record in ai_processed_records}
-    logging.info(f"Found {len(ai_processed_ids)} AI-processed records to preserve")
+    logger.info(f"Found {len(ai_processed_ids)} AI-processed records to preserve")
     
     # AI-enhanced fields to preserve during updates
     ai_fields = [
@@ -179,7 +177,7 @@ def _process_ai_safe_upserts(session, data_to_insert, ids_to_upsert):
                     if key not in ai_fields and hasattr(existing_record, key):
                         setattr(existing_record, key, value)
                 ai_safe_updates += 1
-                logging.debug(f"AI-safe update for record {record_id}")
+                logger.debug(f"AI-safe update for record {record_id}")
         else:
             # Record either doesn't exist or isn't AI-processed
             # Delete and insert (regular upsert)
@@ -188,7 +186,7 @@ def _process_ai_safe_upserts(session, data_to_insert, ids_to_upsert):
             session.add(new_record)
             regular_inserts += 1
     
-    logging.info(f"AI-safe processing: {ai_safe_updates} preserved, {regular_inserts} regular upserts")
+    logger.info(f"AI-safe processing: {ai_safe_updates} preserved, {regular_inserts} regular upserts")
     return ai_safe_updates, regular_inserts
 
 def _process_standard_upserts(session, data_to_insert, ids_to_upsert):
@@ -200,7 +198,7 @@ def _process_standard_upserts(session, data_to_insert, ids_to_upsert):
     for i in range(0, len(ids_to_upsert), batch_size):
         batch_ids = ids_to_upsert[i:i + batch_size]
         delete_count = session.query(Prospect).filter(Prospect.id.in_(batch_ids)).delete(synchronize_session=False)
-        logging.info(f"Deleted {delete_count} existing records from batch {i//batch_size + 1}")
+        logger.info(f"Deleted {delete_count} existing records from batch {i//batch_size + 1}")
     
     # Insert all records in batches
     batch_size = 1000
@@ -208,9 +206,9 @@ def _process_standard_upserts(session, data_to_insert, ids_to_upsert):
         batch_data = data_to_insert[i:i + batch_size]
         session.bulk_insert_mappings(Prospect, batch_data)
         regular_inserts += len(batch_data)
-        logging.info(f"Inserted batch {i//batch_size + 1}: {len(batch_data)} records")
+        logger.info(f"Inserted batch {i//batch_size + 1}: {len(batch_data)} records")
     
-    logging.info(f"Standard upsert: {regular_inserts} records processed")
+    logger.info(f"Standard upsert: {regular_inserts} records processed")
     return 0, regular_inserts  # 0 ai_safe_updates, regular_inserts
 
 def bulk_upsert_prospects(df_in: pd.DataFrame, preserve_ai_data: bool = True, enable_smart_matching: bool = False):
@@ -227,7 +225,7 @@ def bulk_upsert_prospects(df_in: pd.DataFrame, preserve_ai_data: bool = True, en
                                     to prevent duplicates when titles/descriptions change.
     """
     if df_in.empty:
-        logging.info("DataFrame is empty, skipping database insertion.")
+        logger.info("DataFrame is empty, skipping database insertion.")
         return
     
     # Try enhanced matching first
@@ -240,7 +238,7 @@ def bulk_upsert_prospects(df_in: pd.DataFrame, preserve_ai_data: bool = True, en
     data_to_insert = df.to_dict(orient='records')
 
     if not data_to_insert:
-        logging.warning("Converted data to insert is empty.")
+        logger.warning("Converted data to insert is empty.")
         return
 
     # Remove duplicates within the batch
@@ -267,17 +265,17 @@ def bulk_upsert_prospects(df_in: pd.DataFrame, preserve_ai_data: bool = True, en
         session.commit()
         total_processed = ai_safe_updates + regular_inserts
         if total_processed > 0:
-            logging.info(f"Successfully processed {total_processed} records into prospects table.")
+            logger.info(f"Successfully processed {total_processed} records into prospects table.")
             if preserve_ai_data and ai_safe_updates > 0:
-                logging.info(f"AI-enhanced data preserved for {ai_safe_updates} records.")
+                logger.info(f"AI-enhanced data preserved for {ai_safe_updates} records.")
         else:
-            logging.warning("No records were processed.")
+            logger.warning("No records were processed.")
 
     except SQLAlchemyError as e:
-        logging.error(f"Database error during bulk upsert: {e}", exc_info=True)
+        logger.exception(f"Database error during bulk upsert: {e}")
         session.rollback()
     except Exception as e:
-        logging.error(f"An unexpected error occurred during bulk upsert: {e}", exc_info=True)
+        logger.exception(f"An unexpected error occurred during bulk upsert: {e}")
         session.rollback()
 
 def get_prospects_for_llm_enhancement(enhancement_type: str = 'all', limit: int = None):
@@ -361,10 +359,10 @@ def update_prospect_llm_fields(prospect_id: str, llm_data: dict):
     
     try:
         db.session.commit()
-        logging.info(f"Updated prospect {prospect_id} with LLM enhancements")
+        logger.info(f"Updated prospect {prospect_id} with LLM enhancements")
         return prospect
     except SQLAlchemyError as e:
-        logging.error(f"Error updating prospect {prospect_id}: {e}")
+        logger.error(f"Error updating prospect {prospect_id}: {e}")
         db.session.rollback()
         return None
 
@@ -403,5 +401,5 @@ def get_prospect_statistics():
         return stats
         
     except SQLAlchemyError as e:
-        logging.error(f"Error getting prospect statistics: {e}")
+        logger.error(f"Error getting prospect statistics: {e}")
         return {}

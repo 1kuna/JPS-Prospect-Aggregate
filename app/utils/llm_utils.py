@@ -1,11 +1,8 @@
 import requests # Or potentially use 'import ollama' if using the official client
 import json
-import logging
 import os
 from typing import Optional, Dict, Any
-
-# Configure logging for this utility
-logger = logging.getLogger(__name__)
+from app.utils.logger import logger
 
 # --- Configuration ---
 # Default Ollama API endpoint. Use environment variable if available.

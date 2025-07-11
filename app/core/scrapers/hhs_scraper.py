@@ -196,8 +196,3 @@ class HHSForecastScraper(ConsolidatedScraperBase):
         )
 
 
-# For backward compatibility
-async def run_hhs_scraper() -> int:
-    """Run the HHS scraper."""
-    scraper = HHSForecastScraper()
-    return await scraper.scrape()

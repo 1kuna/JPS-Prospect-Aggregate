@@ -5,7 +5,6 @@ Uses qwen3:8b via Ollama for optional data enrichment
 
 import json
 import re
-import logging
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -16,9 +15,8 @@ from app.database.models import Prospect, InferredProspectData, LLMOutput
 from app.services.optimized_prompts import get_naics_prompt, get_value_prompt, get_title_prompt
 from app.utils.naics_lookup import get_naics_description, validate_naics_code
 from app.services.set_aside_standardization import SetAsideStandardizer, StandardSetAside
+from app.utils.logger import logger
 import time
-
-logger = logging.getLogger(__name__)
 
 
 class ContractLLMService:

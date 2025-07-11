@@ -3,10 +3,8 @@ NAICS Code to Description Lookup Utility
 Provides standardized NAICS descriptions based on official NAICS 2022 codes
 """
 
-import logging
 from typing import Optional, Dict
-
-logger = logging.getLogger(__name__)
+from app.utils.logger import logger
 
 # NAICS 2022 Complete Lookup Table
 # Generated from official NAICS data - 498 total 6-digit codes

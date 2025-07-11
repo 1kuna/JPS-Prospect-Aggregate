@@ -104,14 +104,6 @@ class AcquisitionGatewayScraper(ConsolidatedScraperBase):
         return await self.scrape_with_structure()
 
 
-# For backward compatibility - maintain the same interface
-async def run_acquisition_gateway_scraper() -> int:
-    """
-    Run the Acquisition Gateway scraper.
-    Maintains backward compatibility with existing runner scripts.
-    """
-    scraper = AcquisitionGatewayScraper()
-    return await scraper.scrape()
 
 
 # Testing function

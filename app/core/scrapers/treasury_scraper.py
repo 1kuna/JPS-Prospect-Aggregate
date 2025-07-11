@@ -270,8 +270,3 @@ class TreasuryScraper(ConsolidatedScraperBase):
         )
 
 
-# For backward compatibility
-async def run_treasury_scraper() -> int:
-    """Run the Treasury scraper."""
-    scraper = TreasuryScraper()
-    return await scraper.scrape()

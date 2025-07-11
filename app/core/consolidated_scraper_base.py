@@ -2186,7 +2186,8 @@ class ConsolidatedScraperBase:
         
         try:
             # Get source ID for tracking
-            source_id = file_validation_service.get_source_id_by_name(self.source_name)
+            from app.utils.database_helpers import get_data_source_id_by_name
+            source_id = get_data_source_id_by_name(self.source_name)
             if not source_id:
                 self.logger.warning(f"Could not find source ID for {self.source_name}")
             

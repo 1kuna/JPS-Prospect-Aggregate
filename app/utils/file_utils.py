@@ -2,8 +2,10 @@
 Simplified file utilities using Python's standard library.
 """
 
+import re
 import shutil
 from pathlib import Path
+from datetime import datetime
 from typing import List, Optional, Union
 from app.utils.logger import logger
 
@@ -108,7 +110,25 @@ def safe_file_copy(source: Union[str, Path], destination: Union[str, Path]) -> O
         logger.error(f"Failed to copy {source} to {destination}: {e}")
         return None
 
-# Backward compatibility functions removed as they were simple wrappers with no usage
-# - ensure_directories
-# - cleanup_files
-# - find_valid_files 
+def extract_timestamp_from_filename(filename: str) -> Optional[datetime]:
+    """
+    Extract timestamp from filename with format: prefix_YYYYMMDD_HHMMSS.ext
+    
+    Args:
+        filename: The filename to parse
+        
+    Returns:
+        datetime object representing the file's timestamp, or None if not found
+    """
+    # Pattern matches YYYYMMDD_HHMMSS in filename
+    pattern = r'(\d{8}_\d{6})'
+    match = re.search(pattern, filename)
+    
+    if not match:
+        return None
+    
+    timestamp_str = match.group(1)
+    try:
+        return datetime.strptime(timestamp_str, '%Y%m%d_%H%M%S')
+    except ValueError:
+        return None 

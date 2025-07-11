@@ -4,7 +4,6 @@ Handles mapping from various government contract sources to standardized schema
 """
 
 import re
-import logging
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timezone
 import hashlib
@@ -13,8 +12,7 @@ import json
 from app.database import db
 from app.database.models import Prospect, DataSource
 from app.services.contract_llm_service import ContractLLMService
-
-logger = logging.getLogger(__name__)
+from app.utils.logger import logger
 
 
 class ContractMapperService:

@@ -166,8 +166,3 @@ class SsaScraper(ConsolidatedScraperBase):
         )
 
 
-# For backward compatibility
-async def run_ssa_scraper() -> int:
-    """Run the SSA scraper."""
-    scraper = SsaScraper()
-    return await scraper.scrape()

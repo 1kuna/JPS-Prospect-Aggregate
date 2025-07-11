@@ -1,7 +1,7 @@
 import re
-import logging
 from datetime import datetime
 import pandas as pd
+from app.utils.logger import logger
 
 def parse_value_range(value_str):
     """Parses common value range strings into a numeric value and a unit string."""
@@ -107,7 +107,7 @@ def fiscal_quarter_to_date(qtr_str):
             elif quarter == 4:
                 month, year_offset = 7, 0
             else: # Should not happen due to regex
-                 logging.warning(f"Invalid quarter number {quarter} parsed from '{qtr_str_orig}'")
+                 logger.warning(f"Invalid quarter number {quarter} parsed from '{qtr_str_orig}'")
                  return pd.NaT, pd.NA # Return tuple
 
             fiscal_year = year # Use the derived/provided year as the fiscal year
@@ -117,10 +117,10 @@ def fiscal_quarter_to_date(qtr_str):
                 # Return both the timestamp and the fiscal year
                 return pd.Timestamp(f'{calendar_year}-{month:02d}-01'), fiscal_year
             except ValueError:
-                logging.warning(f"Date formation error Y={calendar_year}, M={month} from '{qtr_str_orig}'") # Log original string
+                logger.warning(f"Date formation error Y={calendar_year}, M={month} from '{qtr_str_orig}'") # Log original string
                 return pd.NaT, pd.NA # Return tuple on date creation error
     # Log warning only if it wasn't handled (i.e., not TBD and didn't match/parse correctly)
-    logging.warning(f"Could not parse fiscal quarter: {qtr_str_orig}") # Log original string
+    logger.warning(f"Could not parse fiscal quarter: {qtr_str_orig}") # Log original string
     return pd.NaT, pd.NA # Return tuple on regex failure or other parse issues
 
 def normalize_naics_code(naics_str):
@@ -148,7 +148,7 @@ def normalize_naics_code(naics_str):
     if naics_str.isdigit() and 2 <= len(naics_str) <= 6:
         return naics_str
     else:
-        logging.warning(f"Invalid NAICS code format: {naics_str}")
+        logger.warning(f"Invalid NAICS code format: {naics_str}")
         return pd.NA
 
 def split_place(place_str):
@@ -176,7 +176,7 @@ def split_place(place_str):
     parts_upper = [p.strip() for p in cleaned_upper.split(',') if p.strip()]
     is_multi_state = len(parts_upper) > 1 and all(len(p) <= 3 and p.isalpha() for p in parts_upper)
     if is_multi_state:
-        logging.info(f"Detected multi-state place: {place_str}. Storing original string in state.")
+        logger.info(f"Detected multi-state place: {place_str}. Storing original string in state.")
         return pd.NA, place_str.strip()
 
     # Proceed with standard City, State or State parsing (using original case string)
@@ -190,7 +190,7 @@ def split_place(place_str):
         if len(state_part) <= 3 and state_part.isalpha():
             return city.title(), state_part.upper()
         else:
-            logging.warning(f"Unexpected place format '{place_str}', treating as city: {city}")
+            logger.warning(f"Unexpected place format '{place_str}', treating as city: {city}")
             return city.title(), pd.NA
     elif len(parts) == 1:
         part = parts[0]
@@ -199,5 +199,5 @@ def split_place(place_str):
         else:
             return part.title(), pd.NA
     else:
-        logging.warning(f"Could not confidently split place: {place_str}")
+        logger.warning(f"Could not confidently split place: {place_str}")
         return pd.NA, pd.NA 

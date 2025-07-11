@@ -240,16 +240,6 @@ def clear_database(clear_type='all'):
         clear_functions[clear_type]
     )
 
-# Legacy route mappings for backward compatibility
-@main_bp.route('/database/clear-ai', methods=['POST'])
-def clear_ai_entries():
-    """Legacy endpoint - redirects to /database/clear/ai"""
-    return clear_database('ai')
-
-@main_bp.route('/database/clear-original', methods=['POST'])
-def clear_original_entries():
-    """Legacy endpoint - redirects to /database/clear/original"""
-    return clear_database('original')
 
 @main_bp.route('/database/status', methods=['GET'])
 def database_status():

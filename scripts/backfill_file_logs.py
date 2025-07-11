@@ -21,6 +21,7 @@ from app.database import db
 from app.database.models import DataSource, FileProcessingLog
 from app.services.file_validation_service import file_validation_service
 from app.utils.logger import logger
+from app.utils.file_utils import extract_timestamp_from_filename
 from app.config import active_config
 
 
@@ -40,22 +41,6 @@ def create_app():
 def get_raw_data_path():
     """Get the raw data directory path."""
     return Path(active_config.RAW_DATA_DIR)
-
-
-def extract_timestamp_from_filename(filename: str):
-    """Extract timestamp from filename with format: prefix_YYYYMMDD_HHMMSS.ext"""
-    import re
-    pattern = r'(\d{8}_\d{6})'
-    match = re.search(pattern, filename)
-    
-    if not match:
-        return None
-    
-    timestamp_str = match.group(1)
-    try:
-        return datetime.strptime(timestamp_str, '%Y%m%d_%H%M%S')
-    except ValueError:
-        return None
 
 
 def scan_raw_data_files():
