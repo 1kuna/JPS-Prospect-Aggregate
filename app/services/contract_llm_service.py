@@ -58,6 +58,10 @@ class ContractLLMService:
         
         naics_str = str(naics_str).strip()
         
+        # Handle TBD placeholder values from data sources
+        if naics_str.upper() in ['TBD', 'TO BE DETERMINED', 'N/A', 'NA']:
+            return {'code': None, 'description': None, 'standardized_format': None}
+        
         # Preprocess: Handle numeric NAICS codes with decimal points (e.g., "336510.0" -> "336510")
         # This fixes issues from data sources that parse NAICS as numeric values
         # Only process valid 6-digit NAICS codes, ignore invalid ones like "0.0", "2025.0", etc.

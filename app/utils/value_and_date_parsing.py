@@ -134,6 +134,10 @@ def normalize_naics_code(naics_str):
     if not naics_str:
         return pd.NA
     
+    # Handle TBD placeholder values from data sources
+    if naics_str.upper() in ['TBD', 'TO BE DETERMINED', 'N/A', 'NA']:
+        return pd.NA
+    
     # Remove any decimal point and trailing zeros (e.g., "237310.0" -> "237310")
     if '.' in naics_str:
         naics_str = naics_str.split('.')[0]

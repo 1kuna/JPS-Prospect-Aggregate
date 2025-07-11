@@ -624,6 +624,10 @@ def get_naics_description(naics_code: str) -> Optional[str]:
     """
     if not naics_code:
         return None
+    
+    # Handle TBD placeholder values from data sources
+    if str(naics_code).strip().upper() in ['TBD', 'TO BE DETERMINED', 'N/A', 'NA']:
+        return None
         
     # Clean the code - remove any non-digits
     clean_code = ''.join(c for c in str(naics_code) if c.isdigit())

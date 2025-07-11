@@ -43,14 +43,11 @@ export function useProspectColumns(showAIEnhanced: boolean) {
     }),
     columnHelper.accessor((row) => {
       const naics = showAIEnhanced ? row.naics : (row.naics_source === 'llm_inferred' ? null : row.naics);
-      const description = row.naics_description;
       
       if (!naics) return 'N/A';
       
-      // Use standardized pipe format: "334516 | Description"
-      const display = description ? `${naics} | ${description}` : naics;
-      
-      return display;
+      // Show only NAICS code without description
+      return naics;
     }, {
       id: 'naics',
       header: 'NAICS',
@@ -75,13 +72,15 @@ export function useProspectColumns(showAIEnhanced: boolean) {
           </div>
         );
       },
-      size: 200,
+      size: 100,
     }),
     columnHelper.accessor((row) => {
       // Helper function to format dollar amounts
       const formatAmount = (amount: number) => {
         if (amount >= 1000000) {
-          return `$${(amount / 1000000).toFixed(1)}M`;
+          const millions = amount / 1000000;
+          const hasDecimals = millions % 1 !== 0;
+          return hasDecimals ? `$${millions.toFixed(1)}M` : `$${Math.round(millions)}M`;
         } else if (amount >= 1000) {
           return `$${(amount / 1000).toFixed(0)}K`;
         } else {
@@ -129,7 +128,7 @@ export function useProspectColumns(showAIEnhanced: boolean) {
           </div>
         );
       },
-      size: 120,
+      size: 160,
     }),
     columnHelper.accessor((row) => {
       // Determine which date is earlier (due date)
