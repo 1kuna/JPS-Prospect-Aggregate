@@ -399,32 +399,46 @@ def _process_value_enhancement(prospect, llm_service, force_redo):
     if value_to_parse:
         
         parsed_value = llm_service.parse_contract_value_with_llm(value_to_parse, prospect_id=prospect.id)
-        if parsed_value['single'] is not None:
+        
+        # Check if we have either a single value OR a range (min/max)
+        has_single = parsed_value['single'] is not None
+        has_range = parsed_value['min'] is not None and parsed_value['max'] is not None
+        
+        if has_single or has_range:
             try:
                 # Safely convert to float with validation
                 single_val = float(parsed_value['single']) if parsed_value['single'] is not None else None
-                min_val = float(parsed_value['min']) if parsed_value['min'] is not None else single_val
-                max_val = float(parsed_value['max']) if parsed_value['max'] is not None else single_val
+                min_val = float(parsed_value['min']) if parsed_value['min'] is not None else None
+                max_val = float(parsed_value['max']) if parsed_value['max'] is not None else None
                 
-                # Only update if all conversions were successful
-                if single_val is not None:
+                # Update prospect with parsed values based on what we have
+                if has_single:
+                    # Single value - set only the single field
                     prospect.estimated_value_single = single_val
+                    prospect.estimated_value_min = None
+                    prospect.estimated_value_max = None
+                elif has_range:
+                    # Range value - set min/max, clear single
+                    prospect.estimated_value_single = None
                     prospect.estimated_value_min = min_val
                     prospect.estimated_value_max = max_val
-                    # Store the text version if it didn't exist
-                    if not prospect.estimated_value_text:
-                        prospect.estimated_value_text = value_to_parse
-                    
-                    # Commit to database immediately for real-time updates
-                    db.session.commit()
-                    
-                    # Emit completion event with new values
-                    emit_enhancement_progress(prospect.id, 'values_completed', {
-                        'estimated_value_single': single_val,
-                        'estimated_value_min': min_val,
-                        'estimated_value_max': max_val
-                    })
-                    return True
+                
+                # Store the text version if it didn't exist
+                if not prospect.estimated_value_text:
+                    prospect.estimated_value_text = value_to_parse
+                
+                # Commit to database immediately for real-time updates
+                db.session.commit()
+                
+                # Emit completion event with new values
+                emit_enhancement_progress(prospect.id, 'values_completed', {
+                    'estimated_value_single': single_val,
+                    'estimated_value_min': min_val,
+                    'estimated_value_max': max_val,
+                    'is_range': has_range and not has_single
+                })
+                return True
+                
             except (ValueError, TypeError) as e:
                 logger.warning(f"Failed to convert LLM parsed values to float for prospect {prospect.id}: {e}")
                 emit_enhancement_progress(prospect.id, 'values_failed', {'error': str(e)})
