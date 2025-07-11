@@ -199,8 +199,3 @@ class DocScraper(ConsolidatedScraperBase):
         )
 
 
-# For backward compatibility
-async def run_doc_scraper() -> int:
-    """Run the DOC scraper."""
-    scraper = DocScraper()
-    return await scraper.scrape()

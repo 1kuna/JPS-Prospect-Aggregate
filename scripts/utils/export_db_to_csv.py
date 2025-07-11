@@ -1,7 +1,6 @@
 import sqlite3
 import pandas as pd
 from pathlib import Path
-import logging
 import os
 import sys
 
@@ -12,11 +11,8 @@ if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
 from app import create_app # Import create_app
+from app.utils.logger import logger
 # --- End Path Setup ---
-
-# Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
 
 # --- Helper function to get DB path from app config ---
 def get_db_path_from_app_config(app):

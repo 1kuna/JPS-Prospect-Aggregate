@@ -7,37 +7,13 @@ N files per data source, deleting older files to prevent storage bloat.
 """
 
 import os
-import re
 import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Tuple
 import argparse
 from app.utils.logger import logger
-
-
-def extract_timestamp_from_filename(filename: str) -> datetime:
-    """
-    Extract timestamp from filename with format: prefix_YYYYMMDD_HHMMSS.ext
-    
-    Args:
-        filename: The filename to parse
-        
-    Returns:
-        datetime object representing the file's timestamp
-        
-    Raises:
-        ValueError: If timestamp cannot be extracted
-    """
-    # Pattern matches YYYYMMDD_HHMMSS in filename
-    pattern = r'(\d{8}_\d{6})'
-    match = re.search(pattern, filename)
-    
-    if not match:
-        raise ValueError(f"No timestamp found in filename: {filename}")
-    
-    timestamp_str = match.group(1)
-    return datetime.strptime(timestamp_str, '%Y%m%d_%H%M%S')
+from app.utils.file_utils import extract_timestamp_from_filename as extract_timestamp
 
 
 def get_files_by_source(raw_data_path: Path) -> Dict[str, List[Tuple[Path, datetime]]]:
@@ -65,11 +41,11 @@ def get_files_by_source(raw_data_path: Path) -> Dict[str, List[Tuple[Path, datet
         
         for file_path in source_dir.iterdir():
             if file_path.is_file():
-                try:
-                    timestamp = extract_timestamp_from_filename(file_path.name)
+                timestamp = extract_timestamp(file_path.name)
+                if timestamp is not None:
                     files_with_timestamps.append((file_path, timestamp))
-                except ValueError as e:
-                    logger.warning(f"Skipping file with invalid timestamp: {e}")
+                else:
+                    logger.warning(f"Skipping file with invalid timestamp: {file_path.name}")
                     continue
         
         # Sort by timestamp (newest first)
@@ -126,7 +102,8 @@ def apply_intelligent_retention_policy(files_by_source: Dict[str, List[Tuple[Pat
     
     for source_name, files_with_timestamps in files_by_source.items():
         # Get source ID for looking up successful files
-        source_id = file_validation_service.get_source_id_by_name(source_name)
+        from app.utils.database_helpers import get_data_source_id_by_name
+        source_id = get_data_source_id_by_name(source_name)
         
         # Get last 2 successfully processed files
         successful_files = []

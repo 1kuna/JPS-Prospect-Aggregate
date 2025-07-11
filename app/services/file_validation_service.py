@@ -9,7 +9,6 @@ This service provides:
 """
 
 import os
-import re
 import json
 from pathlib import Path
 from datetime import datetime
@@ -19,6 +18,7 @@ import pandas as pd
 from app.database import db
 from app.database.models import FileProcessingLog, DataSource
 from app.utils.logger import logger
+from app.utils.file_utils import extract_timestamp_from_filename
 from app.constants.agency_mapping import get_data_directory_mapping
 
 
@@ -28,26 +28,12 @@ class FileValidationService:
     def __init__(self):
         self.logger = logger.bind(name="services.file_validation")
     
-    def extract_timestamp_from_filename(self, filename: str) -> Optional[datetime]:
-        """Extract timestamp from filename with format: prefix_YYYYMMDD_HHMMSS.ext"""
-        pattern = r'(\d{8}_\d{6})'
-        match = re.search(pattern, filename)
-        
-        if not match:
-            return None
-        
-        timestamp_str = match.group(1)
-        try:
-            return datetime.strptime(timestamp_str, '%Y%m%d_%H%M%S')
-        except ValueError:
-            return None
-    
     def create_processing_log(self, source_id: int, file_path: str) -> FileProcessingLog:
         """Create a new file processing log entry."""
         file_path_obj = Path(file_path)
         file_name = file_path_obj.name
         file_size = file_path_obj.stat().st_size if file_path_obj.exists() else None
-        file_timestamp = self.extract_timestamp_from_filename(file_name)
+        file_timestamp = extract_timestamp_from_filename(file_name)
         
         if not file_timestamp:
             self.logger.warning(f"Could not extract timestamp from filename: {file_name}")
@@ -232,17 +218,6 @@ class FileValidationService:
         except Exception as e:
             self.logger.error(f"Error getting last successful files: {e}")
             return []
-    
-    def get_source_id_by_name(self, source_name: str) -> Optional[int]:
-        """Get data source ID by name."""
-        try:
-            source = db.session.query(DataSource).filter(
-                DataSource.name == source_name
-            ).first()
-            return source.id if source else None
-        except Exception as e:
-            self.logger.error(f"Error getting source ID for {source_name}: {e}")
-            return None
     
     def log_validation_summary(self, file_path: str, warnings: List[str], 
                              schema_issues: Dict[str, Any], is_likely_valid: bool):

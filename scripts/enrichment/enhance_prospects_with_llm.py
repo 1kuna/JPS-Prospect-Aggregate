@@ -5,7 +5,6 @@ Uses qwen3:8b via Ollama for modular enhancement.
 """
 
 import sys
-import logging
 import argparse
 from pathlib import Path
 from typing import Optional
@@ -19,13 +18,7 @@ from app import create_app
 from app.database import db
 from app.database.models import Prospect
 from app.services.contract_llm_service import ContractLLMService
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+from app.utils.logger import logger
 
 
 def check_ollama_status(model_name: str = 'qwen3:latest') -> bool:

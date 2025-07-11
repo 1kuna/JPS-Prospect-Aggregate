@@ -10,7 +10,6 @@ import sys
 import json
 import argparse
 from datetime import datetime, timedelta
-import logging
 from typing import Dict, List, Optional, Any
 from pathlib import Path
 
@@ -18,13 +17,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
 from dotenv import load_dotenv
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+from app.utils.logger import logger
 
 
 class DatabaseMonitor:

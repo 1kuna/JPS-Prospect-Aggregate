@@ -6,7 +6,6 @@ This script runs all configured scrapers to pull data from various government so
 """
 
 import sys
-import logging
 import time
 from pathlib import Path
 
@@ -26,18 +25,23 @@ from app.exceptions import ScraperError, NotFoundError
 # --- End Imports ---
 
 # --- Logging Setup ---
-# Use a basic configuration for this script
-log_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-log_handler = logging.StreamHandler(sys.stdout)
-log_handler.setFormatter(log_formatter)
+# Special Loguru configuration for stdout-only output
+from loguru import logger
 
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
-logger.addHandler(log_handler)
-logger.propagate = False
+# Remove default handlers
+logger.remove()
 
-# Silence SQLAlchemy INFO logs
+# Add stdout-only handler with custom format
+logger.add(
+    sys.stdout,
+    level="INFO",
+    format="{time:YYYY-MM-DD HH:mm:ss} - {level} - {message}"
+)
+
+# Silence SQLAlchemy logs directly
+import logging
 logging.getLogger('sqlalchemy.engine').setLevel(logging.WARNING)
+logging.getLogger('sqlalchemy.pool').setLevel(logging.WARNING)
 # --- End Logging Setup ---
 
 

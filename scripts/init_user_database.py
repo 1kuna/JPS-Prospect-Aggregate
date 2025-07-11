@@ -15,29 +15,19 @@ app_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(app_dir))
 
 from app import create_app
-from app.database import db
+from app.database.init_db import initialize_user_database
 from app.utils.logger import logger
 
 def init_user_database():
     """Initialize the user database with tables."""
     app = create_app()
+    success = initialize_user_database(app)
     
-    with app.app_context():
-        logger.info("Initializing user database...")
-        
-        try:
-            # Create all tables in the users bind
-            db.create_all(bind_key='users')
-            
-            logger.info("User database initialized successfully!")
-            logger.info("Created tables:")
-            logger.info("- users")
-            
-            return True
-            
-        except Exception as e:
-            logger.error(f"Error initializing user database: {str(e)}")
-            return False
+    if success:
+        logger.info("Created tables:")
+        logger.info("- users")
+    
+    return success
 
 if __name__ == '__main__':
     success = init_user_database()

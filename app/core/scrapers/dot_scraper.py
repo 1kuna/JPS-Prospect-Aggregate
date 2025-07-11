@@ -539,8 +539,3 @@ class DotScraper(ConsolidatedScraperBase):
         )
 
 
-# For backward compatibility
-async def run_dot_scraper() -> int:
-    """Run the DOT scraper."""
-    scraper = DotScraper()
-    return await scraper.scrape()

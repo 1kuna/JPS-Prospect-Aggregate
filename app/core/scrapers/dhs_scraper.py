@@ -149,8 +149,3 @@ class DHSForecastScraper(ConsolidatedScraperBase):
         return await self.scrape_with_structure()
 
 
-# For backward compatibility
-async def run_dhs_scraper() -> int:
-    """Run the DHS scraper."""
-    scraper = DHSForecastScraper()
-    return await scraper.scrape()

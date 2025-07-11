@@ -9,7 +9,6 @@ import sys
 import sqlite3
 import psycopg2
 from psycopg2.extras import execute_batch
-import logging
 from datetime import datetime
 import json
 from pathlib import Path
@@ -20,22 +19,26 @@ from typing import Dict, List, Tuple, Any
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
 from dotenv import load_dotenv
+from loguru import logger
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('migration.log'),
-        logging.StreamHandler()
-    ]
+# Configure Loguru for migration logging
+logger.remove()
+logger.add(
+    "migration.log",
+    level="INFO",
+    format="{time:YYYY-MM-DD HH:mm:ss} - {level} - {message}",
+    rotation="10 MB"
+)
+logger.add(
+    sys.stdout,
+    level="INFO", 
+    format="{time:YYYY-MM-DD HH:mm:ss} - {level} - {message}"
 )
 
 class DatabaseMigrator:
     def __init__(self, sqlite_path: str, postgres_url: str):
         self.sqlite_path = sqlite_path
         self.postgres_url = postgres_url
-        self.logger = logging.getLogger(__name__)
         self.error_count = 0
         self.warning_count = 0
         
@@ -51,9 +54,9 @@ class DatabaseMigrator:
     
     def migrate_business_database(self) -> bool:
         """Migrate business database from SQLite to PostgreSQL"""
-        self.logger.info("Starting business database migration")
-        self.logger.info(f"Source: {self.sqlite_path}")
-        self.logger.info(f"Target: {self.postgres_url.split('@')[1]}")  # Hide password
+        logger.info("Starting business database migration")
+        logger.info(f"Source: {self.sqlite_path}")
+        logger.info(f"Target: {self.postgres_url.split('@')[1]}")  # Hide password
         
         sqlite_conn = None
         pg_conn = None
@@ -74,14 +77,14 @@ class DatabaseMigrator:
             
             # Migrate each table
             for table_name, migration_func in migration_order:
-                self.logger.info(f"\nMigrating {table_name} table...")
+                logger.info(f"\nMigrating {table_name} table...")
                 
                 try:
                     migration_func(sqlite_conn, pg_cursor)
                     pg_conn.commit()
                 except Exception as e:
                     pg_conn.rollback()
-                    self.logger.error(f"Failed to migrate {table_name}: {e}")
+                    logger.error(f"Failed to migrate {table_name}: {e}")
                     self.error_count += 1
                     raise
             
@@ -89,16 +92,16 @@ class DatabaseMigrator:
             self._update_sequences(pg_cursor)
             pg_conn.commit()
             
-            self.logger.info("\n" + "="*50)
-            self.logger.info("Business database migration completed")
-            self.logger.info(f"Errors: {self.error_count}, Warnings: {self.warning_count}")
+            logger.info("\n" + "="*50)
+            logger.info("Business database migration completed")
+            logger.info(f"Errors: {self.error_count}, Warnings: {self.warning_count}")
             
             return self.error_count == 0
             
         except Exception as e:
             if pg_conn:
                 pg_conn.rollback()
-            self.logger.error(f"Migration failed: {e}")
+            logger.error(f"Migration failed: {e}")
             raise
         finally:
             if sqlite_conn:
@@ -108,9 +111,9 @@ class DatabaseMigrator:
     
     def migrate_user_database(self) -> bool:
         """Migrate user database from SQLite to PostgreSQL"""
-        self.logger.info("Starting user database migration")
-        self.logger.info(f"Source: {self.sqlite_path}")
-        self.logger.info(f"Target: {self.postgres_url.split('@')[1]}")  # Hide password
+        logger.info("Starting user database migration")
+        logger.info(f"Source: {self.sqlite_path}")
+        logger.info(f"Target: {self.postgres_url.split('@')[1]}")  # Hide password
         
         sqlite_conn = None
         pg_conn = None
@@ -133,16 +136,16 @@ class DatabaseMigrator:
             self._update_user_sequences(pg_cursor)
             pg_conn.commit()
             
-            self.logger.info("\n" + "="*50)
-            self.logger.info("User database migration completed")
-            self.logger.info(f"Errors: {self.error_count}, Warnings: {self.warning_count}")
+            logger.info("\n" + "="*50)
+            logger.info("User database migration completed")
+            logger.info(f"Errors: {self.error_count}, Warnings: {self.warning_count}")
             
             return self.error_count == 0
             
         except Exception as e:
             if pg_conn:
                 pg_conn.rollback()
-            self.logger.error(f"Migration failed: {e}")
+            logger.error(f"Migration failed: {e}")
             raise
         finally:
             if sqlite_conn:
@@ -185,14 +188,14 @@ class DatabaseMigrator:
             ))
         
         execute_batch(pg_cursor, insert_sql, batch_data, page_size=100)
-        self.logger.info(f"  ✓ Migrated {len(batch_data)} data sources")
+        logger.info(f"  ✓ Migrated {len(batch_data)} data sources")
     
     def _migrate_prospects(self, sqlite_conn: sqlite3.Connection, pg_cursor):
         """Special handling for prospects table due to JSON fields"""
         cursor = sqlite_conn.cursor()
         cursor.execute("SELECT COUNT(*) FROM prospects")
         total_count = cursor.fetchone()[0]
-        self.logger.info(f"  Found {total_count} prospects to migrate")
+        logger.info(f"  Found {total_count} prospects to migrate")
         
         # Process in batches to handle large datasets
         batch_size = 1000
@@ -241,7 +244,7 @@ class DatabaseMigrator:
                             try:
                                 confidence_scores = json.loads(confidence_scores)
                             except json.JSONDecodeError:
-                                self.logger.warning(f"Invalid JSON in llm_confidence_scores for prospect {row['id']}")
+                                logger.warning(f"Invalid JSON in llm_confidence_scores for prospect {row['id']}")
                                 confidence_scores = None
                     
                     # Convert boolean fields
@@ -261,17 +264,17 @@ class DatabaseMigrator:
                         row['created_at'], row['updated_at']
                     ))
                 except Exception as e:
-                    self.logger.error(f"Error processing prospect {row['id']}: {e}")
+                    logger.error(f"Error processing prospect {row['id']}: {e}")
                     self.error_count += 1
             
             if batch_data:
                 execute_batch(pg_cursor, insert_sql, batch_data, page_size=100)
                 total_migrated += len(batch_data)
-                self.logger.info(f"  Progress: {total_migrated}/{total_count} prospects migrated")
+                logger.info(f"  Progress: {total_migrated}/{total_count} prospects migrated")
             
             offset += batch_size
         
-        self.logger.info(f"  ✓ Migrated {total_migrated} prospects")
+        logger.info(f"  ✓ Migrated {total_migrated} prospects")
     
     def _migrate_scraper_status(self, sqlite_conn: sqlite3.Connection, pg_cursor):
         """Migrate scraper_status table"""
@@ -302,7 +305,7 @@ class DatabaseMigrator:
             ))
         
         execute_batch(pg_cursor, insert_sql, batch_data, page_size=100)
-        self.logger.info(f"  ✓ Migrated {len(batch_data)} scraper status records")
+        logger.info(f"  ✓ Migrated {len(batch_data)} scraper status records")
     
     def _migrate_decisions(self, sqlite_conn: sqlite3.Connection, pg_cursor):
         """Migrate decisions table"""
@@ -330,7 +333,7 @@ class DatabaseMigrator:
             ))
         
         execute_batch(pg_cursor, insert_sql, batch_data, page_size=100)
-        self.logger.info(f"  ✓ Migrated {len(batch_data)} decisions")
+        logger.info(f"  ✓ Migrated {len(batch_data)} decisions")
     
     def _migrate_users(self, sqlite_conn: sqlite3.Connection, pg_cursor):
         """Migrate users table"""
@@ -362,7 +365,7 @@ class DatabaseMigrator:
             ))
         
         execute_batch(pg_cursor, insert_sql, batch_data, page_size=100)
-        self.logger.info(f"  ✓ Migrated {len(batch_data)} users")
+        logger.info(f"  ✓ Migrated {len(batch_data)} users")
     
     def _migrate_user_settings(self, sqlite_conn: sqlite3.Connection, pg_cursor):
         """Migrate user_settings table"""
@@ -387,7 +390,7 @@ class DatabaseMigrator:
             ))
         
         execute_batch(pg_cursor, insert_sql, batch_data, page_size=100)
-        self.logger.info(f"  ✓ Migrated {len(batch_data)} user settings")
+        logger.info(f"  ✓ Migrated {len(batch_data)} user settings")
     
     def _update_sequences(self, pg_cursor):
         """Update PostgreSQL sequences to match SQLite auto-increment values"""
@@ -398,7 +401,7 @@ class DatabaseMigrator:
             ('decisions_id_seq', 'decisions')
         ]
         
-        self.logger.info("\nUpdating sequences...")
+        logger.info("\nUpdating sequences...")
         for seq_name, table_name in sequences:
             try:
                 pg_cursor.execute(f"""
@@ -408,9 +411,9 @@ class DatabaseMigrator:
                 """)
                 pg_cursor.execute(f"SELECT last_value FROM {seq_name}")
                 last_value = pg_cursor.fetchone()[0]
-                self.logger.info(f"  ✓ Set {seq_name} to {last_value}")
+                logger.info(f"  ✓ Set {seq_name} to {last_value}")
             except Exception as e:
-                self.logger.warning(f"  ⚠ Could not update {seq_name}: {e}")
+                logger.warning(f"  ⚠ Could not update {seq_name}: {e}")
                 self.warning_count += 1
     
     def _update_user_sequences(self, pg_cursor):
@@ -420,7 +423,7 @@ class DatabaseMigrator:
             ('user_settings_id_seq', 'user_settings')
         ]
         
-        self.logger.info("\nUpdating user sequences...")
+        logger.info("\nUpdating user sequences...")
         for seq_name, table_name in sequences:
             try:
                 # Check if table exists first
@@ -440,15 +443,15 @@ class DatabaseMigrator:
                     """)
                     pg_cursor.execute(f"SELECT last_value FROM {seq_name}")
                     last_value = pg_cursor.fetchone()[0]
-                    self.logger.info(f"  ✓ Set {seq_name} to {last_value}")
+                    logger.info(f"  ✓ Set {seq_name} to {last_value}")
             except Exception as e:
-                self.logger.warning(f"  ⚠ Could not update {seq_name}: {e}")
+                logger.warning(f"  ⚠ Could not update {seq_name}: {e}")
                 self.warning_count += 1
     
     def verify_migration(self) -> bool:
         """Verify data integrity after migration"""
-        self.logger.info("\n" + "="*50)
-        self.logger.info("Verifying migration integrity...")
+        logger.info("\n" + "="*50)
+        logger.info("Verifying migration integrity...")
         
         sqlite_conn = None
         pg_conn = None
@@ -479,9 +482,9 @@ class DatabaseMigrator:
                 pg_count = pg_cursor.fetchone()[0]
                 
                 if sqlite_count == pg_count:
-                    self.logger.info(f"  ✓ {table}: {sqlite_count} rows verified")
+                    logger.info(f"  ✓ {table}: {sqlite_count} rows verified")
                 else:
-                    self.logger.error(f"  ✗ {table}: SQLite={sqlite_count}, PostgreSQL={pg_count}")
+                    logger.error(f"  ✗ {table}: SQLite={sqlite_count}, PostgreSQL={pg_count}")
                     all_valid = False
                 
                 # Sample data verification (check first 10 rows)
@@ -503,14 +506,14 @@ class DatabaseMigrator:
                         pg_row = pg_cursor.fetchone()
                         
                         if not pg_row or row[1:] != pg_row:
-                            self.logger.error(f"  ✗ Data mismatch in {table} id={row[0]}")
+                            logger.error(f"  ✗ Data mismatch in {table} id={row[0]}")
                             all_valid = False
                             break
             
             if all_valid:
-                self.logger.info("\n✅ Migration verification completed successfully")
+                logger.info("\n✅ Migration verification completed successfully")
             else:
-                self.logger.error("\n❌ Migration verification failed")
+                logger.error("\n❌ Migration verification failed")
             
             return all_valid
             

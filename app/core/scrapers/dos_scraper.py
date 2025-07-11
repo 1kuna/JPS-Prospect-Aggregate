@@ -200,8 +200,3 @@ class DOSForecastScraper(ConsolidatedScraperBase):
         )
 
 
-# For backward compatibility
-async def run_dos_scraper() -> int:
-    """Run the DOS scraper."""
-    scraper = DOSForecastScraper()
-    return await scraper.scrape()

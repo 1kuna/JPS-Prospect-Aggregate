@@ -226,8 +226,3 @@ class DOJForecastScraper(ConsolidatedScraperBase):
         )
 
 
-# For backward compatibility
-async def run_doj_scraper() -> int:
-    """Run the DOJ scraper."""
-    scraper = DOJForecastScraper()
-    return await scraper.scrape()

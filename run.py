@@ -8,7 +8,6 @@ This script starts the Flask web application using the Waitress WSGI server.
 
 import os
 import sys
-from dotenv import load_dotenv
 from waitress import serve
 from app import create_app
 from app.utils.logger import logger
@@ -16,8 +15,7 @@ from app.utils.logger import logger
 # Add the project root to the path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-# Load environment variables from .env file
-load_dotenv()
+# Environment variables are loaded by app.config during app creation
 
 # Get configuration from environment variables
 HOST = os.getenv('HOST', '0.0.0.0')
