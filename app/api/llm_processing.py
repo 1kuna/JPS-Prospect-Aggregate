@@ -643,7 +643,7 @@ def _process_set_aside_enhancement(prospect, llm_service, force_redo):
     if should_process and prospect.set_aside:
         # Process set aside using the LLM service
         try:
-            processed_count = llm_service.enhance_prospect_set_asides([prospect])
+            processed_count = llm_service.enhance_prospect_set_asides([prospect], force_redo=force_redo)
             
             if processed_count > 0:
                 # Refresh the prospect to get updated inferred data
