@@ -8,23 +8,14 @@ import re
 from enum import Enum
 
 class StandardSetAside(Enum):
-    """Standardized set-aside types based on federal procurement regulations"""
+    """Simplified standardized set-aside types for business development focus"""
     SMALL_BUSINESS = "Small Business"
-    SMALL_BUSINESS_TOTAL = "Small Business Total"
-    EIGHT_A_COMPETITIVE = "8(a) Competitive"
-    EIGHT_A_SOLE_SOURCE = "8(a) Sole Source"
+    EIGHT_A = "8(a)"
     HUBZONE = "HUBZone"
-    HUBZONE_SOLE_SOURCE = "HUBZone Sole Source"
-    WOSB = "Women-Owned Small Business"
-    EDWOSB = "Economically Disadvantaged Women-Owned Small Business"
-    SDVOSB = "Service-Disabled Veteran-Owned Small Business"
-    SDVOSB_SOLE_SOURCE = "Service-Disabled Veteran-Owned Small Business Sole Source"
-    SDB = "Small Disadvantaged Business"
-    VOSB = "Veteran-Owned Small Business"
-    FULL_AND_OPEN = "Full and Open Competition"
-    UNRESTRICTED = "Unrestricted"
+    WOMEN_OWNED = "Women-Owned"
+    VETERAN_OWNED = "Veteran-Owned"
+    FULL_AND_OPEN = "Full and Open"
     SOLE_SOURCE = "Sole Source"
-    OTHER_THAN_SMALL = "Other Than Small Business"
     NOT_AVAILABLE = "N/A"
 
 class SetAsideStandardizer:
@@ -37,44 +28,61 @@ class SetAsideStandardizer:
     def _build_mapping_rules(self) -> Dict[str, StandardSetAside]:
         """Build exact mapping rules for known values"""
         return {
-            # Exact matches (case-insensitive)
+            # Small Business (consolidates all small business types)
             "small business": StandardSetAside.SMALL_BUSINESS,
-            "small business set-aside": StandardSetAside.SMALL_BUSINESS_TOTAL,
-            "small business set aside - total": StandardSetAside.SMALL_BUSINESS_TOTAL,
-            "small business total set-aside": StandardSetAside.SMALL_BUSINESS_TOTAL,
-            "determined small business set aside - total": StandardSetAside.SMALL_BUSINESS_TOTAL,
-            "8(a) competitive": StandardSetAside.EIGHT_A_COMPETITIVE,
-            "8(a) sole source": StandardSetAside.EIGHT_A_SOLE_SOURCE,
-            "8(a) non-competitive": StandardSetAside.EIGHT_A_SOLE_SOURCE,
+            "small business set-aside": StandardSetAside.SMALL_BUSINESS,
+            "small business set aside - total": StandardSetAside.SMALL_BUSINESS,
+            "small business total set-aside": StandardSetAside.SMALL_BUSINESS,
+            "determined small business set aside - total": StandardSetAside.SMALL_BUSINESS,
+            "small disadvantaged business": StandardSetAside.SMALL_BUSINESS,
+            "small disadvantaged business (sdb)": StandardSetAside.SMALL_BUSINESS,
+            "other than small business": StandardSetAside.SMALL_BUSINESS,
+            
+            # 8(a) Program (consolidates competitive/sole source)
+            "8(a) competitive": StandardSetAside.EIGHT_A,
+            "8(a) sole source": StandardSetAside.EIGHT_A,
+            "8(a) non-competitive": StandardSetAside.EIGHT_A,
+            
+            # HUBZone (consolidates competitive/sole source)
             "hubzone": StandardSetAside.HUBZONE,
-            "hubzone sole source": StandardSetAside.HUBZONE_SOLE_SOURCE,
-            "women-owned small business (wosb)": StandardSetAside.WOSB,
-            "woman owned small business": StandardSetAside.WOSB,
-            "wosb competitive": StandardSetAside.WOSB,
-            "economically disadvantaged women-owned small business (edwosb)": StandardSetAside.EDWOSB,
-            "service-disabled veteran owned small business": StandardSetAside.SDVOSB,
-            "set-aside - service disabled veteran owned small business": StandardSetAside.SDVOSB,
-            "sdvosb competitive": StandardSetAside.SDVOSB,
-            "sdvosb sole source": StandardSetAside.SDVOSB_SOLE_SOURCE,
-            "service-disabled vet-owned": StandardSetAside.SDVOSB,
-            "small disadvantaged business": StandardSetAside.SDB,
-            "small disadvantaged business (sdb)": StandardSetAside.SDB,
-            "set-aside - veteran": StandardSetAside.VOSB,
+            "hubzone sole source": StandardSetAside.HUBZONE,
+            
+            # Women-Owned (consolidates WOSB/EDWOSB)
+            "women-owned small business (wosb)": StandardSetAside.WOMEN_OWNED,
+            "woman owned small business": StandardSetAside.WOMEN_OWNED,
+            "wosb competitive": StandardSetAside.WOMEN_OWNED,
+            "economically disadvantaged women-owned small business (edwosb)": StandardSetAside.WOMEN_OWNED,
+            
+            # Veteran-Owned (consolidates all veteran programs)
+            "service-disabled veteran owned small business": StandardSetAside.VETERAN_OWNED,
+            "set-aside - service disabled veteran owned small business": StandardSetAside.VETERAN_OWNED,
+            "sdvosb competitive": StandardSetAside.VETERAN_OWNED,
+            "sdvosb sole source": StandardSetAside.VETERAN_OWNED,
+            "service-disabled vet-owned": StandardSetAside.VETERAN_OWNED,
+            "set-aside - veteran": StandardSetAside.VETERAN_OWNED,
+            
+            # Full and Open (consolidates open competition types)
             "full and open": StandardSetAside.FULL_AND_OPEN,
             "full": StandardSetAside.FULL_AND_OPEN,
-            "full and open/unrestricted": StandardSetAside.UNRESTRICTED,
+            "full and open/unrestricted": StandardSetAside.FULL_AND_OPEN,
+            "unrestricted": StandardSetAside.FULL_AND_OPEN,
             "competitive": StandardSetAside.FULL_AND_OPEN,
-            "sole source": StandardSetAside.SOLE_SOURCE,
-            "other than small business": StandardSetAside.OTHER_THAN_SMALL,
             
-            # Common non-informative values
+            # Sole Source
+            "sole source": StandardSetAside.SOLE_SOURCE,
+            
+            # Common non-informative values (with punctuation variations)
             "determined": StandardSetAside.NOT_AVAILABLE,
             "currently this information not available": StandardSetAside.NOT_AVAILABLE,
+            "currently, this information is not available": StandardSetAside.NOT_AVAILABLE,
+            "currently this information is not available": StandardSetAside.NOT_AVAILABLE,
             "[tbd]": StandardSetAside.NOT_AVAILABLE,
             "tbd": StandardSetAside.NOT_AVAILABLE,
+            "to be determined": StandardSetAside.NOT_AVAILABLE,
             "undecided": StandardSetAside.NOT_AVAILABLE,
             "other": StandardSetAside.NOT_AVAILABLE,
             "follow- action": StandardSetAside.NOT_AVAILABLE,
+            "follow-action": StandardSetAside.NOT_AVAILABLE,
             "partial": StandardSetAside.NOT_AVAILABLE,
             "broad agency announcement (baa)": StandardSetAside.NOT_AVAILABLE,
             "mandatory source": StandardSetAside.NOT_AVAILABLE,
@@ -83,45 +91,42 @@ class SetAsideStandardizer:
     def _build_pattern_rules(self) -> List[Tuple[str, StandardSetAside]]:
         """Build regex pattern rules for fuzzy matching"""
         return [
-            # Small Business patterns
-            (r'small\s+business\s+set[- ]?aside', StandardSetAside.SMALL_BUSINESS_TOTAL),
+            # Small Business patterns (consolidates all small business types)
+            (r'small\s+business\s+set[- ]?aside', StandardSetAside.SMALL_BUSINESS),
             (r'small\s+business(?!\s+other)', StandardSetAside.SMALL_BUSINESS),
             (r'\bsb\b(?!\s*(competitive|sole|source))', StandardSetAside.SMALL_BUSINESS),
+            (r'small\s+disadvantaged\s+business', StandardSetAside.SMALL_BUSINESS),
+            (r'\bsdb\b', StandardSetAside.SMALL_BUSINESS),
+            (r'other\s+than\s+small\s+business', StandardSetAside.SMALL_BUSINESS),
             
-            # 8(a) patterns  
-            (r'8\s*\(\s*a\s*\)\s*competitive', StandardSetAside.EIGHT_A_COMPETITIVE),
-            (r'8\s*\(\s*a\s*\)\s*(sole\s*source|non[- ]?competitive)', StandardSetAside.EIGHT_A_SOLE_SOURCE),
-            (r'eight\s*a\s*competitive', StandardSetAside.EIGHT_A_COMPETITIVE),
+            # 8(a) patterns (consolidates competitive/sole source)
+            (r'8\s*\(\s*a\s*\)', StandardSetAside.EIGHT_A),
+            (r'eight\s*a', StandardSetAside.EIGHT_A),
             
-            # HUBZone patterns
-            (r'hub\s*zone\s*sole\s*source', StandardSetAside.HUBZONE_SOLE_SOURCE),
+            # HUBZone patterns (consolidates competitive/sole source)
             (r'hub\s*zone', StandardSetAside.HUBZONE),
             
-            # Women-owned patterns
-            (r'economically\s+disadvantaged\s+women[- ]?owned', StandardSetAside.EDWOSB),
-            (r'edwosb', StandardSetAside.EDWOSB),
-            (r'women?[- ]?owned\s+small\s+business', StandardSetAside.WOSB),
-            (r'wosb', StandardSetAside.WOSB),
+            # Women-owned patterns (consolidates WOSB/EDWOSB)
+            (r'economically\s+disadvantaged\s+women[- ]?owned', StandardSetAside.WOMEN_OWNED),
+            (r'edwosb', StandardSetAside.WOMEN_OWNED),
+            (r'women?[- ]?owned\s+small\s+business', StandardSetAside.WOMEN_OWNED),
+            (r'wosb', StandardSetAside.WOMEN_OWNED),
+            (r'women?\s+owned', StandardSetAside.WOMEN_OWNED),
             
-            # Veteran patterns
-            (r'service[- ]?disabled\s+veteran[- ]?owned', StandardSetAside.SDVOSB),
-            (r'sdvosb\s*sole\s*source', StandardSetAside.SDVOSB_SOLE_SOURCE),
-            (r'sdvosb', StandardSetAside.SDVOSB),
-            (r'veteran[- ]?owned', StandardSetAside.VOSB),
-            (r'\bvosb\b', StandardSetAside.VOSB),
+            # Veteran patterns (consolidates all veteran programs)
+            (r'service[- ]?disabled\s+veteran[- ]?owned', StandardSetAside.VETERAN_OWNED),
+            (r'sdvosb', StandardSetAside.VETERAN_OWNED),
+            (r'veteran[- ]?owned', StandardSetAside.VETERAN_OWNED),
+            (r'\bvosb\b', StandardSetAside.VETERAN_OWNED),
+            (r'service\s+disabled', StandardSetAside.VETERAN_OWNED),
             
-            # Disadvantaged patterns
-            (r'small\s+disadvantaged\s+business', StandardSetAside.SDB),
-            (r'\bsdb\b', StandardSetAside.SDB),
-            
-            # Open competition patterns
-            (r'full\s+and\s+open\s*/?\s*unrestricted', StandardSetAside.UNRESTRICTED),
+            # Open competition patterns (consolidates unrestricted/competitive)
             (r'full\s+and\s+open', StandardSetAside.FULL_AND_OPEN),
-            (r'unrestricted', StandardSetAside.UNRESTRICTED),
+            (r'unrestricted', StandardSetAside.FULL_AND_OPEN),
+            (r'\bfull\b(?!\s+and\s+open)', StandardSetAside.FULL_AND_OPEN),
             
-            # Other patterns
+            # Sole Source patterns
             (r'sole\s+source', StandardSetAside.SOLE_SOURCE),
-            (r'other\s+than\s+small\s+business', StandardSetAside.OTHER_THAN_SMALL),
         ]
     
     def standardize_set_aside(self, value: Optional[str]) -> StandardSetAside:
@@ -189,11 +194,13 @@ class SetAsideStandardizer:
 
 Rules:
 1. Use "N/A" for unclear, missing, or non-informative values like "TBD", "Determined", "Other"
-2. "Small Business Total" is for total set-asides, "Small Business" is for general small business
-3. Distinguish between competitive and sole source awards when possible
-4. Map variations like "WOSB", "Women Owned", "Woman-Owned" to "Women-Owned Small Business"
-5. Map "SDVOSB", "Service Disabled Veteran" variations to "Service-Disabled Veteran-Owned Small Business"
-6. Use "Full and Open Competition" for competitive processes, "Unrestricted" for truly unrestricted
+2. "Small Business" includes all small business set-asides (SDB, small business total, etc.)
+3. "8(a)" includes both competitive and sole source 8(a) awards
+4. "HUBZone" includes both competitive and sole source HUBZone awards
+5. "Women-Owned" includes WOSB, EDWOSB, and all women-owned variations
+6. "Veteran-Owned" includes SDVOSB, VOSB, and all veteran-owned variations
+7. "Full and Open" includes unrestricted, competitive, and open competition
+8. "Sole Source" is only for explicit sole source procurements (not set-aside types)
 
 Input: "{{}}"
 

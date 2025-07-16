@@ -394,7 +394,12 @@ export function ProspectDetailsModal({
                   </div>
                   <div>
                     <span className="font-medium text-gray-700">Set Aside:</span>
-                    <p className="mt-1 text-gray-900">{selectedProspect.set_aside || 'N/A'}</p>
+                    <p className="mt-1 text-gray-900">
+                      {selectedProspect.inferred_set_aside || selectedProspect.set_aside || 'N/A'}
+                      {selectedProspect.inferred_set_aside && selectedProspect.inferred_set_aside !== selectedProspect.set_aside && (
+                        <span className="ml-2 text-sm text-blue-600 font-medium">(AI Enhanced)</span>
+                      )}
+                    </p>
                   </div>
                   <div>
                     <span className="font-medium text-gray-700">Award Fiscal Year:</span>

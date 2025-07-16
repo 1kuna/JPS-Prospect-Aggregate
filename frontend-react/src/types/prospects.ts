@@ -26,6 +26,9 @@ export interface Prospect {
   place_country: string | null;
   contract_type: string | null;
   set_aside: string | null;
+  inferred_set_aside: string | null; // NEW: AI-enhanced set-aside classification
+  inferred_naics: string | null; // NEW: AI-inferred NAICS code
+  inferred_naics_description: string | null; // NEW: AI-inferred NAICS description
   primary_contact_email: string | null; // NEW: LLM-extracted email
   primary_contact_name: string | null; // NEW: LLM-extracted name
   loaded_at: string | null; // ISO datetime string

@@ -105,8 +105,11 @@ class Prospect(db.Model): # Renamed back to Prospect
             "extra": clean_value(self.extra) if self.extra else None,
             "source_id": self.source_id,
             "source_name": self.data_source.name if self.data_source else None,
-            # Add inferred data if needed in the future
-            # "inferred_data": self.inferred_data.to_dict() if self.inferred_data else None
+            # Include key inferred fields for frontend display
+            "inferred_set_aside": self.inferred_data.inferred_set_aside if self.inferred_data else None,
+            "ai_enhanced_title": self.inferred_data.inferred_requirement_title if self.inferred_data else None,
+            "inferred_naics": self.inferred_data.inferred_naics if self.inferred_data else None,
+            "inferred_naics_description": self.inferred_data.inferred_naics_description if self.inferred_data else None
         }
 
 class InferredProspectData(db.Model): # Renamed back

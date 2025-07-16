@@ -765,13 +765,15 @@ class ContractLLMService:
         
         return backfilled_count
     
-    def enhance_prospect_set_asides(self, prospects: List[Prospect], commit_batch_size: int = 100) -> int:
+    def enhance_prospect_set_asides(self, prospects: List[Prospect], commit_batch_size: int = 100, force_redo: bool = False) -> int:
         """
-        Enhance set-aside field values using LLM classification and rule-based standardization.
+        Enhance set-aside field values using fully LLM-based classification.
+        All set-aside values are sent directly to the LLM for consistent processing.
         
         Args:
             prospects: List of Prospect objects to enhance
             commit_batch_size: Number of prospects to commit in each batch
+            force_redo: If True, re-process prospects even if they already have inferred set-aside data
             
         Returns:
             Number of prospects enhanced
@@ -782,7 +784,7 @@ class ContractLLMService:
         prospects_to_enhance = [
             p for p in prospects 
             if p.set_aside and p.set_aside.strip() and 
-            (not p.inferred_data or not p.inferred_data.inferred_set_aside)
+            (force_redo or not p.inferred_data or not p.inferred_data.inferred_set_aside)
         ]
         
         if not prospects_to_enhance:
@@ -793,23 +795,15 @@ class ContractLLMService:
         
         for i, prospect in enumerate(prospects_to_enhance):
             try:
-                # First try rule-based standardization
-                standardized = self.set_aside_standardizer.standardize_set_aside(prospect.set_aside)
-                confidence = self.set_aside_standardizer.get_confidence_score(prospect.set_aside, standardized)
-                
-                # Use LLM for low-confidence cases or ambiguous values
-                if confidence < 0.7 or standardized == StandardSetAside.NOT_AVAILABLE:
-                    llm_result = self._enhance_set_aside_with_llm(prospect.set_aside, prospect.id)
-                    if llm_result and llm_result.get('standardized_set_aside'):
-                        inferred_set_aside = llm_result['standardized_set_aside']
-                        llm_confidence = llm_result.get('confidence', 0.5)
-                    else:
-                        inferred_set_aside = standardized.value
-                        llm_confidence = confidence
+                # Use LLM for all set-aside processing (fully LLM-based approach)
+                llm_result = self._enhance_set_aside_with_llm(prospect.set_aside, prospect.id)
+                if llm_result and llm_result.get('standardized_set_aside'):
+                    inferred_set_aside = llm_result['standardized_set_aside']
+                    llm_confidence = llm_result.get('confidence', 0.8)
                 else:
-                    # Use rule-based result
-                    inferred_set_aside = standardized.value
-                    llm_confidence = confidence
+                    # Fallback to N/A if LLM fails
+                    inferred_set_aside = "N/A"
+                    llm_confidence = 0.5
                 
                 # Ensure prospect has inferred_data record
                 if not prospect.inferred_data:
