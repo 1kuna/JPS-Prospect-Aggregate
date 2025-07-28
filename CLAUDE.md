@@ -271,4 +271,3 @@ Built-in utility manages storage with rolling cleanup policy:
 - **Current Impact**: 50% storage reduction (86 files/84MB → 43 files/42MB)
 - **Default**: Keeps 3 most recent files per data source
 - **Safety**: Dry-run mode by default with detailed logging
-

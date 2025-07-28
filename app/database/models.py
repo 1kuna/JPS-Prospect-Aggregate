@@ -107,7 +107,6 @@ class Prospect(db.Model): # Renamed back to Prospect
             "source_name": self.data_source.name if self.data_source else None,
             # Include key inferred fields for frontend display
             "inferred_set_aside": self.inferred_data.inferred_set_aside if self.inferred_data else None,
-            "ai_enhanced_title": self.inferred_data.inferred_requirement_title if self.inferred_data else None,
             "inferred_naics": self.inferred_data.inferred_naics if self.inferred_data else None,
             "inferred_naics_description": self.inferred_data.inferred_naics_description if self.inferred_data else None
         }
