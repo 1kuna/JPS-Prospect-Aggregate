@@ -187,8 +187,9 @@ def preview_llm_enhancement():
         if not prospect:
             return jsonify({"error": "Prospect not found"}), 404
             
-        # Initialize the LLM service
-        llm_service = ContractLLMService(model_name='qwen3:latest')
+        # Initialize the base LLM service for individual enhancement previews
+        from app.services.base_llm_service import BaseLLMService
+        llm_service = BaseLLMService(model_name='qwen3:latest')
         
         preview_enhancements = {}
         confidence_scores = {}
