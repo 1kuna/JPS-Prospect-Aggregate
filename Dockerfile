@@ -144,15 +144,35 @@ run_migrations() {\n\
     export FLASK_APP=run.py\n\
     export FLASK_ENV=production\n\
     \n\
-    # Check current state first\n\
-    check_migration_state\n\
+    # Check if this is a completely fresh database\n\
+    log "Checking if database is initialized..."\n\
+    if ! python -c "from app import create_app, db; app = create_app(); app.app_context().push(); db.engine.execute('SELECT 1 FROM alembic_version LIMIT 1')" 2>/dev/null; then\n\
+        log "Fresh database detected - no alembic_version table exists"\n\
+        log "Will run full migration setup"\n\
+        FRESH_DB=true\n\
+    else\n\
+        log "Existing database detected - checking migration state"\n\
+        check_migration_state\n\
+        FRESH_DB=false\n\
+    fi\n\
     \n\
-    # Run migrations with better error handling\n\
+    # Run migrations with detailed logging\n\
+    log "Executing flask db upgrade..."\n\
     MIGRATION_OUTPUT=$(flask db upgrade 2>&1)\n\
     MIGRATION_EXIT_CODE=$?\n\
     \n\
+    log "Migration command completed with exit code: $MIGRATION_EXIT_CODE"\n\
+    \n\
     if [ $MIGRATION_EXIT_CODE -eq 0 ]; then\n\
         log "Database migrations completed successfully"\n\
+        \n\
+        # Verify tables were created\n\
+        if python -c "from app import create_app, db; app = create_app(); app.app_context().push(); db.engine.execute('SELECT 1 FROM prospects LIMIT 1')" 2>/dev/null; then\n\
+            log "SUCCESS: prospects table exists and is accessible"\n\
+        else\n\
+            log "WARNING: Migration succeeded but prospects table not accessible"\n\
+        fi\n\
+        \n\
         return 0\n\
     else\n\
         log "ERROR: Database migrations failed with exit code $MIGRATION_EXIT_CODE"\n\
@@ -185,26 +205,32 @@ run_migrations() {\n\
         log "Checking migration heads..."\n\
         flask db heads || true\n\
         \n\
-        # Try to create the alembic_version table if it doesnt exist\n\
-        log "Attempting to create alembic_version table..."\n\
-        python -c "\n\
-import os\n\
-os.environ['"'"'FLASK_APP'"'"'] = '"'"'run.py'"'"'\n\
-from app import create_app, db\n\
-from sqlalchemy import text\n\
-app = create_app()\n\
-with app.app_context():\n\
-    try:\n\
-        db.engine.execute(text('"'"'CREATE TABLE IF NOT EXISTS alembic_version (version_num VARCHAR(32) NOT NULL, CONSTRAINT alembic_version_pkc PRIMARY KEY (version_num))'"'"'))\n\
-        print('"'"'alembic_version table created or already exists'"'"')\n\
-    except Exception as e:\n\
-        print(f'"'"'Error creating alembic_version table: {e}'"'"')\n\
-" 2>/dev/null || true\n\
+        # Show more detailed error information\n\
+        log "Full migration output:"\n\
+        echo "$MIGRATION_OUTPUT"\n\
         \n\
-        # For now, continue running the app even if migrations fail\n\
-        # This allows the app to start with existing database schema\n\
-        log "WARNING: Continuing despite migration errors - will try to run app anyway"\n\
-        return 0\n\
+        # Try to diagnose the issue\n\
+        log "Attempting to diagnose migration issues..."\n\
+        \n\
+        # Check if alembic_version table exists\n\
+        if python -c "from app import create_app, db; app = create_app(); app.app_context().push(); db.engine.execute('SELECT 1 FROM alembic_version LIMIT 1')" 2>/dev/null; then\n\
+            log "alembic_version table exists"\n\
+        else\n\
+            log "alembic_version table missing - creating it"\n\
+            python -c "from app import create_app, db; from sqlalchemy import text; app = create_app(); app.app_context().push(); db.engine.execute(text('CREATE TABLE IF NOT EXISTS alembic_version (version_num VARCHAR(32) NOT NULL, CONSTRAINT alembic_version_pkc PRIMARY KEY (version_num))'))" 2>/dev/null || true\n\
+        fi\n\
+        \n\
+        # List available migrations\n\
+        log "Available migration files:"\n\
+        ls -la /app/migrations/versions/ | head -10\n\
+        \n\
+        # Try one more time with very verbose output\n\
+        log "Attempting migration retry with verbose output..."\n\
+        flask db upgrade --verbose 2>&1 || true\n\
+        \n\
+        # For now, exit with error to prevent app startup with broken migrations\n\
+        log "ERROR: Cannot continue with failed migrations"\n\
+        exit 1\n\
     fi\n\
 }\n\
 \n\
