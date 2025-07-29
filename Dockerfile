@@ -4,7 +4,7 @@ FROM node:18-slim as frontend-builder
 # Build React frontend
 WORKDIR /app/frontend-react
 COPY frontend-react/package*.json ./
-RUN npm ci --only=production
+RUN npm ci
 
 COPY frontend-react/ ./
 RUN npm run build

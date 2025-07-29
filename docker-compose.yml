@@ -1,5 +1,3 @@
-version: '3.8'
-
 # Load environment variables from .env.production
 # Copy .env.production.example to .env.production and configure your settings
 # This file should contain your secret database passwords and keys
