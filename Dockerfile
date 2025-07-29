@@ -77,9 +77,20 @@ COPY . .
 # Copy built frontend from frontend builder
 COPY --from=frontend-builder /app/frontend-react/dist ./frontend-react/dist
 
-# Entrypoint script temporarily disabled - will fix separately
-# COPY docker/entrypoint.sh /entrypoint.sh
-# RUN chmod +x /entrypoint.sh
+# Create entrypoint script inline to avoid copy issues
+RUN echo '#!/bin/bash\n\
+set -e\n\
+echo "Starting JPS Prospect Aggregate application..."\n\
+echo "Waiting for database to be ready..."\n\
+while ! nc -z db 5432; do\n\
+  sleep 1\n\
+done\n\
+echo "Database is ready!"\n\
+echo "Running database migrations..."\n\
+cd /app\n\
+python -m alembic -c migrations/alembic.ini upgrade head\n\
+echo "Starting application..."\n\
+exec "$@"' > /entrypoint.sh && chmod +x /entrypoint.sh
 
 # Install Playwright browsers
 RUN playwright install chromium
@@ -94,6 +105,6 @@ EXPOSE 5001
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:5001/health || exit 1
 
-# Entrypoint temporarily disabled - start app directly
-# ENTRYPOINT ["/entrypoint.sh"]
+# Use entrypoint script for database migrations
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["python", "run.py"]
