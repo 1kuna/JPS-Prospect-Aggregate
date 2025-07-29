@@ -43,7 +43,9 @@ services:
       - ./backups:/backups
     entrypoint: >
       sh -c "
-        chmod +x /docker-entrypoint-initdb.d/init-db.sh &&
+        cp /docker-entrypoint-initdb.d/init-db.sh /tmp/init-db.sh &&
+        chmod +x /tmp/init-db.sh &&
+        mv /tmp/init-db.sh /docker-entrypoint-initdb.d/init-db.sh &&
         docker-entrypoint.sh postgres
       "
     healthcheck:
