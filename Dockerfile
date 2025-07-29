@@ -7,6 +7,15 @@ COPY frontend-react/package*.json ./
 RUN npm ci
 
 COPY frontend-react/ ./
+
+# Debug: List files to verify what was copied
+RUN echo "=== DEBUG: Listing copied files ===" && \
+    find . -name "*.ts" -o -name "*.tsx" | head -20 && \
+    echo "=== DEBUG: Checking specific utils.ts ===" && \
+    ls -la src/lib/ || echo "src/lib/ directory not found" && \
+    echo "=== DEBUG: Checking if utils.ts exists ===" && \
+    cat src/lib/utils.ts || echo "utils.ts file not found"
+
 RUN npm run build
 
 # Python dependencies builder
