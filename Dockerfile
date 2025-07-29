@@ -88,7 +88,7 @@ done\n\
 echo "Database is ready!"\n\
 echo "Running database migrations..."\n\
 cd /app\n\
-python -m alembic -c migrations/alembic.ini upgrade head\n\
+flask db upgrade\n\
 echo "Starting application..."\n\
 exec "$@"' > /entrypoint.sh && chmod +x /entrypoint.sh
 
