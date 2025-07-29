@@ -38,7 +38,7 @@ def update_alembic_ini():
     pattern = r'sqlalchemy\.url\s*=\s*.*'
     
     # Check if we're in production or development
-    if os.path.exists('.env.production') and os.getenv('FLASK_ENV') == 'production':
+    if os.path.exists('.env') and os.getenv('FLASK_ENV') == 'production':
         # Use environment variable in production
         replacement = 'sqlalchemy.url = %(DATABASE_URL)s'
         
@@ -51,7 +51,7 @@ def update_alembic_ini():
     else:
         # Use direct PostgreSQL URL for development
         from dotenv import load_dotenv
-        load_dotenv('.env.production')
+        load_dotenv('.env')
         db_url = os.getenv('DATABASE_URL', 'postgresql://jps_business_user:password@localhost:5432/jps_aggregate')
         replacement = f'sqlalchemy.url = {db_url}'
     
@@ -124,7 +124,7 @@ def update_migrations_env():
     """Run migrations in 'online' mode with PostgreSQL optimizations."""
     
     # Load environment variables
-    load_dotenv('.env.production')
+    load_dotenv('.env')
     
     # Get database URL from environment or config
     database_url = os.getenv('DATABASE_URL')
@@ -224,7 +224,7 @@ def verify_postgresql_setup():
     
     # Check if we can connect to PostgreSQL
     from dotenv import load_dotenv
-    load_dotenv('.env.production')
+    load_dotenv('.env')
     
     db_url = os.getenv('DATABASE_URL')
     if not db_url:

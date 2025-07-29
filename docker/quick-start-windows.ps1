@@ -18,8 +18,12 @@ Write-Host "Docker Desktop is running." -ForegroundColor Green
 Write-Host "`nChecking configuration..." -ForegroundColor Yellow
 if (-not (Test-Path ".env")) {
     Write-Host ".env file not found! Creating from template..." -ForegroundColor Yellow
-    Copy-Item ".env.production" ".env"
-    Write-Host "Please edit .env file with your settings before continuing." -ForegroundColor Red
+    Copy-Item ".env.example" ".env"
+    Write-Host "Please edit .env file with your settings:" -ForegroundColor Red
+    Write-Host "- Set ENVIRONMENT=production" -ForegroundColor Yellow
+    Write-Host "- Set strong DB_PASSWORD" -ForegroundColor Yellow
+    Write-Host "- Set SECRET_KEY" -ForegroundColor Yellow
+    Write-Host "- Update DATABASE_URL and USER_DATABASE_URL to production values" -ForegroundColor Yellow
     notepad .env
     Write-Host "Press any key when you've saved your .env file..." -ForegroundColor Yellow
     $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')

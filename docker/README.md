@@ -85,7 +85,7 @@ See [setup-production.md](setup-production.md#troubleshooting) for detailed trou
 
 ## Support Files
 
-- **`.env.production`** - Template for environment variables
+- **`.env`** - Template for environment variables
 - **`Dockerfile`** - Container definition for the Flask app
 - **`docker-compose.yml`** - Orchestrates all services
 - **`.dockerignore`** - Excludes unnecessary files from builds

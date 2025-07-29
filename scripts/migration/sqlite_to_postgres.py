@@ -533,8 +533,8 @@ def main():
                         help='Only migrate business database')
     parser.add_argument('--users-only', action='store_true',
                         help='Only migrate users database')
-    parser.add_argument('--env-file', default='.env.production',
-                        help='Environment file to load (default: .env.production)')
+    parser.add_argument('--env-file', default='.env',
+                        help='Environment file to load (default: .env)')
     
     args = parser.parse_args()
     

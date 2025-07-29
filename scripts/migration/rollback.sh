@@ -20,10 +20,10 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Load environment if available
-if [ -f "/opt/jps/.env.production" ]; then
-    source /opt/jps/.env.production
-elif [ -f "$PROJECT_ROOT/.env.production" ]; then
-    source "$PROJECT_ROOT/.env.production"
+if [ -f "/opt/jps/.env" ]; then
+    source /opt/jps/.env
+elif [ -f "$PROJECT_ROOT/.env" ]; then
+    source "$PROJECT_ROOT/.env"
 fi
 
 # Logging
@@ -216,8 +216,8 @@ USER_DATABASE_URL=sqlite:///data/jps_users.db
 EOF
 
 # Append non-database settings from production env
-if [ -f ".env.production" ]; then
-    grep -v "DATABASE_URL\|POSTGRES_" .env.production >> .env.sqlite
+if [ -f ".env" ]; then
+    grep -v "DATABASE_URL\|POSTGRES_" .env >> .env.sqlite
 fi
 
 # Backup current .env and switch to SQLite
