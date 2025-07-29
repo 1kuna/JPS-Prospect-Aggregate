@@ -154,8 +154,14 @@ run_migrations() {\n\
             log "The migration has been updated to handle this gracefully"\n\
             log "Attempting to mark migration as completed..."\n\
             \n\
-            # Try to stamp the migration as complete if columns already exist\n\
-            flask db stamp fbc0e1fbf50d 2>/dev/null || true\n\
+            # Check which column is causing the issue\n\
+            if echo "$MIGRATION_OUTPUT" | grep -q "ai_enhanced_title"; then\n\
+                log "ai_enhanced_title column already exists, stamping migration 5fb5cc7eff5b"\n\
+                flask db stamp 5fb5cc7eff5b 2>/dev/null || true\n\
+            elif echo "$MIGRATION_OUTPUT" | grep -q "estimated_value_text"; then\n\
+                log "estimated_value_text column already exists, stamping migration fbc0e1fbf50d"\n\
+                flask db stamp fbc0e1fbf50d 2>/dev/null || true\n\
+            fi\n\
             \n\
             # Try to continue with remaining migrations\n\
             if flask db upgrade; then\n\

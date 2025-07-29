@@ -4,9 +4,12 @@
 
 I've fixed the Docker migration issues by:
 
-1. **Updated the problematic migration** (`fbc0e1fbf50d`) to safely handle existing columns
-2. **Enhanced the Docker entrypoint** to better handle migration failures
-3. **Created repair scripts** for fixing migration state issues
+1. **Updated TWO problematic migrations** to safely handle existing columns:
+   - `fbc0e1fbf50d` - for estimated_value_text and related columns
+   - `5fb5cc7eff5b` - for ai_enhanced_title column
+2. **Fixed docker-compose.yml** database creation syntax error
+3. **Enhanced the Docker entrypoint** to handle multiple duplicate column scenarios
+4. **Created repair scripts** for fixing migration state issues
 
 ## How to Deploy the Fix
 
@@ -34,23 +37,26 @@ I've fixed the Docker migration issues by:
    docker-compose up -d
    ```
 
-### Option 2: Fix Existing Installation
+### Option 2: Fix Existing Installation (Windows PowerShell)
 
 If you want to fix the existing installation without rebuilding:
 
 1. **Push the changes from your Mac** (same as Option 1, step 1)
 
-2. **On Windows, pull changes and run the fix script:**
+2. **On Windows, pull changes and run the PowerShell fix script:**
    ```powershell
    # Pull latest changes
    git pull origin main
    
-   # Make the script executable (Git Bash or WSL)
-   chmod +x scripts/docker_migration_fix.sh
-   
-   # Run the migration fix
-   ./scripts/docker_migration_fix.sh
+   # Run the Windows reset script
+   .\scripts\windows_docker_reset.ps1
    ```
+
+   This script will:
+   - Stop containers safely
+   - Clean up migration state
+   - Rebuild only the web container
+   - Restart services with proper migration handling
 
 ### Option 3: Manual Fix (if scripts don't work)
 
@@ -143,7 +149,10 @@ To prevent this in the future:
 ## Files Changed
 
 - `/migrations/versions/fbc0e1fbf50d_add_contract_mapping_fields_and_llm_.py` - Made column additions safe
+- `/migrations/versions/5fb5cc7eff5b_add_ai_enhanced_title_field_to_.py` - Made ai_enhanced_title addition safe
+- `/docker-compose.yml` - Fixed PostgreSQL database creation syntax
 - `/migrations/alembic_helpers.py` - Created helper functions for safe migrations
-- `/Dockerfile` - Enhanced entrypoint script with better error handling
+- `/Dockerfile` - Enhanced entrypoint script with better error handling for multiple scenarios
 - `/scripts/repair_migrations.py` - Python script to repair migration issues
 - `/scripts/docker_migration_fix.sh` - Bash script for Docker environments
+- `/scripts/windows_docker_reset.ps1` - PowerShell script for Windows users
