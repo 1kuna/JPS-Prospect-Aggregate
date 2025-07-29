@@ -39,12 +39,16 @@ services:
       - PGDATA=/var/lib/postgresql/data/pgdata
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./docker/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh
       - ./backups:/backups
     entrypoint: >
       sh -c "
-        chmod +x /docker-entrypoint-initdb.d/init-db.sh &&
-        docker-entrypoint.sh postgres
+        docker-entrypoint.sh postgres &
+        sleep 15 &&
+        until pg_isready -U jps_user -d postgres; do sleep 1; done &&
+        psql -U jps_user -d postgres -c \"SELECT 'CREATE DATABASE jps_prospects' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'jps_prospects')\\gexec\" &&
+        psql -U jps_user -d postgres -c \"SELECT 'CREATE DATABASE jps_users' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'jps_users')\\gexec\" &&
+        echo 'Databases created successfully' &&
+        wait
       "
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U jps_user -d jps_prospects"]
