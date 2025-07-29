@@ -77,15 +77,15 @@ COPY . .
 # Copy built frontend from frontend builder
 COPY --from=frontend-builder /app/frontend-react/dist ./frontend-react/dist
 
+# Copy and setup entrypoint script
+COPY docker/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
 # Install Playwright browsers
 RUN playwright install chromium
 
 # Create directories for logs and data
 RUN mkdir -p logs logs/error_screenshots logs/error_html data
-
-# Run database migrations on startup
-COPY docker/entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
 
 # Expose port 5001 (standardized)
 EXPOSE 5001
