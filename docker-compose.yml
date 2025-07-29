@@ -45,8 +45,8 @@ services:
         docker-entrypoint.sh postgres &
         sleep 15 &&
         until pg_isready -U jps_user -d postgres; do sleep 1; done &&
-        psql -U jps_user -d postgres -c \"SELECT 'CREATE DATABASE jps_prospects' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'jps_prospects')\\gexec\" &&
-        psql -U jps_user -d postgres -c \"SELECT 'CREATE DATABASE jps_users' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'jps_users')\\gexec\" &&
+        psql -U jps_user -d postgres -tc \"SELECT 1 FROM pg_database WHERE datname = 'jps_prospects'\" | grep -q 1 || psql -U jps_user -d postgres -c \"CREATE DATABASE jps_prospects\" &&
+        psql -U jps_user -d postgres -tc \"SELECT 1 FROM pg_database WHERE datname = 'jps_users'\" | grep -q 1 || psql -U jps_user -d postgres -c \"CREATE DATABASE jps_users\" &&
         echo 'Databases created successfully' &&
         wait
       "
