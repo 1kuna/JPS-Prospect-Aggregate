@@ -71,16 +71,16 @@ RUN apt-get update && apt-get install -y \
 COPY --from=python-builder /root/.local /root/.local
 ENV PATH=/root/.local/bin:$PATH
 
+# Copy entrypoint script first (before copying everything)
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
 # Copy application code
 WORKDIR /app
 COPY . .
 
 # Copy built frontend from frontend builder
 COPY --from=frontend-builder /app/frontend-react/dist ./frontend-react/dist
-
-# Copy entrypoint script
-COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
 
 # Install Playwright browsers
 RUN playwright install chromium
