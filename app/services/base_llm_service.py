@@ -468,22 +468,234 @@ class BaseLLMService:
             
             return {'enhanced_title': None, 'confidence': 0.0, 'reasoning': ''}
     
-    def standardize_set_aside_with_llm(self, set_aside_text: str, prospect_id: str = None) -> Optional[StandardSetAside]:
+    def standardize_set_aside_with_llm(self, set_aside_text: str, prospect_id: str = None, prospect: 'Prospect' = None) -> Optional[StandardSetAside]:
         """
-        Use the SetAsideStandardizer to standardize set-aside values.
-        This wraps the standardizer for consistency with other LLM methods.
+        Standardize set-aside values using pure LLM-based classification.
+        This provides intelligent, context-aware categorization for all inputs.
+        Now includes additional data sources like DHS small_business_program.
+        """
+        # Gather comprehensive set-aside data from all available sources
+        comprehensive_data = self._get_comprehensive_set_aside_data(set_aside_text, prospect)
+        
+        if not comprehensive_data or not comprehensive_data.strip():
+            return StandardSetAside.NOT_AVAILABLE
+            
+        try:
+            # Use LLM for all set-aside classification with comprehensive data
+            llm_result = self._classify_set_aside_with_llm(comprehensive_data, prospect_id)
+            if llm_result:
+                if prospect_id:
+                    logger.info(f"LLM set-aside classification for prospect {prospect_id}: '{comprehensive_data}' -> {llm_result.code}")
+                return llm_result
+            
+            # If LLM fails completely, default to N/A
+            logger.warning(f"LLM classification failed for set-aside '{comprehensive_data}', defaulting to N/A")
+            return StandardSetAside.NOT_AVAILABLE
+            
+        except Exception as e:
+            logger.error(f"Error in LLM set-aside classification for '{comprehensive_data}': {e}")
+            return StandardSetAside.NOT_AVAILABLE
+    
+    def _get_comprehensive_set_aside_data(self, set_aside_text: str, prospect: Optional['Prospect'] = None) -> str:
+        """
+        Gather comprehensive set-aside data from all available sources.
+        
+        For DHS prospects, this includes checking the extra JSON for original_small_business_program
+        data that might not have been properly consolidated into the main set_aside field.
+        """
+        # Start with the main set_aside field
+        main_set_aside = (set_aside_text or "").strip()
+        
+        # Check for additional data sources in prospect.extra
+        additional_data = ""
+        field_found = None
+        if prospect and prospect.extra and isinstance(prospect.extra, dict):
+            # Check for DHS small_business_program data (try both field names for backward compatibility)
+            # 1. Try preferred field name first
+            small_business_program = prospect.extra.get('original_small_business_program', '').strip()
+            if small_business_program and small_business_program.lower() not in ['none', 'n/a', 'tbd', '']:
+                additional_data = small_business_program
+                field_found = 'original_small_business_program'
+            else:
+                # 2. Try legacy field name for backward compatibility
+                small_business_program = prospect.extra.get('small_business_program', '').strip()
+                if small_business_program and small_business_program.lower() not in ['none', 'n/a', 'tbd', '']:
+                    additional_data = small_business_program
+                    field_found = 'small_business_program'
+        
+        # Log which field was found for debugging
+        if field_found:
+            logger.info(f"Found additional set-aside data in field '{field_found}': '{additional_data}'")
+        
+        # Combine data sources intelligently
+        if main_set_aside and additional_data:
+            # Both sources have data - combine them
+            if main_set_aside.lower() != additional_data.lower():  # Avoid duplicate info
+                comprehensive_data = f"Set-aside: {main_set_aside}; Small Business Program: {additional_data}"
+                logger.info(f"Combined set-aside data: '{comprehensive_data}'")
+                return comprehensive_data
+            else:
+                logger.info(f"Same data in both sources, using: '{main_set_aside}'")
+                return main_set_aside  # Same info, just use one
+        elif main_set_aside:
+            # Only main field has data
+            logger.info(f"Using main set_aside field: '{main_set_aside}'")
+            return main_set_aside
+        elif additional_data:
+            # Only additional source has data (like DHS small_business_program)
+            comprehensive_data = f"Small Business Program: {additional_data}"
+            logger.info(f"Using additional data source: '{comprehensive_data}'")
+            return comprehensive_data
+        else:
+            # No meaningful data found
+            logger.info("No meaningful set-aside data found in any source")
+            return ""
+    
+    def _classify_set_aside_with_llm(self, set_aside_text: str, prospect_id: str = None) -> Optional[StandardSetAside]:
+        """
+        Use LLM to intelligently classify set-aside values into standardized categories.
         """
         try:
-            result = self.set_aside_standardizer.standardize(set_aside_text)
+            # Get the LLM prompt from the standardizer
+            prompt = self.set_aside_standardizer.get_llm_prompt().format(set_aside_text)
             
-            # Log the standardization attempt if prospect_id provided
-            if prospect_id and result:
-                logger.info(f"Standardized set-aside for prospect {prospect_id}: {set_aside_text} -> {result.code}")
+            # Call the LLM
+            start_time = time.time()
+            response = call_ollama(prompt, self.model_name)
+            processing_time = time.time() - start_time
             
-            return result
-        except Exception as e:
-            logger.error(f"Error standardizing set-aside: {e}")
+            if not response:
+                logger.warning(f"LLM call failed for set-aside classification: '{set_aside_text}'")
+                
+                # Log failed output
+                if prospect_id:
+                    self._log_llm_output(
+                        prospect_id=prospect_id,
+                        enhancement_type='set_aside_standardization',
+                        prompt=prompt,
+                        response='',
+                        parsed_result={},
+                        success=False,
+                        error_message="LLM call failed - no response received",
+                        processing_time=processing_time
+                    )
+                return None
+                
+            # Clean and parse the response
+            response_text = self._clean_llm_response(response)
+            
+            # Map the response back to the enum with fuzzy matching
+            result = self._match_response_to_enum(response_text, set_aside_text)
+            if result:
+                logger.info(f"LLM classified set-aside '{set_aside_text}' as {result.code}")
+                
+                # Log successful output
+                if prospect_id:
+                    self._log_llm_output(
+                        prospect_id=prospect_id,
+                        enhancement_type='set_aside_standardization',
+                        prompt=prompt,
+                        response=response,
+                        parsed_result={
+                            'standardized_code': result.code,
+                            'standardized_label': result.label,
+                            'original_input': set_aside_text,
+                            'llm_response': response_text
+                        },
+                        success=True,
+                        processing_time=processing_time
+                    )
+                
+                return result
+            
+            # If no match found, log the unexpected response
+            logger.warning(f"LLM returned unrecognized set-aside classification: '{response_text}' for input '{set_aside_text}'")
+            
+            # Log failed output for unrecognized response
+            if prospect_id:
+                self._log_llm_output(
+                    prospect_id=prospect_id,
+                    enhancement_type='set_aside_standardization',
+                    prompt=prompt,
+                    response=response,
+                    parsed_result={'llm_response': response_text, 'original_input': set_aside_text},
+                    success=False,
+                    error_message=f"Unrecognized LLM response: '{response_text}'",
+                    processing_time=processing_time
+                )
+            
             return None
+            
+        except Exception as e:
+            logger.error(f"Error in LLM set-aside classification for '{set_aside_text}': {e}")
+            
+            # Log failed output for exceptions
+            if prospect_id:
+                self._log_llm_output(
+                    prospect_id=prospect_id,
+                    enhancement_type='set_aside_standardization',
+                    prompt=prompt if 'prompt' in locals() else '',
+                    response=response if 'response' in locals() else '',
+                    parsed_result={'original_input': set_aside_text},
+                    success=False,
+                    error_message=str(e),
+                    processing_time=time.time() - start_time if 'start_time' in locals() else None
+                )
+            
+            return None
+    
+    def _clean_llm_response(self, response: str) -> str:
+        """
+        Clean LLM response to extract just the classification result.
+        """
+        response = response.strip()
+        
+        # Remove common LLM artifacts like thinking tags
+        response = re.sub(r'<think>.*?</think>', '', response, flags=re.DOTALL)
+        response = re.sub(r'<thinking>.*?</thinking>', '', response, flags=re.DOTALL)
+        
+        # Remove extra explanations - keep only the first line if it's a category
+        lines = [line.strip() for line in response.split('\n') if line.strip()]
+        if lines:
+            # Use the first non-empty line
+            response = lines[0]
+        
+        return response.strip()
+    
+    def _match_response_to_enum(self, response_text: str, original_input: str) -> Optional[StandardSetAside]:
+        """
+        Match LLM response to StandardSetAside enum with fuzzy matching.
+        """
+        if not response_text:
+            return None
+            
+        # First try exact match (case-insensitive)
+        for set_aside_type in StandardSetAside:
+            if set_aside_type.value.lower() == response_text.lower():
+                return set_aside_type
+        
+        # Try fuzzy matching for common variations
+        response_lower = response_text.lower()
+        
+        # Handle common LLM response variations
+        if 'small business' in response_lower or response_lower == 'small':
+            return StandardSetAside.SMALL_BUSINESS
+        elif '8(a)' in response_lower or 'eight a' in response_lower or response_lower == '8a':
+            return StandardSetAside.EIGHT_A
+        elif 'hubzone' in response_lower or 'hub zone' in response_lower:
+            return StandardSetAside.HUBZONE
+        elif 'women' in response_lower and 'owned' in response_lower:
+            return StandardSetAside.WOMEN_OWNED
+        elif 'veteran' in response_lower and 'owned' in response_lower:
+            return StandardSetAside.VETERAN_OWNED
+        elif 'full and open' in response_lower or response_lower == 'unrestricted':
+            return StandardSetAside.FULL_AND_OPEN
+        elif 'sole source' in response_lower:
+            return StandardSetAside.SOLE_SOURCE
+        elif response_lower in ['n/a', 'na', 'not available', 'none', 'unknown']:
+            return StandardSetAside.NOT_AVAILABLE
+            
+        return None
     
     def process_single_prospect_enhancement(self, prospect: Prospect, 
                                           enhancement_type: str = "all",
@@ -605,17 +817,25 @@ class BaseLLMService:
             if progress_callback:
                 progress_callback({"status": "processing", "field": "set_asides", "prospect_id": prospect.id})
             
-            if prospect.set_aside and not prospect.set_aside_standardized:
-                standardized = self.standardize_set_aside_with_llm(prospect.set_aside, prospect_id=prospect.id)
-                if standardized:
-                    prospect.set_aside_standardized = standardized.code
-                    prospect.set_aside_standardized_label = standardized.label
-                    
-                    prospect.extra['set_aside_standardization'] = {
-                        'original': prospect.set_aside,
-                        'standardized_at': datetime.now(timezone.utc).isoformat()
-                    }
-                    results['set_asides'] = True
+            # Process if not already standardized (includes prospects with NULL set_aside but potential extra data)
+            if not prospect.set_aside_standardized:
+                # Get comprehensive data BEFORE calling LLM
+                comprehensive_data = self._get_comprehensive_set_aside_data(prospect.set_aside, prospect)
+                if comprehensive_data:
+                    standardized = self.standardize_set_aside_with_llm(comprehensive_data, prospect_id=prospect.id, prospect=prospect)
+                    if standardized:
+                        prospect.set_aside_standardized = standardized.code
+                        prospect.set_aside_standardized_label = standardized.label
+                        
+                        # Also populate inferred_set_aside for frontend compatibility
+                        prospect.inferred_set_aside = standardized.label
+                        
+                        prospect.extra['set_aside_standardization'] = {
+                            'original_set_aside': prospect.set_aside,
+                            'comprehensive_data_used': comprehensive_data,
+                            'standardized_at': datetime.now(timezone.utc).isoformat()
+                        }
+                        results['set_asides'] = True
         
         # Update timestamps if any enhancements were made
         if any(results.values()):

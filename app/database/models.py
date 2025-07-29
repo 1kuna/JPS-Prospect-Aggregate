@@ -31,6 +31,8 @@ class Prospect(db.Model): # Renamed back to Prospect
     place_country = Column(Text)
     contract_type = Column(Text)
     set_aside = Column(Text)
+    set_aside_standardized = Column(String(50), index=True)  # New: Standardized set-aside code
+    set_aside_standardized_label = Column(String(100))  # New: Human-readable set-aside label
     primary_contact_email = Column(String(100), index=True)  # New: LLM-extracted email
     primary_contact_name = Column(String(100))  # New: LLM-extracted name
     loaded_at = Column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now(), index=True)
@@ -94,6 +96,8 @@ class Prospect(db.Model): # Renamed back to Prospect
             "place_country": self.place_country,
             "contract_type": self.contract_type,
             "set_aside": self.set_aside,
+            "set_aside_standardized": self.set_aside_standardized,
+            "set_aside_standardized_label": self.set_aside_standardized_label,
             "primary_contact_email": self.primary_contact_email,
             "primary_contact_name": self.primary_contact_name,
             "loaded_at": self.loaded_at.isoformat() if self.loaded_at else None,

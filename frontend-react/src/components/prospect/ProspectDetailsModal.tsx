@@ -8,7 +8,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { ReloadIcon, ChevronDownIcon } from '@radix-ui/react-icons';
+import { ReloadIcon, ChevronDownIcon, DotsVerticalIcon } from '@radix-ui/react-icons';
 import { GoNoGoDecision } from '@/components/GoNoGoDecision';
 import { EnhancementButton } from '@/components/EnhancementButton';
 import { EnhancementProgress } from '@/components/EnhancementProgress';
@@ -16,6 +16,14 @@ import { EnhancementErrorBoundary } from '@/components/EnhancementErrorBoundary'
 import { useIsSuperAdmin } from '@/hooks/api/useAuth';
 import type { Prospect } from '@/types/prospects';
 import { useState } from 'react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuCheckboxItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 interface ProspectDetailsModalProps {
   isOpen: boolean;
@@ -34,7 +42,7 @@ interface ProspectDetailsModalProps {
       contacts?: { completed: boolean };
     };
   } | null;
-  addToQueue: (params: { prospect_id: string; force_redo: boolean; user_id: number }) => void;
+  addToQueue: (params: { prospect_id: string; force_redo: boolean; user_id: number; enhancement_types?: string[] }) => void;
   formatUserDate: (dateString: string | null | undefined, format?: 'date' | 'datetime' | 'time' | 'relative', options?: Partial<Record<string, unknown>>) => string;
 }
 
@@ -50,6 +58,55 @@ export function ProspectDetailsModal({
 }: ProspectDetailsModalProps) {
   const isSuperAdmin = useIsSuperAdmin();
   const [showRawData, setShowRawData] = useState(false);
+  
+  // Enhancement types state
+  const [selectedEnhancementTypes, setSelectedEnhancementTypes] = useState({
+    values: true,
+    titles: true,
+    naics: true,
+    set_asides: true,
+  });
+  
+  const enhancementOptions = [
+    { key: 'values', label: 'Values' },
+    { key: 'titles', label: 'Titles' },
+    { key: 'naics', label: 'NAICS' },
+    { key: 'set_asides', label: 'Set-Asides' },
+  ] as const;
+  
+  const handleEnhancementTypeChange = (type: string, checked: boolean) => {
+    setSelectedEnhancementTypes(prev => ({
+      ...prev,
+      [type]: checked
+    }));
+  };
+  
+  const getSelectedEnhancementTypes = () => {
+    return Object.entries(selectedEnhancementTypes)
+      .filter(([_, selected]) => selected)
+      .map(([type, _]) => type);
+  };
+  
+  const selectAllEnhancements = () => {
+    setSelectedEnhancementTypes({
+      values: true,
+      titles: true,
+      naics: true,
+      set_asides: true,
+    });
+  };
+  
+  const deselectAllEnhancements = () => {
+    setSelectedEnhancementTypes({
+      values: false,
+      titles: false,
+      naics: false,
+      set_asides: false,
+    });
+  };
+  
+  const hasAnySelected = Object.values(selectedEnhancementTypes).some(selected => selected);
+  const hasAllSelected = Object.values(selectedEnhancementTypes).every(selected => selected);
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
@@ -129,46 +186,101 @@ export function ProspectDetailsModal({
                       'Not enhanced'
                     }
                   </div>
-                  <Button
-                    onClick={() => {
-                      if (selectedProspect) {
-                        addToQueue({
-                          prospect_id: selectedProspect.id,
-                          force_redo: true,
-                          user_id: 1
-                        });
-                      }
-                    }}
-                    disabled={(() => {
-                      const queueStatus = getProspectStatus(selectedProspect?.id);
-                      return queueStatus?.status === 'processing' || 
-                             queueStatus?.status === 'queued';
-                    })()}
-                    variant="outline"
-                    size="sm"
-                    className="text-blue-700 border-blue-300 hover:bg-blue-100 disabled:bg-gray-100 disabled:text-gray-400"
-                  >
-                    {(() => {
-                      const queueStatus = getProspectStatus(selectedProspect?.id);
-                      if (queueStatus?.status === 'processing') {
-                        return (
-                          <>
-                            <ReloadIcon className="mr-2 h-3 w-3 animate-spin" />
-                            {queueStatus?.currentStep || 'Re-enhancing...'}
-                          </>
-                        );
-                      } else if (queueStatus?.status === 'queued') {
-                        return (
-                          <>
-                            <ReloadIcon className="mr-2 h-3 w-3 animate-spin" />
-                            Queued (#{queueStatus.queuePosition})
-                          </>
-                        );
-                      } else {
-                        return 'Redo Enhancement';
-                      }
-                    })()}
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    {/* Enhancement options dropdown */}
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-blue-700 border-blue-300 hover:bg-blue-100 disabled:bg-gray-100 disabled:text-gray-400 px-2"
+                          disabled={(() => {
+                            const queueStatus = getProspectStatus(selectedProspect?.id);
+                            return queueStatus?.status === 'processing' || 
+                                   queueStatus?.status === 'queued';
+                          })()}
+                        >
+                          <DotsVerticalIcon className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-48">
+                        <DropdownMenuLabel>Enhancement Options</DropdownMenuLabel>
+                        <DropdownMenuSeparator />
+                        {enhancementOptions.map((option) => (
+                          <DropdownMenuCheckboxItem
+                            key={option.key}
+                            checked={selectedEnhancementTypes[option.key as keyof typeof selectedEnhancementTypes]}
+                            onCheckedChange={(checked) => handleEnhancementTypeChange(option.key, checked)}
+                            onSelect={(event) => {
+                              event.preventDefault(); // Prevent dropdown from closing
+                            }}
+                          >
+                            {option.label}
+                          </DropdownMenuCheckboxItem>
+                        ))}
+                        <DropdownMenuSeparator />
+                        <DropdownMenuCheckboxItem
+                          checked={hasAllSelected}
+                          onCheckedChange={(checked) => checked ? selectAllEnhancements() : deselectAllEnhancements()}
+                          onSelect={(event) => {
+                            event.preventDefault(); // Prevent dropdown from closing
+                          }}
+                          className="font-medium"
+                        >
+                          {hasAllSelected ? 'Deselect All' : 'Select All'}
+                        </DropdownMenuCheckboxItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                    
+                    {/* Main Redo Enhancement button */}
+                    <Button
+                      onClick={() => {
+                        if (selectedProspect && hasAnySelected) {
+                          const selectedTypes = getSelectedEnhancementTypes();
+                          addToQueue({
+                            prospect_id: selectedProspect.id,
+                            force_redo: true,
+                            user_id: 1,
+                            enhancement_types: selectedTypes
+                          });
+                        }
+                      }}
+                      disabled={(() => {
+                        const queueStatus = getProspectStatus(selectedProspect?.id);
+                        return queueStatus?.status === 'processing' || 
+                               queueStatus?.status === 'queued' ||
+                               !hasAnySelected;
+                      })()}
+                      variant="outline"
+                      size="sm"
+                      className="text-blue-700 border-blue-300 hover:bg-blue-100 disabled:bg-gray-100 disabled:text-gray-400"
+                    >
+                      {(() => {
+                        const queueStatus = getProspectStatus(selectedProspect?.id);
+                        if (queueStatus?.status === 'processing') {
+                          return (
+                            <>
+                              <ReloadIcon className="mr-2 h-3 w-3 animate-spin" />
+                              {queueStatus?.currentStep || 'Re-enhancing...'}
+                            </>
+                          );
+                        } else if (queueStatus?.status === 'queued') {
+                          return (
+                            <>
+                              <ReloadIcon className="mr-2 h-3 w-3 animate-spin" />
+                              Queued (#{queueStatus.queuePosition})
+                            </>
+                          );
+                        } else {
+                          const selectedCount = getSelectedEnhancementTypes().length;
+                          const totalCount = enhancementOptions.length;
+                          return selectedCount === totalCount 
+                            ? 'Redo Enhancement' 
+                            : `Redo Enhancement (${selectedCount}/${totalCount})`;
+                        }
+                      })()}
+                    </Button>
+                  </div>
                 </div>
               </div>
             )}

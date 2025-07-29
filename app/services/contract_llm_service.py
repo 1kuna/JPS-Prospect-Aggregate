@@ -254,23 +254,61 @@ class ContractLLMService(BaseLLMService):
         def process_set_aside_enhancement(prospect: Prospect) -> bool:
             # Skip if already processed unless forced
             if not force_redo and prospect.set_aside_standardized:
+                logger.debug(f"Skipping prospect {prospect.id[:8]}... - already standardized and force_redo=False")
                 return False
             
-            if prospect.set_aside:
-                standardized = self.standardize_set_aside_with_llm(prospect.set_aside, prospect_id=prospect.id)
+            # Debug logging for force_redo scenarios
+            if force_redo:
+                logger.info(f"Force redo set-aside enhancement for prospect {prospect.id[:8]}... (current: {prospect.set_aside_standardized})")
+            
+            # Process prospects with set_aside data OR potential extra data (like DHS small_business_program)
+            comprehensive_data = self._get_comprehensive_set_aside_data(prospect.set_aside, prospect)
+            if comprehensive_data:
+                logger.debug(f"Processing set-aside with comprehensive data: '{comprehensive_data}'")
+                
+                # Use comprehensive_data (which includes DHS small_business_program) instead of just prospect.set_aside
+                standardized = self.standardize_set_aside_with_llm(comprehensive_data, prospect_id=prospect.id, prospect=prospect)
                 if standardized:
+                    # Store previous values for comparison
+                    previous_code = prospect.set_aside_standardized
+                    previous_label = prospect.set_aside_standardized_label
+                    
+                    # Update fields
                     prospect.set_aside_standardized = standardized.code
                     prospect.set_aside_standardized_label = standardized.label
+                    
+                    # Also populate inferred_set_aside for frontend compatibility
+                    prospect.inferred_set_aside = standardized.label
                     
                     # Store metadata in extra field
                     ensure_extra_is_dict(prospect)
                     prospect.extra['set_aside_standardization'] = {
                         'original': prospect.set_aside,
-                        'standardized_at': datetime.now(timezone.utc).isoformat()
+                        'standardized_at': datetime.now(timezone.utc).isoformat(),
+                        'force_redo': force_redo,
+                        'previous_code': previous_code,
+                        'new_code': standardized.code
                     }
                     
                     self._update_prospect_timestamp(prospect)
-                    return True
+                    
+                    # Always count force_redo as successful processing, even if result is the same
+                    if force_redo:
+                        logger.info(f"Force redo completed for prospect {prospect.id[:8]}... - "
+                                   f"result: {previous_code} -> {standardized.code}")
+                        return True
+                    # For non-force redo, only count as processed if values actually changed
+                    elif previous_code != standardized.code:
+                        logger.info(f"Set-aside standardized for prospect {prospect.id[:8]}... - "
+                                   f"{previous_code} -> {standardized.code}")
+                        return True
+                    else:
+                        logger.debug(f"Set-aside unchanged for prospect {prospect.id[:8]}... - {standardized.code}")
+                        return False
+                else:
+                    logger.warning(f"Standardization failed for prospect {prospect.id[:8]}... with data: '{comprehensive_data}'")
+            else:
+                logger.debug(f"No comprehensive data for prospect {prospect.id[:8]}... - skipping")
             
             return False
         

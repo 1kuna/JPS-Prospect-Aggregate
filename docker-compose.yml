@@ -1,56 +1,121 @@
 version: '3.8'
 
 services:
-  postgres-business:
-    image: postgres:15-alpine
-    container_name: jps_postgres_business
+  web:
+    build: .
+    image: jps-prospect-aggregate:latest
+    container_name: jps-web
     restart: unless-stopped
-    environment:
-      POSTGRES_DB: jps_aggregate
-      POSTGRES_USER: ${POSTGRES_BUSINESS_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_BUSINESS_PASSWORD}
-      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --lc-collate=en_US.utf8 --lc-ctype=en_US.utf8"
-    volumes:
-      - postgres_business_data:/var/lib/postgresql/data
-      - ./backups/postgres-business:/backups
-      - ./scripts/postgres/init-business.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
-      - "5432:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_BUSINESS_USER} -d jps_aggregate"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      - "5000:5000"
+    environment:
+      - FLASK_ENV=production
+      - DATABASE_URL=postgresql://jps_user:${DB_PASSWORD}@db:5432/jps_prospects
+      - USER_DATABASE_URL=postgresql://jps_user:${DB_PASSWORD}@db:5432/jps_users
+      - SECRET_KEY=${SECRET_KEY}
+      - FILE_FRESHNESS_SECONDS=86400
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./.env:/app/.env:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
     networks:
-      - jps_network
+      - jps-network
 
-  postgres-users:
+  db:
     image: postgres:15-alpine
-    container_name: jps_postgres_users
+    container_name: jps-db
     restart: unless-stopped
     environment:
-      POSTGRES_DB: jps_users
-      POSTGRES_USER: ${POSTGRES_USERS_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_USERS_PASSWORD}
-      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --lc-collate=en_US.utf8 --lc-ctype=en_US.utf8"
+      - POSTGRES_USER=jps_user
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_MULTIPLE_DATABASES=jps_prospects,jps_users
+      - PGDATA=/var/lib/postgresql/data/pgdata
     volumes:
-      - postgres_users_data:/var/lib/postgresql/data
-      - ./backups/postgres-users:/backups
-      - ./scripts/postgres/init-users.sql:/docker-entrypoint-initdb.d/init.sql
-    ports:
-      - "5433:5432"
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh:ro
+      - ./backups:/backups
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USERS_USER} -d jps_users"]
+      test: ["CMD-SHELL", "pg_isready -U jps_user -d jps_prospects"]
       interval: 10s
       timeout: 5s
       retries: 5
     networks:
-      - jps_network
+      - jps-network
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: jps-ollama
+    restart: unless-stopped
+    volumes:
+      - ollama_data:/root/.ollama
+    ports:
+      - "11434:11434"
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+    networks:
+      - jps-network
+
+  watchtower:
+    image: containrrr/watchtower
+    container_name: jps-watchtower
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - WATCHTOWER_CLEANUP=true
+      - WATCHTOWER_INCLUDE_STOPPED=false
+      - WATCHTOWER_INCLUDE_RESTARTING=true
+      - WATCHTOWER_LABEL_ENABLE=true
+      - WATCHTOWER_POLL_INTERVAL=300  # Check every 5 minutes
+      - WATCHTOWER_NOTIFICATIONS=email
+      - WATCHTOWER_NOTIFICATION_EMAIL_FROM=${SMTP_FROM}
+      - WATCHTOWER_NOTIFICATION_EMAIL_TO=${ADMIN_EMAIL}
+      - WATCHTOWER_NOTIFICATION_EMAIL_SERVER=${SMTP_SERVER}
+      - WATCHTOWER_NOTIFICATION_EMAIL_SERVER_PORT=${SMTP_PORT}
+      - WATCHTOWER_NOTIFICATION_EMAIL_SERVER_USER=${SMTP_USER}
+      - WATCHTOWER_NOTIFICATION_EMAIL_SERVER_PASSWORD=${SMTP_PASSWORD}
+    networks:
+      - jps-network
+
+  backup:
+    image: postgres:15-alpine
+    container_name: jps-backup
+    volumes:
+      - ./backups:/backups
+      - ./docker/backup.sh:/backup.sh:ro
+    environment:
+      - PGPASSWORD=${DB_PASSWORD}
+      - DB_HOST=db
+      - DB_USER=jps_user
+    entrypoint: ["/bin/sh", "-c", "while true; do /backup.sh; sleep 86400; done"]
+    depends_on:
+      - db
+    networks:
+      - jps-network
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: jps-cloudflared
+    restart: unless-stopped
+    command: tunnel run
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
+    networks:
+      - jps-network
+    depends_on:
+      - web
 
 volumes:
-  postgres_business_data:
-  postgres_users_data:
+  postgres_data:
+  ollama_data:
 
 networks:
-  jps_network:
+  jps-network:
     driver: bridge
