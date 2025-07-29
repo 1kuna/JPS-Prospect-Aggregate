@@ -13,7 +13,7 @@ echo -e "${YELLOW}Starting deployment process...${NC}"
 enable_maintenance() {
     echo -e "${YELLOW}Enabling maintenance mode...${NC}"
     docker run -d --name maintenance-page \
-        -p 5000:80 \
+        -p 5001:80 \
         --network jps-network \
         -v $(pwd)/docker/maintenance.html:/usr/share/nginx/html/index.html:ro \
         nginx:alpine || true
@@ -72,7 +72,7 @@ main() {
     disable_maintenance
     
     # Health check
-    if curl -f http://localhost:5000/health > /dev/null 2>&1; then
+    if curl -f http://localhost:5001/health > /dev/null 2>&1; then
         echo -e "${GREEN}Deployment completed successfully!${NC}"
     else
         echo -e "${RED}Health check failed! Check logs with: docker logs jps-web${NC}"

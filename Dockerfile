@@ -1,5 +1,16 @@
 # Multi-stage build for smaller image
-FROM python:3.11-slim as builder
+FROM node:18-slim as frontend-builder
+
+# Build React frontend
+WORKDIR /app/frontend-react
+COPY frontend-react/package*.json ./
+RUN npm ci --only=production
+
+COPY frontend-react/ ./
+RUN npm run build
+
+# Python dependencies builder
+FROM python:3.11-slim as python-builder
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y \
@@ -15,11 +26,12 @@ RUN pip install --user --no-cache-dir -r requirements.txt
 # Final stage
 FROM python:3.11-slim
 
-# Install runtime dependencies
+# Install runtime dependencies including Node.js for any runtime needs
 RUN apt-get update && apt-get install -y \
     wget \
     gnupg \
     curl \
+    netcat-traditional \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Playwright dependencies
@@ -47,12 +59,15 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy Python packages from builder
-COPY --from=builder /root/.local /root/.local
+COPY --from=python-builder /root/.local /root/.local
 ENV PATH=/root/.local/bin:$PATH
 
 # Copy application code
 WORKDIR /app
 COPY . .
+
+# Copy built frontend from frontend builder
+COPY --from=frontend-builder /app/frontend-react/dist ./frontend-react/dist
 
 # Install Playwright browsers
 RUN playwright install chromium
@@ -60,12 +75,17 @@ RUN playwright install chromium
 # Create directories for logs and data
 RUN mkdir -p logs logs/error_screenshots logs/error_html data
 
-# Expose port
-EXPOSE 5000
+# Run database migrations on startup
+COPY docker/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# Expose port 5001 (standardized)
+EXPOSE 5001
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost:5000/health || exit 1
+    CMD curl -f http://localhost:5001/health || exit 1
 
-# Run the application
+# Use entrypoint script to handle migrations
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["python", "run.py"]

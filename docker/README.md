@@ -46,7 +46,7 @@ Cloudflare Tunnel
 Your Windows PC
     ↓
 Docker Containers:
-- Flask App (port 5000)
+- Flask App (port 5001)
 - PostgreSQL Database
 - Ollama LLM
 - Automated Backups

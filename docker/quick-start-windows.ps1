@@ -60,7 +60,7 @@ docker exec jps-web python scripts/setup_databases.py
 # Health check
 Write-Host "`nPerforming health check..." -ForegroundColor Yellow
 try {
-    $response = Invoke-WebRequest -Uri http://localhost:5000/health -UseBasicParsing
+    $response = Invoke-WebRequest -Uri http://localhost:5001/health -UseBasicParsing
     if ($response.StatusCode -eq 200) {
         Write-Host "Application is healthy!" -ForegroundColor Green
     }
@@ -71,7 +71,7 @@ catch {
 
 Write-Host "`n================================================" -ForegroundColor Cyan
 Write-Host "Setup complete!" -ForegroundColor Green
-Write-Host "`nApplication URL: http://localhost:5000" -ForegroundColor Cyan
+Write-Host "`nApplication URL: http://localhost:5001" -ForegroundColor Cyan
 Write-Host "`nUseful commands:" -ForegroundColor Yellow
 Write-Host "  View logs:        docker-compose logs -f" -ForegroundColor White
 Write-Host "  Stop services:    docker-compose down" -ForegroundColor White
@@ -81,5 +81,5 @@ Write-Host "  Manual backup:    docker exec jps-backup /backup.sh" -ForegroundCo
 # Open browser
 $openBrowser = Read-Host "`nOpen application in browser? (Y/N)"
 if ($openBrowser -eq 'Y' -or $openBrowser -eq 'y') {
-    Start-Process "http://localhost:5000"
+    Start-Process "http://localhost:5001"
 }

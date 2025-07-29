@@ -37,11 +37,14 @@ cd JPS-Prospect-Aggregate
 
 ```powershell
 # Copy production environment template
-copy .env.production .env
+copy .env.production.example .env.production
 
 # Edit with Notepad or your preferred editor
-notepad .env
-# Set strong passwords and secrets!
+notepad .env.production
+# Required changes:
+# - Set DB_PASSWORD to a strong password
+# - Set SECRET_KEY to a random secret key
+# - Verify PORT=5001 (default, don't change unless needed)
 # Save and close when done
 ```
 
@@ -71,10 +74,10 @@ docker exec jps-web python scripts/setup_databases.py
 docker-compose ps
 
 # Check application health (PowerShell)
-Invoke-WebRequest -Uri http://localhost:5000/health -UseBasicParsing
+Invoke-WebRequest -Uri http://localhost:5001/health -UseBasicParsing
 
 # Or open in browser
-Start-Process "http://localhost:5000"
+Start-Process "http://localhost:5001"
 ```
 
 ## On Your Development Machine
@@ -297,8 +300,8 @@ docker-compose restart db
    
 2. **Port already in use**:
    ```powershell
-   # Find what's using port 5000
-   netstat -ano | findstr :5000
+   # Find what's using port 5001
+   netstat -ano | findstr :5001
    # Kill the process using the PID from above
    taskkill /PID <PID> /F
    ```
