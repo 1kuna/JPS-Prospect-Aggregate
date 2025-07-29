@@ -22,12 +22,25 @@ try {
 Write-Host "This script will reset your Docker deployment to fix migration issues." -ForegroundColor Yellow
 Write-Host "WARNING: This will stop all containers but preserve your data." -ForegroundColor Yellow
 Write-Host ""
-$confirm = Read-Host "Continue? (y/N)"
+Write-Host "Choose an option:" -ForegroundColor Cyan
+Write-Host "  1. Soft reset (preserve data, try to fix migrations)" -ForegroundColor Green
+Write-Host "  2. Nuclear reset (DESTROY ALL DATA and start fresh)" -ForegroundColor Red
+Write-Host ""
+$choice = Read-Host "Enter your choice (1 or 2)"
 
-if ($confirm -ne 'y' -and $confirm -ne 'Y') {
-    Write-Host "Aborted." -ForegroundColor Red
+if ($choice -eq '2') {
+    Write-Host ""
+    Write-Host "You chose NUCLEAR RESET - this will delete ALL your data!" -ForegroundColor Red
+    Write-Host "Running nuclear reset script..." -ForegroundColor Red
+    & ".\scripts\nuclear_reset.ps1"
+    exit 0
+} elseif ($choice -ne '1') {
+    Write-Host "Invalid choice. Aborted." -ForegroundColor Red
     exit 0
 }
+
+Write-Host ""
+Write-Host "Continuing with soft reset..." -ForegroundColor Green
 
 Write-Host ""
 Write-Host "Step 1: Stopping all containers..." -ForegroundColor Green
