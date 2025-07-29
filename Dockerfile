@@ -77,9 +77,9 @@ COPY . .
 # Copy built frontend from frontend builder
 COPY --from=frontend-builder /app/frontend-react/dist ./frontend-react/dist
 
-# Copy and setup entrypoint script
-COPY docker/entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+# Entrypoint script temporarily disabled - will fix separately
+# COPY docker/entrypoint.sh /entrypoint.sh
+# RUN chmod +x /entrypoint.sh
 
 # Install Playwright browsers
 RUN playwright install chromium
@@ -94,6 +94,6 @@ EXPOSE 5001
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:5001/health || exit 1
 
-# Use entrypoint script to handle migrations
-ENTRYPOINT ["/entrypoint.sh"]
+# Entrypoint temporarily disabled - start app directly
+# ENTRYPOINT ["/entrypoint.sh"]
 CMD ["python", "run.py"]
