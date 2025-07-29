@@ -12,14 +12,7 @@ COPY frontend-react/ ./
 RUN mkdir -p src/lib && \
     if [ ! -f src/lib/utils.ts ]; then \
         echo "Creating missing utils.ts file" && \
-        cat > src/lib/utils.ts << 'EOF'
-import { clsx, type ClassValue } from "clsx"
-import { twMerge } from "tailwind-merge"
-
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs))
-}
-EOF \
+        printf 'import { clsx, type ClassValue } from "clsx"\nimport { twMerge } from "tailwind-merge"\n\nexport function cn(...inputs: ClassValue[]) {\n  return twMerge(clsx(inputs));\n}\n' > src/lib/utils.ts; \
     fi
 
 RUN npm run build
