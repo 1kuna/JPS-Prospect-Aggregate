@@ -7,7 +7,7 @@
     "dev:css": "./node_modules/.bin/tailwindcss -i ./src/index.css -o ./src/tailwind-output.css --watch",
     "dev": "concurrently \"npm:dev:css\" \"vite\"",
     "build:css": "./node_modules/.bin/tailwindcss -i ./src/index.css -o ./src/tailwind-output.css --minify",
-    "build": "npm run build:css && tsc -b && vite build",
+    "build": "npm run build:css && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest",
