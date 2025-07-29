@@ -21,7 +21,7 @@ function Enable-Maintenance {
     if (-not $SkipMaintenance) {
         Write-ColorOutput Yellow "Enabling maintenance mode..."
         docker run -d --name maintenance-page `
-            -p 5000:80 `
+            -p 5001:80 `
             --network jps-network `
             -v "${PWD}\docker\maintenance.html:/usr/share/nginx/html/index.html:ro" `
             nginx:alpine 2>$null
@@ -97,7 +97,7 @@ function Start-Deployment {
     while ($attempts -lt $maxAttempts) {
         Start-Sleep -Seconds 2
         try {
-            $response = Invoke-WebRequest -Uri http://localhost:5000/health -UseBasicParsing -ErrorAction SilentlyContinue
+            $response = Invoke-WebRequest -Uri http://localhost:5001/health -UseBasicParsing -ErrorAction SilentlyContinue
             if ($response.StatusCode -eq 200) {
                 break
             }
@@ -119,10 +119,10 @@ function Start-Deployment {
     
     # Final health check
     try {
-        $response = Invoke-WebRequest -Uri http://localhost:5000/health -UseBasicParsing
+        $response = Invoke-WebRequest -Uri http://localhost:5001/health -UseBasicParsing
         if ($response.StatusCode -eq 200) {
             Write-ColorOutput Green "Deployment completed successfully!"
-            Write-Output "Application is running at: http://localhost:5000"
+            Write-Output "Application is running at: http://localhost:5001"
         }
     }
     catch {

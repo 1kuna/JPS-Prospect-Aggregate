@@ -77,7 +77,7 @@ cloudflared tail
    - **Subdomain**: `app` (or leave blank for root domain)
    - **Domain**: Select your domain
    - **Type**: `HTTP`
-   - **URL**: `localhost:5000`
+   - **URL**: `localhost:5001`
 
 ### Advanced Settings (recommended):
 
@@ -125,7 +125,7 @@ CLOUDFLARE_TUNNEL_TOKEN=your-tunnel-token-here
 1. **Local test**:
    ```powershell
    # Ensure your app is running
-   curl http://localhost:5000/health
+   curl http://localhost:5001/health
    ```
 
 2. **Tunnel test**:
@@ -225,7 +225,7 @@ After setup, your architecture looks like:
 [Internet Users] → [Cloudflare Network] → [Tunnel] → [Your Windows PC] → [Docker Containers]
 ```
 
-Domain: `yourdomain.com` → Cloudflare DNS → Tunnel → `localhost:5000`
+Domain: `yourdomain.com` → Cloudflare DNS → Tunnel → `localhost:5001`
 
 ## Next Steps
 

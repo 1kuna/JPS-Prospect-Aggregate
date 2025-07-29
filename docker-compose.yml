@@ -1,5 +1,13 @@
 version: '3.8'
 
+# Load environment variables from .env.production
+# Copy .env.production.example to .env.production and configure your settings
+# This file should contain your secret database passwords and keys
+
+# Note: docker-compose will automatically load .env file
+# Rename .env.production to .env for docker-compose to pick it up
+# Or use: docker-compose --env-file .env.production up
+
 services:
   web:
     build: .
@@ -7,7 +15,7 @@ services:
     container_name: jps-web
     restart: unless-stopped
     ports:
-      - "5000:5000"
+      - "5001:5001"
     environment:
       - FLASK_ENV=production
       - DATABASE_URL=postgresql://jps_user:${DB_PASSWORD}@db:5432/jps_prospects
@@ -17,7 +25,7 @@ services:
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
-      - ./.env:/app/.env:ro
+      - ./.env.production:/app/.env:ro
     depends_on:
       db:
         condition: service_healthy
@@ -53,8 +61,22 @@ services:
     restart: unless-stopped
     volumes:
       - ollama_data:/root/.ollama
+      - ./docker/ollama-init.sh:/ollama-init.sh:ro
     ports:
       - "11434:11434"
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    command: >
+      sh -c "
+        chmod +x /ollama-init.sh &&
+        /ollama-init.sh
+      "
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/version"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
     deploy:
       resources:
         limits:

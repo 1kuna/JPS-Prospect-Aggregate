@@ -58,7 +58,7 @@ Write-Host ""
 if ($LASTEXITCODE -eq 0) {
     Write-Host "`n=== Update Complete! ===" -ForegroundColor Green
     Write-Host "Your site has been successfully updated." -ForegroundColor Green
-    Write-Host "URL: http://localhost:5000" -ForegroundColor Cyan
+    Write-Host "URL: http://localhost:5001" -ForegroundColor Cyan
 } else {
     Write-Host "`n=== Update Failed ===" -ForegroundColor Red
     Write-Host "Please check the error messages above." -ForegroundColor Red

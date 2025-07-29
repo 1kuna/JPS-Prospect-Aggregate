@@ -1,0 +1,3 @@
+# Backups directory
+# Database backups will be stored here when running in Docker
+# This directory is mounted as a volume in docker-compose.yml

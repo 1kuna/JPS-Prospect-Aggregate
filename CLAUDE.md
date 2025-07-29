@@ -4,6 +4,36 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Setup
 
+### Option 1: Docker Setup (Recommended for Production)
+
+1. **Copy environment file and configure:**
+   ```bash
+   cp .env.production.example .env.production
+   # Edit .env.production with your settings (required: DB_PASSWORD, SECRET_KEY)
+   # Alternatively, rename to .env for docker-compose auto-loading
+   ```
+
+2. **Build and start all services:**
+   ```bash
+   # If using .env.production file
+   docker-compose --env-file .env.production up --build -d
+   
+   # Or if renamed to .env
+   docker-compose up --build -d
+   ```
+
+3. **Access the application:**
+   - Web interface: http://localhost:5001
+   - Ollama LLM API: http://localhost:11434
+
+4. **Monitor services:**
+   ```bash
+   docker-compose ps
+   docker-compose logs -f web
+   ```
+
+### Option 2: Local Development Setup
+
 1. Activate your conda environment (Python 3.11 recommended):
    ```bash
    conda activate your_environment_name
@@ -25,6 +55,36 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
    ```
 
 ## Commands
+
+### Docker Operations
+```bash
+# Build and start all services
+docker-compose up --build -d
+
+# Stop all services
+docker-compose down
+
+# View service status
+docker-compose ps
+
+# View logs
+docker-compose logs -f web
+docker-compose logs -f db
+docker-compose logs -f ollama
+
+# Manual backup
+docker exec jps-backup /backup.sh
+
+# Access database directly
+docker exec -it jps-db psql -U jps_user -d jps_prospects
+
+# Restart specific service
+docker-compose restart web
+
+# Clean rebuild (if you have issues)
+docker-compose down -v
+docker-compose up --build -d
+```
 
 ### Backend Development
 ```bash

@@ -46,13 +46,15 @@ Thumbs.db
 .git/
 .gitignore
 
-# Documentation
-*.md
+# Documentation (keep essential docs)
+README.md
 docs/
+# Keep CLAUDE.md and other essential documentation
+!CLAUDE.md
 
-# Frontend build artifacts (if building separately)
+# Frontend node_modules (we'll install in container)
 frontend-react/node_modules/
-frontend-react/dist/
+# Don't exclude dist as we'll build it in the container
 frontend-react/.next/
 
 # Testing

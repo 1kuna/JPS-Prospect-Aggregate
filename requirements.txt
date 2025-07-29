@@ -17,7 +17,7 @@ tenacity==8.2.3
 psutil==5.9.8
 loguru==0.7.0
 waitress==2.1.2
-Flask-SQLAlchemy
-python-dateutil
-Flask-Migrate
-playwright-stealth
+Flask-SQLAlchemy==3.1.1
+python-dateutil==2.8.2
+Flask-Migrate==4.0.7
+playwright-stealth==1.0.6
