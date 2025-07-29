@@ -14,7 +14,12 @@ RUN echo "=== DEBUG: Listing copied files ===" && \
     echo "=== DEBUG: Checking specific utils.ts ===" && \
     ls -la src/lib/ || echo "src/lib/ directory not found" && \
     echo "=== DEBUG: Checking if utils.ts exists ===" && \
-    cat src/lib/utils.ts || echo "utils.ts file not found"
+    cat src/lib/utils.ts || echo "utils.ts file not found" && \
+    echo "=== DEBUG: Complete file structure ===" && \
+    ls -la src/ && \
+    echo "=== DEBUG: Checking tsconfig and vite config ===" && \
+    cat tsconfig.json | grep -A5 -B5 "paths" || echo "No paths in tsconfig" && \
+    cat vite.config.ts | grep -A5 -B5 "alias" || echo "No alias in vite config"
 
 RUN npm run build
 
