@@ -1,7 +1,7 @@
 """Final merge of all migration heads for Docker deployment
 
 Revision ID: 999_final_merge
-Revises: abc123def456, add_file_processing_log_table
+Revises: abc123def456, add_file_processing_log_table, d1def2efebc3
 Create Date: 2025-07-29 17:30:00.000000
 
 """
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = '999_final_merge'
-down_revision = ('abc123def456', 'add_file_processing_log_table')
+down_revision = ('abc123def456', 'add_file_processing_log_table', 'd1def2efebc3')
 branch_labels = None
 depends_on = None
 
