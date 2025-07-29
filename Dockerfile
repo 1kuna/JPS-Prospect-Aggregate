@@ -87,11 +87,6 @@ while ! nc -z db 5432; do\n\
   sleep 1\n\
 done\n\
 echo "Database is ready!"\n\
-echo "Creating databases if they do not exist..."\n\
-export PGPASSWORD="${DB_PASSWORD}"\n\
-psql -h db -U jps_user -d postgres -tc "SELECT 1 FROM pg_database WHERE datname = '\''jps_prospects'\''" | grep -q 1 || psql -h db -U jps_user -d postgres -c "CREATE DATABASE jps_prospects;"\n\
-psql -h db -U jps_user -d postgres -tc "SELECT 1 FROM pg_database WHERE datname = '\''jps_users'\''" | grep -q 1 || psql -h db -U jps_user -d postgres -c "CREATE DATABASE jps_users;"\n\
-echo "Databases are ready!"\n\
 echo "Running database migrations..."\n\
 cd /app\n\
 flask db upgrade\n\
