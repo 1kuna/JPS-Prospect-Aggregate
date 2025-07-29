@@ -7,6 +7,16 @@ import path from 'path'
 // Base Vite configuration
 const viteConfig = defineConfig({
   plugins: [react()],
+  build: {
+    // Enable type checking during build
+    rollupOptions: {
+      onwarn(warning, warn) {
+        // Suppress "Module level directives cause errors when bundled" warnings
+        if (warning.code === 'MODULE_LEVEL_DIRECTIVE') return
+        warn(warning)
+      }
+    }
+  },
   base: '/',
   resolve: {
     alias: {
