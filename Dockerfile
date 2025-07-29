@@ -113,14 +113,24 @@ wait_for_db() {\n\
 check_migration_state() {\n\
     log "Checking current migration state..."\n\
     \n\
-    # Get current revision\n\
-    CURRENT_REV=$(flask db current 2>&1 | grep -v "INFO" | grep -v "WARNING" | head -1 || echo "none")\n\
+    # Try to get current revision, handle failures gracefully\n\
+    if CURRENT_REV=$(flask db current 2>/dev/null | head -1); then\n\
+        if [ -z "$CURRENT_REV" ]; then\n\
+            CURRENT_REV="none (empty)"\n\
+        fi\n\
+    else\n\
+        log "flask db current failed, database may not be initialized"\n\
+        CURRENT_REV="error (database not initialized)"\n\
+    fi\n\
+    \n\
     log "Current revision: $CURRENT_REV"\n\
     \n\
     # Check if we have a partial migration state\n\
     if echo "$CURRENT_REV" | grep -q "fbc0e1fbf50d"; then\n\
         log "WARNING: Found partially applied migration fbc0e1fbf50d"\n\
         log "This migration has been updated to handle existing columns safely"\n\
+    elif echo "$CURRENT_REV" | grep -q "error"; then\n\
+        log "Migration state check failed - will attempt to initialize from scratch"\n\
     fi\n\
 }\n\
 \n\
@@ -175,9 +185,25 @@ run_migrations() {\n\
         log "Checking migration heads..."\n\
         flask db heads || true\n\
         \n\
+        # Try to create the alembic_version table if it doesnt exist\n\
+        log "Attempting to create alembic_version table..."\n\
+        python -c "\n\
+import os\n\
+os.environ['"'"'FLASK_APP'"'"'] = '"'"'run.py'"'"'\n\
+from app import create_app, db\n\
+from sqlalchemy import text\n\
+app = create_app()\n\
+with app.app_context():\n\
+    try:\n\
+        db.engine.execute(text('"'"'CREATE TABLE IF NOT EXISTS alembic_version (version_num VARCHAR(32) NOT NULL, CONSTRAINT alembic_version_pkc PRIMARY KEY (version_num))'"'"'))\n\
+        print('"'"'alembic_version table created or already exists'"'"')\n\
+    except Exception as e:\n\
+        print(f'"'"'Error creating alembic_version table: {e}'"'"')\n\
+" 2>/dev/null || true\n\
+        \n\
         # For now, continue running the app even if migrations fail\n\
         # This allows the app to start with existing database schema\n\
-        log "WARNING: Continuing despite migration errors - database may already be up to date"\n\
+        log "WARNING: Continuing despite migration errors - will try to run app anyway"\n\
         return 0\n\
     fi\n\
 }\n\

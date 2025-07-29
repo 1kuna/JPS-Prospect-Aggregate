@@ -39,24 +39,37 @@ I've fixed the Docker migration issues by:
 
 ### Option 2: Fix Existing Installation (Windows PowerShell)
 
-If you want to fix the existing installation without rebuilding:
+If you want to fix the existing installation:
 
 1. **Push the changes from your Mac** (same as Option 1, step 1)
 
-2. **On Windows, pull changes and run the PowerShell fix script:**
+2. **On Windows, pull changes and run the health check:**
    ```powershell
    # Pull latest changes
    git pull origin main
    
-   # Run the Windows reset script
-   .\scripts\windows_docker_reset.ps1
+   # Check current status
+   .\scripts\health_check.ps1
    ```
 
-   This script will:
-   - Stop containers safely
-   - Clean up migration state
-   - Rebuild only the web container
-   - Restart services with proper migration handling
+3. **Choose your fix strategy:**
+   ```powershell
+   # Run the reset script (gives you options)
+   .\scripts\windows_docker_reset.ps1
+   ```
+   
+   This script offers:
+   - **Soft reset**: Preserve data, fix migrations
+   - **Nuclear reset**: Delete everything and start fresh
+
+### Option 2b: Nuclear Reset (If Everything Else Fails)
+
+If migrations are completely broken:
+
+```powershell
+# This DESTROYS ALL DATA but guarantees a fresh start
+.\scripts\nuclear_reset.ps1
+```
 
 ### Option 3: Manual Fix (if scripts don't work)
 
@@ -148,11 +161,19 @@ To prevent this in the future:
 
 ## Files Changed
 
+### Migration Fixes
 - `/migrations/versions/fbc0e1fbf50d_add_contract_mapping_fields_and_llm_.py` - Made column additions safe
 - `/migrations/versions/5fb5cc7eff5b_add_ai_enhanced_title_field_to_.py` - Made ai_enhanced_title addition safe
-- `/docker-compose.yml` - Fixed PostgreSQL database creation syntax
+- `/migrations/versions/d1def2efebc3_revert_proposal_to_prospect_model_and_.py` - Fixed inferred_office column drop error
 - `/migrations/alembic_helpers.py` - Created helper functions for safe migrations
-- `/Dockerfile` - Enhanced entrypoint script with better error handling for multiple scenarios
+
+### Docker Configuration
+- `/docker-compose.yml` - Fixed PostgreSQL database creation syntax
+- `/Dockerfile` - Enhanced entrypoint script with robust error handling and fallback logic
+
+### Management Scripts
 - `/scripts/repair_migrations.py` - Python script to repair migration issues
 - `/scripts/docker_migration_fix.sh` - Bash script for Docker environments
-- `/scripts/windows_docker_reset.ps1` - PowerShell script for Windows users
+- `/scripts/windows_docker_reset.ps1` - PowerShell script with soft/nuclear reset options
+- `/scripts/nuclear_reset.ps1` - Complete system reset script (destroys all data)
+- `/scripts/health_check.ps1` - Quick system health diagnostic script

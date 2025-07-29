@@ -32,9 +32,18 @@ def upgrade():
     )).fetchone()
     
     if result and result[0]:  # Table exists
-        print("inferred_prospect_data table exists, dropping inferred_office column")
-        with op.batch_alter_table('inferred_prospect_data', schema=None) as batch_op:
-            batch_op.drop_column('inferred_office')
+        print("inferred_prospect_data table exists, checking for inferred_office column")
+        # Check if inferred_office column exists before trying to drop it
+        column_result = connection.execute(sa.text(
+            "SELECT EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'inferred_prospect_data' AND column_name = 'inferred_office')"
+        )).fetchone()
+        
+        if column_result and column_result[0]:  # Column exists
+            print("inferred_office column exists, dropping it")
+            with op.batch_alter_table('inferred_prospect_data', schema=None) as batch_op:
+                batch_op.drop_column('inferred_office')
+        else:
+            print("inferred_office column does not exist, skipping drop")
     else:
         print("inferred_prospect_data table does not exist, skipping column drop")
 
