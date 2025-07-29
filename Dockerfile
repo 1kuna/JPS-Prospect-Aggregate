@@ -81,16 +81,65 @@ COPY --from=frontend-builder /app/frontend-react/dist ./frontend-react/dist
 # Create entrypoint script inline to avoid copy issues
 RUN echo '#!/bin/bash\n\
 set -e\n\
+\n\
+echo "=== JPS Prospect Aggregate Docker Entrypoint ==="\n\
 echo "Starting JPS Prospect Aggregate application..."\n\
-echo "Waiting for database to be ready..."\n\
-while ! nc -z db 5432; do\n\
-  sleep 1\n\
-done\n\
-echo "Database is ready!"\n\
-echo "Running database migrations..."\n\
-cd /app\n\
-flask db upgrade\n\
-echo "Starting application..."\n\
+\n\
+# Function to log with timestamp\n\
+log() {\n\
+    echo "[$(date "+%Y-%m-%d %H:%M:%S")] $1"\n\
+}\n\
+\n\
+# Function to wait for database\n\
+wait_for_db() {\n\
+    log "Waiting for database to be ready..."\n\
+    local max_attempts=30\n\
+    local attempt=1\n\
+    \n\
+    while ! nc -z db 5432; do\n\
+        if [ $attempt -eq $max_attempts ]; then\n\
+            log "ERROR: Database not ready after $max_attempts attempts"\n\
+            exit 1\n\
+        fi\n\
+        log "Database not ready, attempt $attempt/$max_attempts"\n\
+        sleep 2\n\
+        attempt=$((attempt + 1))\n\
+    done\n\
+    \n\
+    log "Database connection successful!"\n\
+}\n\
+\n\
+# Function to run migrations\n\
+run_migrations() {\n\
+    log "Running database migrations..."\n\
+    \n\
+    cd /app\n\
+    \n\
+    # Set environment variables for Flask\n\
+    export FLASK_APP=run.py\n\
+    export FLASK_ENV=production\n\
+    \n\
+    # Run migrations with better error handling\n\
+    if flask db upgrade; then\n\
+        log "Database migrations completed successfully"\n\
+    else\n\
+        log "ERROR: Database migrations failed"\n\
+        log "Checking migration status..."\n\
+        flask db current || true\n\
+        log "Checking migration heads..."\n\
+        flask db heads || true\n\
+        exit 1\n\
+    fi\n\
+}\n\
+\n\
+# Main execution\n\
+log "Environment: ${FLASK_ENV:-production}"\n\
+log "Database URL configured: $(echo $DATABASE_URL | cut -d@ -f2 || echo not set)"\n\
+\n\
+wait_for_db\n\
+run_migrations\n\
+\n\
+log "Starting application with command: $@"\n\
 exec "$@"' > /entrypoint.sh && chmod +x /entrypoint.sh
 
 # Install Playwright browsers
