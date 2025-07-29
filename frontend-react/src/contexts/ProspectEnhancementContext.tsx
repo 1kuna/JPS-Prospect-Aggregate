@@ -22,6 +22,7 @@ interface ProspectEnhancementContextType {
     prospect_id: string;
     force_redo?: boolean;
     user_id?: number;
+    enhancement_types?: string[];
   }) => void;
   getProspectStatus: (prospect_id: string | undefined) => ProspectEnhancementStatus | null;
   cancelEnhancement: (prospect_id: string) => Promise<boolean>;

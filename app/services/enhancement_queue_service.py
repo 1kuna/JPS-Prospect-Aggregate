@@ -18,7 +18,7 @@ from app.services.contract_llm_service import ContractLLMService
 from app.database.models import Prospect, db
 from app.database import db as db_instance
 
-EnhancementType = Literal["all", "values", "titles", "naics"]
+EnhancementType = Literal["all", "values", "titles", "naics", "set_asides"]
 
 
 class QueueItemType(Enum):
@@ -352,6 +352,7 @@ class EnhancementQueueService:
             _process_value_enhancement,
             _process_naics_enhancement,
             _process_title_enhancement,
+            _process_set_aside_enhancement,
             _ensure_extra_is_dict,
             emit_enhancement_progress
         )
@@ -374,22 +375,34 @@ class EnhancementQueueService:
             processed = False
             enhancements = []
             
-            # Process each enhancement type
-            # Process in new order: Title → Value → NAICS
-            # Titles processing
-            if _process_title_enhancement(prospect, self.llm_service, queue_item.force_redo):
-                processed = True
-                enhancements.append('titles')
-                
-            # Values processing
-            if _process_value_enhancement(prospect, self.llm_service, queue_item.force_redo):
-                processed = True
-                enhancements.append('values')
-                
-            # NAICS processing
-            if _process_naics_enhancement(prospect, self.llm_service, queue_item.force_redo):
-                processed = True
-                enhancements.append('naics')
+            # Process each enhancement type based on queue_item.enhancement_type
+            requested_types = []
+            if queue_item.enhancement_type == "all":
+                requested_types = ["titles", "values", "naics", "set_asides"]
+            else:
+                # Parse comma-separated enhancement types
+                requested_types = [t.strip() for t in queue_item.enhancement_type.split(',')]
+            
+            # Process in order: Title → Value → NAICS → Set-Asides
+            if "titles" in requested_types:
+                if _process_title_enhancement(prospect, self.llm_service, queue_item.force_redo):
+                    processed = True
+                    enhancements.append('titles')
+                    
+            if "values" in requested_types:
+                if _process_value_enhancement(prospect, self.llm_service, queue_item.force_redo):
+                    processed = True
+                    enhancements.append('values')
+                    
+            if "naics" in requested_types:
+                if _process_naics_enhancement(prospect, self.llm_service, queue_item.force_redo):
+                    processed = True
+                    enhancements.append('naics')
+                    
+            if "set_asides" in requested_types:
+                if _process_set_aside_enhancement(prospect, self.llm_service, queue_item.force_redo):
+                    processed = True
+                    enhancements.append('set_asides')
                 
             # Finalize
             if processed or queue_item.force_redo:
@@ -434,7 +447,8 @@ class EnhancementQueueService:
         from app.api.llm_processing import (
             _process_value_enhancement,
             _process_naics_enhancement, 
-            _process_title_enhancement
+            _process_title_enhancement,
+            _process_set_aside_enhancement
         )
         
         if not queue_item.prospect_ids:
@@ -474,14 +488,28 @@ class EnhancementQueueService:
                 processed = False
                 
                 # Process in new order: Title → Value → NAICS
-                if _process_title_enhancement(prospect, self.llm_service, False):
-                    processed = True
-                    
-                if _process_value_enhancement(prospect, self.llm_service, False):
-                    processed = True
-                    
-                if _process_naics_enhancement(prospect, self.llm_service, False):
-                    processed = True
+                # Process based on enhancement type
+                requested_types = []
+                if queue_item.enhancement_type == "all":
+                    requested_types = ["titles", "values", "naics", "set_asides"]
+                else:
+                    requested_types = [t.strip() for t in queue_item.enhancement_type.split(',')]
+                
+                if "titles" in requested_types:
+                    if _process_title_enhancement(prospect, self.llm_service, False):
+                        processed = True
+                        
+                if "values" in requested_types:
+                    if _process_value_enhancement(prospect, self.llm_service, False):
+                        processed = True
+                        
+                if "naics" in requested_types:
+                    if _process_naics_enhancement(prospect, self.llm_service, False):
+                        processed = True
+                        
+                if "set_asides" in requested_types:
+                    if _process_set_aside_enhancement(prospect, self.llm_service, False):
+                        processed = True
                     
                 if processed:
                     prospect.ollama_processed_at = datetime.now(timezone.utc)

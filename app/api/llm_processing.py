@@ -57,8 +57,8 @@ def get_llm_status():
         title_enhancement_percentage = (title_enhanced_count / total_prospects * 100) if total_prospects > 0 else 0
         
         # Get set-aside standardization statistics
-        set_aside_standardized_count = db.session.query(func.count(InferredProspectData.prospect_id)).filter(
-            InferredProspectData.inferred_set_aside.isnot(None)
+        set_aside_standardized_count = db.session.query(func.count(Prospect.id)).filter(
+            Prospect.set_aside_standardized.isnot(None)
         ).scalar()
         
         set_aside_percentage = (set_aside_standardized_count / total_prospects * 100) if total_prospects > 0 else 0
@@ -626,61 +626,80 @@ def _process_title_enhancement(prospect, llm_service, force_redo):
 
 def _process_set_aside_enhancement(prospect, llm_service, force_redo):
     """Process set aside standardization and enhancement for a prospect."""
+    from app.services.base_llm_service import BaseLLMService
+    from app.services.llm_service_utils import ensure_extra_is_dict
+    
+    # Ensure extra field is properly loaded as dict
+    ensure_extra_is_dict(prospect)
+    
+    # Debug logging
+    logger.info(f"Set-aside enhancement for prospect {prospect.id}: "
+                f"set_aside='{prospect.set_aside}', "
+                f"standardized='{prospect.set_aside_standardized}', "
+                f"force_redo={force_redo}")
+    logger.info(f"Extra field type: {type(prospect.extra)}, "
+                f"has original_small_business_program: {'original_small_business_program' in (prospect.extra or {})}")
+    
     # Always emit start event first
     emit_enhancement_progress(prospect.id, 'set_asides_started', {
         'force_redo': force_redo,
         'has_existing_set_aside': bool(prospect.set_aside),
-        'has_inferred_set_aside': bool(getattr(prospect, 'inferred_prospect_data', None) and 
-                                      prospect.inferred_prospect_data.inferred_set_aside)
+        'has_standardized_set_aside': bool(prospect.set_aside_standardized)
     })
     
-    # Check if we should process set asides
-    existing_inferred = None
-    if hasattr(prospect, 'inferred_prospect_data') and prospect.inferred_prospect_data:
-        existing_inferred = prospect.inferred_prospect_data.inferred_set_aside
+    # Check if we should process set asides using the new standardized fields
+    should_process = force_redo or not prospect.set_aside_standardized
+    logger.info(f"Should process: {should_process} (force_redo={force_redo}, has_standardized={bool(prospect.set_aside_standardized)})")
     
-    should_process = force_redo or not existing_inferred
-    
-    if should_process and prospect.set_aside:
-        # Process set aside using the LLM service
-        try:
-            processed_count = llm_service.enhance_prospect_set_asides([prospect], force_redo=force_redo)
-            
-            if processed_count > 0:
-                # Refresh the prospect to get updated inferred data
-                db.session.refresh(prospect)
+    if should_process:
+        # Get comprehensive set-aside data (handles DHS small_business_program, etc.)
+        base_service = BaseLLMService(llm_service.model_name)
+        comprehensive_data = base_service._get_comprehensive_set_aside_data(prospect.set_aside, prospect)
+        logger.info(f"Comprehensive data: '{comprehensive_data}'")
+        
+        # Process if we have data OR if force_redo is True
+        if comprehensive_data or force_redo:
+            # Process set aside using the LLM service
+            try:
+                processed_count = llm_service.enhance_prospect_set_asides([prospect], force_redo=force_redo)
                 
-                # Get the inferred set aside data
-                if hasattr(prospect, 'inferred_prospect_data') and prospect.inferred_prospect_data:
-                    inferred_data = prospect.inferred_prospect_data
+                if processed_count > 0:
+                    # Refresh the prospect to get updated standardized data
+                    db.session.refresh(prospect)
                     
-                    # Emit completion event with new set aside data
-                    emit_enhancement_progress(prospect.id, 'set_asides_completed', {
-                        'inferred_set_aside': inferred_data.inferred_set_aside,
-                        'original_set_aside': prospect.set_aside,
-                        'confidence': inferred_data.set_aside_confidence,
-                        'standardization_method': inferred_data.set_aside_standardization_method
-                    })
-                    return True
+                    # Check if standardization was successful
+                    if prospect.set_aside_standardized:
+                        # Emit completion event with new standardized set aside data
+                        emit_enhancement_progress(prospect.id, 'set_asides_completed', {
+                            'set_aside_standardized': prospect.set_aside_standardized,
+                            'set_aside_standardized_label': prospect.set_aside_standardized_label,
+                            'original_set_aside': prospect.set_aside,
+                            'comprehensive_data_used': comprehensive_data
+                        })
+                        return True
+                    else:
+                        emit_enhancement_progress(prospect.id, 'set_asides_failed', {'error': 'No standardized data created'})
+                        return False
                 else:
-                    emit_enhancement_progress(prospect.id, 'set_asides_failed', {'error': 'No inferred data created'})
+                    emit_enhancement_progress(prospect.id, 'set_asides_failed', {'error': 'Set aside processing failed'})
                     return False
-            else:
-                emit_enhancement_progress(prospect.id, 'set_asides_failed', {'error': 'Set aside processing failed'})
+                    
+            except Exception as e:
+                logger.error(f"Error processing set aside for prospect {prospect.id}: {e}")
+                emit_enhancement_progress(prospect.id, 'set_asides_failed', {'error': str(e)})
                 return False
-                
-        except Exception as e:
-            logger.error(f"Error processing set aside for prospect {prospect.id}: {e}")
-            emit_enhancement_progress(prospect.id, 'set_asides_failed', {'error': str(e)})
-            return False
+        else:
+            # No comprehensive data available - emit skipped completion
+            reason = 'No set aside data available to process (and not forcing)'
+            logger.warning(f"Skipping set-aside enhancement: {reason}")
+            emit_enhancement_progress(prospect.id, 'set_asides_completed', {
+                'skipped': True,
+                'reason': reason
+            })
     else:
         # Not processing set aside - emit skipped completion
-        if not prospect.set_aside:
-            reason = 'No set aside data available to process'
-        elif existing_inferred and not force_redo:
-            reason = 'Already has inferred set aside data'
-        else:
-            reason = 'Set aside processing not needed'
+        reason = 'Already has standardized set aside data' if not force_redo else 'Set aside processing not needed'
+        logger.info(f"Skipping set-aside enhancement: {reason}")
         
         emit_enhancement_progress(prospect.id, 'set_asides_completed', {
             'skipped': True,

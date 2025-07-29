@@ -25,6 +25,7 @@ interface EnhancementRequest {
   prospect_id: string;
   force_redo?: boolean;
   user_id?: number;
+  enhancement_types?: string[];
 }
 
 // Queue status from backend
@@ -459,9 +460,13 @@ export function useEnhancement() {
     
     try {
       // Add to backend queue
+      const enhancementType = request.enhancement_types && request.enhancement_types.length > 0
+        ? request.enhancement_types.join(',')
+        : 'all';
+      
       const response = await post<{ queue_item_id: string; position?: number }>('/api/llm/enhance-single', {
         prospect_id: request.prospect_id,
-        enhancement_type: 'all',
+        enhancement_type: enhancementType,
         force_redo: request.force_redo,
         user_id: request.user_id
       });

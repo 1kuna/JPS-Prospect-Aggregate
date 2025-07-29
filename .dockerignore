@@ -1,0 +1,65 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Logs
+logs/
+*.log
+
+# Data files (will be mounted as volumes)
+data/
+backups/
+
+# Development
+.env.local
+.env.development
+.env.test
+*.sqlite
+*.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+*.md
+docs/
+
+# Frontend build artifacts (if building separately)
+frontend-react/node_modules/
+frontend-react/dist/
+frontend-react/.next/
+
+# Testing
+tests/
+test_*.py
+
+# Scripts not needed in container
+scripts/test_*.py
+run_scraper_tests.py
+test_scraper_individual.py
