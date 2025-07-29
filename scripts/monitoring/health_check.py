@@ -21,7 +21,7 @@ from app.utils.logger import logger
 
 
 class DatabaseMonitor:
-    def __init__(self, env_file: str = '.env.production'):
+    def __init__(self, env_file: str = '.env'):
         """Initialize database monitor with environment configuration"""
         # Load environment
         if os.path.exists(env_file):
@@ -524,8 +524,8 @@ def main():
     parser.add_argument('--format', choices=['json', 'summary', 'both'], default='summary',
                         help='Output format (default: summary)')
     parser.add_argument('--output', help='Output file for JSON format')
-    parser.add_argument('--env-file', default='.env.production',
-                        help='Environment file to load (default: .env.production)')
+    parser.add_argument('--env-file', default='.env',
+                        help='Environment file to load (default: .env)')
     parser.add_argument('--check', choices=['connection', 'size', 'queries', 'all'], default='all',
                         help='Specific check to run (default: all)')
     

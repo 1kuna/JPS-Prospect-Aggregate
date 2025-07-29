@@ -37,10 +37,10 @@ cd JPS-Prospect-Aggregate
 
 ```powershell
 # Copy production environment template
-copy .env.production.example .env.production
+copy .env.example .env
 
 # Edit with Notepad or your preferred editor
-notepad .env.production
+notepad .env
 # Required changes:
 # - Set DB_PASSWORD to a strong password
 # - Set SECRET_KEY to a random secret key

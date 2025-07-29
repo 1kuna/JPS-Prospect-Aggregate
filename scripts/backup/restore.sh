@@ -3,11 +3,11 @@
 # Safely restore database from backup with verification
 
 # Load environment
-if [ -f "/opt/jps/.env.production" ]; then
-    source /opt/jps/.env.production
+if [ -f "/opt/jps/.env" ]; then
+    source /opt/jps/.env
 else
     # Fallback for development
-    source .env.production 2>/dev/null || source .env 2>/dev/null
+    source .env 2>/dev/null || source .env 2>/dev/null
 fi
 
 # Configuration

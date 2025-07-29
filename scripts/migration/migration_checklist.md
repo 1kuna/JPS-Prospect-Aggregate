@@ -6,7 +6,7 @@
 - [ ] Verify Docker and Docker Compose are installed
 - [ ] Ensure Python 3.11 environment is active
 - [ ] Install psycopg2-binary: `pip install psycopg2-binary`
-- [ ] Create `.env.production` file with PostgreSQL credentials
+- [ ] Create `.env` file with PostgreSQL credentials
 - [ ] Verify disk space (need 3x current database size)
 
 ### 2. Backup Current System
@@ -74,7 +74,7 @@
 ### 4. Update Application Configuration
 - [ ] Update database URLs in `.env`
   ```bash
-  cp .env.production .env
+  cp .env .env
   ```
 - [ ] Update Alembic configuration
   ```bash

@@ -8,17 +8,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 1. **Copy environment file and configure:**
    ```bash
-   cp .env.production.example .env.production
-   # Edit .env.production with your settings (required: DB_PASSWORD, SECRET_KEY)
-   # Alternatively, rename to .env for docker-compose auto-loading
+   cp .env.example .env
+   # Edit .env with your settings:
+   # - Set ENVIRONMENT=production
+   # - Set strong DB_PASSWORD
+   # - Set SECRET_KEY (generate with: python -c "import secrets; print(secrets.token_hex(32))")
+   # - Update DATABASE_URL to use PROD_DATABASE_URL
+   # - Update USER_DATABASE_URL to use PROD_USER_DATABASE_URL
    ```
 
 2. **Build and start all services:**
    ```bash
-   # If using .env.production file
-   docker-compose --env-file .env.production up --build -d
-   
-   # Or if renamed to .env
    docker-compose up --build -d
    ```
 
@@ -43,7 +43,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
    pip install -r requirements.txt
    playwright install
    ```
-3. Copy `.env.example` to `.env` and adjust settings if needed
+3. Copy `.env.example` to `.env` and set ENVIRONMENT=development
 4. Initialize database:
    ```bash
    # Complete database setup (includes all initialization steps)
