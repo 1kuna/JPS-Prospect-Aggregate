@@ -71,22 +71,35 @@ def create_app():
         from app.utils.enhancement_cleanup import cleanup_all_in_progress_enhancements
         from app.utils.scraper_cleanup import cleanup_all_working_scrapers
         
-        # Clean up any stuck enhancement statuses from previous server runs
+        # Check if database tables exist before running cleanup functions
+        tables_exist = True
         try:
-            cleanup_count = cleanup_all_in_progress_enhancements()
-            if cleanup_count > 0:
-                logger.info(f"Cleaned up {cleanup_count} stuck enhancement requests on startup")
+            # Test if the main tables exist by doing a simple count query
+            db.session.execute(db.text("SELECT COUNT(*) FROM prospects LIMIT 1")).fetchone()
+            db.session.execute(db.text("SELECT COUNT(*) FROM scraper_status LIMIT 1")).fetchone()
         except Exception as e:
-            logger.warning(f"Failed to clean up stuck enhancements: {e}")
+            logger.info(f"Database tables not yet created, skipping cleanup functions: {e}")
+            tables_exist = False
         
-        # Clean up any stuck scraper statuses from previous server runs
-        if active_config.SCRAPER_CLEANUP_ENABLED:
+        if tables_exist:
+            # Clean up any stuck enhancement statuses from previous server runs
             try:
-                scraper_cleanup_count = cleanup_all_working_scrapers()
-                if scraper_cleanup_count > 0:
-                    logger.info(f"Cleaned up {scraper_cleanup_count} stuck scrapers on startup")
+                cleanup_count = cleanup_all_in_progress_enhancements()
+                if cleanup_count > 0:
+                    logger.info(f"Cleaned up {cleanup_count} stuck enhancement requests on startup")
             except Exception as e:
-                logger.warning(f"Failed to clean up stuck scrapers: {e}")
+                logger.warning(f"Failed to clean up stuck enhancements: {e}")
+            
+            # Clean up any stuck scraper statuses from previous server runs
+            if active_config.SCRAPER_CLEANUP_ENABLED:
+                try:
+                    scraper_cleanup_count = cleanup_all_working_scrapers()
+                    if scraper_cleanup_count > 0:
+                        logger.info(f"Cleaned up {scraper_cleanup_count} stuck scrapers on startup")
+                except Exception as e:
+                    logger.warning(f"Failed to clean up stuck scrapers: {e}")
+        else:
+            logger.info("Skipping cleanup functions - database tables will be created by migrations")
         
         # Set up cross-references between services
         enhancement_queue_service.set_bulk_service(iterative_service_v2)

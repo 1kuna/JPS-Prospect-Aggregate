@@ -16,22 +16,41 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 logger = logging.getLogger('alembic.env')
 
-# Ensure the Flask app is configured for Alembic.
-# This relies on the Flask CLI setting up current_app correctly.
-# TheSQLALCHEMY_DATABASE_URI should be correctly picked up from app.config
-# (which now uses an absolute path for SQLite).
-db_url = current_app.config.get('SQLALCHEMY_DATABASE_URI')
+# Get database URL from Flask app config or environment variables
+db_url = None
 
-# Log the retrieved database URL for debugging
-logger.info(f"SQLALCHEMY_DATABASE_URI from current_app.config: {db_url}")
+# Try to get from Flask app config first (preferred method)
+try:
+    db_url = current_app.config.get('SQLALCHEMY_DATABASE_URI')
+    if db_url:
+        logger.info("Using database URL from Flask app config")
+except Exception as e:
+    logger.warning(f"Could not get database URL from Flask app config: {e}")
 
+# Fallback to environment variables if Flask app config is not available
+if not db_url:
+    db_url = os.environ.get('DATABASE_URL')
+    if db_url:
+        logger.info("Using database URL from DATABASE_URL environment variable")
+    else:
+        # Try legacy environment variable names
+        db_url = os.environ.get('SQLALCHEMY_DATABASE_URI')
+        if db_url:
+            logger.info("Using database URL from SQLALCHEMY_DATABASE_URI environment variable")
+
+# Log the retrieved database URL for debugging (without exposing passwords)
 if db_url:
+    safe_url = db_url.split('@')[1] if '@' in db_url else db_url
+    logger.info(f"Database URL configured: {safe_url}")
     config.set_main_option('sqlalchemy.url', db_url.replace('%', '%%'))
 else:
-    # Fallback or error if not found, though Flask-Migrate usually ensures this.
-    logger.warning("SQLALCHEMY_DATABASE_URI not found in current_app.config. "
-                   "Migrations might fail if not set in alembic.ini directly.")
-    # Alembic will then try to use sqlalchemy.url from alembic.ini if not set here.
+    # Final fallback: try to get from alembic.ini
+    fallback_url = config.get_main_option('sqlalchemy.url')
+    if fallback_url and not fallback_url.startswith('#'):
+        logger.info("Using database URL from alembic.ini")
+    else:
+        logger.error("No database URL found! Check DATABASE_URL environment variable or alembic.ini")
+        # Don't fail here - let Alembic handle the missing URL error
 
 # Add your model's MetaData object here for 'autogenerate' support.
 # This requires models to be imported so metadata is populated on current_app.extensions['migrate'].db
@@ -79,27 +98,40 @@ def run_migrations_online():
     # This relies on current_app being available and configured by Flask CLI
     try:
         connectable = current_app.extensions['migrate'].db.engine
-    except AttributeError:
-        logger.error("Could not get engine from current_app.extensions['migrate'].db. "
-                     "Ensure Flask-Migrate is initialized properly.")
+        logger.info("Successfully got database engine from Flask-Migrate")
+    except AttributeError as e:
+        logger.error(f"Could not get engine from current_app.extensions['migrate'].db: {e}")
+        logger.error("Ensure Flask-Migrate is initialized properly.")
         return # Cannot proceed
+    except Exception as e:
+        logger.error(f"Unexpected error getting database engine: {e}")
+        return
 
-    with connectable.connect() as connection:
-        configure_args = current_app.extensions['migrate'].configure_args
-        if configure_args.get("process_revision_directives") is None:
-            configure_args["process_revision_directives"] = process_revision_directives
-        
-        # Add compare_type to the arguments passed to context.configure
-        configure_args['compare_type'] = True
+    try:
+        with connectable.connect() as connection:
+            logger.info("Database connection established successfully")
+            
+            configure_args = current_app.extensions['migrate'].configure_args
+            if configure_args.get("process_revision_directives") is None:
+                configure_args["process_revision_directives"] = process_revision_directives
+            
+            # Add compare_type to the arguments passed to context.configure
+            configure_args['compare_type'] = True
 
-        context.configure(
-            connection=connection,
-            target_metadata=target_metadata,
-            **configure_args
-        )
+            context.configure(
+                connection=connection,
+                target_metadata=target_metadata,
+                **configure_args
+            )
 
-        with context.begin_transaction():
-            context.run_migrations()
+            with context.begin_transaction():
+                logger.info("Running database migrations...")
+                context.run_migrations()
+                logger.info("Database migrations completed successfully")
+                
+    except Exception as e:
+        logger.error(f"Error during migration execution: {e}")
+        raise
 
 if context.is_offline_mode():
     run_migrations_offline()
