@@ -64,25 +64,58 @@ services:
     restart: unless-stopped
     volumes:
       - ollama_data:/root/.ollama
-      - ./docker/ollama-init.sh:/ollama-init.sh:ro
     ports:
       - "11434:11434"
     environment:
       - OLLAMA_HOST=0.0.0.0
+      - OLLAMA_MODELS=/root/.ollama/models
     entrypoint: >
       sh -c "
+        echo 'Starting Ollama service with automatic model installation...' &&
         ollama serve &
-        sleep 10 &&
-        chmod +x /ollama-init.sh &&
-        /ollama-init.sh &&
-        wait
+        OLLAMA_PID=$$! &&
+        sleep 15 &&
+        echo 'Waiting for Ollama server to be ready...' &&
+        for i in \$$(seq 1 30); do
+          if curl -s http://localhost:11434/api/version > /dev/null 2>&1; then
+            echo 'Ollama server is ready!'
+            break
+          fi
+          if [ \$$i -eq 30 ]; then
+            echo 'ERROR: Ollama server failed to start after 60 seconds'
+            exit 1
+          fi
+          echo \"Waiting for Ollama server... attempt \$$i/30\"
+          sleep 2
+        done &&
+        echo 'Checking if qwen3:latest model is already installed...' &&
+        if ! ollama list | grep -q 'qwen3:latest'; then
+          echo 'Downloading qwen3:latest model (5.2GB - this may take several minutes)...' &&
+          ollama pull qwen3:latest &&
+          echo 'Successfully downloaded qwen3:latest model!'
+        else
+          echo 'qwen3:latest model is already installed!'
+        fi &&
+        echo 'Verifying model installation...' &&
+        if ollama list | grep -q 'qwen3:latest'; then
+          echo '✓ qwen3:latest model is ready for use!'
+        else
+          echo 'ERROR: Model installation verification failed'
+          exit 1
+        fi &&
+        echo 'Ollama initialization complete - service ready!' &&
+        wait $$OLLAMA_PID
       "
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/api/version"]
+      test: >
+        sh -c "
+          curl -f http://localhost:11434/api/version >/dev/null 2>&1 &&
+          ollama list | grep -q 'qwen3:latest' || exit 1
+        "
       interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 60s
+      timeout: 15s
+      retries: 10
+      start_period: 300s  # Allow 5 minutes for model download on first startup
     deploy:
       resources:
         limits:

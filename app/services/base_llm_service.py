@@ -242,6 +242,11 @@ class BaseLLMService:
             if response:
                 cleaned_response = re.sub(r'<think>.*?</think>', '', response, flags=re.DOTALL | re.IGNORECASE).strip()
             
+            # Check if cleaned_response is valid for JSON parsing
+            if not cleaned_response:
+                self._log_llm_output(prospect_id, 'naics_classification', prompt, response, '[]', False, 'Empty response after cleaning', processing_time)
+                return []
+                
             parsed = json.loads(cleaned_response)
             
             # Handle both array response (new) and single object (backward compatibility)
@@ -356,6 +361,11 @@ class BaseLLMService:
             if response:
                 cleaned_response = re.sub(r'<think>.*?</think>', '', response, flags=re.DOTALL | re.IGNORECASE).strip()
             
+            # Check if cleaned_response is valid for JSON parsing
+            if not cleaned_response:
+                self._log_llm_output(prospect_id, 'naics_classification', prompt, response, '[]', False, 'Empty response after cleaning', processing_time)
+                return []
+                
             parsed = json.loads(cleaned_response)
             
             # Extract values ensuring they're floats or None
@@ -423,6 +433,11 @@ class BaseLLMService:
             if response:
                 cleaned_response = re.sub(r'<think>.*?</think>', '', response, flags=re.DOTALL | re.IGNORECASE).strip()
             
+            # Check if cleaned_response is valid for JSON parsing
+            if not cleaned_response:
+                self._log_llm_output(prospect_id, 'naics_classification', prompt, response, '[]', False, 'Empty response after cleaning', processing_time)
+                return []
+                
             parsed = json.loads(cleaned_response)
             
             result = {

@@ -755,11 +755,17 @@ def merge_duplicates():
             
             # Merge extra fields
             if best_ai_record.extra:
-                if keep_record.extra:
+                if keep_record.extra or best_ai_record.extra:
                     # Parse JSON strings if needed
                     import json
-                    keep_extra = keep_record.extra if isinstance(keep_record.extra, dict) else json.loads(keep_record.extra)
-                    ai_extra = best_ai_record.extra if isinstance(best_ai_record.extra, dict) else json.loads(best_ai_record.extra)
+                    keep_extra = {}
+                    ai_extra = {}
+                    
+                    if keep_record.extra:
+                        keep_extra = keep_record.extra if isinstance(keep_record.extra, dict) else json.loads(keep_record.extra)
+                    
+                    if best_ai_record.extra:
+                        ai_extra = best_ai_record.extra if isinstance(best_ai_record.extra, dict) else json.loads(best_ai_record.extra)
                     
                     # Merge extras, preferring AI-enhanced data
                     merged_extra = {**keep_extra, **ai_extra}
