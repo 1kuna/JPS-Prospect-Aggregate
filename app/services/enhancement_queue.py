@@ -38,6 +38,32 @@ class EnhancementProgress:
     errors: List[str] = field(default_factory=list)
 
 
+class MockQueueItem:
+    """Mock queue item for backward compatibility with API expectations"""
+    def __init__(self, prospect_id: str, user_id: int, enhancement_type: str, processing_type: str, status: str):
+        self.prospect_id = prospect_id
+        self.user_id = user_id
+        self.enhancement_type = enhancement_type
+        self.processing_type = processing_type
+        self._status = status
+    
+    @property
+    def type(self):
+        """Mock type enum with value attribute"""
+        class MockType:
+            def __init__(self, value):
+                self.value = value
+        return MockType(self.processing_type)
+    
+    @property 
+    def status(self):
+        """Mock status enum with value attribute"""
+        class MockStatus:
+            def __init__(self, value):
+                self.value = value
+        return MockStatus(self._status)
+
+
 class SimpleEnhancementQueue:
     """
     Simplified enhancement queue that handles both individual and bulk processing
@@ -50,6 +76,12 @@ class SimpleEnhancementQueue:
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self._lock = threading.Lock()
+        
+        # Track current enhancement details for API compatibility
+        self._current_prospect_id: Optional[str] = None
+        self._current_user_id: Optional[int] = None
+        self._current_enhancement_type: Optional[str] = None
+        self._current_processing_type: str = "individual"  # 'individual' or 'bulk'
     
     def get_status(self) -> Dict[str, Any]:
         """Get current processing status"""
@@ -70,7 +102,7 @@ class SimpleEnhancementQueue:
         """Check if currently processing"""
         return self._processing
     
-    def enhance_single_prospect(self, prospect_id: str, enhancement_type: EnhancementType = "all") -> Dict[str, Any]:
+    def enhance_single_prospect(self, prospect_id: str, enhancement_type: EnhancementType = "all", user_id: Optional[int] = None) -> Dict[str, Any]:
         """
         Enhance a single prospect immediately (synchronous).
         This is for real-time UI updates.
@@ -79,6 +111,14 @@ class SimpleEnhancementQueue:
             prospect = Prospect.query.get(prospect_id)
             if not prospect:
                 return {"status": "error", "message": f"Prospect {prospect_id} not found"}
+            
+            # Track current enhancement details for API compatibility
+            with self._lock:
+                self._current_prospect_id = prospect_id
+                self._current_user_id = user_id
+                self._current_enhancement_type = enhancement_type
+                self._current_processing_type = "individual"
+                self._processing = True
             
             logger.info(f"Starting individual enhancement for prospect {prospect_id[:8]}... ({enhancement_type})")
             
@@ -108,6 +148,13 @@ class SimpleEnhancementQueue:
                 "prospect_id": prospect_id,
                 "message": str(e)
             }
+        finally:
+            # Clear current enhancement tracking
+            with self._lock:
+                self._current_prospect_id = None
+                self._current_user_id = None
+                self._current_enhancement_type = None
+                self._processing = False
     
     def start_bulk_enhancement(self, enhancement_type: EnhancementType = "all", 
                              prospect_ids: Optional[List[str]] = None,
@@ -210,16 +257,21 @@ class SimpleEnhancementQueue:
         return self.stop_processing()
     
     @property
-    def _queue_items(self) -> Dict[str, Any]:
+    def _queue_items(self) -> Dict[str, MockQueueItem]:
         """Backward compatibility for queue items access"""
-        status = self.get_status()
-        return {
-            "current": {
-                "status": status.get("status"),
-                "enhancement_type": status.get("enhancement_type"),
-                "progress": status.get("progress", {})
-            }
-        }
+        with self._lock:
+            if self._processing and self._current_prospect_id:
+                # Create mock queue item with expected attributes
+                mock_item = MockQueueItem(
+                    prospect_id=self._current_prospect_id,
+                    user_id=self._current_user_id or 1,
+                    enhancement_type=self._current_enhancement_type or "all",
+                    processing_type=self._current_processing_type,
+                    status="processing" if self._processing else "pending"
+                )
+                return {"current": mock_item}
+            else:
+                return {}
     
     def _get_prospects_needing_enhancement(self, enhancement_type: EnhancementType, skip_existing: bool) -> List[Prospect]:
         """Get prospects that need the specified enhancement type"""
@@ -303,9 +355,9 @@ enhancement_queue = SimpleEnhancementQueue()
 
 
 # Backward compatibility functions
-def add_individual_enhancement(prospect_id: str, enhancement_type: EnhancementType = "all") -> str:
+def add_individual_enhancement(prospect_id: str, enhancement_type: EnhancementType = "all", user_id: Optional[int] = None) -> str:
     """Add individual prospect enhancement (immediate processing)"""
-    result = enhancement_queue.enhance_single_prospect(prospect_id, enhancement_type)
+    result = enhancement_queue.enhance_single_prospect(prospect_id, enhancement_type, user_id)
     return f"individual_{prospect_id}_{int(time.time())}"
 
 
