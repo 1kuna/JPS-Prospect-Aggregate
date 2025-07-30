@@ -122,12 +122,9 @@ def upgrade():
     op.create_table('scraper_status',
     sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
     sa.Column('source_id', sa.Integer(), nullable=False),
-    sa.Column('status', sa.String(), nullable=False),
-    sa.Column('last_run', sa.TIMESTAMP(timezone=True), server_default=sa.text('now()'), nullable=False),
-    sa.Column('next_run', sa.TIMESTAMP(timezone=True), nullable=True),
-    sa.Column('run_count', sa.Integer(), server_default=sa.text('0'), nullable=False),
-    sa.Column('error_message', sa.Text(), nullable=True),
-    sa.Column('extra_data', sa.JSON(), nullable=True),
+    sa.Column('status', sa.String(), nullable=True),
+    sa.Column('last_checked', sa.TIMESTAMP(timezone=True), server_default=sa.text('now()'), nullable=True),
+    sa.Column('details', sa.Text(), nullable=True),
     sa.ForeignKeyConstraint(['source_id'], ['data_sources.id'], name='fk_scraper_status_source_id_data_sources'),
     sa.PrimaryKeyConstraint('id')
     )
@@ -175,6 +172,30 @@ def upgrade():
     
     # Insert the maintenance_mode setting with default value
     op.execute("INSERT INTO settings (key, value, description) VALUES ('maintenance_mode', 'false', 'Controls whether the site is in maintenance mode')")
+
+    # Populate initial data sources - these are hardcoded and required for the application to function
+    data_sources_sql = """
+    INSERT INTO data_sources (name, scraper_key, url, description, frequency) VALUES
+    ('Acquisition Gateway', 'ACQGW', 'https://hallways.cap.gsa.gov/app/#/gateway/acquisition-gateway/forecast-documents', 'GSA Acquisition Gateway forecast documents', 'weekly'),
+    ('Department of Commerce', 'DOC', 'https://www.commerce.gov/', 'Department of Commerce procurement forecasts', 'weekly'),
+    ('Department of Homeland Security', 'DHS', 'https://www.dhs.gov/', 'DHS procurement forecasts', 'weekly'),
+    ('Department of Justice', 'DOJ', 'https://www.justice.gov/', 'DOJ procurement forecasts', 'weekly'),
+    ('Department of State', 'DOS', 'https://www.state.gov/', 'DOS procurement forecasts', 'weekly'),
+    ('Department of Transportation', 'DOT', 'https://www.transportation.gov/', 'DOT procurement forecasts', 'weekly'),
+    ('Health and Human Services', 'HHS', 'https://www.hhs.gov/', 'HHS procurement forecasts', 'weekly'),
+    ('Social Security Administration', 'SSA', 'https://www.ssa.gov/', 'SSA procurement forecasts', 'weekly'),
+    ('Department of Treasury', 'TREAS', 'https://www.treasury.gov/', 'Treasury procurement forecasts', 'weekly');
+    """
+    op.execute(data_sources_sql)
+
+    # Create initial scraper status for each data source
+    # Note: This uses a subquery to reference the newly inserted data sources
+    initial_status_sql = """
+    INSERT INTO scraper_status (source_id, status, last_checked, details)
+    SELECT id, 'pending', CURRENT_TIMESTAMP, 'Newly created data source, awaiting first scrape.'
+    FROM data_sources;
+    """
+    op.execute(initial_status_sql)
 
     # Create file_processing_logs table
     op.create_table('file_processing_logs',

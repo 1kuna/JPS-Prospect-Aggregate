@@ -65,7 +65,7 @@ run_migrations() {
     
     # Check if this is a completely fresh database
     log "Checking if database is initialized..."
-    if ! python -c "from app import create_app, db; app = create_app(); app.app_context().push(); db.engine.execute('SELECT 1 FROM alembic_version LIMIT 1')" 2>/dev/null; then
+    if ! python -c "from app import create_app, db; from sqlalchemy import text; app = create_app(); app.app_context().push(); db.session.execute(text('SELECT 1 FROM alembic_version LIMIT 1'))" 2>/dev/null; then
         log "Fresh database detected - no alembic_version table exists"
         log "Will run full migration setup"
         FRESH_DB=true
@@ -82,14 +82,71 @@ run_migrations() {
     
     log "Migration command completed with exit code: $MIGRATION_EXIT_CODE"
     
+    # Always show migration output for debugging
+    if [ $MIGRATION_EXIT_CODE -ne 0 ]; then
+        log "Migration failed! Full output:"
+        echo "$MIGRATION_OUTPUT"
+    fi
+    
     if [ $MIGRATION_EXIT_CODE -eq 0 ]; then
         log "Database migrations completed successfully"
         
-        # Verify tables were created
-        if python -c "from app import create_app, db; app = create_app(); app.app_context().push(); db.engine.execute('SELECT 1 FROM prospects LIMIT 1')" 2>/dev/null; then
-            log "SUCCESS: prospects table exists and is accessible"
+        # Verify tables were created and accessible
+        log "Verifying database tables are accessible from Flask app context..."
+        VERIFY_OUTPUT=$(python3 << 'PYTHON_SCRIPT'
+import sys
+import traceback
+
+try:
+    from app import create_app
+    from app.database import db
+    from app.database.models import Prospect, DataSource, ScraperStatus
+    from sqlalchemy import text
+    
+    print('Creating Flask app...')
+    app = create_app()
+    
+    with app.app_context():
+        print('Testing database connectivity...')
+        
+        # Test prospects table
+        result = db.session.execute(text('SELECT COUNT(*) FROM prospects')).fetchone()
+        prospects_count = result[0] if result else 0
+        print(f'SUCCESS: prospects table accessible, contains {prospects_count} records')
+        
+        # Test data_sources table  
+        result = db.session.execute(text('SELECT COUNT(*) FROM data_sources')).fetchone()
+        data_sources_count = result[0] if result else 0
+        print(f'SUCCESS: data_sources table accessible, contains {data_sources_count} records')
+        
+        # Test scraper_status table
+        result = db.session.execute(text('SELECT COUNT(*) FROM scraper_status')).fetchone()
+        status_count = result[0] if result else 0
+        print(f'SUCCESS: scraper_status table accessible, contains {status_count} records')
+        
+        # Test using ORM models
+        prospects_orm_count = db.session.query(Prospect).count()
+        print(f'SUCCESS: Prospect ORM model working, found {prospects_orm_count} records')
+        
+        print('VERIFICATION_SUCCESS: All tables accessible from Flask app context')
+        
+except Exception as e:
+    print(f'VERIFICATION_ERROR: {e}')
+    print('TRACEBACK:')
+    traceback.print_exc()
+    sys.exit(1)
+PYTHON_SCRIPT
+)
+        VERIFY_EXIT_CODE=$?
+        
+        if [ $VERIFY_EXIT_CODE -eq 0 ]; then
+            log "Database tables verification successful"
+            echo "$VERIFY_OUTPUT" | grep "SUCCESS:"
+            echo "$VERIFY_OUTPUT" | grep "VERIFICATION_SUCCESS"
         else
-            log "WARNING: Migration succeeded but prospects table not accessible"
+            log "WARNING: Database tables verification failed"
+            echo "$VERIFY_OUTPUT"
+            log "This may cause issues with the web application accessing data"
         fi
         
         return 0
@@ -132,11 +189,11 @@ run_migrations() {
         log "Attempting to diagnose migration issues..."
         
         # Check if alembic_version table exists
-        if python -c "from app import create_app, db; app = create_app(); app.app_context().push(); db.engine.execute('SELECT 1 FROM alembic_version LIMIT 1')" 2>/dev/null; then
+        if python -c "from app import create_app, db; from sqlalchemy import text; app = create_app(); app.app_context().push(); db.session.execute(text('SELECT 1 FROM alembic_version LIMIT 1'))" 2>/dev/null; then
             log "alembic_version table exists"
         else
             log "alembic_version table missing - creating it"
-            python -c "from app import create_app, db; from sqlalchemy import text; app = create_app(); app.app_context().push(); db.engine.execute(text('CREATE TABLE IF NOT EXISTS alembic_version (version_num VARCHAR(32) NOT NULL, CONSTRAINT alembic_version_pkc PRIMARY KEY (version_num))'))" 2>/dev/null || true
+            python -c "from app import create_app, db; from sqlalchemy import text; app = create_app(); app.app_context().push(); db.session.execute(text('CREATE TABLE IF NOT EXISTS alembic_version (version_num VARCHAR(32) NOT NULL, CONSTRAINT alembic_version_pkc PRIMARY KEY (version_num))'))" 2>/dev/null || true
         fi
         
         # List available migrations
@@ -153,12 +210,80 @@ run_migrations() {
     fi
 }
 
+# Function to initialize user database
+init_user_database() {
+    log "Initializing user database..."
+    
+    cd /app
+    
+    # Set environment variables for Flask
+    export FLASK_APP=run.py
+    export FLASK_ENV=production
+    
+    # Run the dedicated user database initialization script
+    USER_INIT_OUTPUT=$(python scripts/init_user_database.py 2>&1)
+    USER_INIT_EXIT_CODE=$?
+    
+    log "User database initialization completed with exit code: $USER_INIT_EXIT_CODE"
+    
+    if [ $USER_INIT_EXIT_CODE -eq 0 ]; then
+        log "User database initialized successfully"
+        echo "$USER_INIT_OUTPUT" | grep -E "(SUCCESS|✅)"
+        return 0
+    else
+        log "ERROR: User database initialization failed"
+        echo "$USER_INIT_OUTPUT"
+        
+        # Check if it's just because tables already exist
+        if echo "$USER_INIT_OUTPUT" | grep -q "already exists"; then
+            log "NOTICE: User tables already exist, continuing..."
+            return 0
+        fi
+        
+        log "ERROR: Cannot continue with failed user database initialization"
+        exit 1
+    fi
+}
+
+# Function to create super admin
+create_super_admin() {
+    log "Creating super admin user..."
+    
+    cd /app
+    
+    # Set environment variables for Flask
+    export FLASK_APP=run.py
+    export FLASK_ENV=production
+    
+    # Run the super admin creation script
+    SUPER_ADMIN_OUTPUT=$(python scripts/create_super_admin.py 2>&1)
+    SUPER_ADMIN_EXIT_CODE=$?
+    
+    log "Super admin creation completed with exit code: $SUPER_ADMIN_EXIT_CODE"
+    
+    if [ $SUPER_ADMIN_EXIT_CODE -eq 0 ]; then
+        log "Super admin user created/updated successfully"
+        echo "$SUPER_ADMIN_OUTPUT" | grep -E "(SUCCESS|✅|already exists as super_admin)"
+        return 0
+    else
+        log "WARNING: Super admin creation failed, but continuing startup"
+        echo "$SUPER_ADMIN_OUTPUT"
+        
+        # Don't exit on failure - this is not critical for startup
+        # The admin can be created manually later if needed
+        log "Super admin can be created manually later using: python scripts/create_super_admin.py"
+        return 0
+    fi
+}
+
 # Main execution
 log "Environment: ${FLASK_ENV:-production}"
 log "Database URL configured: $(echo $DATABASE_URL | cut -d@ -f2 || echo not set)"
 
 wait_for_db
 run_migrations
+init_user_database
+create_super_admin
 
 log "Starting application with command: $@"
 exec "$@"
