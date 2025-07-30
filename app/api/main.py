@@ -4,7 +4,7 @@ from sqlalchemy.orm import joinedload, selectinload
 from app.database import db
 from app.database.models import Prospect, DataSource, ScraperStatus # Added ScraperStatus
 from app.utils.logger import logger
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
 from functools import lru_cache
 
 main_bp = Blueprint('main', __name__)
@@ -70,7 +70,7 @@ def get_dashboard():
         ).group_by(Prospect.agency).order_by(desc('prospect_count')).limit(5).all()
         
         # Get upcoming prospects (using release_date)
-        today = datetime.date.today() # Use datetime.date.today() for date comparison
+        today = date.today() # Use date.today() for date comparison
         upcoming_prospects_data = session.query(Prospect).filter(
             Prospect.release_date >= today
         ).order_by(Prospect.release_date).limit(5).all()
@@ -261,17 +261,28 @@ def database_status():
         
         status_count = db.session.query(func.count(ScraperStatus.id)).scalar()
         
-        # Get database file size if using SQLite
+        # Get database size (works for both SQLite and PostgreSQL)
         db_size = None
         try:
-            import os
             from flask import current_app
             db_path = current_app.config.get('SQLALCHEMY_DATABASE_URI')
+            
             if db_path and db_path.startswith('sqlite:///'):
+                # SQLite: Get file size
+                import os
                 db_file = db_path.replace('sqlite:///', '')
                 if os.path.exists(db_file):
                     db_size = os.path.getsize(db_file)
+            elif db_path and 'postgresql' in db_path:
+                # PostgreSQL: Get database size using SQL query
+                from sqlalchemy import text
+                # Extract database name from URL (after the last '/')
+                db_name = db_path.split('/')[-1].split('?')[0]  # Handle query parameters
+                result = db.session.execute(text(f"SELECT pg_database_size('{db_name}')")).fetchone()
+                if result:
+                    db_size = result[0]  # Size in bytes
         except Exception:
+            # If any error occurs, silently continue with db_size = None
             pass
         
         return jsonify({

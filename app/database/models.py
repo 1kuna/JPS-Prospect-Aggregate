@@ -109,11 +109,27 @@ class Prospect(db.Model): # Renamed back to Prospect
             "extra": clean_value(self.extra) if self.extra else None,
             "source_id": self.source_id,
             "source_name": self.data_source.name if self.data_source else None,
-            # Include key inferred fields for frontend display
-            "inferred_set_aside": self.inferred_data.inferred_set_aside if self.inferred_data else None,
-            "inferred_naics": self.inferred_data.inferred_naics if self.inferred_data else None,
-            "inferred_naics_description": self.inferred_data.inferred_naics_description if self.inferred_data else None
+            # Include key inferred fields for frontend display (temporarily disabled due to schema issues)
+            "inferred_set_aside": None,  # self._get_inferred_field("inferred_set_aside"),
+            "inferred_naics": None,  # self._get_inferred_field("inferred_naics"),
+            "inferred_naics_description": None  # self._get_inferred_field("inferred_naics_description")
         }
+
+    def _get_inferred_field(self, field_name):
+        """Safely get inferred data field, handling schema mismatches gracefully."""
+        try:
+            # First check if the relationship exists without triggering a query
+            if hasattr(self, 'inferred_data'):
+                # Now safely access the relationship
+                inferred_obj = self.inferred_data
+                if inferred_obj and hasattr(inferred_obj, field_name):
+                    return getattr(inferred_obj, field_name)
+        except Exception as e:
+            # If there's any database schema issue, return None gracefully
+            # Log the error for debugging but don't fail the request
+            print(f"Warning: Error accessing inferred field {field_name}: {str(e)}")
+            pass
+        return None
 
 class InferredProspectData(db.Model): # Renamed back
     __tablename__ = 'inferred_prospect_data' # Renamed back
