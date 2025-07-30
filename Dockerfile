@@ -73,7 +73,7 @@ ENV PATH=/root/.local/bin:$PATH
 
 # Copy entrypoint script first (before copying everything)
 COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+RUN sed -i 's/\r$//' /entrypoint.sh && chmod +x /entrypoint.sh
 
 # Copy application code
 WORKDIR /app
