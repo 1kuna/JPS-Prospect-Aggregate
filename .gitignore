@@ -108,3 +108,6 @@ htmlcov/
 *~
 .#*
 \#*#
+
+# Claude Code settings
+.claude/settings.local.json
