@@ -2,7 +2,7 @@ from flask import Blueprint, jsonify, request, Response, stream_with_context
 from app.database.models import Prospect, db, AIEnrichmentLog, LLMOutput, InferredProspectData
 from app.utils.logger import logger
 from app.services.llm_service import llm_service
-from app.services.enhancement_queue import enhancement_queue
+from app.services.enhancement_queue import enhancement_queue, add_individual_enhancement
 from app.api.auth import admin_required
 from sqlalchemy import func
 from datetime import datetime, timedelta, timezone
@@ -263,7 +263,7 @@ def start_iterative_enhancement():
             return jsonify({"error": f"Invalid enhancement type. Must be one of: {valid_types}"}), 400
         
         # Start enhancement (runs in background thread)
-        result = iterative_service.start_enhancement(enhancement_type, skip_existing)
+        result = llm_service.start_enhancement(enhancement_type, skip_existing)
         
         logger.info(f"Started iterative LLM enhancement: type={enhancement_type}, skip_existing={skip_existing}")
         return jsonify(result), 200
@@ -278,7 +278,7 @@ def stop_iterative_enhancement():
     """Stop the current iterative enhancement process"""
     try:
         # Stop enhancement
-        result = iterative_service.stop_enhancement()
+        result = llm_service.stop_enhancement()
         
         logger.info("Stopped iterative LLM enhancement")
         return jsonify(result), 200
@@ -292,7 +292,7 @@ def stop_iterative_enhancement():
 def get_iterative_progress():
     """Get current progress of iterative enhancement"""
     try:
-        progress = iterative_service.get_progress()
+        progress = llm_service.get_progress()
         
         # Calculate percentage if processing
         if progress['total'] > 0:
@@ -807,7 +807,7 @@ def enhance_single_prospect():
         # Also check if prospect is already in the queue with a different user
         # This prevents race conditions between queue processing and database locking
         existing_queue_items = [
-            item for item in enhancement_queue_service._queue_items.values()
+            item for item in enhancement_queue._queue_items.values()
             if (str(item.prospect_id) == str(prospect_id) and 
                 item.type.value == 'individual' and
                 item.status.value in ['pending', 'processing'])
@@ -835,7 +835,7 @@ def enhance_single_prospect():
                 }), 200
                 
         # Add to priority queue (returns dict with queue_item_id and was_existing)
-        enhancement_result = enhancement_queue_service.add_individual_enhancement(
+        enhancement_result = add_individual_enhancement(
             prospect_id=prospect_id,
             enhancement_type=enhancement_type,
             user_id=user_id,
@@ -846,7 +846,7 @@ def enhance_single_prospect():
         was_existing = enhancement_result["was_existing"]
         
         # Get queue status to provide better response information
-        queue_status = enhancement_queue_service.get_queue_status()
+        queue_status = enhancement_queue.get_queue_status()
         worker_running = queue_status.get('worker_running', False)
         queue_position = None
         
@@ -923,7 +923,7 @@ def cleanup_stale_enhancement_locks():
 def get_queue_status():
     """Get current enhancement queue status"""
     try:
-        status = enhancement_queue_service.get_queue_status()
+        status = enhancement_queue.get_queue_status()
         return jsonify(status), 200
     except Exception as e:
         logger.error(f"Error getting queue status: {e}", exc_info=True)
@@ -934,7 +934,7 @@ def get_queue_status():
 def get_queue_item_status(item_id):
     """Get status of a specific queue item"""
     try:
-        item_status = enhancement_queue_service.get_item_status(item_id)
+        item_status = enhancement_queue.get_item_status(item_id)
         if not item_status:
             return jsonify({"error": "Queue item not found"}), 404
         return jsonify(item_status), 200
@@ -947,7 +947,7 @@ def get_queue_item_status(item_id):
 def cancel_queue_item(item_id):
     """Cancel a specific queue item"""
     try:
-        success = enhancement_queue_service.cancel_item(item_id)
+        success = enhancement_queue.cancel_item(item_id)
         if success:
             return jsonify({"message": f"Queue item {item_id} cancelled successfully"}), 200
         else:
@@ -961,7 +961,7 @@ def cancel_queue_item(item_id):
 def start_queue_worker():
     """Start the enhancement queue worker"""
     try:
-        enhancement_queue_service.start_worker()
+        enhancement_queue.start_worker()
         return jsonify({"message": "Queue worker started successfully"}), 200
     except Exception as e:
         logger.error(f"Error starting queue worker: {e}", exc_info=True)
@@ -972,7 +972,7 @@ def start_queue_worker():
 def stop_queue_worker():
     """Stop the enhancement queue worker"""
     try:
-        enhancement_queue_service.stop_worker()
+        enhancement_queue.stop_worker()
         return jsonify({"message": "Queue worker stopped successfully"}), 200
     except Exception as e:
         logger.error(f"Error stopping queue worker: {e}", exc_info=True)
@@ -1035,7 +1035,7 @@ def enhancement_progress_stream(prospect_id):
                 # Check queue status every 2 seconds
                 if current_time - last_queue_check > 2:
                     # Get queue position for this prospect
-                    queue_status = enhancement_queue_service.get_queue_status()
+                    queue_status = enhancement_queue.get_queue_status()
                     if queue_status and queue_status.get('pending_items'):
                         prospect_queue_item = None
                         queue_position = None
@@ -1152,7 +1152,7 @@ def cancel_enhancement(queue_item_id):
     """Cancel a queued enhancement request"""
     try:
         # Attempt to cancel the queue item
-        success = enhancement_queue_service.cancel_item(queue_item_id)
+        success = enhancement_queue.cancel_item(queue_item_id)
         
         if success:
             logger.info(f"Successfully cancelled enhancement queue item: {queue_item_id}")

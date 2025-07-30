@@ -879,6 +879,15 @@ class LLMService:
     def is_processing(self) -> bool:
         """Check if enhancement is currently running."""
         return self._processing
+    
+    # Backward compatibility methods for API
+    def start_enhancement(self, enhancement_type: EnhancementType, skip_existing: bool = True) -> Dict[str, any]:
+        """Start enhancement processing (alias for start_iterative_enhancement)"""
+        return self.start_iterative_enhancement(enhancement_type, skip_existing)
+    
+    def stop_enhancement(self) -> Dict[str, any]:
+        """Stop enhancement processing (alias for stop_iterative_enhancement)"""
+        return self.stop_iterative_enhancement()
 
     def start_iterative_enhancement(self, enhancement_type: EnhancementType, skip_existing: bool = True) -> Dict[str, any]:
         """Start iterative enhancement processing in background thread."""
