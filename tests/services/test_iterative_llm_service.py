@@ -1,5 +1,5 @@
 """
-Unit tests for IterativeLLMServiceV2 - Real-time processing with threading
+Unit tests for IterativeLLMService - Real-time processing with threading
 """
 
 import pytest
@@ -8,17 +8,17 @@ import threading
 import time
 from datetime import datetime, timezone
 
-from app.services.iterative_llm_service_v2 import IterativeLLMServiceV2, EnhancementType
+from app.services.iterative_llm_service import IterativeLLMService, EnhancementType
 from app.services.base_llm_service import BaseLLMService
 from app.database.models import Prospect
 
 
-class TestIterativeLLMServiceV2Initialization:
+class TestIterativeLLMServiceInitialization:
     """Test service initialization and basic properties"""
     
     def test_initialization(self):
         """Test service initializes correctly"""
-        service = IterativeLLMServiceV2()
+        service = IterativeLLMService()
         
         assert isinstance(service.base_service, BaseLLMService)
         assert service._processing is False
@@ -35,12 +35,12 @@ class TestIterativeLLMServiceV2Initialization:
     
     def test_is_processing_initial_state(self):
         """Test initial processing state"""
-        service = IterativeLLMServiceV2()
+        service = IterativeLLMService()
         assert service.is_processing() is False
     
     def test_set_queue_service(self):
         """Test setting queue service"""
-        service = IterativeLLMServiceV2()
+        service = IterativeLLMService()
         mock_queue_service = Mock()
         
         service.set_queue_service(mock_queue_service)
@@ -49,7 +49,7 @@ class TestIterativeLLMServiceV2Initialization:
     
     def test_set_emit_callback(self):
         """Test setting emit callback"""
-        service = IterativeLLMServiceV2()
+        service = IterativeLLMService()
         mock_callback = Mock()
         
         service.set_emit_callback(mock_callback)
@@ -62,7 +62,7 @@ class TestBuildEnhancementFilter:
     
     @pytest.fixture
     def service(self):
-        return IterativeLLMServiceV2()
+        return IterativeLLMService()
     
     def test_build_filter_values_with_skip_existing(self, service):
         """Test building filter for values enhancement with skip_existing=True"""
@@ -108,9 +108,9 @@ class TestGetProspectsToProcess:
     
     @pytest.fixture
     def service(self):
-        return IterativeLLMServiceV2()
+        return IterativeLLMService()
     
-    @patch('app.services.iterative_llm_service_v2.Session')
+    @patch('app.services.iterative_llm_service.Session')
     def test_get_prospects_to_process_with_filter(self, mock_session_class, service):
         """Test getting prospects to process with valid filter"""
         mock_db_session = Mock()
@@ -131,7 +131,7 @@ class TestGetProspectsToProcess:
             assert result == ["prospect1", "prospect2"]
             mock_build_filter.assert_called_once_with("values", True)
     
-    @patch('app.services.iterative_llm_service_v2.Session')
+    @patch('app.services.iterative_llm_service.Session')
     def test_get_prospects_to_process_no_filter(self, mock_session_class, service):
         """Test getting prospects when filter returns None"""
         mock_db_session = Mock()
@@ -149,7 +149,7 @@ class TestStartEnhancement:
     
     @pytest.fixture
     def service(self):
-        return IterativeLLMServiceV2()
+        return IterativeLLMService()
     
     def test_start_enhancement_already_processing(self, service):
         """Test starting enhancement when already processing"""
@@ -160,8 +160,8 @@ class TestStartEnhancement:
         assert result["status"] == "error"
         assert "already in progress" in result["message"]
     
-    @patch('app.services.iterative_llm_service_v2.create_app')
-    @patch('app.services.iterative_llm_service_v2.sessionmaker')
+    @patch('app.services.iterative_llm_service.create_app')
+    @patch('app.services.iterative_llm_service.sessionmaker')
     def test_start_enhancement_no_prospects(self, mock_sessionmaker, mock_create_app, service):
         """Test starting enhancement when no prospects need processing"""
         # Setup mocks
@@ -181,8 +181,8 @@ class TestStartEnhancement:
             assert result["status"] == "completed"
             assert result["total_to_process"] == 0
     
-    @patch('app.services.iterative_llm_service_v2.create_app')
-    @patch('app.services.iterative_llm_service_v2.sessionmaker')
+    @patch('app.services.iterative_llm_service.create_app')
+    @patch('app.services.iterative_llm_service.sessionmaker')
     def test_start_enhancement_with_queue_service(self, mock_sessionmaker, mock_create_app, service):
         """Test starting enhancement with queue service"""
         # Setup service with queue
@@ -217,7 +217,7 @@ class TestStopEnhancement:
     
     @pytest.fixture
     def service(self):
-        return IterativeLLMServiceV2()
+        return IterativeLLMService()
     
     def test_stop_enhancement_not_processing(self, service):
         """Test stopping when not processing"""
@@ -245,7 +245,7 @@ class TestProgressTracking:
     
     @pytest.fixture
     def service(self):
-        return IterativeLLMServiceV2()
+        return IterativeLLMService()
     
     def test_get_progress_thread_safe(self, service):
         """Test that get_progress returns a copy and is thread-safe"""
@@ -271,7 +271,7 @@ class TestMonitorQueueProgress:
     
     @pytest.fixture
     def service(self):
-        return IterativeLLMServiceV2()
+        return IterativeLLMService()
     
     def test_monitor_queue_progress_updates_progress(self, service):
         """Test that queue monitoring updates local progress"""
@@ -332,9 +332,9 @@ class TestDirectProcessing:
     
     @pytest.fixture
     def service(self):
-        return IterativeLLMServiceV2()
+        return IterativeLLMService()
     
-    @patch('app.services.iterative_llm_service_v2.sessionmaker')
+    @patch('app.services.iterative_llm_service.sessionmaker')
     def test_start_direct_processing(self, mock_sessionmaker, service):
         """Test starting direct processing"""
         mock_app = Mock()
@@ -359,10 +359,10 @@ class TestProcessIteratively:
     
     @pytest.fixture
     def service(self):
-        return IterativeLLMServiceV2()
+        return IterativeLLMService()
     
-    @patch('app.services.iterative_llm_service_v2.sessionmaker')
-    @patch('app.services.iterative_llm_service_v2.AIEnrichmentLog')
+    @patch('app.services.iterative_llm_service.sessionmaker')
+    @patch('app.services.iterative_llm_service.AIEnrichmentLog')
     def test_process_iteratively_single_prospect(self, mock_log_class, mock_sessionmaker, service):
         """Test processing a single prospect iteratively"""
         mock_app = Mock()
@@ -402,7 +402,7 @@ class TestProcessIteratively:
             assert service._progress["status"] == "completed"
             assert service._progress["processed"] == 1
     
-    @patch('app.services.iterative_llm_service_v2.sessionmaker')
+    @patch('app.services.iterative_llm_service.sessionmaker')
     def test_process_iteratively_with_progress_callback(self, mock_sessionmaker, service):
         """Test processing with progress callback"""
         mock_app = Mock()
@@ -428,7 +428,7 @@ class TestProcessIteratively:
         
         with patch.object(service, '_get_next_prospect', side_effect=mock_get_next_prospect), \
              patch.object(service.base_service, 'process_single_prospect_enhancement') as mock_process_single, \
-             patch('app.services.iterative_llm_service_v2.emit_field_update') as mock_emit_field_update:
+             patch('app.services.iterative_llm_service.emit_field_update') as mock_emit_field_update:
             
             def mock_process_with_callback(prospect, enhancement_type, progress_callback=None):
                 if progress_callback:
@@ -451,7 +451,7 @@ class TestCountUnprocessed:
     
     @pytest.fixture
     def service(self):
-        return IterativeLLMServiceV2()
+        return IterativeLLMService()
     
     def test_count_unprocessed_with_filter(self, service):
         """Test counting unprocessed prospects with valid filter"""
@@ -487,7 +487,7 @@ class TestGetNextProspect:
     
     @pytest.fixture
     def service(self):
-        return IterativeLLMServiceV2()
+        return IterativeLLMService()
     
     def test_get_next_prospect_with_filter(self, service):
         """Test getting next prospect with valid filter"""

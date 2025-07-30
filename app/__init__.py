@@ -67,7 +67,7 @@ def create_app():
     # Initialize enhancement queue service and set up cross-references
     with app.app_context():
         from app.services.enhancement_queue_service import enhancement_queue_service
-        from app.services.iterative_llm_service_v2 import iterative_service_v2
+        from app.services.iterative_llm_service import iterative_service
         from app.utils.enhancement_cleanup import cleanup_all_in_progress_enhancements
         from app.utils.scraper_cleanup import cleanup_all_working_scrapers
         
@@ -102,8 +102,8 @@ def create_app():
             logger.info("Skipping cleanup functions - database tables will be created by migrations")
         
         # Set up cross-references between services
-        enhancement_queue_service.set_bulk_service(iterative_service_v2)
-        iterative_service_v2.set_queue_service(enhancement_queue_service)
+        enhancement_queue_service.set_bulk_service(iterative_service)
+        iterative_service.set_queue_service(enhancement_queue_service)
         
         # Start the queue worker
         enhancement_queue_service.start_worker()

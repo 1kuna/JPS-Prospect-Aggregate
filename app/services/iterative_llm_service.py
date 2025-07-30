@@ -1,5 +1,5 @@
 """
-Iterative LLM Enhancement Service V2
+Iterative LLM Enhancement Service
 
 Handles one-by-one processing of prospects with start/stop functionality
 and real-time progress tracking using threading instead of asyncio.
@@ -24,7 +24,7 @@ from app.database import db
 EnhancementType = Literal["all", "values", "titles", "naics", "set_asides"]
 
 
-class IterativeLLMServiceV2:
+class IterativeLLMService:
     """Service for iterative one-by-one LLM enhancement with start/stop control"""
     
     def __init__(self):
@@ -410,5 +410,5 @@ class IterativeLLMServiceV2:
         return None
 
 
-# Module-level instance for backward compatibility
-iterative_service_v2 = IterativeLLMServiceV2()
+# Module-level instance 
+iterative_service = IterativeLLMService()

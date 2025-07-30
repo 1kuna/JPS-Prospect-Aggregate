@@ -2,7 +2,7 @@ from flask import Blueprint, jsonify, request, Response, stream_with_context
 from app.database.models import Prospect, db, AIEnrichmentLog, LLMOutput, InferredProspectData
 from app.utils.logger import logger
 from app.services.contract_llm_service import ContractLLMService
-from app.services.iterative_llm_service_v2 import iterative_service_v2 as iterative_service
+from app.services.iterative_llm_service import iterative_service
 from app.services.enhancement_queue_service import enhancement_queue_service
 from app.api.auth import admin_required
 from sqlalchemy import func
@@ -879,93 +879,6 @@ def enhance_single_prospect():
         logger.error(f"Error queueing single prospect enhancement: {e}", exc_info=True)
         return jsonify({"error": f"Failed to queue prospect enhancement: {str(e)}"}), 500
 
-@llm_bp.route('/enhance-single-direct', methods=['POST'])
-@admin_required
-def enhance_single_prospect_direct():
-    """Enhance a single prospect directly (original implementation) - for backward compatibility"""
-    try:
-        # Parse and validate request
-        data = request.get_json()
-        if not data:
-            return jsonify({"error": "Request body required"}), 400
-            
-        prospect_id = data.get('prospect_id')
-        if not prospect_id:
-            return jsonify({"error": "prospect_id is required"}), 400
-            
-        force_redo = data.get('force_redo', False)
-        user_id = data.get('user_id', 1)  # Default to 1 if no user provided
-            
-        # Get the prospect
-        prospect = Prospect.query.get(prospect_id)
-        if not prospect:
-            return jsonify({"error": "Prospect not found"}), 404
-        
-        # Check if prospect is already being enhanced by another user
-        if prospect.enhancement_status == 'in_progress':
-            if prospect.enhancement_user_id != user_id:
-                return jsonify({
-                    "error": "Prospect is currently being enhanced by another user",
-                    "status": "blocked",
-                    "enhancement_status": "in_progress",
-                    "enhancement_user_id": prospect.enhancement_user_id
-                }), 409
-                
-        # Set prospect as being enhanced
-        prospect.enhancement_status = 'in_progress'
-        prospect.enhancement_started_at = datetime.now(timezone.utc)
-        prospect.enhancement_user_id = user_id
-        db.session.commit()
-            
-        logger.info(f"Starting direct single prospect enhancement for prospect {prospect_id} by user {user_id}")
-        
-        try:
-            # Initialize the LLM service
-            llm_service = ContractLLMService(model_name='qwen3:latest')
-            
-            processed = False
-            enhancements = []
-            
-            # Process each enhancement type in new order: Title → Value → NAICS
-            if _process_title_enhancement(prospect, llm_service, force_redo):
-                processed = True
-                enhancements.append('titles')
-            
-            if _process_value_enhancement(prospect, llm_service, force_redo):
-                processed = True
-                enhancements.append('values')
-            
-            if _process_naics_enhancement(prospect, llm_service, force_redo):
-                processed = True
-                enhancements.append('naics')
-            
-            if _process_set_aside_enhancement(prospect, llm_service, force_redo):
-                processed = True
-                enhancements.append('set_asides')
-            
-            # Mark as completed
-            prospect.enhancement_status = 'idle'
-            prospect.enhancement_started_at = None
-            prospect.enhancement_user_id = None
-            
-            # Commit the status change immediately so SSE can detect completion
-            db.session.commit()
-            
-            # Finalize and return response
-            return _finalize_enhancement(prospect, llm_service, processed, enhancements, force_redo)
-            
-        except Exception as enhancement_error:
-            # Mark enhancement as failed and clear lock
-            prospect.enhancement_status = 'failed'
-            prospect.enhancement_started_at = None
-            prospect.enhancement_user_id = None
-            db.session.commit()
-            raise enhancement_error
-            
-    except Exception as e:
-        logger.error(f"Error enhancing single prospect directly: {e}", exc_info=True)
-        db.session.rollback()
-        return jsonify({"error": f"Failed to enhance prospect: {str(e)}"}), 500
 
 @llm_bp.route('/cleanup-stale-locks', methods=['POST'])
 @admin_required

@@ -14,7 +14,7 @@ from app.database.models import Prospect
 from app.services.set_aside_standardization import SetAsideStandardizer, StandardSetAside
 from app.services.contract_llm_service import ContractLLMService
 from app.services.base_llm_service import BaseLLMService
-from app.services.iterative_llm_service_v2 import IterativeLLMServiceV2
+from app.services.iterative_llm_service import IterativeLLMService
 
 def test_rule_based_standardization():
     """Test the rule-based set-aside standardization"""
@@ -191,9 +191,9 @@ def test_new_architecture():
         
         print()
         
-        # 3. Test IterativeLLMServiceV2 (real-time processing)
-        print("3. Testing IterativeLLMServiceV2 (real-time processing):")
-        iterative_service = IterativeLLMServiceV2()
+        # 3. Test IterativeLLMService (real-time processing)
+        print("3. Testing IterativeLLMService (real-time processing):")
+        iterative_service = IterativeLLMService()
         
         # Test that it uses BaseLLMService
         print(f"   Uses BaseLLMService: {isinstance(iterative_service.base_service, BaseLLMService)}")
@@ -235,7 +235,7 @@ def test_new_architecture():
         
         print(f"   BaseLLMService methods: {len(base_methods)}")
         print(f"   ContractLLMService methods: {len(contract_methods)} (inherits {len(base_methods)} from base)")
-        print(f"   IterativeLLMServiceV2 methods: {len(iterative_methods)} (uses base service)")
+        print(f"   IterativeLLMService methods: {len(iterative_methods)} (uses base service)")
         
         # Show that ContractLLMService has inherited methods plus its own
         inherited_count = sum(1 for m in base_methods if hasattr(contract_service, m))

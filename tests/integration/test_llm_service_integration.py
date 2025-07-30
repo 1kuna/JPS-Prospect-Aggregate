@@ -9,7 +9,7 @@ from decimal import Decimal
 
 from app.services.base_llm_service import BaseLLMService
 from app.services.contract_llm_service import ContractLLMService
-from app.services.iterative_llm_service_v2 import IterativeLLMServiceV2
+from app.services.iterative_llm_service import IterativeLLMService
 from app.database.models import Prospect
 from app.services.set_aside_standardization import StandardSetAside
 
@@ -47,7 +47,7 @@ class TestServiceIntegration:
         """Test that all services produce consistent results using shared base logic"""
         base_service = BaseLLMService()
         contract_service = ContractLLMService()
-        iterative_service = IterativeLLMServiceV2()
+        iterative_service = IterativeLLMService()
         
         # Mock the LLM calls to return consistent results
         with patch.object(base_service, 'parse_contract_value_with_llm') as mock_parse_value, \
@@ -69,7 +69,7 @@ class TestServiceIntegration:
             assert hasattr(contract_service, 'classify_naics_with_llm')
             assert hasattr(contract_service, 'enhance_title_with_llm')
             
-            # Test that IterativeLLMServiceV2 uses the same base service
+            # Test that IterativeLLMService uses the same base service
             assert isinstance(iterative_service.base_service, BaseLLMService)
             
             # All should be successful
@@ -155,11 +155,11 @@ class TestEndToEndEnhancementWorkflow:
     
     def test_iterative_processing_workflow(self, sample_prospects):
         """Test complete iterative processing workflow"""
-        service = IterativeLLMServiceV2()
+        service = IterativeLLMService()
         
         # Mock the database session and app context
-        with patch('app.services.iterative_llm_service_v2.create_app') as mock_create_app, \
-             patch('app.services.iterative_llm_service_v2.sessionmaker') as mock_sessionmaker:
+        with patch('app.services.iterative_llm_service.create_app') as mock_create_app, \
+             patch('app.services.iterative_llm_service.sessionmaker') as mock_sessionmaker:
             
             mock_app = Mock()
             mock_create_app.return_value = mock_app
@@ -361,7 +361,7 @@ class TestServiceInteroperability:
         """Test that all services implement expected interfaces"""
         base_service = BaseLLMService()
         contract_service = ContractLLMService()
-        iterative_service = IterativeLLMServiceV2()
+        iterative_service = IterativeLLMService()
         
         # All should have core LLM methods
         core_methods = [
@@ -375,14 +375,14 @@ class TestServiceInteroperability:
         for method in core_methods:
             assert hasattr(base_service, method)
             assert hasattr(contract_service, method)
-            # IterativeLLMServiceV2 uses base_service, so check there
+            # IterativeLLMService uses base_service, so check there
             assert hasattr(iterative_service.base_service, method)
     
     def test_consistent_model_configuration(self):
         """Test that services use consistent model configuration"""
         base_service = BaseLLMService()
         contract_service = ContractLLMService()
-        iterative_service = IterativeLLMServiceV2()
+        iterative_service = IterativeLLMService()
         
         # All should use the same default model
         assert base_service.model_name == 'qwen3:latest'
