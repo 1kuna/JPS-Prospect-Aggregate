@@ -122,25 +122,36 @@ class EnhancementQueueService:
         enhancement_type: EnhancementType = "all", 
         user_id: Optional[int] = None,
         force_redo: bool = False
-    ) -> str:
-        """Add an individual prospect enhancement to the queue"""
+    ) -> Dict[str, Any]:
+        """Add an individual prospect enhancement to the queue
+        
+        Returns:
+            Dict containing:
+            - queue_item_id: str - The ID of the queue item
+            - was_existing: bool - True if returning an existing item, False if created new
+        """
         
         logger.info(f"ADD_INDIVIDUAL_ENHANCEMENT called for prospect {prospect_id}")
         
         with self._lock:
             # Check if this prospect is already being processed or queued
-            logger.info(f"DEDUP_CHECK: Checking for existing queue items for prospect {prospect_id}")
+            logger.info(f"DEDUP_CHECK: Checking for existing queue items for prospect {prospect_id}, force_redo={force_redo}")
             queue_items_count = len(self._queue_items)
             logger.info(f"DEDUP_CHECK: Total queue items in memory: {queue_items_count}")
             
-            for item in self._queue_items.values():
-                logger.info(f"DEDUP_CHECK: item {item.id}: prospect={item.prospect_id}, type={item.type.value}, status={item.status.value}")
-                if (str(item.prospect_id) == str(prospect_id) and 
-                    item.type == QueueItemType.INDIVIDUAL and
-                    item.status in [QueueItemStatus.PENDING, QueueItemStatus.PROCESSING]):
-                    logger.info(f"DEDUP_FOUND: Prospect {prospect_id} already in queue with ID {item.id}, status {item.status.value}")
-                    return item.id
-            logger.info(f"DEDUP_CHECK: No existing queue item found for prospect {prospect_id} - creating new one")
+            # Only check for duplicates if force_redo is False
+            if not force_redo:
+                for item in self._queue_items.values():
+                    logger.info(f"DEDUP_CHECK: item {item.id}: prospect={item.prospect_id}, type={item.type.value}, status={item.status.value}")
+                    if (str(item.prospect_id) == str(prospect_id) and 
+                        item.type == QueueItemType.INDIVIDUAL and
+                        item.status in [QueueItemStatus.PENDING, QueueItemStatus.PROCESSING]):
+                        logger.info(f"DEDUP_FOUND: Prospect {prospect_id} already in queue with ID {item.id}, status {item.status.value}")
+                        return {
+                            "queue_item_id": item.id,
+                            "was_existing": True
+                        }
+            logger.info(f"DEDUP_CHECK: {'Bypassing duplicate check due to force_redo' if force_redo else 'No existing queue item found'} for prospect {prospect_id} - creating new one")
         
         # Generate unique item ID
         item_id = f"individual_{prospect_id}_{int(time.time() * 1000)}"
@@ -167,9 +178,22 @@ class EnhancementQueueService:
         if self._bulk_service and self._bulk_service.is_processing():
             logger.info(f"Individual enhancement request added - signaling bulk process to yield")
             # The bulk process should check for high priority items periodically
+        
+        # Auto-start the worker if it's not running
+        if not self._processing:
+            logger.info(f"Queue worker not running - auto-starting worker for prospect {prospect_id}")
+            try:
+                self.start_worker()
+                logger.info(f"Successfully auto-started queue worker")
+            except Exception as e:
+                logger.error(f"Failed to auto-start queue worker: {e}", exc_info=True)
+                # Continue anyway - the item is queued and worker can be started manually
             
         logger.info(f"Added individual enhancement for prospect {prospect_id} to queue with ID {item_id}")
-        return item_id
+        return {
+            "queue_item_id": item_id,
+            "was_existing": False
+        }
         
     def add_bulk_enhancement(
         self, 
@@ -195,6 +219,16 @@ class EnhancementQueueService:
             self._queue_items[item_id] = queue_item
             
         self._queue.put((queue_item.priority, time.time(), queue_item))
+        
+        # Auto-start the worker if it's not running
+        if not self._processing:
+            logger.info(f"Queue worker not running - auto-starting worker for bulk enhancement")
+            try:
+                self.start_worker()
+                logger.info(f"Successfully auto-started queue worker for bulk processing")
+            except Exception as e:
+                logger.error(f"Failed to auto-start queue worker: {e}", exc_info=True)
+                # Continue anyway - the item is queued and worker can be started manually
         
         logger.info(f"Added bulk enhancement for {len(prospect_ids)} prospects to queue with ID {item_id}")
         return item_id
@@ -273,6 +307,12 @@ class EnhancementQueueService:
                 item.status = QueueItemStatus.CANCELLED
                 item.completed_at = datetime.now(timezone.utc)
                 self._completed_items.append(item)
+                
+                # Remove cancelled item from active queue items
+                if item_id in self._queue_items:
+                    del self._queue_items[item_id]
+                    logger.debug(f"Removed cancelled item {item_id} from active queue items")
+                
                 return True
                 
             return False
@@ -331,6 +371,12 @@ class EnhancementQueueService:
                         with self._lock:
                             self._current_item = None
                             self._completed_items.append(queue_item)
+                            
+                            # Remove completed item from active queue items to prevent memory buildup
+                            # and avoid issues with duplicate detection
+                            if queue_item.id in self._queue_items:
+                                del self._queue_items[queue_item.id]
+                                logger.debug(f"Removed completed item {queue_item.id} from active queue items")
                             
                             # Keep only last 50 completed items
                             if len(self._completed_items) > 50:

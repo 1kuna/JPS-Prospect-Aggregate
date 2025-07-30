@@ -379,6 +379,9 @@ def _ensure_extra_is_dict(prospect):
 
 def _process_value_enhancement(prospect, llm_service, force_redo):
     """Process value parsing enhancement for a prospect."""
+    logger.info(f"VALUE_ENHANCEMENT_DEBUG: Starting for prospect {prospect.id}")
+    logger.info(f"VALUE_ENHANCEMENT_DEBUG: force_redo={force_redo}, has_existing_value={bool(prospect.estimated_value_single)}")
+    
     # Always emit start event first
     emit_enhancement_progress(prospect.id, 'values_started', {
         'force_redo': force_redo,
@@ -389,6 +392,7 @@ def _process_value_enhancement(prospect, llm_service, force_redo):
     
     # Check if we should process values
     should_process = force_redo or not prospect.estimated_value_single
+    logger.info(f"VALUE_ENHANCEMENT_DEBUG: should_process={should_process} for prospect {prospect.id}")
     
     if should_process:
         if prospect.estimated_value_text:
@@ -568,6 +572,9 @@ def _process_naics_enhancement(prospect, llm_service, force_redo):
 
 def _process_title_enhancement(prospect, llm_service, force_redo):
     """Process title enhancement for a prospect."""
+    logger.info(f"TITLE_ENHANCEMENT_DEBUG: Starting for prospect {prospect.id}")
+    logger.info(f"TITLE_ENHANCEMENT_DEBUG: force_redo={force_redo}, has_title={bool(prospect.title)}, has_enhanced_title={bool(prospect.ai_enhanced_title)}")
+    
     # Always emit start event first
     emit_enhancement_progress(prospect.id, 'titles_started', {
         'force_redo': force_redo,
@@ -576,13 +583,21 @@ def _process_title_enhancement(prospect, llm_service, force_redo):
     })
     
     if prospect.title and (force_redo or not prospect.ai_enhanced_title):
+        logger.info(f"TITLE_ENHANCEMENT_DEBUG: Proceeding with LLM enhancement for prospect {prospect.id}")
         
-        enhanced_title = llm_service.enhance_title_with_llm(
-            prospect.title, 
-            prospect.description or "",
-            prospect.agency or "",
-            prospect_id=prospect.id
-        )
+        try:
+            logger.info(f"TITLE_ENHANCEMENT_DEBUG: Calling LLM service for prospect {prospect.id}")
+            enhanced_title = llm_service.enhance_title_with_llm(
+                prospect.title, 
+                prospect.description or "",
+                prospect.agency or "",
+                prospect_id=prospect.id
+            )
+            logger.info(f"TITLE_ENHANCEMENT_DEBUG: LLM response for prospect {prospect.id}: {enhanced_title}")
+        except Exception as e:
+            logger.error(f"TITLE_ENHANCEMENT_DEBUG: LLM service error for prospect {prospect.id}: {e}")
+            emit_enhancement_progress(prospect.id, 'titles_failed', {'error': f'LLM service error: {str(e)}'})
+            return False
         
         if enhanced_title['enhanced_title']:
             prospect.ai_enhanced_title = enhanced_title['enhanced_title']
@@ -617,6 +632,8 @@ def _process_title_enhancement(prospect, llm_service, force_redo):
             reason = 'No title available to enhance'
         else:
             reason = 'Already has enhanced title'
+        
+        logger.info(f"TITLE_ENHANCEMENT_DEBUG: Skipping enhancement for prospect {prospect.id}, reason: {reason}")
         emit_enhancement_progress(prospect.id, 'titles_completed', {
             'skipped': True,
             'reason': reason
@@ -813,27 +830,49 @@ def enhance_single_prospect():
                     "was_existing": True
                 }), 200
                 
-        # Add to priority queue (returns existing ID if already queued)
-        queue_item_id = enhancement_queue_service.add_individual_enhancement(
+        # Add to priority queue (returns dict with queue_item_id and was_existing)
+        enhancement_result = enhancement_queue_service.add_individual_enhancement(
             prospect_id=prospect_id,
             enhancement_type=enhancement_type,
             user_id=user_id,
             force_redo=force_redo
         )
         
-        # Check if this was an existing item
-        item_status = enhancement_queue_service.get_item_status(queue_item_id)
-        was_existing = item_status and item_status.get('created_at') != item_status.get('started_at', item_status.get('created_at'))
+        queue_item_id = enhancement_result["queue_item_id"]
+        was_existing = enhancement_result["was_existing"]
         
-        logger.info(f"Added individual enhancement for prospect {prospect_id} to queue with ID {queue_item_id}")
+        # Get queue status to provide better response information
+        queue_status = enhancement_queue_service.get_queue_status()
+        worker_running = queue_status.get('worker_running', False)
+        queue_position = None
+        
+        # Find the position of this item in the queue
+        if queue_status.get('pending_items'):
+            for idx, item in enumerate(queue_status['pending_items']):
+                if item.get('id') == queue_item_id:
+                    queue_position = idx + 1
+                    break
+        
+        logger.info(f"Added individual enhancement for prospect {prospect_id} to queue with ID {queue_item_id} (worker_running={worker_running}, position={queue_position})")
+        
+        # Create appropriate message based on worker status
+        if not worker_running:
+            message = f"Enhancement queued and worker auto-started for prospect {prospect_id}"
+        elif was_existing:
+            message = f"Enhancement request already in progress for prospect {prospect_id}"
+        else:
+            message = f"Enhancement request queued for prospect {prospect_id}"
         
         return jsonify({
             "status": "queued",
-            "message": f"Enhancement request queued for prospect {prospect_id}" + (" (already in progress)" if was_existing else ""),
+            "message": message,
             "queue_item_id": queue_item_id,
             "prospect_id": prospect_id,
             "priority": "high",
-            "was_existing": was_existing
+            "was_existing": was_existing,
+            "worker_running": worker_running,
+            "queue_position": queue_position,
+            "queue_size": queue_status.get('queue_size', 0)
         }), 200
             
     except Exception as e:
