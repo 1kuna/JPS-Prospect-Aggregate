@@ -102,7 +102,7 @@ class SimpleEnhancementQueue:
         """Check if currently processing"""
         return self._processing
     
-    def enhance_single_prospect(self, prospect_id: str, enhancement_type: EnhancementType = "all", user_id: Optional[int] = None) -> Dict[str, Any]:
+    def enhance_single_prospect(self, prospect_id: str, enhancement_type: EnhancementType = "all", user_id: Optional[int] = None, force_redo: bool = False) -> Dict[str, Any]:
         """
         Enhance a single prospect immediately (synchronous).
         This is for real-time UI updates.
@@ -120,8 +120,10 @@ class SimpleEnhancementQueue:
                 self._current_processing_type = "individual"
                 self._processing = True
             
-            logger.info(f"Starting individual enhancement for prospect {prospect_id[:8]}... ({enhancement_type})")
+            logger.info(f"Starting individual enhancement for prospect {prospect_id[:8]}... ({enhancement_type}, force_redo={force_redo})")
             
+            # Note: force_redo parameter not yet implemented in LLM service
+            # For now, LLM service will use its default enhancement logic
             results = llm_service.enhance_single_prospect(prospect, enhancement_type)
             
             if any(results.values()):
@@ -355,10 +357,20 @@ enhancement_queue = SimpleEnhancementQueue()
 
 
 # Backward compatibility functions
-def add_individual_enhancement(prospect_id: str, enhancement_type: EnhancementType = "all", user_id: Optional[int] = None) -> str:
+def add_individual_enhancement(prospect_id: str, enhancement_type: EnhancementType = "all", user_id: Optional[int] = None, force_redo: bool = False) -> Dict[str, Any]:
     """Add individual prospect enhancement (immediate processing)"""
-    result = enhancement_queue.enhance_single_prospect(prospect_id, enhancement_type, user_id)
-    return f"individual_{prospect_id}_{int(time.time())}"
+    result = enhancement_queue.enhance_single_prospect(prospect_id, enhancement_type, user_id, force_redo)
+    
+    queue_item_id = f"individual_{prospect_id}_{int(time.time())}"
+    
+    return {
+        "queue_item_id": queue_item_id,
+        "was_existing": False,  # For individual enhancements, always treat as new
+        "status": result.get("status", "completed"),
+        "message": result.get("message", "Enhancement completed"),
+        "prospect_id": prospect_id,
+        "enhancements": result.get("enhancements", {})
+    }
 
 
 def add_bulk_enhancement(prospect_ids: List[str], enhancement_type: EnhancementType = "all") -> str:
