@@ -1,0 +1,102 @@
+# Enforce consistent line endings across platforms
+# This ensures shell scripts work correctly in Docker regardless of host OS
+
+# Default behavior - auto-detect text files and normalize line endings
+* text=auto
+
+# Shell scripts - always use LF line endings (Unix style)
+*.sh text eol=lf
+*.bash text eol=lf
+
+# Batch/PowerShell scripts - use CRLF on Windows
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+*.cmd text eol=crlf
+
+# Docker-related files - always use LF
+Dockerfile text eol=lf
+docker-compose.yml text eol=lf
+docker-compose.yaml text eol=lf
+.dockerignore text eol=lf
+entrypoint.sh text eol=lf
+
+# Configuration files - use LF
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.toml text eol=lf
+.env text eol=lf
+.env.* text eol=lf
+*.conf text eol=lf
+*.cfg text eol=lf
+*.ini text eol=lf
+
+# Python files - use LF
+*.py text eol=lf
+*.pyw text eol=lf
+*.pyx text eol=lf
+*.pxd text eol=lf
+requirements.txt text eol=lf
+requirements-*.txt text eol=lf
+
+# Web files
+*.js text eol=lf
+*.jsx text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.html text eol=lf
+*.css text eol=lf
+*.scss text eol=lf
+*.vue text eol=lf
+
+# Documentation
+*.md text eol=lf
+*.rst text eol=lf
+*.txt text eol=lf
+README text eol=lf
+LICENSE text eol=lf
+AUTHORS text eol=lf
+CHANGELOG text eol=lf
+
+# Git files
+.gitignore text eol=lf
+.gitattributes text eol=lf
+.gitmodules text eol=lf
+
+# Binary files - do not modify
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.doc binary
+*.docx binary
+*.xls binary
+*.xlsx binary
+*.zip binary
+*.tar binary
+*.gz binary
+*.tgz binary
+*.bz2 binary
+*.7z binary
+*.rar binary
+*.exe binary
+*.dll binary
+*.so binary
+*.dylib binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.eot binary
+*.db binary
+*.sqlite binary
+*.sqlite3 binary
+
+# Specific files in docker directory - ensure LF
+docker/*.sh text eol=lf
+docker/backup.sh text eol=lf
+docker/init-db.sh text eol=lf
+docker/ollama-init.sh text eol=lf
+docker/deploy.sh text eol=lf

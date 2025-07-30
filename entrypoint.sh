@@ -1,4 +1,6 @@
 #!/bin/bash
+# Cross-platform entrypoint script for JPS Prospect Aggregate
+# Works on both Windows (via Docker) and Mac/Linux
 set -e
 
 echo "=== JPS Prospect Aggregate Docker Entrypoint ==="
@@ -15,7 +17,8 @@ wait_for_db() {
     local max_attempts=30
     local attempt=1
     
-    while ! nc -z db 5432; do
+    # Use a more portable way to check database connectivity
+    while ! pg_isready -h db -p 5432 -U jps_user >/dev/null 2>&1; do
         if [ $attempt -eq $max_attempts ]; then
             log "ERROR: Database not ready after $max_attempts attempts"
             exit 1
@@ -61,18 +64,30 @@ run_migrations() {
     
     # Set environment variables for Flask
     export FLASK_APP=run.py
-    export FLASK_ENV=production
+    export FLASK_ENV=${FLASK_ENV:-production}
     
     # Check if this is a completely fresh database
     log "Checking if database is initialized..."
-    if ! python -c "from app import create_app, db; from sqlalchemy import text; app = create_app(); app.app_context().push(); db.session.execute(text('SELECT 1 FROM alembic_version LIMIT 1'))" 2>/dev/null; then
+    # Use a more robust check that handles connection issues better
+    FRESH_DB=false
+    if python3 -c "
+import sys
+try:
+    from app import create_app, db
+    from sqlalchemy import text
+    app = create_app()
+    with app.app_context():
+        db.session.execute(text('SELECT 1 FROM alembic_version LIMIT 1'))
+        sys.exit(0)
+except Exception:
+    sys.exit(1)
+" 2>/dev/null; then
+        log "Existing database detected - checking migration state"
+        check_migration_state
+    else
         log "Fresh database detected - no alembic_version table exists"
         log "Will run full migration setup"
         FRESH_DB=true
-    else
-        log "Existing database detected - checking migration state"
-        check_migration_state
-        FRESH_DB=false
     fi
     
     # Run migrations with detailed logging
@@ -218,7 +233,7 @@ init_user_database() {
     
     # Set environment variables for Flask
     export FLASK_APP=run.py
-    export FLASK_ENV=production
+    export FLASK_ENV=${FLASK_ENV:-production}
     
     # Run the dedicated user database initialization script
     USER_INIT_OUTPUT=$(python scripts/init_user_database.py 2>&1)
@@ -253,7 +268,7 @@ create_super_admin() {
     
     # Set environment variables for Flask
     export FLASK_APP=run.py
-    export FLASK_ENV=production
+    export FLASK_ENV=${FLASK_ENV:-production}
     
     # Run the super admin creation script
     SUPER_ADMIN_OUTPUT=$(python scripts/create_super_admin.py 2>&1)
@@ -277,8 +292,10 @@ create_super_admin() {
 }
 
 # Main execution
+log "Starting JPS Prospect Aggregate Container"
 log "Environment: ${FLASK_ENV:-production}"
-log "Database URL configured: $(echo $DATABASE_URL | cut -d@ -f2 || echo not set)"
+log "Database URL configured: $(echo $DATABASE_URL | sed 's/:[^:]*@/:****@/' || echo 'not set')"
+log "Platform: $(uname -s)"
 
 wait_for_db
 run_migrations

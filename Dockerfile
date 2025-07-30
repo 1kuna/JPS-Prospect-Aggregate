@@ -1,5 +1,5 @@
 # Multi-stage build for smaller image
-FROM node:18-slim as frontend-builder
+FROM node:20-slim as frontend-builder
 
 # Build React frontend
 WORKDIR /app/frontend-react
@@ -41,6 +41,7 @@ RUN apt-get update && apt-get install -y \
     curl \
     netcat-traditional \
     postgresql-client \
+    dos2unix \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Playwright dependencies
@@ -73,11 +74,18 @@ ENV PATH=/root/.local/bin:$PATH
 
 # Copy entrypoint script first (before copying everything)
 COPY entrypoint.sh /entrypoint.sh
-RUN sed -i 's/\r$//' /entrypoint.sh && chmod +x /entrypoint.sh
+# Fix line endings for cross-platform compatibility and make executable
+RUN dos2unix /entrypoint.sh 2>/dev/null || sed -i 's/\r$//' /entrypoint.sh && \
+    chmod +x /entrypoint.sh
 
 # Copy application code
 WORKDIR /app
 COPY . .
+
+# Fix line endings for all shell scripts to ensure cross-platform compatibility
+RUN find . -type f -name "*.sh" -exec dos2unix {} \; 2>/dev/null || \
+    find . -type f -name "*.sh" -exec sed -i 's/\r$//' {} \; && \
+    find . -type f -name "*.sh" -exec chmod +x {} \;
 
 # Copy built frontend from frontend builder
 COPY --from=frontend-builder /app/frontend-react/dist ./frontend-react/dist

@@ -17,6 +17,8 @@ services:
       - SECRET_KEY=${SECRET_KEY}
       - FILE_FRESHNESS_SECONDS=86400
     volumes:
+      # Use relative paths for cross-platform compatibility
+      # These work on both Windows and Mac/Linux
       - ./data:/app/data
       - ./logs:/app/logs
     depends_on:
@@ -38,8 +40,11 @@ services:
       - POSTGRES_MULTIPLE_DATABASES=jps_prospects,jps_users
       - PGDATA=/var/lib/postgresql/data/pgdata
     volumes:
+      # Named volume for database data (cross-platform)
       - postgres_data:/var/lib/postgresql/data
+      # Backup directory (works on all platforms)
       - ./backups:/backups
+    # Cross-platform database initialization
     entrypoint: >
       sh -c "
         docker-entrypoint.sh postgres &
@@ -123,11 +128,17 @@ services:
     networks:
       - jps-network
 
+  # Watchtower service for auto-updates (optional - comment out if not needed)
+  # Note: On Windows, Docker Desktop handles the socket mount automatically
+  # On Mac/Linux, this uses the standard Unix socket path
   watchtower:
     image: containrrr/watchtower
     container_name: jps-watchtower
     restart: unless-stopped
     volumes:
+      # Docker socket mount - works automatically on all platforms
+      # Windows: Docker Desktop translates this path
+      # Mac/Linux: Uses native Unix socket
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - WATCHTOWER_CLEANUP=true
@@ -137,6 +148,9 @@ services:
       - WATCHTOWER_POLL_INTERVAL=300  # Check every 5 minutes
     networks:
       - jps-network
+    # Make watchtower optional - remove this service if you don't want auto-updates
+    profiles:
+      - full
 
   backup:
     image: postgres:15-alpine
@@ -154,6 +168,7 @@ services:
     networks:
       - jps-network
 
+  # Cloudflare tunnel (optional - comment out if not using)
   cloudflared:
     image: cloudflare/cloudflared:latest
     container_name: jps-cloudflared
@@ -165,6 +180,9 @@ services:
       - jps-network
     depends_on:
       - web
+    # Make cloudflared optional - only runs when CLOUDFLARE_TUNNEL_TOKEN is set
+    profiles:
+      - cloudflare
 
 volumes:
   postgres_data:
