@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 
 from app.services.base_llm_service import BaseLLMService
 from app.services.contract_llm_service import ContractLLMService
-from app.services.iterative_llm_service_v2 import IterativeLLMServiceV2
+from app.services.iterative_llm_service import IterativeLLMService
 from app.database.models import Prospect
 
 
@@ -226,7 +226,7 @@ class TestIterativeProcessingRegression:
     
     @pytest.fixture
     def service(self):
-        return IterativeLLMServiceV2()
+        return IterativeLLMService()
     
     def test_filter_building_logic_preserved(self, service):
         """Test that filter building logic works as before"""
@@ -363,8 +363,8 @@ class TestBackwardCompatibility:
             assert 'prospects' in params, f"{method_name} should accept prospects parameter"
     
     def test_iterative_service_interface_preserved(self):
-        """Test that IterativeLLMServiceV2 interface is preserved"""
-        service = IterativeLLMServiceV2()
+        """Test that IterativeLLMService interface is preserved"""
+        service = IterativeLLMService()
         
         # Should have expected methods
         expected_methods = [

@@ -277,9 +277,6 @@ class ContractLLMService(BaseLLMService):
                     prospect.set_aside_standardized = standardized.code
                     prospect.set_aside_standardized_label = standardized.label
                     
-                    # Also populate inferred_set_aside for frontend compatibility
-                    prospect.inferred_set_aside = standardized.label
-                    
                     # Store metadata in extra field
                     ensure_extra_is_dict(prospect)
                     prospect.extra['set_aside_standardization'] = {

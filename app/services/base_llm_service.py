@@ -2,7 +2,7 @@
 Base LLM Service - Core enhancement logic for all LLM operations
 
 This module contains the fundamental LLM enhancement methods used by both
-ContractLLMService (batch processing) and IterativeLLMServiceV2 (real-time processing).
+ContractLLMService (batch processing) and IterativeLLMService (real-time processing).
 """
 
 import json
@@ -249,52 +249,34 @@ class BaseLLMService:
                 
             parsed = json.loads(cleaned_response)
             
-            # Handle both array response (new) and single object (backward compatibility)
-            if isinstance(parsed, list):
-                # LLM returned multiple NAICS codes
-                codes = sorted(parsed, key=lambda x: x.get('confidence', 0), reverse=True)
+            # Process array response from LLM
+            if not isinstance(parsed, list):
+                raise ValueError("LLM response must be an array of NAICS codes")
                 
-                # Process each code and get official description
-                processed_codes = []
-                for code_info in codes[:3]:  # Limit to top 3
-                    code = code_info.get('code')
-                    if code and validate_naics_code(code):
-                        # Get official description from lookup
-                        official_description = get_naics_description(code)
-                        processed_codes.append({
-                            'code': code,
-                            'description': official_description,
-                            'confidence': code_info.get('confidence', 0.8)
-                        })
-                
-                # Primary code is the highest confidence valid one
-                primary = processed_codes[0] if processed_codes else {'code': None, 'description': None, 'confidence': 0.0}
-                result = {
-                    'code': primary.get('code'),
-                    'description': primary.get('description'),
-                    'confidence': primary.get('confidence', 0.0),
-                    'all_codes': processed_codes
-                }
-            else:
-                # Single code response (backward compatibility)
-                code = parsed.get('code')
+            # LLM returned multiple NAICS codes
+            codes = sorted(parsed, key=lambda x: x.get('confidence', 0), reverse=True)
+            
+            # Process each code and get official description
+            processed_codes = []
+            for code_info in codes[:3]:  # Limit to top 3
+                code = code_info.get('code')
                 if code and validate_naics_code(code):
+                    # Get official description from lookup
                     official_description = get_naics_description(code)
-                    confidence = parsed.get('confidence', 0.8)
-                    
-                    result = {
+                    processed_codes.append({
                         'code': code,
                         'description': official_description,
-                        'confidence': confidence,
-                        'all_codes': [{'code': code, 'description': official_description, 'confidence': confidence}]
-                    }
-                else:
-                    result = {
-                        'code': None,
-                        'description': None,
-                        'confidence': 0.0,
-                        'all_codes': []
-                    }
+                        'confidence': code_info.get('confidence', 0.8)
+                    })
+            
+            # Primary code is the highest confidence valid one
+            primary = processed_codes[0] if processed_codes else {'code': None, 'description': None, 'confidence': 0.0}
+            result = {
+                'code': primary.get('code'),
+                'description': primary.get('description'),
+                'confidence': primary.get('confidence', 0.0),
+                'all_codes': processed_codes
+            }
             
             # Log successful output
             if prospect_id:
@@ -525,18 +507,11 @@ class BaseLLMService:
         additional_data = ""
         field_found = None
         if prospect and prospect.extra and isinstance(prospect.extra, dict):
-            # Check for DHS small_business_program data (try both field names for backward compatibility)
-            # 1. Try preferred field name first
+            # Check for DHS small_business_program data
             small_business_program = prospect.extra.get('original_small_business_program', '').strip()
             if small_business_program and small_business_program.lower() not in ['none', 'n/a', 'tbd', '']:
                 additional_data = small_business_program
                 field_found = 'original_small_business_program'
-            else:
-                # 2. Try legacy field name for backward compatibility
-                small_business_program = prospect.extra.get('small_business_program', '').strip()
-                if small_business_program and small_business_program.lower() not in ['none', 'n/a', 'tbd', '']:
-                    additional_data = small_business_program
-                    field_found = 'small_business_program'
         
         # Log which field was found for debugging
         if field_found:
@@ -841,9 +816,6 @@ class BaseLLMService:
                     if standardized:
                         prospect.set_aside_standardized = standardized.code
                         prospect.set_aside_standardized_label = standardized.label
-                        
-                        # Also populate inferred_set_aside for frontend compatibility
-                        prospect.inferred_set_aside = standardized.label
                         
                         prospect.extra['set_aside_standardization'] = {
                             'original_set_aside': prospect.set_aside,
