@@ -7,7 +7,7 @@ from typing import Optional
 from app.utils.value_and_date_parsing import fiscal_quarter_to_date
 
 from app.core.consolidated_scraper_base import ConsolidatedScraperBase
-from app.core.config_converter import create_doc_config
+from app.core.scraper_configs import get_scraper_config
 from app.config import active_config
 
 
@@ -18,7 +18,7 @@ class DocScraper(ConsolidatedScraperBase):
     """
     
     def __init__(self):
-        config = create_doc_config()
+        config = get_scraper_config('doc')
         config.base_url = active_config.COMMERCE_FORECAST_URL
         super().__init__(config)
     

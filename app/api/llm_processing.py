@@ -1,9 +1,8 @@
 from flask import Blueprint, jsonify, request, Response, stream_with_context
 from app.database.models import Prospect, db, AIEnrichmentLog, LLMOutput, InferredProspectData
 from app.utils.logger import logger
-from app.services.contract_llm_service import ContractLLMService
-from app.services.iterative_llm_service import iterative_service
-from app.services.enhancement_queue_service import enhancement_queue_service
+from app.services.llm_service import llm_service
+from app.services.enhancement_queue import enhancement_queue
 from app.api.auth import admin_required
 from sqlalchemy import func
 from datetime import datetime, timedelta, timezone
@@ -188,8 +187,8 @@ def preview_llm_enhancement():
             return jsonify({"error": "Prospect not found"}), 404
             
         # Initialize the base LLM service for individual enhancement previews
-        from app.services.base_llm_service import BaseLLMService
-        llm_service = BaseLLMService(model_name='qwen3:latest')
+        from app.services.llm_service import LLMService
+        llm_service = LLMService(model_name='qwen3:latest')
         
         preview_enhancements = {}
         confidence_scores = {}
@@ -643,11 +642,17 @@ def _process_title_enhancement(prospect, llm_service, force_redo):
 
 def _process_set_aside_enhancement(prospect, llm_service, force_redo):
     """Process set aside standardization and enhancement for a prospect."""
-    from app.services.base_llm_service import BaseLLMService
-    from app.services.llm_service_utils import ensure_extra_is_dict
+    from app.services.llm_service import LLMService
     
     # Ensure extra field is properly loaded as dict
-    ensure_extra_is_dict(prospect)
+    if prospect.extra is None:
+        prospect.extra = {}
+    elif isinstance(prospect.extra, str):
+        try:
+            import json
+            prospect.extra = json.loads(prospect.extra)
+        except (json.JSONDecodeError, TypeError):
+            prospect.extra = {}
     
     # Debug logging
     logger.info(f"Set-aside enhancement for prospect {prospect.id}: "
@@ -670,8 +675,7 @@ def _process_set_aside_enhancement(prospect, llm_service, force_redo):
     
     if should_process:
         # Get comprehensive set-aside data (handles DHS small_business_program, etc.)
-        base_service = BaseLLMService(llm_service.model_name)
-        comprehensive_data = base_service._get_comprehensive_set_aside_data(prospect.set_aside, prospect)
+        comprehensive_data = llm_service._get_comprehensive_set_aside_data(prospect.set_aside, prospect)
         logger.info(f"Comprehensive data: '{comprehensive_data}'")
         
         # Process if we have data OR if force_redo is True

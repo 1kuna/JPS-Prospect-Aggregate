@@ -24,7 +24,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../.
 
 from app.database.models import Prospect
 from app.database import db
-from app.services.contract_llm_service import ContractLLMService
+from app.services.llm_service import LLMService
 from app.utils.logger import logger
 from flask import Flask
 
@@ -33,7 +33,7 @@ class NAICSStandardizationMigration:
     """Handles standardization of NAICS codes in the database"""
     
     def __init__(self):
-        self.llm_service = ContractLLMService()
+        self.llm_service = LLMService()
         self.stats = {
             'total_prospects': 0,
             'prospects_with_naics': 0,

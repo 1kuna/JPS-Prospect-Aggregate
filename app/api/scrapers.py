@@ -3,7 +3,7 @@ from app.database import db
 from app.database.models import DataSource, ScraperStatus
 from app.exceptions import NotFoundError, ScraperError, DatabaseError
 from app.utils.logger import logger
-from app.services.scraper_service import ScraperService
+from app.utils.scraper_utils import trigger_scraper, get_scraper_status, get_all_scraper_statuses, stop_scraper, run_all_scrapers
 from app.api.auth import admin_required
 import threading
 import time
@@ -19,7 +19,7 @@ def pull_data_source(source_id):
     """Trigger a data pull for a specific data source via ScraperService."""
     try:
         # Run the scraper synchronously for now
-        result = ScraperService.trigger_scrape(source_id)
+        result = trigger_scraper(source_id)
         
         # Return success with the result
         return jsonify({
@@ -103,7 +103,7 @@ def run_all_scrapers():
             start_time = time.time()
             
             try:
-                result = ScraperService.trigger_scrape(source.id)
+                result = trigger_scraper(source.id)
                 duration = time.time() - start_time
                 results.append({
                     "source_name": source.name,

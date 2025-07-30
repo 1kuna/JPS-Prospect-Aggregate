@@ -24,7 +24,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.database import db
 from app.database.models import Prospect
-from app.services.contract_llm_service import ContractLLMService
+from app.services.llm_service import LLMService
 from app.utils.naics_lookup import get_naics_description, validate_naics_code
 from app import create_app
 
@@ -151,7 +151,7 @@ def main():
         print(f"\\n🔄 Starting backfill process...")
         start_time = datetime.now()
         
-        llm_service = ContractLLMService()
+        llm_service = LLMService()
         backfilled_count = llm_service.backfill_naics_descriptions(prospects)
         
         end_time = datetime.now()
