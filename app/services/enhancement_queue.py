@@ -179,6 +179,48 @@ class SimpleEnhancementQueue:
         
         return {"status": "stopped", "message": "Enhancement processing stopped"}
     
+    # Backward compatibility methods for API
+    def get_queue_status(self) -> Dict[str, Any]:
+        """Alias for get_status for backward compatibility"""
+        return self.get_status()
+    
+    def get_item_status(self, item_id: str) -> Dict[str, Any]:
+        """Get status of a specific item (simplified implementation)"""
+        status = self.get_status()
+        return {
+            "item_id": item_id,
+            "status": status.get("status", "unknown"),
+            "progress": status.get("progress", {}),
+            "message": f"Status for item {item_id}"
+        }
+    
+    def cancel_item(self, item_id: str) -> bool:
+        """Cancel a specific item (simplified - just stops current processing)"""
+        if self._processing:
+            self.stop_processing()
+            return True
+        return False
+    
+    def start_worker(self) -> Dict[str, Any]:
+        """Start worker (no-op for simplified implementation)"""
+        return {"status": "ready", "message": "Worker ready"}
+    
+    def stop_worker(self) -> Dict[str, Any]:
+        """Stop worker (alias for stop_processing)"""
+        return self.stop_processing()
+    
+    @property
+    def _queue_items(self) -> Dict[str, Any]:
+        """Backward compatibility for queue items access"""
+        status = self.get_status()
+        return {
+            "current": {
+                "status": status.get("status"),
+                "enhancement_type": status.get("enhancement_type"),
+                "progress": status.get("progress", {})
+            }
+        }
+    
     def _get_prospects_needing_enhancement(self, enhancement_type: EnhancementType, skip_existing: bool) -> List[Prospect]:
         """Get prospects that need the specified enhancement type"""
         query = Prospect.query
