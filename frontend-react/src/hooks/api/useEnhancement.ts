@@ -464,7 +464,15 @@ export function useEnhancement() {
         ? request.enhancement_types.join(',')
         : 'all';
       
-      const response = await post<{ queue_item_id: string; position?: number }>('/api/llm/enhance-single', {
+      const response = await post<{ 
+        queue_item_id: string; 
+        position?: number;
+        queue_position?: number;
+        was_existing?: boolean;
+        worker_running?: boolean;
+        message?: string;
+        queue_size?: number;
+      }>('/api/llm/enhance-single', {
         prospect_id: request.prospect_id,
         enhancement_type: enhancementType,
         force_redo: request.force_redo,
@@ -479,21 +487,52 @@ export function useEnhancement() {
         [prospect_id]: {
           queueItemId,
           status: 'queued',
-          queuePosition: response.position || (queueStatus?.queue_size || 0) + 1,
+          queuePosition: response.queue_position || response.position || (queueStatus?.queue_size || 0) + 1,
           progress: {}
         }
       }));
 
-      // Create SSE connection immediately
-      createSSEConnection(prospect_id);
+      // Create SSE connection only if needed
+      // - Always create for new items
+      // - For existing items, only create if they're still active (have queue position or worker running)
+      const shouldCreateSSE = !response.was_existing || 
+                             (response.worker_running && response.queue_position);
+      
+      if (shouldCreateSSE) {
+        createSSEConnection(prospect_id);
+      } else {
+        // Existing item that's likely completed - don't create SSE connection
+        console.log(`Skipping SSE connection for existing completed prospect ${prospect_id}`);
+      }
 
-      // Show queued toast
+      // Show appropriate toast based on response
       if (window.showToast) {
+        let title = 'Enhancement Queued';
+        let message = response.message || 'Prospect enhancement request added to priority queue';
+        let type: 'info' | 'success' | 'warning' = 'info';
+        
+        if (response.was_existing) {
+          if (shouldCreateSSE) {
+            title = 'Already in Progress';
+            type = 'info';
+          } else {
+            title = 'Already Processed';
+            message = 'This prospect has already been enhanced';
+            type = 'info';
+          }
+        } else if (!response.worker_running) {
+          title = 'Enhancement Started';
+          message = `Worker auto-started and enhancement queued${response.queue_position ? ` (position ${response.queue_position})` : ''}`;
+          type = 'success';
+        } else if (response.queue_position) {
+          message = `Enhancement queued at position ${response.queue_position}`;
+        }
+        
         window.showToast({
-          title: 'Enhancement Queued',
-          message: 'Prospect enhancement request added to priority queue',
-          type: 'info',
-          duration: 2000
+          title,
+          message,
+          type,
+          duration: response.was_existing ? 3000 : 2000
         });
       }
 
