@@ -20,7 +20,7 @@ if str(project_root) not in sys.path:
 from app import create_app
 from app.database import db
 from app.database.models import DataSource
-from app.services.scraper_service import ScraperService
+from app.utils.scraper_utils import trigger_scraper, run_all_scrapers
 from app.exceptions import ScraperError, NotFoundError
 # --- End Imports ---
 
@@ -60,7 +60,7 @@ def run_single_scraper(source_id: int, source_name: str):
     logger.info(f"--- Running Scraper: {source_name} (ID: {source_id}) ---")
     
     try:
-        result = ScraperService.trigger_scrape(source_id)
+        result = trigger_scraper(source_id)
         duration = time.time() - start_time
         message = result.get("message", "Completed successfully")
         logger.info(f"--- Completed {source_name} in {duration:.2f}s ---")

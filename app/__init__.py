@@ -64,10 +64,10 @@ def create_app():
     # Register maintenance middleware
     maintenance_middleware(app)
 
-    # Initialize enhancement queue service and set up cross-references
+    # Initialize enhancement queue and cleanup utilities
     with app.app_context():
-        from app.services.enhancement_queue_service import enhancement_queue_service
-        from app.services.iterative_llm_service import iterative_service
+        from app.services.enhancement_queue import enhancement_queue
+        from app.services.llm_service import llm_service
         from app.utils.enhancement_cleanup import cleanup_all_in_progress_enhancements
         from app.utils.scraper_cleanup import cleanup_all_working_scrapers
         
@@ -101,12 +101,7 @@ def create_app():
         else:
             logger.info("Skipping cleanup functions - database tables will be created by migrations")
         
-        # Set up cross-references between services
-        enhancement_queue_service.set_bulk_service(iterative_service)
-        iterative_service.set_queue_service(enhancement_queue_service)
-        
-        # Start the queue worker
-        enhancement_queue_service.start_worker()
+        # Enhancement queue is ready for use (no worker thread needed in simplified version)
 
     # Register error handlers if defined in api.errors
     try:

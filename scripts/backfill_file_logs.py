@@ -19,7 +19,7 @@ sys.path.insert(0, str(project_root))
 from flask import Flask
 from app.database import db
 from app.database.models import DataSource, FileProcessingLog
-from app.services.file_validation_service import file_validation_service
+from app.utils.file_processing import create_processing_log
 from app.utils.logger import logger
 from app.utils.file_utils import extract_timestamp_from_filename
 from app.config import active_config

@@ -10,7 +10,7 @@ from typing import Optional
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
 from app.core.consolidated_scraper_base import ConsolidatedScraperBase
-from app.core.config_converter import create_dot_config
+from app.core.scraper_configs import get_scraper_config
 from app.config import active_config
 
 
@@ -21,7 +21,7 @@ class DotScraper(ConsolidatedScraperBase):
     """
     
     def __init__(self):
-        config = create_dot_config()
+        config = get_scraper_config('dot')
         config.base_url = active_config.DOT_FORECAST_URL
         super().__init__(config)
     

@@ -17,7 +17,7 @@ if str(_project_root) not in sys.path:
 from app import create_app
 from app.database import db
 from app.database.models import Prospect
-from app.services.contract_llm_service import ContractLLMService
+from app.services.llm_service import LLMService
 from app.utils.logger import logger
 
 
@@ -87,7 +87,7 @@ def run_targeted_enhancement(
     Returns:
         Number of prospects enhanced
     """
-    llm_service = ContractLLMService()
+    llm_service = LLMService()
     llm_service.batch_size = batch_size
     
     # Build query based on enhancement type

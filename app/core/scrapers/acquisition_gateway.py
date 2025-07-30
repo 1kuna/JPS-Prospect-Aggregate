@@ -6,7 +6,7 @@ import pandas as pd
 from typing import Optional
 
 from app.core.consolidated_scraper_base import ConsolidatedScraperBase
-from app.core.config_converter import create_acquisition_gateway_config
+from app.core.scraper_configs import get_scraper_config
 from app.config import active_config
 from app.utils.logger import logger
 
@@ -18,7 +18,7 @@ class AcquisitionGatewayScraper(ConsolidatedScraperBase):
     """
     
     def __init__(self):
-        config = create_acquisition_gateway_config()
+        config = get_scraper_config('acquisition_gateway')
         config.base_url = active_config.ACQUISITION_GATEWAY_URL
         super().__init__(config)
     

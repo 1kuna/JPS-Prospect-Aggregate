@@ -94,7 +94,7 @@ def apply_intelligent_retention_policy(files_by_source: Dict[str, List[Tuple[Pat
     Returns:
         Dictionary with statistics about files processed/deleted per source
     """
-    from app.services.file_validation_service import file_validation_service
+    from app.utils.file_processing import get_recent_files_for_source
     
     stats = {}
     total_deleted = 0
@@ -108,7 +108,8 @@ def apply_intelligent_retention_policy(files_by_source: Dict[str, List[Tuple[Pat
         # Get last 2 successfully processed files
         successful_files = []
         if source_id:
-            successful_file_paths = file_validation_service.get_last_successful_files(source_id, 2)
+            recent_logs = get_recent_files_for_source(source_id, 2)
+            successful_file_paths = [log.file_path for log in recent_logs if log.success]
             successful_files = [Path(fp) for fp in successful_file_paths if Path(fp).exists()]
         
         # Files to keep: N most recent + successful files (deduplicated)

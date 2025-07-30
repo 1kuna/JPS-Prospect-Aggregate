@@ -17,7 +17,7 @@ if str(_project_root) not in sys.path:
 from app import create_app
 from app.database import db
 from app.database.models import Prospect
-from app.services.contract_llm_service import ContractLLMService
+from app.services.llm_service import LLMService
 
 # Configure logging
 logging.basicConfig(
@@ -42,7 +42,7 @@ def migrate_existing_naics_data():
     
     logger.info(f"Found {len(prospects)} prospects with NAICS to migrate")
     
-    llm_service = ContractLLMService()
+    llm_service = LLMService()
     migrated_count = 0
     
     for i, prospect in enumerate(prospects):
@@ -222,7 +222,7 @@ def run_migration(run_llm_enhancement: bool = False):
     
     if run_llm_enhancement:
         logger.info("\nRunning LLM enhancement...")
-        llm_service = ContractLLMService()
+        llm_service = LLMService()
         
         # Run enhancement on a limited set first
         results = llm_service.enhance_all_prospects(limit=100)

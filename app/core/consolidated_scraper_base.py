@@ -66,8 +66,8 @@ from app.config import active_config
 from app.database.crud import bulk_upsert_prospects
 from app.database import db
 from app.database.models import DataSource
-from app.services.file_validation_service import file_validation_service
-from app.services.contract_llm_service import ContractLLMService
+from app.utils.file_processing import create_processing_log, update_processing_log
+from app.services.llm_service import LLMService
 
 
 @dataclass
@@ -1222,10 +1222,11 @@ class ConsolidatedScraperBase:
             return None
         
         # Get last successful file using existing validation service
-        from app.services.file_validation_service import file_validation_service
+        from app.utils.file_processing import create_processing_log, update_processing_log, get_recent_files_for_source
         
         try:
-            fallback_files = file_validation_service.get_last_successful_files(data_source.id, 1)
+            recent_logs = get_recent_files_for_source(data_source.id, 1)
+            fallback_files = [log.file_path for log in recent_logs if log.success]
             
             if fallback_files and os.path.exists(fallback_files[0]):
                 fallback_path = fallback_files[0]
@@ -1878,7 +1879,7 @@ class ConsolidatedScraperBase:
                 return df
             
             # Initialize LLM service for NAICS parsing (only when needed)
-            llm_service = ContractLLMService()
+            llm_service = LLMService()
             
             processed_count = 0
             for col in naics_columns_to_process:
@@ -2193,22 +2194,25 @@ class ConsolidatedScraperBase:
             
             # Create processing log
             if source_id:
-                processing_log = file_validation_service.create_processing_log(source_id, file_path)
+                processing_log = create_processing_log(source_id, file_path)
             
             # Perform soft file validation (warnings only)
-            warnings, is_likely_valid = file_validation_service.validate_file_content(file_path)
+            from app.utils.file_processing import validate_file_content
             
             # Get expected columns for schema validation (if available)
             expected_columns = None
-            if hasattr(self.config, 'data_processing_rules') and self.config.data_processing_rules:
-                if hasattr(self.config.data_processing_rules, 'raw_column_rename_map'):
-                    expected_columns = list(self.config.data_processing_rules.raw_column_rename_map.keys())
+            if hasattr(self.config, 'raw_column_rename_map'):
+                expected_columns = list(self.config.raw_column_rename_map.keys())
             
-            # Detect schema changes
-            schema_issues = file_validation_service.detect_schema_changes(file_path, expected_columns)
+            # Validate file content
+            validation_result = validate_file_content(file_path, expected_columns)
+            is_likely_valid = validation_result.get('valid', False)
             
             # Log validation summary (warnings only - don't block processing)
-            file_validation_service.log_validation_summary(file_path, warnings, schema_issues, is_likely_valid)
+            if not is_likely_valid:
+                self.logger.warning(f"File validation issues for {file_path}: {validation_result.get('error', 'Unknown error')}")
+            if validation_result.get('has_schema_changes', False):
+                self.logger.warning(f"Schema changes detected in {file_path}: missing columns {validation_result.get('missing_expected_columns', [])}")
             
             # Read file to DataFrame
             df = self.read_file_to_dataframe(file_path)
@@ -2219,12 +2223,9 @@ class ConsolidatedScraperBase:
                 # Update processing log with failure
                 if processing_log:
                     processing_duration = (datetime.now() - start_time).total_seconds()
-                    file_validation_service.update_processing_success(
-                        processing_log.id, False, 
-                        error_message=error_msg,
-                        validation_warnings=warnings,
-                        schema_issues=schema_issues,
-                        processing_duration=processing_duration
+                    update_processing_log(
+                        processing_log, False, 
+                        error_message=error_msg
                     )
                 raise Exception(f"Failed to read file to DataFrame: {file_path}")
             
@@ -2240,7 +2241,7 @@ class ConsolidatedScraperBase:
             # Update processing log with success
             if processing_log:
                 processing_duration = (datetime.now() - start_time).total_seconds()
-                file_validation_service.update_processing_success(
+                update_processing_log(
                     processing_log.id, True,
                     records_extracted=records_extracted,
                     records_inserted=records_inserted,
@@ -2259,7 +2260,7 @@ class ConsolidatedScraperBase:
             # Update processing log with failure
             if processing_log:
                 processing_duration = (datetime.now() - start_time).total_seconds()
-                file_validation_service.update_processing_success(
+                update_processing_log(
                     processing_log.id, False,
                     error_message=error_msg,
                     processing_duration=processing_duration
