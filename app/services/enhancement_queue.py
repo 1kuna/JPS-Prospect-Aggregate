@@ -40,12 +40,14 @@ class EnhancementProgress:
 
 class MockQueueItem:
     """Mock queue item for backward compatibility with API expectations"""
-    def __init__(self, prospect_id: str, user_id: int, enhancement_type: str, processing_type: str, status: str):
+    def __init__(self, prospect_id: str, user_id: int, enhancement_type: str, processing_type: str, status: str, item_id: str = None):
         self.prospect_id = prospect_id
         self.user_id = user_id
         self.enhancement_type = enhancement_type
         self.processing_type = processing_type
         self._status = status
+        # Generate a unique ID if not provided
+        self.id = item_id or f"{processing_type}_{prospect_id[:8]}_{int(time.time())}"
     
     @property
     def type(self):
@@ -86,6 +88,19 @@ class SimpleEnhancementQueue:
     def get_status(self) -> Dict[str, Any]:
         """Get current processing status"""
         with self._lock:
+            # Create pending items list for API compatibility
+            pending_items = []
+            if self._processing and self._current_prospect_id:
+                item_id = f"{self._current_processing_type}_{self._current_prospect_id}_{self._current_user_id or 1}"
+                pending_items.append({
+                    'id': item_id,
+                    'prospect_id': self._current_prospect_id,
+                    'user_id': self._current_user_id or 1,
+                    'type': self._current_processing_type,
+                    'enhancement_type': self._current_enhancement_type or "all",
+                    'status': "processing" if self._processing else "pending"
+                })
+            
             return {
                 "status": self._progress.status.value,
                 "enhancement_type": self._progress.enhancement_type,
@@ -95,12 +110,49 @@ class SimpleEnhancementQueue:
                 "started_at": self._progress.started_at.isoformat() if self._progress.started_at else None,
                 "completed_at": self._progress.completed_at.isoformat() if self._progress.completed_at else None,
                 "errors": self._progress.errors[-10:],  # Keep only last 10 errors
-                "is_processing": self._processing
+                "is_processing": self._processing,
+                "pending_items": pending_items,
+                "queue_size": len(pending_items),
+                "worker_running": self._processing
             }
     
     def is_processing(self) -> bool:
         """Check if currently processing"""
         return self._processing
+    
+    def _create_progress_callback(self, prospect_id: str) -> callable:
+        """Create a progress callback function for real-time updates"""
+        def progress_callback(progress_data):
+            try:
+                # Import here to avoid circular import
+                from app.api.llm_processing import emit_enhancement_progress
+                
+                field = progress_data.get("field", "unknown")
+                status = progress_data.get("status", "processing")
+                
+                # Emit the correct event type that frontend expects
+                if status == "processing":
+                    event_type = f"{field}_started"
+                    message = f"Processing {field}..."
+                else:
+                    event_type = f"{field}_completed"
+                    message = f"Completed {field}"
+                
+                emit_enhancement_progress(
+                    prospect_id=prospect_id,
+                    event_type=event_type, 
+                    data={
+                        "field": field,
+                        "status": status,
+                        "step": field,
+                        "message": message
+                    }
+                )
+                logger.debug(f"Emitted progress for prospect {prospect_id[:8]}: {event_type}")
+            except Exception as e:
+                logger.error(f"Error in progress callback: {e}")
+        
+        return progress_callback
     
     def enhance_single_prospect(self, prospect_id: str, enhancement_type: EnhancementType = "all", user_id: Optional[int] = None, force_redo: bool = False) -> Dict[str, Any]:
         """
@@ -122,13 +174,36 @@ class SimpleEnhancementQueue:
             
             logger.info(f"Starting individual enhancement for prospect {prospect_id[:8]}... ({enhancement_type}, force_redo={force_redo})")
             
+            # Create progress callback for real-time frontend updates
+            progress_callback = self._create_progress_callback(prospect_id)
+            
+            # Emit initial processing event
+            from app.api.llm_processing import emit_enhancement_progress
+            emit_enhancement_progress(
+                prospect_id=prospect_id,
+                event_type="processing_started",
+                data={"enhancement_type": enhancement_type, "message": "Enhancement started"}
+            )
+            
             # Note: force_redo parameter not yet implemented in LLM service
             # For now, LLM service will use its default enhancement logic
-            results = llm_service.enhance_single_prospect(prospect, enhancement_type)
+            results = llm_service.enhance_single_prospect(prospect, enhancement_type, progress_callback)
             
             if any(results.values()):
                 db.session.commit()
                 logger.info(f"Successfully enhanced prospect {prospect_id[:8]}... - {results}")
+                
+                # Emit completion event
+                emit_enhancement_progress(
+                    prospect_id=prospect_id,
+                    event_type="completed",
+                    data={
+                        "results": results,
+                        "enhanced_fields": sum(results.values()),
+                        "message": f"Enhanced {sum(results.values())} fields"
+                    }
+                )
+                
                 return {
                     "status": "completed",
                     "prospect_id": prospect_id,
@@ -136,6 +211,17 @@ class SimpleEnhancementQueue:
                     "message": f"Enhanced {sum(results.values())} fields"
                 }
             else:
+                # Emit no changes event
+                emit_enhancement_progress(
+                    prospect_id=prospect_id,
+                    event_type="completed",
+                    data={
+                        "results": results,
+                        "enhanced_fields": 0,
+                        "message": "No enhancements needed or possible"
+                    }
+                )
+                
                 return {
                     "status": "no_changes",
                     "prospect_id": prospect_id,
@@ -145,6 +231,17 @@ class SimpleEnhancementQueue:
         except Exception as e:
             db.session.rollback()
             logger.error(f"Error enhancing single prospect {prospect_id}: {e}")
+            
+            # Emit error event
+            emit_enhancement_progress(
+                prospect_id=prospect_id,
+                event_type="error",
+                data={
+                    "error": str(e),
+                    "message": f"Enhancement failed: {str(e)}"
+                }
+            )
+            
             return {
                 "status": "error", 
                 "prospect_id": prospect_id,
@@ -263,13 +360,15 @@ class SimpleEnhancementQueue:
         """Backward compatibility for queue items access"""
         with self._lock:
             if self._processing and self._current_prospect_id:
-                # Create mock queue item with expected attributes
+                # Create mock queue item with expected attributes and consistent ID
+                item_id = f"{self._current_processing_type}_{self._current_prospect_id}_{self._current_user_id or 1}"
                 mock_item = MockQueueItem(
                     prospect_id=self._current_prospect_id,
                     user_id=self._current_user_id or 1,
                     enhancement_type=self._current_enhancement_type or "all",
                     processing_type=self._current_processing_type,
-                    status="processing" if self._processing else "pending"
+                    status="processing" if self._processing else "pending",
+                    item_id=item_id
                 )
                 return {"current": mock_item}
             else:

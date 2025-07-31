@@ -669,6 +669,8 @@ class LLMService:
         Returns:
             Dict with enhancement results for each type
         """
+        logger.info(f"LLM Service: Starting enhance_single_prospect for {prospect.id[:8]}... (type: {enhancement_type})")
+        
         results = {
             'values': False,
             'naics': False,
@@ -677,10 +679,13 @@ class LLMService:
         }
         
         # Ensure extra is a dict
+        logger.debug(f"LLM Service: Ensuring extra field is dict for {prospect.id[:8]}...")
         self.ensure_extra_is_dict(prospect)
+        logger.debug(f"LLM Service: Extra field verified for {prospect.id[:8]}...")
         
         # Process value enhancement
         if enhancement_type in ["values", "all"]:
+            logger.info(f"LLM Service: Processing values for {prospect.id[:8]}...")
             if progress_callback:
                 progress_callback({"status": "processing", "field": "values", "prospect_id": prospect.id})
             
@@ -690,8 +695,12 @@ class LLMService:
             elif prospect.estimated_value and not prospect.estimated_value_single:
                 value_to_parse = str(prospect.estimated_value)
             
+            logger.debug(f"LLM Service: Value to parse for {prospect.id[:8]}: {value_to_parse}")
+            
             if value_to_parse:
+                logger.info(f"LLM Service: Calling parse_contract_value_with_llm for {prospect.id[:8]}...")
                 parsed_value = self.parse_contract_value_with_llm(value_to_parse, prospect_id=prospect.id)
+                logger.info(f"LLM Service: Received parsed value for {prospect.id[:8]}: {parsed_value}")
                 if parsed_value['single'] is not None:
                     prospect.estimated_value_single = float(parsed_value['single'])
                     prospect.estimated_value_min = float(parsed_value['min']) if parsed_value['min'] else float(parsed_value['single'])
@@ -699,6 +708,14 @@ class LLMService:
                     if not prospect.estimated_value_text:
                         prospect.estimated_value_text = value_to_parse
                     results['values'] = True
+            else:
+                logger.debug(f"LLM Service: No value to parse for {prospect.id[:8]}")
+            
+            # Emit completion callback for values
+            if progress_callback:
+                progress_callback({"status": "completed", "field": "values", "prospect_id": prospect.id})
+        else:
+            logger.debug(f"LLM Service: Skipping values processing for {prospect.id[:8]}")
         
         # Process NAICS classification
         if enhancement_type in ["naics", "all"]:
@@ -743,6 +760,10 @@ class LLMService:
                             'classified_at': datetime.now(timezone.utc).isoformat()
                         }
                         results['naics'] = True
+            
+            # Emit completion callback for NAICS
+            if progress_callback:
+                progress_callback({"status": "completed", "field": "naics", "prospect_id": prospect.id})
         
         # Process title enhancement
         if enhancement_type in ["titles", "all"]:
@@ -768,6 +789,10 @@ class LLMService:
                         'model_used': self.model_name
                     }
                     results['titles'] = True
+            
+            # Emit completion callback for titles
+            if progress_callback:
+                progress_callback({"status": "completed", "field": "titles", "prospect_id": prospect.id})
         
         # Process set-aside standardization
         if enhancement_type in ["set_asides", "all"]:
@@ -788,11 +813,17 @@ class LLMService:
                             'standardized_at': datetime.now(timezone.utc).isoformat()
                         }
                         results['set_asides'] = True
+            
+            # Emit completion callback for set_asides
+            if progress_callback:
+                progress_callback({"status": "completed", "field": "set_asides", "prospect_id": prospect.id})
         
         # Update timestamps if any enhancements were made
         if any(results.values()):
+            logger.debug(f"LLM Service: Updating timestamps for {prospect.id[:8]}...")
             self.update_prospect_timestamps(prospect)
         
+        logger.info(f"LLM Service: Completed enhance_single_prospect for {prospect.id[:8]}... - Results: {results}")
         return results
 
     # =============================================================================

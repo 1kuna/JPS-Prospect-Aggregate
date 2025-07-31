@@ -169,8 +169,8 @@ export function ProspectDetailsModal({
                 isVisible={(() => {
                   if (!selectedProspect) return false;
                   const status = getProspectStatus(selectedProspect.id);
-                  // Show progress when queued, processing, or recently completed
-                  return ['queued', 'processing', 'completed'].includes(status?.status as string);
+                  // Show progress only when queued or processing
+                  return ['queued', 'processing'].includes(status?.status as string);
                 })()}
               />
             </EnhancementErrorBoundary>
@@ -249,6 +249,7 @@ export function ProspectDetailsModal({
                         const queueStatus = getProspectStatus(selectedProspect?.id);
                         return queueStatus?.status === 'processing' || 
                                queueStatus?.status === 'queued' ||
+                               queueStatus?.status === 'completed' ||
                                !hasAnySelected;
                       })()}
                       variant="outline"
@@ -269,6 +270,14 @@ export function ProspectDetailsModal({
                             <>
                               <ReloadIcon className="mr-2 h-3 w-3 animate-spin" />
                               Queued (#{queueStatus.queuePosition})
+                            </>
+                          );
+                        } else if (queueStatus?.status === 'completed') {
+                          // Keep showing queued state during the brief completed phase
+                          return (
+                            <>
+                              <ReloadIcon className="mr-2 h-3 w-3 animate-spin" />
+                              Completing...
                             </>
                           );
                         } else {
