@@ -62,7 +62,7 @@ export function ScriptExecutor({ script, onClose }: ScriptExecutorProps) {
         details: script.dangerous ? [
           'This script performs dangerous operations.',
           'Make sure you understand what it does before proceeding.'
-        ] : undefined,
+        ] : [],
         confirmLabel: 'Execute Script',
         variant: script.dangerous ? 'destructive' : 'default'
       });

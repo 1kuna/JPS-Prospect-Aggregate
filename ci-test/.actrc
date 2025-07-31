@@ -1,0 +1,22 @@
+# Act configuration for running GitHub Actions locally
+# https://github.com/nektos/act
+
+# Use larger runner images that have more tools pre-installed
+# This helps avoid missing dependencies
+-P ubuntu-latest=catthehacker/ubuntu:act-latest
+-P ubuntu-22.04=catthehacker/ubuntu:act-22.04
+-P ubuntu-20.04=catthehacker/ubuntu:act-20.04
+
+# Enable docker daemon for tests that need Docker-in-Docker
+--container-daemon-socket /var/run/docker.sock
+
+# Set reasonable defaults
+--rm
+--pull=false
+
+# Environment variables
+--env CI=true
+--env GITHUB_ACTIONS=true
+
+# Bind the Docker socket for Docker-in-Docker support
+--bind

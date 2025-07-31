@@ -1,1 +1,14 @@
- 
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    /* Relax strict settings for tests */
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "exactOptionalPropertyTypes": false,
+    "noUncheckedIndexedAccess": false,
+    
+    /* Test-specific settings */
+    "types": ["vitest/globals", "@testing-library/jest-dom", "node"]
+  },
+  "include": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/test/**/*"]
+}

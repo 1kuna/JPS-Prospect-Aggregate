@@ -36,7 +36,7 @@ export class EnhancementErrorBoundary extends Component<Props, State> {
 
     // Create a boundary error specific to enhancement system
     const boundaryError = createBoundaryError(error, {
-      componentStack: errorInfo.componentStack || undefined,
+      componentStack: errorInfo.componentStack,
       errorBoundary: 'EnhancementErrorBoundary',
       context: { feature: 'enhancement' },
       userMessage: 'An error occurred in the enhancement system. Please try again.',

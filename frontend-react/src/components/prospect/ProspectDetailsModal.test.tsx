@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ProspectDetailsModal } from './ProspectDetailsModal';
@@ -33,32 +33,43 @@ vi.mock('@/hooks/api/useAuth', () => ({
 
 describe('ProspectDetailsModal', () => {
   const mockProspect: Prospect = {
-    id: 1,
+    id: '1',
+    native_id: 'TEST-123',
     title: 'Test Contract Opportunity',
-    title_enhanced: 'Enhanced Test Contract',
+    ai_enhanced_title: 'Enhanced Test Contract',
+    description: 'This is a test description',
     agency: 'Department of Test',
-    posted_date: '2024-01-15',
-    response_date: '2024-02-15',
-    set_aside: 'Small Business',
-    set_aside_parsed: 'SMALL_BUSINESS',
     naics: '541511',
     naics_description: 'Custom Computer Programming Services',
     naics_source: 'llm_inferred',
-    description: 'This is a test description',
-    contact_name: 'John Doe',
-    contact_email: 'john.doe@agency.gov',
-    office: 'Test Office',
-    location: 'Washington, DC',
-    notice_id: 'TEST-123',
-    source_id: 1,
-    sol_number: 'SOL-123',
+    estimated_value: '300000',
+    est_value_unit: 'USD',
     estimated_value_text: '$100,000 - $500,000',
-    estimated_value_single: 300000,
-    original_url: 'https://test.gov/opportunity',
-    created_at: '2024-01-01T00:00:00Z',
-    updated_at: '2024-01-10T00:00:00Z',
-    scraped_at: '2024-01-01T00:00:00Z',
-    ollama_processed_at: '2024-01-05T00:00:00Z'
+    estimated_value_min: '100000',
+    estimated_value_max: '500000',
+    estimated_value_single: '300000',
+    release_date: '2024-01-15',
+    award_date: null,
+    award_fiscal_year: null,
+    place_city: 'Washington',
+    place_state: 'DC',
+    place_country: 'USA',
+    contract_type: 'Fixed Price',
+    set_aside: 'Small Business',
+    inferred_set_aside: 'SMALL_BUSINESS',
+    inferred_naics: '541511',
+    inferred_naics_description: 'Custom Computer Programming Services',
+    primary_contact_email: 'john.doe@agency.gov',
+    primary_contact_name: 'John Doe',
+    loaded_at: '2024-01-01T00:00:00Z',
+    ollama_processed_at: '2024-01-05T00:00:00Z',
+    ollama_model_version: 'qwen3-latest',
+    enhancement_status: 'completed',
+    enhancement_started_at: '2024-01-05T00:00:00Z',
+    enhancement_user_id: null,
+    extra: null,
+    source_id: 1,
+    source_name: 'Test Source'
   };
 
   const defaultProps = {
@@ -69,7 +80,7 @@ describe('ProspectDetailsModal', () => {
     onShowAIEnhancedChange: vi.fn(),
     getProspectStatus: vi.fn(() => null),
     addToQueue: vi.fn(),
-    formatUserDate: vi.fn((date: string) => date)
+    formatUserDate: vi.fn((date: string | null | undefined) => date || '')
   };
 
   beforeEach(() => {
