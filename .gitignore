@@ -25,6 +25,7 @@ var/
 ENV/
 .env
 .env.production
+.env.test
 
 # Conda Environment
 .conda/

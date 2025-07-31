@@ -468,7 +468,10 @@ export function DuplicateReview() {
                   const newKeepRecords = new Map(selectedKeepRecords);
                   allGroupIndexes.forEach((groupIndex: number) => {
                     if (!newKeepRecords.has(groupIndex)) {
-                      newKeepRecords.set(groupIndex, duplicateGroups[groupIndex].original.id);
+                      const group = duplicateGroups[groupIndex];
+                      if (group) {
+                        newKeepRecords.set(groupIndex, group.original.id);
+                      }
                     }
                   });
                   setSelectedKeepRecords(newKeepRecords);

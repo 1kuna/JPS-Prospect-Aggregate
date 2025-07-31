@@ -72,7 +72,7 @@ describe('EnhancementButton', () => {
     // Verify onEnhancementStart was called before addToQueue
     const callOrder = vi.mocked(onEnhancementStart).mock.invocationCallOrder[0];
     const addToQueueOrder = mockAddToQueue.mock.invocationCallOrder[0];
-    expect(callOrder).toBeLessThan(addToQueueOrder);
+    expect(callOrder).toBeLessThan(addToQueueOrder || 0);
   });
 
   it('shows queued status with position', () => {
@@ -155,7 +155,7 @@ describe('EnhancementButton', () => {
       expect.any(Error),
       'Enhancement Cancellation'
     );
-    expect(mockHandleError.mock.calls[0][0].message).toBe('Failed to cancel enhancement');
+    expect(mockHandleError.mock.calls[0]?.[0].message).toBe('Failed to cancel enhancement');
   });
 
   it('handles enhancement errors', async () => {

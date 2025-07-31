@@ -1,0 +1,37 @@
+# Python test runner - matches GitHub Actions Python version
+FROM python:3.11-slim
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    postgresql-client \
+    git \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set working directory
+WORKDIR /app
+
+# Install Python dependencies
+COPY requirements.txt .
+RUN pip install --upgrade pip && \
+    pip install -r requirements.txt && \
+    pip install \
+        ruff \
+        mypy \
+        pytest-asyncio \
+        pytest-mock \
+        pytest-cov \
+        pytest-xdist \
+        bandit[toml] \
+        safety
+
+# Copy project files
+COPY . .
+
+# Set Python path
+ENV PYTHONPATH=/app
+
+# Default command
+CMD ["bash"]

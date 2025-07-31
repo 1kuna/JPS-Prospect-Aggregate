@@ -1,0 +1,80 @@
+services:
+  # PostgreSQL database for tests
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: test_jps_prospects
+    ports:
+      - "5433:5432"  # Use different port to avoid conflicts
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+
+  # Python test runner - matches CI environment
+  python-test:
+    build:
+      context: ..
+      dockerfile: ci-test/Dockerfile.python-test
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - ../.env.test
+    environment:
+      - CI=true
+      - PYTHONPATH=/app
+    volumes:
+      - ..:/app
+      - pytest_cache:/app/.pytest_cache
+      - python_cache:/root/.cache
+    working_dir: /app
+    command: sleep infinity  # Keep container running
+
+  # Frontend test runner - matches CI environment  
+  frontend-test:
+    build:
+      context: ..
+      dockerfile: ci-test/Dockerfile.frontend-test
+    env_file:
+      - ../.env.test
+    environment:
+      - CI=true
+      - NODE_ENV=test
+    volumes:
+      - ..:/app
+      - node_modules:/app/frontend-react/node_modules
+      - npm_cache:/root/.npm
+    working_dir: /app
+    command: sleep infinity  # Keep container running
+
+  # Full app for integration/E2E tests
+  web:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - ../.env.test
+    environment:
+      - FLASK_ENV=testing
+      - TESTING=True
+    ports:
+      - "5002:5001"  # Different port for test instance
+    volumes:
+      - ..:/app
+    command: python run.py
+
+volumes:
+  postgres_test_data:
+  pytest_cache:
+  python_cache:
+  node_modules:
+  npm_cache:

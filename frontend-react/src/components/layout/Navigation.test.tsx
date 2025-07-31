@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { BrowserRouter, MemoryRouter } from 'react-router-dom';
@@ -93,7 +93,6 @@ describe('Navigation', () => {
 
   it('renders admin navigation items for admin users', () => {
     const { useAuth, useIsAdmin } = require('../AuthProvider');
-    const { useSignOut } = require('../../hooks/api');
     
     useAuth.mockReturnValue({ user: mockAdminUser });
     useIsAdmin.mockReturnValue(true);
@@ -131,7 +130,6 @@ describe('Navigation', () => {
 
   it('shows admin badge for admin users', () => {
     const { useAuth, useIsAdmin } = require('../AuthProvider');
-    const { useSignOut } = require('../../hooks/api');
     
     useAuth.mockReturnValue({ user: mockAdminUser });
     useIsAdmin.mockReturnValue(true);
@@ -282,7 +280,6 @@ describe('Navigation', () => {
 
   it('maintains proper spacing and layout', () => {
     const { useAuth, useIsAdmin } = require('../AuthProvider');
-    const { useSignOut } = require('../../hooks/api');
     
     useAuth.mockReturnValue({ user: mockAdminUser });
     useIsAdmin.mockReturnValue(true);
@@ -334,7 +331,6 @@ describe('Navigation', () => {
 
   it('displays proper text content and structure', () => {
     const { useAuth, useIsAdmin } = require('../AuthProvider');
-    const { useSignOut } = require('../../hooks/api');
     
     useAuth.mockReturnValue({ user: mockAdminUser });
     useIsAdmin.mockReturnValue(true);

@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -12,6 +12,8 @@ vi.mock('@/hooks/useTimezoneDate', () => ({
   })
 }));
 
+import { useEnhancementQueueService } from '@/hooks/api/useEnhancementQueueService';
+
 vi.mock('@/hooks/api/useEnhancementQueueService', () => ({
   useEnhancementQueueService: vi.fn()
 }));
@@ -24,7 +26,7 @@ vi.mock('@/utils/statusUtils', () => ({
       stopped: 'text-yellow-600',
       error: 'text-red-600'
     };
-    return colors[status] || 'text-gray-600';
+    return colors[status as keyof typeof colors] || 'text-gray-600';
   })
 }));
 
@@ -54,15 +56,17 @@ const mockEnhancementStatus = {
 
 const mockProgress = {
   status: 'processing' as const,
+  current_type: 'all' as const,
   processed: 25,
   total: 100,
   percentage: 25.0,
   current_prospect: {
-    id: 'PROSPECT-001',
+    id: 1,
     title: 'AI Software Development Contract'
   },
+  started_at: '2024-01-15T10:00:00Z',
   errors: [],
-  error_message: null
+  error_message: undefined
 };
 
 const mockLLMOutputs = [
@@ -107,15 +111,49 @@ const mockLLMOutputs = [
 ];
 
 const mockHookDefault = {
-  enrichmentStatus: mockEnhancementStatus,
+  // Status queries
+  queueStatus: undefined,
   iterativeProgress: null,
+  enrichmentStatus: mockEnhancementStatus,
   llmOutputs: mockLLMOutputs,
+  
+  // Loading states
+  isLoadingQueue: false,
+  isLoadingIterative: false,
   isLoadingEnrichment: false,
   isLoadingLLMOutputs: false,
+  
+  // Computed values
+  isWorkerRunning: false,
+  queueSize: 0,
+  currentItem: undefined,
+  pendingItems: [],
+  recentCompleted: [],
+  isIterativeProcessing: false,
+  iterativePercentage: 0,
+  totalProspects: 1000,
+  processedProspects: 750,
+  
+  // Actions
+  getQueueItemOptions: vi.fn(),
+  cancelQueueItem: vi.fn(),
+  startWorker: vi.fn(),
+  stopWorker: vi.fn(),
   startIterative: vi.fn(),
   stopIterative: vi.fn(),
+  
+  // Action states
+  isCancelling: false,
+  isStartingWorker: false,
+  isStoppingWorker: false,
   isStartingIterative: false,
-  isStoppingIterative: false
+  isStoppingIterative: false,
+  
+  // Refetch functions
+  refetchQueueStatus: vi.fn(),
+  refetchIterativeProgress: vi.fn(),
+  refetchEnrichmentStatus: vi.fn(),
+  refetchLLMOutputs: vi.fn(),
 };
 
 function renderWithQueryClient(component: React.ReactElement) {
@@ -136,7 +174,6 @@ function renderWithQueryClient(component: React.ReactElement) {
 describe('AIEnrichment', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    const { useEnhancementQueueService } = await import('@/hooks/api/useEnhancementQueueService');
     vi.mocked(useEnhancementQueueService).mockReturnValue(mockHookDefault);
   });
 
@@ -176,12 +213,11 @@ describe('AIEnrichment', () => {
     expect(screen.getByText('qwen3-latest')).toBeInTheDocument();
   });
 
-  it('shows loading state for status', async () => {
-    const { useEnhancementQueueService } = await import('@/hooks/api/useEnhancementQueueService');
+  it('shows loading state for status', () => {
     vi.mocked(useEnhancementQueueService).mockReturnValue({
       ...mockHookDefault,
       isLoadingEnrichment: true,
-      enrichmentStatus: null
+      enrichmentStatus: undefined
     });
 
     renderWithQueryClient(<AIEnrichment />);
@@ -189,11 +225,10 @@ describe('AIEnrichment', () => {
     expect(screen.getByRole('generic', { hidden: true })).toHaveClass('animate-spin');
   });
 
-  it('shows error state when status fails to load', async () => {
-    const { useEnhancementQueueService } = await import('@/hooks/api/useEnhancementQueueService');
+  it('shows error state when status fails to load', () => {
     vi.mocked(useEnhancementQueueService).mockReturnValue({
       ...mockHookDefault,
-      enrichmentStatus: null,
+      enrichmentStatus: undefined,
       isLoadingEnrichment: false
     });
 
@@ -209,7 +244,7 @@ describe('AIEnrichment', () => {
     expect(screen.getByRole('combobox')).toBeInTheDocument();
   });
 
-  it('handles enhancement type selection', async () => {
+  it('handles enhancement type selection', () => {
     const user = userEvent.setup();
     renderWithQueryClient(<AIEnrichment />);
     
@@ -235,7 +270,7 @@ describe('AIEnrichment', () => {
     expect(radioButtons[0]).toBeChecked(); // Default to 'skip'
   });
 
-  it('handles processing mode change', async () => {
+  it('handles processing mode change', () => {
     const user = userEvent.setup();
     renderWithQueryClient(<AIEnrichment />);
     
@@ -253,11 +288,10 @@ describe('AIEnrichment', () => {
     expect(startButton).not.toBeDisabled();
   });
 
-  it('calls startIterative when start button is clicked', async () => {
+  it('calls startIterative when start button is clicked', () => {
     const user = userEvent.setup();
     const mockStartIterative = vi.fn();
     
-    const { useEnhancementQueueService } = await import('@/hooks/api/useEnhancementQueueService');
     vi.mocked(useEnhancementQueueService).mockReturnValue({
       ...mockHookDefault,
       startIterative: mockStartIterative
@@ -274,8 +308,7 @@ describe('AIEnrichment', () => {
     });
   });
 
-  it('shows stop button and progress when processing', async () => {
-    const { useEnhancementQueueService } = await import('@/hooks/api/useEnhancementQueueService');
+  it('shows stop button and progress when processing', () => {
     vi.mocked(useEnhancementQueueService).mockReturnValue({
       ...mockHookDefault,
       iterativeProgress: mockProgress
@@ -289,8 +322,7 @@ describe('AIEnrichment', () => {
     expect(screen.getByText('25.0% Complete')).toBeInTheDocument();
   });
 
-  it('shows current prospect when processing', async () => {
-    const { useEnhancementQueueService } = await import('@/hooks/api/useEnhancementQueueService');
+  it('shows current prospect when processing', () => {
     vi.mocked(useEnhancementQueueService).mockReturnValue({
       ...mockHookDefault,
       iterativeProgress: mockProgress
@@ -302,11 +334,10 @@ describe('AIEnrichment', () => {
     expect(screen.getByText('AI Software Development Contract')).toBeInTheDocument();
   });
 
-  it('calls stopIterative when stop button is clicked', async () => {
+  it('calls stopIterative when stop button is clicked', () => {
     const user = userEvent.setup();
     const mockStopIterative = vi.fn();
     
-    const { useEnhancementQueueService } = await import('@/hooks/api/useEnhancementQueueService');
     vi.mocked(useEnhancementQueueService).mockReturnValue({
       ...mockHookDefault,
       iterativeProgress: mockProgress,
@@ -321,8 +352,7 @@ describe('AIEnrichment', () => {
     expect(mockStopIterative).toHaveBeenCalled();
   });
 
-  it('shows stopping state', async () => {
-    const { useEnhancementQueueService } = await import('@/hooks/api/useEnhancementQueueService');
+  it('shows stopping state', () => {
     vi.mocked(useEnhancementQueueService).mockReturnValue({
       ...mockHookDefault,
       iterativeProgress: { ...mockProgress, status: 'stopping' }
@@ -334,8 +364,7 @@ describe('AIEnrichment', () => {
     expect(screen.getByRole('button', { name: /stopping/i })).toBeDisabled();
   });
 
-  it('shows completion message', async () => {
-    const { useEnhancementQueueService } = await import('@/hooks/api/useEnhancementQueueService');
+  it('shows completion message', () => {
     vi.mocked(useEnhancementQueueService).mockReturnValue({
       ...mockHookDefault,
       iterativeProgress: { ...mockProgress, status: 'completed', processed: 100 }
@@ -347,8 +376,7 @@ describe('AIEnrichment', () => {
     expect(screen.getByText('Processed all 100 available records')).toBeInTheDocument();
   });
 
-  it('shows stopped message', async () => {
-    const { useEnhancementQueueService } = await import('@/hooks/api/useEnhancementQueueService');
+  it('shows stopped message', () => {
     vi.mocked(useEnhancementQueueService).mockReturnValue({
       ...mockHookDefault,
       iterativeProgress: { ...mockProgress, status: 'stopped' }
@@ -360,8 +388,7 @@ describe('AIEnrichment', () => {
     expect(screen.getByText('Processed 25 records before stopping')).toBeInTheDocument();
   });
 
-  it('shows error message when present', async () => {
-    const { useEnhancementQueueService } = await import('@/hooks/api/useEnhancementQueueService');
+  it('shows error message when present', () => {
     vi.mocked(useEnhancementQueueService).mockReturnValue({
       ...mockHookDefault,
       iterativeProgress: { 
@@ -390,7 +417,7 @@ describe('AIEnrichment', () => {
     expect(screen.getByText('Value: $500,000')).toBeInTheDocument();
   });
 
-  it('expands and collapses output details', async () => {
+  it('expands and collapses output details', () => {
     const user = userEvent.setup();
     renderWithQueryClient(<AIEnrichment />);
     
@@ -407,7 +434,7 @@ describe('AIEnrichment', () => {
     expect(screen.queryByText('Response:')).not.toBeInTheDocument();
   });
 
-  it('shows error details in failed outputs', async () => {
+  it('shows error details in failed outputs', () => {
     const user = userEvent.setup();
     renderWithQueryClient(<AIEnrichment />);
     
@@ -436,8 +463,7 @@ describe('AIEnrichment', () => {
     expect(screen.getByText('Formatted datetime: 2024-01-15T10:31:00Z')).toBeInTheDocument();
   });
 
-  it('shows loading state for LLM outputs', async () => {
-    const { useEnhancementQueueService } = await import('@/hooks/api/useEnhancementQueueService');
+  it('shows loading state for LLM outputs', () => {
     vi.mocked(useEnhancementQueueService).mockReturnValue({
       ...mockHookDefault,
       isLoadingLLMOutputs: true,
@@ -450,8 +476,7 @@ describe('AIEnrichment', () => {
     expect(spinners.some(spinner => spinner.classList.contains('animate-spin'))).toBe(true);
   });
 
-  it('shows empty state for LLM outputs', async () => {
-    const { useEnhancementQueueService } = await import('@/hooks/api/useEnhancementQueueService');
+  it('shows empty state for LLM outputs', () => {
     vi.mocked(useEnhancementQueueService).mockReturnValue({
       ...mockHookDefault,
       llmOutputs: []
@@ -462,8 +487,7 @@ describe('AIEnrichment', () => {
     expect(screen.getByText('No LLM outputs yet. Start an enhancement to see outputs here.')).toBeInTheDocument();
   });
 
-  it('disables controls when processing', async () => {
-    const { useEnhancementQueueService } = await import('@/hooks/api/useEnhancementQueueService');
+  it('disables controls when processing', () => {
     vi.mocked(useEnhancementQueueService).mockReturnValue({
       ...mockHookDefault,
       iterativeProgress: mockProgress
@@ -479,13 +503,12 @@ describe('AIEnrichment', () => {
     expect(radioButtons[1]).toBeDisabled();
   });
 
-  it('handles missing title enhancement data gracefully', async () => {
+  it('handles missing title enhancement data gracefully', () => {
     const statusWithoutTitleEnhancement = {
       ...mockEnhancementStatus,
-      title_enhancement: undefined
+      title_enhancement: { enhanced_count: 0, total_percentage: 0 }
     };
     
-    const { useEnhancementQueueService } = await import('@/hooks/api/useEnhancementQueueService');
     vi.mocked(useEnhancementQueueService).mockReturnValue({
       ...mockHookDefault,
       enrichmentStatus: statusWithoutTitleEnhancement
@@ -497,13 +520,12 @@ describe('AIEnrichment', () => {
     expect(screen.getByText('0.0%')).toBeInTheDocument(); // Should show 0.0% for coverage
   });
 
-  it('shows errors count when processing has errors', async () => {
+  it('shows errors count when processing has errors', () => {
     const progressWithErrors = {
       ...mockProgress,
       errors: ['Error 1', 'Error 2', 'Error 3']
     };
     
-    const { useEnhancementQueueService } = await import('@/hooks/api/useEnhancementQueueService');
     vi.mocked(useEnhancementQueueService).mockReturnValue({
       ...mockHookDefault,
       iterativeProgress: progressWithErrors
@@ -515,7 +537,7 @@ describe('AIEnrichment', () => {
     expect(screen.getByText('3 prospect(s) failed')).toBeInTheDocument();
   });
 
-  it('formats large numbers with locale string', async () => {
+  it('formats large numbers with locale string', () => {
     const largeStatus = {
       ...mockEnhancementStatus,
       total_prospects: 1234567,
@@ -527,7 +549,6 @@ describe('AIEnrichment', () => {
       }
     };
     
-    const { useEnhancementQueueService } = await import('@/hooks/api/useEnhancementQueueService');
     vi.mocked(useEnhancementQueueService).mockReturnValue({
       ...mockHookDefault,
       enrichmentStatus: largeStatus

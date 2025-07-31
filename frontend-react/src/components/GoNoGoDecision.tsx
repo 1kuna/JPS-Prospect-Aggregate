@@ -40,7 +40,7 @@ export const GoNoGoDecision = ({ prospectId, prospectTitle, compact }: GoNoGoDec
       await createDecisionMutation.mutateAsync({
         prospect_id: String(prospectId),
         decision: pendingDecision,
-        reason: reason.trim() || undefined,
+        reason: reason.trim(),
       });
       
       setShowReasonDialog(false);

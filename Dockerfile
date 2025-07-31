@@ -73,7 +73,7 @@ COPY --from=python-builder /root/.local /root/.local
 ENV PATH=/root/.local/bin:$PATH
 
 # Copy entrypoint script first (before copying everything)
-COPY entrypoint.sh /entrypoint.sh
+COPY docker/entrypoint.sh /entrypoint.sh
 # Fix line endings for cross-platform compatibility and make executable
 RUN dos2unix /entrypoint.sh 2>/dev/null || sed -i 's/\r$//' /entrypoint.sh && \
     chmod +x /entrypoint.sh

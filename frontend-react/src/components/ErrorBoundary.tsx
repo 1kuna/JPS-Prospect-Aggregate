@@ -31,7 +31,7 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
     
     // Create a boundary error and handle it through the error service
     const boundaryError = createBoundaryError(error, {
-      componentStack: errorInfo.componentStack || undefined,
+      componentStack: errorInfo.componentStack,
       errorBoundary: 'ErrorBoundary',
       timestamp: new Date(),
     });
@@ -58,7 +58,7 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
   }
 
   resetErrorState = () => {
-    this.setState({ hasError: false, error: undefined, errorInfo: undefined });
+    this.setState({ hasError: false });
   }
 
   render(): React.ReactNode {
