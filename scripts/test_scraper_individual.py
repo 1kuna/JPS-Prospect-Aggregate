@@ -16,7 +16,7 @@ import os
 from pathlib import Path
 
 # Add project root to Python path
-project_root = Path(__file__).resolve().parent
+project_root = Path(__file__).resolve().parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
@@ -178,8 +178,13 @@ async def run_scraper(scraper_key: str, app):
                 print(f"\n📋 Sample records (showing last {min(3, count_after)}):")
                 recent_prospects = prospects_after[-3:]
                 for i, prospect in enumerate(recent_prospects, 1):
-                    print(f"   {i}. {prospect.native_id} - {prospect.title[:50]}...")
-                    print(f"      Agency: {prospect.agency}")
+                    # Handle None values gracefully
+                    native_id = prospect.native_id if prospect.native_id else "NO_ID"
+                    title = prospect.title[:50] if prospect.title else "NO_TITLE"
+                    agency = prospect.agency if prospect.agency else "NO_AGENCY"
+                    
+                    print(f"   {i}. {native_id} - {title}...")
+                    print(f"      Agency: {agency}")
                     print(f"      Loaded: {prospect.loaded_at}")
         else:
             print("⚠️  WARNING: Scraper completed but no records were loaded")

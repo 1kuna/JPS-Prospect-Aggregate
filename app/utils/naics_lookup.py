@@ -44,14 +44,12 @@ NAICS_DESCRIPTIONS = {
     "114210": "Hunting and Trapping",
     "115210": "Support Activities for Animal Production",
     "115310": "Support Activities for Forestry",
-
     # Mining, Quarrying, and Oil and Gas Extraction
     "212210": "Iron Ore Mining",
     "212231": "Lead-Zinc Ore Mining",
     "212291": "Uranium Ore Mining",
     "212299": "All Other Metal Ore Mining",
     "213111": "Oil and Gas Contract Drilling",
-
     # Utilities
     "221111": "Hydro-Electric Power Generation",
     "221112": "Fossil-Fuel Electric Power Generation",
@@ -63,7 +61,6 @@ NAICS_DESCRIPTIONS = {
     "221310": "Water Supply and Irrigation Systems",
     "221320": "Sewage Treatment Facilities",
     "221330": "Steam and Air-Conditioning Supply",
-
     # Construction
     "236210": "Industrial Building and Structure Construction",
     "236220": "Commercial and Institutional Building Construction",
@@ -91,7 +88,6 @@ NAICS_DESCRIPTIONS = {
     "238390": "Other Building Finishing Contractors",
     "238910": "Site Preparation Contractors",
     "238990": "All Other Specialty Trade Contractors",
-
     # Manufacturing (Food, Textiles, etc.)
     "311111": "Dog and Cat Food Manufacturing",
     "311119": "Other Animal Food Manufacturing",
@@ -134,7 +130,6 @@ NAICS_DESCRIPTIONS = {
     "315292": "Fur and Leather Clothing Manufacturing",
     "315299": "All Other Cut and Sew Clothing Manufacturing",
     "316110": "Leather and Hide Tanning and Finishing",
-
     # Manufacturing (Wood, Paper, etc.)
     "321114": "Wood Preservation",
     "321211": "Hardwood Veneer and Plywood Mills",
@@ -185,7 +180,6 @@ NAICS_DESCRIPTIONS = {
     "327410": "Lime Manufacturing",
     "327420": "Gypsum Product Manufacturing",
     "327910": "Abrasive Product Manufacturing",
-
     # Manufacturing (Chemicals, Metals, etc.)
     "331210": "Iron and Steel Pipes and Tubes Manufacturing from Purchased Steel",
     "331221": "Cold-Rolled Steel Shape Manufacturing",
@@ -253,11 +247,9 @@ NAICS_DESCRIPTIONS = {
     "337215": "Showcase, Partition, Shelving and Locker Manufacturing",
     "337910": "Mattress Manufacturing",
     "337920": "Blind and Shade Manufacturing",
-
     # Wholesale Trade
     "419110": "Business-to-Business Electronic Markets",
     "419120": "Wholesale Trade Agents and Brokers",
-
     # Retail Trade (Motor Vehicles, etc.)
     "441110": "New Car Dealers",
     "441120": "Used Car Dealers",
@@ -299,7 +291,6 @@ NAICS_DESCRIPTIONS = {
     "448210": "Shoe Stores",
     "448310": "Jewellery Stores",
     "448320": "Luggage and Leather Goods Stores",
-
     # Retail Trade (General Merchandise, etc.)
     "451110": "Sporting Goods Stores",
     "451120": "Hobby, Toy and Game Stores",
@@ -322,7 +313,6 @@ NAICS_DESCRIPTIONS = {
     "454312": "Liquefied Petroleum Gas (Bottled Gas) Dealers",
     "454319": "Other Fuel Dealers",
     "454390": "Other Direct Selling Establishments",
-
     # Transportation and Warehousing
     "482112": "Short-Haul Freight Rail Transportation",
     "484110": "General Freight Trucking, Local",
@@ -357,7 +347,6 @@ NAICS_DESCRIPTIONS = {
     "493120": "Refrigerated Warehousing and Storage",
     "493130": "Farm Product Warehousing and Storage",
     "493190": "Other Warehousing and Storage",
-
     # Information
     "511110": "Newspaper Publishers",
     "511120": "Periodical Publishers",
@@ -379,7 +368,6 @@ NAICS_DESCRIPTIONS = {
     "519110": "News Syndicates",
     "519130": "Internet Publishing and Broadcasting, and Web Search Portals",
     "519190": "All Other Information Services",
-
     # Finance and Insurance
     "521110": "Monetary Authorities - Central Bank",
     "522130": "Local Credit Unions",
@@ -399,7 +387,6 @@ NAICS_DESCRIPTIONS = {
     "523930": "Investment Advice",
     "524210": "Insurance Agencies and Brokerages",
     "524291": "Claims Adjusters",
-
     # Real Estate and Rental and Leasing
     "531120": "Lessors of Non-Residential Buildings (except Mini-Warehouses)",
     "531130": "Self-Storage Mini-Warehouses",
@@ -416,7 +403,6 @@ NAICS_DESCRIPTIONS = {
     "532420": "Office Machinery and Equipment Rental and Leasing",
     "532490": "Other Commercial and Industrial Machinery and Equipment Rental and Leasing",
     "533110": "Lessors of Non-Financial Intangible Assets (Except Copyrighted Works)",
-
     # Professional, Scientific, and Technical Services
     "541110": "Offices of Lawyers",
     "541120": "Offices of Notaries",
@@ -458,10 +444,8 @@ NAICS_DESCRIPTIONS = {
     "541930": "Translation and Interpretation Services",
     "541940": "Veterinary Services",
     "541990": "All Other Professional, Scientific and Technical Services",
-
     # Management of Companies and Enterprises
     "551114": "Head Offices",
-
     # Administrative and Support and Waste Management Services
     "561110": "Office Administrative Services",
     "561210": "Facilities Support Services",
@@ -497,7 +481,6 @@ NAICS_DESCRIPTIONS = {
     "561990": "All Other Support Services",
     "562910": "Remediation Services",
     "562920": "Material Recovery Facilities",
-
     # Educational Services
     "611110": "Elementary and Secondary Schools",
     "611210": "Community Colleges and C.E.G.E.P.s",
@@ -516,7 +499,6 @@ NAICS_DESCRIPTIONS = {
     "611692": "Automobile Driving Schools",
     "611699": "All Other Miscellaneous Schools and Instruction",
     "611710": "Educational Support Services",
-
     # Health Care and Social Assistance
     "621111": "Offices of Physicians (except Mental Health Specialists)",
     "621112": "Offices of Physicians, Mental Health Specialists",
@@ -550,7 +532,6 @@ NAICS_DESCRIPTIONS = {
     "624230": "Emergency and Other Relief Services",
     "624310": "Vocational Rehabilitation Services",
     "624410": "Child Day-Care Services",
-
     # Arts, Entertainment, and Recreation
     "711120": "Dance Companies",
     "711130": "Musical Groups and Artists",
@@ -569,7 +550,6 @@ NAICS_DESCRIPTIONS = {
     "713940": "Fitness and Recreational Sports Centres",
     "713950": "Bowling Centres",
     "713990": "All Other Amusement and Recreation Industries",
-
     # Accommodation and Food Services
     "721120": "Casino Hotels",
     "721191": "Bed and Breakfast",
@@ -580,7 +560,6 @@ NAICS_DESCRIPTIONS = {
     "722320": "Caterers",
     "722330": "Mobile Food Services",
     "722410": "Drinking Places (Alcoholic Beverages)",
-
     # Other Services (except Public Administration)
     "811111": "General Automotive Repair",
     "811112": "Automotive Exhaust System Repair",
@@ -612,75 +591,76 @@ NAICS_DESCRIPTIONS = {
     "814110": "Private Households",
 }
 
+
 def get_naics_description(naics_code: str) -> Optional[str]:
     """
     Get the official NAICS description for a given 6-digit NAICS code.
-    
+
     Args:
         naics_code: 6-digit NAICS code (e.g., "541511")
-        
+
     Returns:
         Official NAICS description or None if code not found
     """
     if not naics_code:
         return None
-    
+
     # Handle TBD placeholder values from data sources
-    if str(naics_code).strip().upper() in ['TBD', 'TO BE DETERMINED', 'N/A', 'NA']:
+    if str(naics_code).strip().upper() in ["TBD", "TO BE DETERMINED", "N/A", "NA"]:
         return None
-        
+
     # Clean the code - remove any non-digits
-    clean_code = ''.join(c for c in str(naics_code) if c.isdigit())
-    
+    clean_code = "".join(c for c in str(naics_code) if c.isdigit())
+
     # Validate 6-digit format
     if len(clean_code) != 6:
         logger.warning(f"Invalid NAICS code format: {naics_code}")
         return None
-    
+
     return NAICS_DESCRIPTIONS.get(clean_code)
+
 
 def validate_naics_code(naics_code: str) -> bool:
     """
     Validate if a NAICS code is properly formatted and exists in our lookup.
-    
+
     Args:
         naics_code: NAICS code to validate
-        
+
     Returns:
         True if valid, False otherwise
     """
     if not naics_code:
         return False
-        
+
     # Clean the code
-    clean_code = ''.join(c for c in str(naics_code) if c.isdigit())
-    
+    clean_code = "".join(c for c in str(naics_code) if c.isdigit())
+
     # Check format and existence
     return len(clean_code) == 6 and clean_code in NAICS_DESCRIPTIONS
+
 
 def get_naics_info(naics_code: str) -> Dict[str, Optional[str]]:
     """
     Get comprehensive NAICS information for a code.
-    
+
     Args:
         naics_code: 6-digit NAICS code
-        
+
     Returns:
         Dict with 'code', 'description', and 'valid' keys
     """
-    clean_code = ''.join(c for c in str(naics_code) if c.isdigit()) if naics_code else ""
-    
+    clean_code = (
+        "".join(c for c in str(naics_code) if c.isdigit()) if naics_code else ""
+    )
+
     if len(clean_code) != 6:
-        return {
-            'code': naics_code,
-            'description': None,
-            'valid': False
-        }
-    
+        return {"code": naics_code, "description": None, "valid": False}
+
     description = NAICS_DESCRIPTIONS.get(clean_code)
-    
+
     return {
-        'code': clean_code,
-        'description': description,
-        'valid': description is not None
+        "code": clean_code,
+        "description": description,
+        "valid": description is not None,
     }

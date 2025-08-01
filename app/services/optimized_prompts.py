@@ -145,9 +145,16 @@ Confidence guidelines:
 - 0.5-0.69: Minor improvement, original was somewhat clear
 - <0.5: Original title was already clear, minimal changes needed"""
 
-def get_naics_prompt(title: str, description: str, agency: str = None, 
-                     contract_type: str = None, set_aside: str = None, 
-                     estimated_value: str = None, additional_info: str = None) -> str:
+
+def get_naics_prompt(
+    title: str,
+    description: str,
+    agency: str = None,
+    contract_type: str = None,
+    set_aside: str = None,
+    estimated_value: str = None,
+    additional_info: str = None,
+) -> str:
     """Get optimized NAICS classification prompt with all available information"""
     prompt = NAICS_CLASSIFICATION_PROMPT
     prompt = prompt.replace("{title}", title or "Not provided")
@@ -158,6 +165,7 @@ def get_naics_prompt(title: str, description: str, agency: str = None,
     prompt = prompt.replace("{estimated_value}", estimated_value or "Not provided")
     prompt = prompt.replace("{additional_info}", additional_info or "Not provided")
     return prompt
+
 
 def get_value_prompt(value_text: str) -> str:
     """Get optimized value parsing prompt"""

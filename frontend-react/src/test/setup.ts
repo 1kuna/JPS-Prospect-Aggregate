@@ -58,3 +58,54 @@ Object.defineProperty(window, 'ResizeObserver', {
   configurable: true,
   value: MockResizeObserver,
 })
+
+// Mock pointer events for Radix UI components
+if (!Element.prototype.hasPointerCapture) {
+  Element.prototype.hasPointerCapture = vi.fn().mockReturnValue(false)
+}
+
+if (!Element.prototype.setPointerCapture) {
+  Element.prototype.setPointerCapture = vi.fn()
+}
+
+if (!Element.prototype.releasePointerCapture) {
+  Element.prototype.releasePointerCapture = vi.fn()
+}
+
+// Mock scrollIntoView which Radix UI components use
+if (!Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = vi.fn()
+}
+
+// Mock DOMRect for getBoundingClientRect
+if (!window.DOMRect) {
+  window.DOMRect = class DOMRect {
+    constructor(x = 0, y = 0, width = 0, height = 0) {
+      this.x = x
+      this.y = y
+      this.width = width
+      this.height = height
+      this.top = y
+      this.left = x
+      this.bottom = y + height
+      this.right = x + width
+    }
+
+    static fromRect(rect) {
+      return new DOMRect(rect.x, rect.y, rect.width, rect.height)
+    }
+
+    toJSON() {
+      return {
+        x: this.x,
+        y: this.y,
+        width: this.width,
+        height: this.height,
+        top: this.top,
+        left: this.left,
+        bottom: this.bottom,
+        right: this.right,
+      }
+    }
+  }
+}

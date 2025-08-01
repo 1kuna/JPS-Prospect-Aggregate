@@ -65,55 +65,60 @@ const mockProgress = {
     title: 'AI Software Development Contract'
   },
   started_at: '2024-01-15T10:00:00Z',
-  errors: [],
-  error_message: undefined
+  errors: []
 };
 
 const mockLLMOutputs = [
   {
     id: 1,
+    timestamp: '2024-01-15T10:30:00Z',
+    prospect_id: 'abc123',
     prospect_title: 'AI Software Development Contract',
-    enhancement_type: 'naics',
+    enhancement_type: 'naics' as const,
+    prompt: 'Extract NAICS code',
     response: '{"code": "541511", "description": "Custom Computer Programming Services"}',
     parsed_result: {
       code: '541511',
       description: 'Custom Computer Programming Services'
     },
     success: true,
-    processing_time: 2.45,
-    timestamp: '2024-01-15T10:30:00Z',
-    error_message: null
+    error_message: null,
+    processing_time: 2.45
   },
   {
     id: 2,
+    timestamp: '2024-01-15T10:31:00Z',
+    prospect_id: 'def456',
     prospect_title: 'Cybersecurity Assessment Services',
-    enhancement_type: 'values',
+    enhancement_type: 'values' as const,
+    prompt: 'Extract contract value',
     response: '{"single": 500000}',
     parsed_result: {
       single: 500000
     },
     success: true,
-    processing_time: 1.23,
-    timestamp: '2024-01-15T10:31:00Z',
-    error_message: null
+    error_message: null,
+    processing_time: 1.23
   },
   {
     id: 3,
-    prospect_title: 'Failed Processing Example',
-    enhancement_type: 'titles',
-    response: 'Invalid JSON response',
-    parsed_result: null,
-    success: false,
-    processing_time: 0.5,
     timestamp: '2024-01-15T10:32:00Z',
-    error_message: 'JSON parsing failed'
+    prospect_id: 'ghi789',
+    prospect_title: 'Failed Processing Example',
+    enhancement_type: 'titles' as const,
+    prompt: 'Enhance title',
+    response: 'Invalid JSON response',
+    parsed_result: null as any,
+    success: false,
+    error_message: 'JSON parsing failed',
+    processing_time: 0.5
   }
 ];
 
 const mockHookDefault = {
   // Status queries
   queueStatus: undefined,
-  iterativeProgress: null,
+  iterativeProgress: undefined,
   enrichmentStatus: mockEnhancementStatus,
   llmOutputs: mockLLMOutputs,
   
@@ -244,7 +249,7 @@ describe('AIEnrichment', () => {
     expect(screen.getByRole('combobox')).toBeInTheDocument();
   });
 
-  it('handles enhancement type selection', () => {
+  it('handles enhancement type selection', async () => {
     const user = userEvent.setup();
     renderWithQueryClient(<AIEnrichment />);
     
@@ -270,7 +275,7 @@ describe('AIEnrichment', () => {
     expect(radioButtons[0]).toBeChecked(); // Default to 'skip'
   });
 
-  it('handles processing mode change', () => {
+  it('handles processing mode change', async () => {
     const user = userEvent.setup();
     renderWithQueryClient(<AIEnrichment />);
     
@@ -288,7 +293,7 @@ describe('AIEnrichment', () => {
     expect(startButton).not.toBeDisabled();
   });
 
-  it('calls startIterative when start button is clicked', () => {
+  it('calls startIterative when start button is clicked', async () => {
     const user = userEvent.setup();
     const mockStartIterative = vi.fn();
     
@@ -334,7 +339,7 @@ describe('AIEnrichment', () => {
     expect(screen.getByText('AI Software Development Contract')).toBeInTheDocument();
   });
 
-  it('calls stopIterative when stop button is clicked', () => {
+  it('calls stopIterative when stop button is clicked', async () => {
     const user = userEvent.setup();
     const mockStopIterative = vi.fn();
     
@@ -417,24 +422,29 @@ describe('AIEnrichment', () => {
     expect(screen.getByText('Value: $500,000')).toBeInTheDocument();
   });
 
-  it('expands and collapses output details', () => {
+  it('expands and collapses output details', async () => {
     const user = userEvent.setup();
     renderWithQueryClient(<AIEnrichment />);
     
-    const expandButton = screen.getAllByRole('button', { name: '' })[0]; // Chevron button
-    await user.click(expandButton);
+    const expandButtons = screen.getAllByRole('button', { name: '' });
+    const expandButton = expandButtons[0];
+    if (expandButton) {
+      await user.click(expandButton);
+    }
     
     expect(screen.getByText('Response:')).toBeInTheDocument();
     expect(screen.getByText('Parsed Result:')).toBeInTheDocument();
     
     // Collapse again
-    await user.click(expandButton);
+    if (expandButton) {
+      await user.click(expandButton);
+    }
     
     // Details should be hidden again
     expect(screen.queryByText('Response:')).not.toBeInTheDocument();
   });
 
-  it('shows error details in failed outputs', () => {
+  it('shows error details in failed outputs', async () => {
     const user = userEvent.setup();
     renderWithQueryClient(<AIEnrichment />);
     
@@ -523,7 +533,11 @@ describe('AIEnrichment', () => {
   it('shows errors count when processing has errors', () => {
     const progressWithErrors = {
       ...mockProgress,
-      errors: ['Error 1', 'Error 2', 'Error 3']
+      errors: [
+        { prospect_id: 1, error: 'Error 1', timestamp: '2024-01-15T10:00:00Z' },
+        { prospect_id: 2, error: 'Error 2', timestamp: '2024-01-15T10:01:00Z' },
+        { prospect_id: 3, error: 'Error 3', timestamp: '2024-01-15T10:02:00Z' }
+      ]
     };
     
     vi.mocked(useEnhancementQueueService).mockReturnValue({

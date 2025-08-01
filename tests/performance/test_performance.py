@@ -13,8 +13,7 @@ from unittest.mock import patch, MagicMock
 
 from app import create_app
 from app.database import db
-from app.database.models import Prospect, DataSource, Decision
-from app.database.operations import add_prospect
+from app.database.models import Prospect, DataSource, GoNoGoDecision
 
 
 @pytest.fixture(scope="function")
@@ -95,7 +94,7 @@ def large_dataset(app):
                 'posted_date': f'2024-{(i % 12) + 1:02d}-{(i % 28) + 1:02d}',
                 'estimated_value': 10000 + (i * 1000),
                 'estimated_value_text': f'${(10000 + (i * 1000)):,}',
-                'naics_code': f'54151{i % 10}',  # Vary NAICS codes
+                'naics': f'54151{i % 10}',  # Vary NAICS codes
                 'source_data_id': app.config['TEST_SOURCE_ID'],
                 'source_file': f'perf_test_{i // 100}.json',
                 'loaded_at': datetime.now(timezone.utc)
@@ -217,7 +216,7 @@ class TestDatabasePerformance:
                     'posted_date': '2024-01-15',
                     'estimated_value': 50000,
                     'estimated_value_text': '$50,000',
-                    'naics_code': '541511',
+                    'naics': '541511',
                     'source_data_id': app.config['TEST_SOURCE_ID'],
                     'source_file': 'bulk_test.json',
                     'loaded_at': datetime.now(timezone.utc)
@@ -249,7 +248,7 @@ class TestDatabasePerformance:
                 'posted_date': '2024-01-15',
                 'estimated_value': 110000,
                 'estimated_value_text': '$110,000',
-                'naics_code': '541510',
+                'naics': '541510',
                 'source_data_id': app.config['TEST_SOURCE_ID'],
                 'source_file': 'dup_test.json',
                 'loaded_at': datetime.now(timezone.utc)
@@ -285,7 +284,7 @@ class TestDecisionPerformance:
                 'posted_date': '2024-01-15',
                 'estimated_value': 75000,
                 'estimated_value_text': '$75,000',
-                'naics_code': '541511',
+                'naics': '541511',
                 'source_data_id': app.config['TEST_SOURCE_ID'],
                 'source_file': 'decision_perf_test.json',
                 'loaded_at': datetime.now(timezone.utc)
@@ -330,7 +329,7 @@ class TestDecisionPerformance:
                 'posted_date': '2024-01-15',
                 'estimated_value': 50000,
                 'estimated_value_text': '$50,000',
-                'naics_code': '541511',
+                'naics': '541511',
                 'source_data_id': app.config['TEST_SOURCE_ID'],
                 'source_file': 'decision_retrieval_test.json',
                 'loaded_at': datetime.now(timezone.utc)
