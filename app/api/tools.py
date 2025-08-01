@@ -16,7 +16,8 @@ from app.utils.logger import logger
 from dataclasses import dataclass, asdict
 from enum import Enum
 
-tools_bp = Blueprint('tools', __name__, url_prefix='/api/tools')
+tools_bp = Blueprint("tools", __name__, url_prefix="/api/tools")
+
 
 class ScriptCategory(Enum):
     DATA_COLLECTION = "Data Collection"
@@ -24,6 +25,7 @@ class ScriptCategory(Enum):
     EXPORT_ANALYSIS = "Export & Analysis"
     MAINTENANCE = "Maintenance & Cleanup"
     DATABASE_SETUP = "Database Setup"
+
 
 @dataclass
 class ScriptParameter:
@@ -33,6 +35,7 @@ class ScriptParameter:
     default: Optional[str] = None
     description: Optional[str] = None
     choices: Optional[List[str]] = None
+
 
 @dataclass
 class ScriptConfig:
@@ -48,8 +51,9 @@ class ScriptConfig:
 
     def to_dict(self):
         data = asdict(self)
-        data['category'] = self.category.value
+        data["category"] = self.category.value
         return data
+
 
 # Script configurations
 SCRIPT_CONFIGS = [
@@ -60,7 +64,7 @@ SCRIPT_CONFIGS = [
         description="Execute all configured web scrapers to collect prospect data from government sources",
         script_path="scripts/run_all_scrapers.py",
         category=ScriptCategory.DATA_COLLECTION,
-        timeout=1800  # 30 minutes
+        timeout=1800,  # 30 minutes
     ),
     ScriptConfig(
         id="test_individual_scraper",
@@ -74,11 +78,25 @@ SCRIPT_CONFIGS = [
                 type="choice",
                 required=True,
                 description="Scraper to test",
-                choices=['all', 'dhs', 'treasury', 'state', 'justice', 'labor', 
-                        'commerce', 'hhs', 'ssa', 'interior', 'transportation', 
-                        'va', 'gsa', 'nrc', 'acquisition_gateway']
+                choices=[
+                    "all",
+                    "dhs",
+                    "treasury",
+                    "state",
+                    "justice",
+                    "labor",
+                    "commerce",
+                    "hhs",
+                    "ssa",
+                    "interior",
+                    "transportation",
+                    "va",
+                    "gsa",
+                    "nrc",
+                    "acquisition_gateway",
+                ],
             )
-        ]
+        ],
     ),
     ScriptConfig(
         id="run_scraper_tests",
@@ -91,24 +109,23 @@ SCRIPT_CONFIGS = [
                 name="verbose",
                 type="boolean",
                 default="false",
-                description="Enable verbose output"
+                description="Enable verbose output",
             ),
             ScriptParameter(
                 name="scraper",
                 type="string",
                 required=False,
-                description="Test specific scraper only"
-            )
-        ]
+                description="Test specific scraper only",
+            ),
+        ],
     ),
     ScriptConfig(
         id="validate_file_naming",
         name="Validate File Naming",
         description="Check data file naming conventions for consistency",
         script_path="scripts/validate_file_naming.py",
-        category=ScriptCategory.DATA_COLLECTION
+        category=ScriptCategory.DATA_COLLECTION,
     ),
-    
     # Data Enhancement
     ScriptConfig(
         id="llm_enhancement",
@@ -122,25 +139,31 @@ SCRIPT_CONFIGS = [
                 type="choice",
                 required=True,
                 description="Enhancement mode",
-                choices=['values', 'contacts', 'titles', 'naics', 'all', '--check-status'],
-                default="--check-status"
+                choices=[
+                    "values",
+                    "contacts",
+                    "titles",
+                    "naics",
+                    "all",
+                    "--check-status",
+                ],
+                default="--check-status",
             ),
             ScriptParameter(
                 name="limit",
                 type="number",
                 required=False,
-                description="Number of prospects to process (empty for all)"
+                description="Number of prospects to process (empty for all)",
             ),
             ScriptParameter(
                 name="dry_run",
                 type="boolean",
                 default="false",
-                description="Preview without saving changes"
-            )
+                description="Preview without saving changes",
+            ),
         ],
-        timeout=3600  # 1 hour for large batches
+        timeout=3600,  # 1 hour for large batches
     ),
-    
     # Export & Analysis
     ScriptConfig(
         id="export_decisions",
@@ -155,24 +178,23 @@ SCRIPT_CONFIGS = [
                 required=False,
                 default="jsonl",
                 description="Export format",
-                choices=['jsonl', 'csv', 'both']
+                choices=["jsonl", "csv", "both"],
             ),
             ScriptParameter(
                 name="reasons_only",
                 type="boolean",
                 default="false",
-                description="Only export decisions with reasons"
-            )
-        ]
+                description="Only export decisions with reasons",
+            ),
+        ],
     ),
     ScriptConfig(
         id="export_database_csv",
         name="Export Database to CSV",
         description="Export prospects and inferred data to CSV files",
         script_path="scripts/utils/export_db_to_csv.py",
-        category=ScriptCategory.EXPORT_ANALYSIS
+        category=ScriptCategory.EXPORT_ANALYSIS,
     ),
-    
     # Maintenance & Cleanup
     ScriptConfig(
         id="data_retention",
@@ -185,33 +207,32 @@ SCRIPT_CONFIGS = [
                 name="execute",
                 type="boolean",
                 default="false",
-                description="Execute cleanup (default is dry-run preview)"
+                description="Execute cleanup (default is dry-run preview)",
             ),
             ScriptParameter(
                 name="retention_count",
                 type="number",
                 default="3",
-                description="Number of recent files to keep per source"
-            )
+                description="Number of recent files to keep per source",
+            ),
         ],
         dangerous=True,
-        requires_confirmation=True
+        requires_confirmation=True,
     ),
     ScriptConfig(
         id="health_check",
         name="Database Health Check",
         description="Test database connectivity and scraper functionality",
         script_path="scripts/health_check.py",
-        category=ScriptCategory.MAINTENANCE
+        category=ScriptCategory.MAINTENANCE,
     ),
     ScriptConfig(
         id="backfill_file_logs",
         name="Backfill File Logs",
         description="Create file processing logs for existing data files",
         script_path="scripts/backfill_file_logs.py",
-        category=ScriptCategory.MAINTENANCE
+        category=ScriptCategory.MAINTENANCE,
     ),
-    
     # Database Setup
     ScriptConfig(
         id="setup_databases",
@@ -220,7 +241,7 @@ SCRIPT_CONFIGS = [
         script_path="scripts/setup_databases.py",
         category=ScriptCategory.DATABASE_SETUP,
         dangerous=True,
-        requires_confirmation=True
+        requires_confirmation=True,
     ),
     ScriptConfig(
         id="init_user_database",
@@ -229,22 +250,22 @@ SCRIPT_CONFIGS = [
         script_path="scripts/init_user_database.py",
         category=ScriptCategory.DATABASE_SETUP,
         dangerous=True,
-        requires_confirmation=True
+        requires_confirmation=True,
     ),
     ScriptConfig(
         id="populate_data_sources",
         name="Populate Data Sources",
         description="Add all configured agency data sources to database",
         script_path="scripts/populate_data_sources.py",
-        category=ScriptCategory.DATABASE_SETUP
+        category=ScriptCategory.DATABASE_SETUP,
     ),
     ScriptConfig(
         id="standardize_naics",
         name="Standardize NAICS Codes",
         description="Format all NAICS codes to standard format",
         script_path="scripts/migrations/standardize_naics_formatting.py",
-        category=ScriptCategory.DATABASE_SETUP
-    )
+        category=ScriptCategory.DATABASE_SETUP,
+    ),
 ]
 
 # Create lookup dictionary
@@ -260,63 +281,67 @@ def build_command(script_config: ScriptConfig, parameters: dict) -> List[str]:
     # Get the project root directory
     project_root = Path(__file__).parent.parent.parent
     script_path = project_root / script_config.script_path
-    
+
     # Start with python and script path
     cmd = [sys.executable, str(script_path)]
-    
+
     # Add parameters
     if script_config.parameters:
         for param in script_config.parameters:
             value = parameters.get(param.name)
-            
+
             # Skip if not provided and not required
             if value is None and not param.required:
                 continue
-                
+
             # Handle different parameter types
-            if param.type == 'boolean':
-                if value in ['true', True, '1', 'yes']:
-                    if param.name == 'execute':
-                        cmd.append('--execute')
-                    elif param.name == 'verbose':
-                        cmd.append('--verbose')
-                    elif param.name == 'dry_run':
-                        cmd.append('--dry-run')
-                    elif param.name == 'reasons_only':
-                        cmd.append('--reasons-only')
-            elif param.name == 'mode' and script_config.id == 'llm_enhancement':
+            if param.type == "boolean":
+                if value in ["true", True, "1", "yes"]:
+                    if param.name == "execute":
+                        cmd.append("--execute")
+                    elif param.name == "verbose":
+                        cmd.append("--verbose")
+                    elif param.name == "dry_run":
+                        cmd.append("--dry-run")
+                    elif param.name == "reasons_only":
+                        cmd.append("--reasons-only")
+            elif param.name == "mode" and script_config.id == "llm_enhancement":
                 # Special handling for LLM enhancement mode
-                if value == '--check-status':
-                    cmd.append('--check-status')
+                if value == "--check-status":
+                    cmd.append("--check-status")
                 else:
                     cmd.append(value)
             else:
                 # String, number, or choice parameters
-                if param.name == 'scraper':
-                    cmd.extend(['--scraper', str(value)])
-                elif param.name == 'format':
-                    cmd.extend(['--format', str(value)])
-                elif param.name == 'limit':
-                    cmd.extend(['--limit', str(value)])
-                elif param.name == 'retention_count':
-                    cmd.extend(['--retention-count', str(value)])
-    
+                if param.name == "scraper":
+                    cmd.extend(["--scraper", str(value)])
+                elif param.name == "format":
+                    cmd.extend(["--format", str(value)])
+                elif param.name == "limit":
+                    cmd.extend(["--limit", str(value)])
+                elif param.name == "retention_count":
+                    cmd.extend(["--retention-count", str(value)])
+
     return cmd
 
 
-def execute_script_with_streaming(execution_id: str, script_config: ScriptConfig, 
-                                parameters: dict, output_queue: queue.Queue):
+def execute_script_with_streaming(
+    execution_id: str,
+    script_config: ScriptConfig,
+    parameters: dict,
+    output_queue: queue.Queue,
+):
     """Execute a script and stream output to queue."""
     try:
         # Build command
         cmd = build_command(script_config, parameters)
         logger.info(f"Executing script {script_config.id}: {' '.join(cmd)}")
-        
+
         # Update status
         with script_lock:
-            running_scripts[execution_id]['status'] = 'running'
-            running_scripts[execution_id]['command'] = ' '.join(cmd)
-        
+            running_scripts[execution_id]["status"] = "running"
+            running_scripts[execution_id]["command"] = " ".join(cmd)
+
         # Execute script
         process = subprocess.Popen(
             cmd,
@@ -325,40 +350,42 @@ def execute_script_with_streaming(execution_id: str, script_config: ScriptConfig
             text=True,
             bufsize=1,
             universal_newlines=True,
-            cwd=Path(__file__).parent.parent.parent  # Project root
+            cwd=Path(__file__).parent.parent.parent,  # Project root
         )
-        
+
         # Stream output
-        for line in iter(process.stdout.readline, ''):
+        for line in iter(process.stdout.readline, ""):
             if line:
-                output_queue.put(('output', line.rstrip()))
+                output_queue.put(("output", line.rstrip()))
                 with script_lock:
-                    running_scripts[execution_id]['output'].append(line.rstrip())
-        
+                    running_scripts[execution_id]["output"].append(line.rstrip())
+
         # Wait for completion
         return_code = process.wait()
-        
+
         # Update final status
         with script_lock:
             if return_code == 0:
-                running_scripts[execution_id]['status'] = 'completed'
-                output_queue.put(('status', 'completed'))
+                running_scripts[execution_id]["status"] = "completed"
+                output_queue.put(("status", "completed"))
             else:
-                running_scripts[execution_id]['status'] = 'failed'
-                running_scripts[execution_id]['error'] = f'Process exited with code {return_code}'
-                output_queue.put(('error', f'Process exited with code {return_code}'))
-                
+                running_scripts[execution_id]["status"] = "failed"
+                running_scripts[execution_id][
+                    "error"
+                ] = f"Process exited with code {return_code}"
+                output_queue.put(("error", f"Process exited with code {return_code}"))
+
     except Exception as e:
         logger.error(f"Error executing script {script_config.id}: {str(e)}")
         with script_lock:
-            running_scripts[execution_id]['status'] = 'error'
-            running_scripts[execution_id]['error'] = str(e)
-        output_queue.put(('error', str(e)))
+            running_scripts[execution_id]["status"] = "error"
+            running_scripts[execution_id]["error"] = str(e)
+        output_queue.put(("error", str(e)))
     finally:
-        output_queue.put(('done', None))
+        output_queue.put(("done", None))
 
 
-@tools_bp.route('/scripts', methods=['GET'])
+@tools_bp.route("/scripts", methods=["GET"])
 @admin_required
 def list_scripts():
     """Get list of available scripts organized by category."""
@@ -370,136 +397,128 @@ def list_scripts():
             if category not in scripts_by_category:
                 scripts_by_category[category] = []
             scripts_by_category[category].append(script.to_dict())
-        
-        return jsonify({
-            'status': 'success',
-            'data': {
-                'scripts': scripts_by_category,
-                'categories': [cat.value for cat in ScriptCategory]
+
+        return jsonify(
+            {
+                "status": "success",
+                "data": {
+                    "scripts": scripts_by_category,
+                    "categories": [cat.value for cat in ScriptCategory],
+                },
             }
-        })
+        )
     except Exception as e:
         logger.error(f"Error listing scripts: {str(e)}")
-        return jsonify({
-            'status': 'error',
-            'message': 'Failed to list scripts'
-        }), 500
+        return jsonify({"status": "error", "message": "Failed to list scripts"}), 500
 
 
-@tools_bp.route('/scripts/<script_id>', methods=['GET'])
+@tools_bp.route("/scripts/<script_id>", methods=["GET"])
 @admin_required
 def get_script_details(script_id):
     """Get detailed information about a specific script."""
     try:
         script = SCRIPTS_BY_ID.get(script_id)
         if not script:
-            return jsonify({
-                'status': 'error',
-                'message': 'Script not found'
-            }), 404
-        
-        return jsonify({
-            'status': 'success',
-            'data': script.to_dict()
-        })
+            return jsonify({"status": "error", "message": "Script not found"}), 404
+
+        return jsonify({"status": "success", "data": script.to_dict()})
     except Exception as e:
         logger.error(f"Error getting script details: {str(e)}")
-        return jsonify({
-            'status': 'error',
-            'message': 'Failed to get script details'
-        }), 500
+        return jsonify(
+            {"status": "error", "message": "Failed to get script details"}
+        ), 500
 
 
-@tools_bp.route('/execute/<script_id>', methods=['POST'])
+@tools_bp.route("/execute/<script_id>", methods=["POST"])
 @admin_required
 def execute_script(script_id):
     """Execute a script with provided parameters."""
     try:
         script = SCRIPTS_BY_ID.get(script_id)
         if not script:
-            return jsonify({
-                'status': 'error',
-                'message': 'Script not found'
-            }), 404
-        
+            return jsonify({"status": "error", "message": "Script not found"}), 404
+
         # Get parameters from request
         data = request.get_json() or {}
-        parameters = data.get('parameters', {})
-        
+        parameters = data.get("parameters", {})
+
         # Generate execution ID
         import uuid
+
         execution_id = str(uuid.uuid4())
-        
+
         # Initialize tracking
         with script_lock:
             running_scripts[execution_id] = {
-                'id': execution_id,
-                'script_id': script_id,
-                'script_name': script.name,
-                'status': 'pending',
-                'output': [],
-                'started_at': None,
-                'parameters': parameters
+                "id": execution_id,
+                "script_id": script_id,
+                "script_name": script.name,
+                "status": "pending",
+                "output": [],
+                "started_at": None,
+                "parameters": parameters,
             }
-        
+
         # Create output queue
         output_queue = queue.Queue()
-        
+
         # Start execution thread
         thread = threading.Thread(
             target=execute_script_with_streaming,
-            args=(execution_id, script, parameters, output_queue)
+            args=(execution_id, script, parameters, output_queue),
         )
         thread.daemon = True
         thread.start()
-        
+
         # Return execution ID for streaming
-        return jsonify({
-            'status': 'success',
-            'data': {
-                'execution_id': execution_id,
-                'message': f'Started execution of {script.name}'
+        return jsonify(
+            {
+                "status": "success",
+                "data": {
+                    "execution_id": execution_id,
+                    "message": f"Started execution of {script.name}",
+                },
             }
-        })
-        
+        )
+
     except Exception as e:
         logger.error(f"Error executing script: {str(e)}")
-        return jsonify({
-            'status': 'error',
-            'message': f'Failed to execute script: {str(e)}'
-        }), 500
+        return jsonify(
+            {"status": "error", "message": f"Failed to execute script: {str(e)}"}
+        ), 500
 
 
-@tools_bp.route('/stream/<execution_id>', methods=['GET'])
+@tools_bp.route("/stream/<execution_id>", methods=["GET"])
 @admin_required
 def stream_output(execution_id):
     """Stream script output using server-sent events."""
+
     def generate():
         # Check if execution exists
         with script_lock:
             if execution_id not in running_scripts:
                 yield f"data: {json.dumps({'type': 'error', 'message': 'Execution not found'})}\n\n"
                 return
-        
+
         # Create queue for this stream
         output_queue = queue.Queue()
-        
+
         # Get current output
         with script_lock:
             execution = running_scripts[execution_id]
-            for line in execution['output']:
+            for line in execution["output"]:
                 yield f"data: {json.dumps({'type': 'output', 'line': line})}\n\n"
-        
+
         # Check if already completed
-        if execution['status'] in ['completed', 'failed', 'error']:
+        if execution["status"] in ["completed", "failed", "error"]:
             yield f"data: {json.dumps({'type': 'status', 'status': execution['status']})}\n\n"
-            if 'error' in execution:
+            if "error" in execution:
                 yield f"data: {json.dumps({'type': 'error', 'message': execution['error']})}\n\n"
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
             return
-        
+
         # Wait for new output
-        last_index = len(execution['output'])
+        last_index = len(execution["output"])
         while True:
             try:
                 # Check for new output
@@ -507,44 +526,42 @@ def stream_output(execution_id):
                     execution = running_scripts.get(execution_id)
                     if not execution:
                         break
-                    
+
                     # Send any new lines
-                    current_output = execution['output']
+                    current_output = execution["output"]
                     if len(current_output) > last_index:
                         for line in current_output[last_index:]:
                             yield f"data: {json.dumps({'type': 'output', 'line': line})}\n\n"
                         last_index = len(current_output)
-                    
+
                     # Check if completed
-                    if execution['status'] in ['completed', 'failed', 'error']:
+                    if execution["status"] in ["completed", "failed", "error"]:
                         yield f"data: {json.dumps({'type': 'status', 'status': execution['status']})}\n\n"
-                        if 'error' in execution:
+                        if "error" in execution:
                             yield f"data: {json.dumps({'type': 'error', 'message': execution['error']})}\n\n"
                         yield f"data: {json.dumps({'type': 'done'})}\n\n"
                         break
-                
+
                 # Small delay to prevent busy waiting
                 import time
+
                 time.sleep(0.1)
-                
+
             except GeneratorExit:
                 break
             except Exception as e:
                 logger.error(f"Error in stream: {str(e)}")
                 yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
                 break
-    
+
     return Response(
         stream_with_context(generate()),
-        mimetype='text/event-stream',
-        headers={
-            'Cache-Control': 'no-cache',
-            'X-Accel-Buffering': 'no'
-        }
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
 
-@tools_bp.route('/executions', methods=['GET'])
+@tools_bp.route("/executions", methods=["GET"])
 @admin_required
 def list_executions():
     """List recent script executions."""
@@ -553,27 +570,23 @@ def list_executions():
             # Get all executions sorted by start time
             executions = list(running_scripts.values())
             # Sort by started_at or status
-            executions.sort(key=lambda x: x.get('started_at', ''), reverse=True)
-            
+            executions.sort(key=lambda x: x.get("started_at", ""), reverse=True)
+
             # Limit to recent executions
             recent_executions = executions[:20]
-        
-        return jsonify({
-            'status': 'success',
-            'data': {
-                'executions': recent_executions,
-                'total': len(executions)
+
+        return jsonify(
+            {
+                "status": "success",
+                "data": {"executions": recent_executions, "total": len(executions)},
             }
-        })
+        )
     except Exception as e:
         logger.error(f"Error listing executions: {str(e)}")
-        return jsonify({
-            'status': 'error',
-            'message': 'Failed to list executions'
-        }), 500
+        return jsonify({"status": "error", "message": "Failed to list executions"}), 500
 
 
-@tools_bp.route('/executions/<execution_id>', methods=['GET'])
+@tools_bp.route("/executions/<execution_id>", methods=["GET"])
 @admin_required
 def get_execution_details(execution_id):
     """Get details of a specific execution."""
@@ -581,18 +594,13 @@ def get_execution_details(execution_id):
         with script_lock:
             execution = running_scripts.get(execution_id)
             if not execution:
-                return jsonify({
-                    'status': 'error',
-                    'message': 'Execution not found'
-                }), 404
-        
-        return jsonify({
-            'status': 'success',
-            'data': execution
-        })
+                return jsonify(
+                    {"status": "error", "message": "Execution not found"}
+                ), 404
+
+        return jsonify({"status": "success", "data": execution})
     except Exception as e:
         logger.error(f"Error getting execution details: {str(e)}")
-        return jsonify({
-            'status': 'error',
-            'message': 'Failed to get execution details'
-        }), 500
+        return jsonify(
+            {"status": "error", "message": "Failed to get execution details"}
+        ), 500

@@ -56,7 +56,7 @@ class TestConsolidatedScrapers:
                     'Estimated Solicitation Date': '2024-01-15',
                     'Ultimate Completion Date': '2024-12-31',
                     'Estimated Award FY': '2024',
-                    'Organization': 'Test Agency',
+                    'Agency': 'Test Agency',
                     'Place of Performance City': 'Washington',
                     'Place of Performance State': 'DC',
                     'Place of Performance Country': 'USA',
@@ -67,15 +67,15 @@ class TestConsolidatedScrapers:
             'dhs': [
                 {
                     'APFS Number': 'DHS-001',
-                    'Requirement Title': 'Test DHS Opportunity',
-                    'Requirement Description': 'Test description for DHS',
-                    'NAICS Code': '541511',
-                    'Operating Division': 'CISA',
+                    'Title': 'Test DHS Opportunity',
+                    'Description': 'Test description for DHS',
+                    'NAICS': '541511',
+                    'Component': 'CISA',
                     'Place of Performance City': 'Arlington',
                     'Place of Performance State': 'VA',
-                    'Estimated Value': '$1M - $5M',
+                    'Dollar Range': '$1M - $5M',
                     'Contract Type': 'FFP',
-                    'Set Aside Type': 'Small Business',
+                    'Small Business Set-Aside': 'Small Business',
                     'Award Quarter': 'FY24 Q2'
                 }
             ],
@@ -112,15 +112,15 @@ class TestConsolidatedScrapers:
                 {
                     'Procurement Number': 'HHS-001',
                     'Operating Division': 'CDC',
-                    'Requirement Title': 'Test HHS Opportunity',
-                    'Requirement Description': 'Test description for HHS',
-                    'NAICS Code': '541511',
+                    'Title': 'Test HHS Opportunity',
+                    'Description': 'Test description for HHS',
+                    'Primary NAICS': '541511',
                     'Contract Vehicle': 'GSA MAS',
                     'Contract Type': 'FFP',
-                    'Estimated Contract Value': '$1M - $5M',
-                    'Anticipated Award Date': '2024-06-30',
-                    'Anticipated Solicitation Release Date': '2024-04-15',
-                    'Small Business Set-Aside': 'Small Business',
+                    'Total Contract Range': '$1M - $5M',
+                    'Target Award Month/Year (Award by)': '2024-06-30',
+                    'Target Solicitation Month/Year': '2024-04-15',
+                    'Anticipated Acquisition Strategy': 'Small Business',
                     'Place of Performance City': 'Atlanta',
                     'Place of Performance State': 'GA',
                     'Place of Performance Country': 'USA'
@@ -538,18 +538,21 @@ class TestConsolidatedScrapers:
         # Test Treasury transform  
         treasury_scraper = TreasuryScraper()
         treasury_df = test_df.copy()
-        treasury_df['native_id_intermediate'] = 'test-id'
+        treasury_df['native_id_primary'] = 'test-id'
         transformed_treasury = treasury_scraper._custom_treasury_transforms(treasury_df)
-        assert 'native_id_final' in transformed_treasury.columns
-        assert transformed_treasury['native_id_final'].iloc[0] == 'test-id'
+        assert 'native_id' in transformed_treasury.columns
+        assert transformed_treasury['native_id'].iloc[0] == 'test-id'
+        assert 'row_index' in transformed_treasury.columns  # Treasury adds row_index
         
         # Test SSA transform
         ssa_scraper = SsaScraper()
         ssa_df = test_df.copy()
-        ssa_df['description_raw'] = 'Test SSA Title'
+        ssa_df['description'] = 'Test SSA Title'
         transformed_ssa = ssa_scraper._custom_ssa_transforms(ssa_df)
-        assert 'title_final' in transformed_ssa.columns
-        assert transformed_ssa['title_final'].iloc[0] == 'Test SSA Title'
+        assert 'title' in transformed_ssa.columns
+        assert transformed_ssa['title'].iloc[0] == 'Test SSA Title'
+        # SSA also keeps description unchanged
+        assert transformed_ssa['description'].iloc[0] == 'Test SSA Title'
 
 
 # Standalone test functions for running individual scrapers

@@ -7,8 +7,10 @@ from typing import Dict, List, Optional, Tuple
 import re
 from enum import Enum
 
+
 class StandardSetAside(Enum):
     """Simplified standardized set-aside types for business development focus"""
+
     SMALL_BUSINESS = "Small Business"
     EIGHT_A = "8(a)"
     HUBZONE = "HUBZone"
@@ -17,28 +19,29 @@ class StandardSetAside(Enum):
     FULL_AND_OPEN = "Full and Open"
     SOLE_SOURCE = "Sole Source"
     NOT_AVAILABLE = "N/A"
-    
+
     @property
     def code(self) -> str:
         """Return the enum name as code (e.g., 'SMALL_BUSINESS')"""
         return self.name
-    
+
     @property
     def label(self) -> str:
         """Return the enum value as human-readable label (e.g., 'Small Business')"""
         return self.value
 
+
 class SetAsideStandardizer:
     """Simplified service for LLM-based set-aside classification"""
-    
+
     def __init__(self):
         """Initialize the standardizer - no complex rules needed for LLM approach"""
         pass
-    
+
     def get_llm_prompt(self) -> str:
         """Get the enhanced LLM prompt for set-aside classification"""
         standard_types = [e.value for e in StandardSetAside]
-        
+
         return f"""You are a federal procurement specialist. Classify the given set-aside information into one of these EXACT categories:
 
 {chr(10).join(f"- {t}" for t in standard_types)}
@@ -75,4 +78,3 @@ EXAMPLES:
 Input: "{{}}"
 
 Respond with ONLY the exact category name (e.g., "Small Business", "8(a)", "N/A")."""
-

@@ -14,7 +14,6 @@ from unittest.mock import patch, MagicMock
 from app import create_app
 from app.database import db
 from app.database.models import Prospect, DataSource
-from app.database.operations import add_prospect
 
 
 @pytest.fixture(scope="function")
@@ -147,7 +146,7 @@ class TestProspectWorkflow:
                     'title': 'Python Development Services',
                     'description': 'Python web application development',
                     'agency': 'Department of Defense',
-                    'naics_code': '541511',
+                    'naics': '541511',
                     'estimated_value': 50000,
                     'source_data_id': app.config['TEST_SOURCE_ID'],
                     'ai_enhanced_title': 'Enhanced: Python Development Services',
@@ -158,7 +157,7 @@ class TestProspectWorkflow:
                     'title': 'Java Application Development',
                     'description': 'Enterprise Java application development',
                     'agency': 'Department of Commerce',
-                    'naics_code': '541511',
+                    'naics': '541511',
                     'estimated_value': 125000,
                     'source_data_id': app.config['TEST_SOURCE_ID']
                 },
@@ -167,7 +166,7 @@ class TestProspectWorkflow:
                     'title': 'Network Security Services',
                     'description': 'Cybersecurity and network protection',
                     'agency': 'Department of Defense',
-                    'naics_code': '541512',
+                    'naics': '541512',
                     'estimated_value': 200000,
                     'source_data_id': app.config['TEST_SOURCE_ID']
                 }
@@ -188,7 +187,7 @@ class TestProspectWorkflow:
         data = response.get_json()
         assert len(data['prospects']) == 2
         for prospect in data['prospects']:
-            assert prospect['naics_code'] == '541511'
+            assert prospect['naics'] == '541511'
         
         # Test agency filtering
         response = client.get('/api/prospects?agency=Department of Defense')
@@ -232,7 +231,7 @@ class TestProspectWorkflow:
                     'posted_date': '2024-01-15',
                     'estimated_value': 10000 * (i + 1),
                     'estimated_value_text': f'${10000 * (i + 1):,}',
-                    'naics_code': '541511',
+                    'naics': '541511',
                     'source_data_id': app.config['TEST_SOURCE_ID'],
                     'source_file': 'pagination_test.json',
                     'loaded_at': datetime.now(timezone.utc)
@@ -297,7 +296,7 @@ class TestDecisionWorkflow:
                 'posted_date': '2024-01-15',
                 'estimated_value': 50000,
                 'estimated_value_text': '$50,000',
-                'naics_code': '541511',
+                'naics': '541511',
                 'source_data_id': app.config['TEST_SOURCE_ID'],
                 'source_file': 'decision_test.json',
                 'loaded_at': datetime.now(timezone.utc)
@@ -375,7 +374,7 @@ class TestDecisionWorkflow:
                     'posted_date': '2024-01-15',
                     'estimated_value': 50000,
                     'estimated_value_text': '$50,000',
-                    'naics_code': '541511',
+                    'naics': '541511',
                     'source_data_id': app.config['TEST_SOURCE_ID'],
                     'source_file': 'stats_test.json',
                     'loaded_at': datetime.now(timezone.utc)
@@ -526,7 +525,7 @@ class TestConcurrencyWorkflow:
                 'posted_date': '2024-01-15',
                 'estimated_value': 50000,
                 'estimated_value_text': '$50,000',
-                'naics_code': '541511',
+                'naics': '541511',
                 'source_data_id': app.config['TEST_SOURCE_ID'],
                 'source_file': 'concurrent_test.json',
                 'loaded_at': datetime.now(timezone.utc)

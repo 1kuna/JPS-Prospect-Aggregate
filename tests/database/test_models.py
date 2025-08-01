@@ -14,8 +14,9 @@ from app import create_app
 from app.database import db
 from app.database.models import (
     Prospect, DataSource, InferredProspectData, LLMOutput, 
-    AIEnrichmentLog, User, Decision
+    AIEnrichmentLog, GoNoGoDecision
 )
+from app.database.user_models import User
 
 
 @pytest.fixture(scope='class')
@@ -182,9 +183,7 @@ class TestDataSourceModel:
         data_source = DataSource(
             name='Test Agency',
             url='https://test.agency.gov',
-            last_scraped=datetime.now(timezone.utc),
-            status='active',
-            last_error=None
+            last_scraped=datetime.now(timezone.utc)
         )
         
         db_session.add(data_source)
@@ -195,7 +194,6 @@ class TestDataSourceModel:
             select(DataSource).where(DataSource.name == 'Test Agency')
         ).scalar_one()
         assert saved_source.url == 'https://test.agency.gov'
-        assert saved_source.status == 'active'
     
     def test_data_source_prospect_relationship(self, db_session):
         """Test relationship between DataSource and Prospects."""
@@ -249,11 +247,9 @@ class TestLLMOutputModel:
         # Create LLM output
         llm_output = LLMOutput(
             prospect_id=prospect.id,
-            prompt_type='value_parsing',
+            enhancement_type='values',
             prompt='Parse the contract value from: $100k-$500k',
-            response='{"min_value": 100000, "max_value": 500000}',
-            model_name='qwen3:latest',
-            created_at=datetime.now(timezone.utc)
+            response='{"min_value": 100000, "max_value": 500000}'
         )
         
         db_session.add(llm_output)
@@ -263,8 +259,7 @@ class TestLLMOutputModel:
         saved_output = db_session.execute(
             select(LLMOutput).where(LLMOutput.prospect_id == prospect.id)
         ).scalar_one()
-        assert saved_output.prompt_type == 'value_parsing'
-        assert saved_output.model_name == 'qwen3:latest'
+        assert saved_output.enhancement_type == 'values'
         assert 'min_value' in saved_output.response
 
 
@@ -286,11 +281,9 @@ class TestInferredProspectDataModel:
         inferred_data = InferredProspectData(
             prospect_id=prospect.id,
             inferred_naics='541511',
-            inferred_value_min=Decimal('100000'),
-            inferred_value_max=Decimal('500000'),
-            confidence_score=0.85,
-            inference_method='llm_qwen3',
-            created_at=datetime.now(timezone.utc)
+            inferred_naics_description='Custom Computer Programming Services',
+            inferred_estimated_value_min=100000.0,
+            inferred_estimated_value_max=500000.0
         )
         
         db_session.add(inferred_data)
@@ -303,7 +296,8 @@ class TestInferredProspectDataModel:
             )
         ).scalar_one()
         assert saved_data.inferred_naics == '541511'
-        assert saved_data.confidence_score == 0.85
+        assert saved_data.inferred_estimated_value_min == 100000.0
+        assert saved_data.inferred_estimated_value_max == 500000.0
 
 
 class TestUserModel:
@@ -312,35 +306,32 @@ class TestUserModel:
     def test_user_creation(self, db_session):
         """Test user creation with required fields."""
         user = User(
-            username='testuser',
             email='test@example.com',
-            role='user',
-            created_at=datetime.now(timezone.utc)
+            first_name='Test User',
+            role='user'
         )
         
         db_session.add(user)
         db_session.commit()
         
         saved_user = db_session.execute(
-            select(User).where(User.username == 'testuser')
+            select(User).where(User.email == 'test@example.com')
         ).scalar_one()
-        assert saved_user.email == 'test@example.com'
+        assert saved_user.first_name == 'Test User'
         assert saved_user.role == 'user'
     
     def test_user_unique_constraints(self, db_session):
         """Test user unique constraints."""
         user1 = User(
-            username='testuser',
             email='test1@example.com',
-            role='user',
-            created_at=datetime.now(timezone.utc)
+            first_name='Test User 1',
+            role='user'
         )
         
         user2 = User(
-            username='testuser',  # Duplicate username
-            email='test2@example.com',
-            role='user',
-            created_at=datetime.now(timezone.utc)
+            email='test1@example.com',  # Duplicate email
+            first_name='Test User 2',
+            role='user'
         )
         
         db_session.add(user1)
@@ -352,16 +343,15 @@ class TestUserModel:
 
 
 class TestDecisionModel:
-    """Test Decision model for go/no-go decisions."""
+    """Test GoNoGoDecision model for go/no-go decisions."""
     
     def test_decision_creation(self, db_session):
         """Test decision creation."""
         # Create user and prospect first
         user = User(
-            username='decisionmaker',
             email='dm@example.com',
-            role='user',
-            created_at=datetime.now(timezone.utc)
+            first_name='Decision Maker',
+            role='user'
         )
         db_session.add(user)
         db_session.flush()
@@ -375,13 +365,11 @@ class TestDecisionModel:
         db_session.flush()
         
         # Create decision
-        decision = Decision(
+        decision = GoNoGoDecision(
             prospect_id=prospect.id,
             user_id=user.id,
             decision='go',
-            reasoning='Good opportunity for our team',
-            confidence_level=8,
-            created_at=datetime.now(timezone.utc)
+            reason='Good opportunity for our team'
         )
         
         db_session.add(decision)
@@ -389,11 +377,10 @@ class TestDecisionModel:
         
         # Verify decision
         saved_decision = db_session.execute(
-            select(Decision).where(Decision.prospect_id == prospect.id)
+            select(GoNoGoDecision).where(GoNoGoDecision.prospect_id == prospect.id)
         ).scalar_one()
         assert saved_decision.decision == 'go'
-        assert saved_decision.confidence_level == 8
-        assert saved_decision.reasoning == 'Good opportunity for our team'
+        assert saved_decision.reason == 'Good opportunity for our team'
 
 
 class TestAIEnrichmentLogModel:
@@ -401,32 +388,14 @@ class TestAIEnrichmentLogModel:
     
     def test_enrichment_log_creation(self, db_session):
         """Test enrichment log creation."""
-        # Create user and prospect
-        user = User(
-            username='enricher',
-            email='enricher@example.com',
-            role='admin',
-            created_at=datetime.now(timezone.utc)
-        )
-        db_session.add(user)
-        db_session.flush()
-        
-        prospect = Prospect(
-            id='test-enrich-log-001',
-            title='Enrichment Log Test',
-            loaded_at=datetime.now(timezone.utc)
-        )
-        db_session.add(prospect)
-        db_session.flush()
-        
         # Create enrichment log
         enrichment_log = AIEnrichmentLog(
-            prospect_id=prospect.id,
-            user_id=user.id,
-            action='enhancement_requested',
+            enhancement_type='all',
             status='completed',
-            details={'enhancement_types': ['values', 'titles']},
-            created_at=datetime.now(timezone.utc)
+            processed_count=100,
+            duration=45.5,
+            message='Successfully processed 100 prospects',
+            error=None
         )
         
         db_session.add(enrichment_log)
@@ -434,13 +403,11 @@ class TestAIEnrichmentLogModel:
         
         # Verify log
         saved_log = db_session.execute(
-            select(AIEnrichmentLog).where(
-                AIEnrichmentLog.prospect_id == prospect.id
-            )
+            select(AIEnrichmentLog).order_by(AIEnrichmentLog.id.desc())
         ).scalar_one()
-        assert saved_log.action == 'enhancement_requested'
+        assert saved_log.enhancement_type == 'all'
         assert saved_log.status == 'completed'
-        assert 'enhancement_types' in saved_log.details
+        assert saved_log.processed_count == 100
 
 
 class TestModelRelationships:
@@ -459,10 +426,9 @@ class TestModelRelationships:
         
         # Create user
         user = User(
-            username='fulluser',
             email='full@example.com',
-            role='admin',
-            created_at=datetime.now(timezone.utc)
+            first_name='Full User',
+            role='admin'
         )
         db_session.add(user)
         db_session.flush()
@@ -480,49 +446,43 @@ class TestModelRelationships:
         # Create related records
         llm_output = LLMOutput(
             prospect_id=prospect.id,
-            prompt_type='title_enhancement',
+            enhancement_type='titles',
             prompt='Enhance this title',
-            response='Enhanced Title Response',
-            model_name='qwen3:latest',
-            created_at=datetime.now(timezone.utc)
+            response='Enhanced Title Response'
         )
         
-        decision = Decision(
+        decision = GoNoGoDecision(
             prospect_id=prospect.id,
             user_id=user.id,
             decision='go',
-            reasoning='Full test reasoning',
-            confidence_level=9,
-            created_at=datetime.now(timezone.utc)
+            reason='Full test reasoning'
         )
         
         enrichment_log = AIEnrichmentLog(
-            prospect_id=prospect.id,
-            user_id=user.id,
-            action='full_enhancement',
+            enhancement_type='all',
             status='completed',
-            details={'test': 'full_relationship'},
-            created_at=datetime.now(timezone.utc)
+            processed_count=1,
+            duration=2.5,
+            message='Full relationship test'
         )
         
         db_session.add_all([llm_output, decision, enrichment_log])
         db_session.commit()
         
-        # Test complex query joining all related tables
+        # Test complex query joining related tables (excluding User since it's in separate DB)
         result = db_session.execute(
-            select(Prospect, DataSource, Decision, User)
+            select(Prospect, DataSource, GoNoGoDecision)
             .join(DataSource, Prospect.source_id == DataSource.id)
-            .join(Decision, Prospect.id == Decision.prospect_id)
-            .join(User, Decision.user_id == User.id)
+            .join(GoNoGoDecision, Prospect.id == GoNoGoDecision.prospect_id)
             .where(Prospect.id == 'test-full-rel-001')
         ).first()
         
         assert result is not None
-        prospect, data_source, decision, user = result
+        prospect, data_source, decision = result
         assert prospect.title == 'Full Relationship Test'
         assert data_source.name == 'Full Test Agency'
         assert decision.decision == 'go'
-        assert user.username == 'fulluser'
+        assert decision.user_id == user.id  # Verify the user_id is correct
     
     def test_cascade_deletes(self, db_session):
         """Test that cascade deletes work properly."""
@@ -547,11 +507,9 @@ class TestModelRelationships:
         # Add related records
         llm_output = LLMOutput(
             prospect_id=prospect.id,
-            prompt_type='test',
+            enhancement_type='values',
             prompt='test',
-            response='test',
-            model_name='test',
-            created_at=datetime.now(timezone.utc)
+            response='test'
         )
         db_session.add(llm_output)
         db_session.commit()

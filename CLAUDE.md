@@ -6,6 +6,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Option 1: Docker Setup (Recommended for Production)
 
+**Quick Start (Automated):**
+```bash
+# Use the automated build script
+./docker/docker-build.sh
+```
+
+This script will:
+- Check for .env file and required configurations
+- Validate environment settings
+- Build and start all services
+- Verify services are running correctly
+
+**Manual Setup:**
+
 1. **Copy environment file and configure:**
    ```bash
    cp .env.example .env
@@ -20,6 +34,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 2. **Build and start all services:**
    ```bash
    docker-compose up --build -d
+   # Or use helper scripts:
+   # Unix/Mac: ./docker/docker-start.sh
+   # Windows:  ./docker/docker-start.ps1
    ```
 
 3. **Access the application:**
@@ -58,6 +75,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Docker Operations
 ```bash
+# Automated build and deploy (recommended)
+./docker/docker-build.sh
+
+# Or manual Docker commands:
 # Build and start all services
 docker-compose up --build -d
 
@@ -84,7 +105,16 @@ docker-compose restart web
 # Clean rebuild (if you have issues)
 docker-compose down -v
 docker-compose up --build -d
+
+# Use minimal setup (without Ollama)
+docker-compose -f docker-compose-minimal.yml up -d
 ```
+
+**Docker Helper Scripts:**
+- `docker/docker-build.sh` - Automated build with environment validation
+- `docker/docker-start.sh` - Start services (Unix/Mac)
+- `docker/docker-start.ps1` - Start services (Windows PowerShell)
+- `docker/deploy.sh` or `deploy.ps1` - Full deployment scripts
 
 ### Backend Development
 ```bash
@@ -168,6 +198,52 @@ npm run test:ui
 
 # Run tests with coverage
 npm run test:coverage
+```
+
+### CI/CD Quick Reference
+
+#### Local CI Testing (Pre-Push)
+```bash
+# Run full CI test suite locally (recommended before pushing)
+make test-ci
+
+# Run specific test suites
+make test-python        # Python tests, linting, type checking
+make test-frontend      # Frontend tests, TypeScript, ESLint
+make test-integration   # Integration tests only
+make test-all          # Everything including E2E tests
+
+# Quick checks
+make lint-python       # Just Python linting
+make lint-frontend     # Just frontend linting
+make type-check-python # Just Python type checking
+make type-check-frontend # Just TypeScript checking
+
+# Clean test artifacts
+make clean
+```
+
+#### CI Pipeline Stages
+1. **Parallel Testing** - Python and Frontend tests run concurrently
+2. **Integration Testing** - Cross-system tests with real PostgreSQL
+3. **End-to-End Testing** - Full workflow testing with Playwright
+4. **Security Scanning** - Dependency vulnerabilities and code security
+
+#### Common CI Failures and Fixes
+```bash
+# TypeScript strict mode errors in tests
+cd frontend-react && npm test -- --typecheck
+
+# Python version mismatch (CI uses 3.11)
+conda create -n jps-py311 python=3.11
+conda activate jps-py311
+pip install -r requirements.txt
+
+# Missing browser dependencies for E2E
+npx playwright install --with-deps
+
+# Database connection issues
+docker-compose -f ci-test/docker-compose.test.yml up -d db
 ```
 
 ### Testing Commands
@@ -449,6 +525,91 @@ pre-commit autoupdate
 - CI pipeline prevents broken code from reaching main branch
 - Automated dependency updates with testing
 - Regular security scanning and vulnerability patching
+
+### Local CI/CD Testing
+
+**Run the full CI/CD pipeline locally before pushing to GitHub:**
+
+The project includes a comprehensive local CI testing infrastructure in the `ci-test/` directory that mirrors the GitHub Actions environment exactly.
+
+**Quick Start:**
+```bash
+# Run full CI test suite (recommended before pushing)
+make test-ci
+
+# Run specific test suites
+make test-python      # Python tests only (with linting and type checking)
+make test-frontend    # Frontend tests only (with TypeScript and ESLint)
+make test-integration # Integration tests only
+make test-e2e        # End-to-end tests (requires running services)
+make test-all        # All tests including E2E
+```
+
+**CI Test Infrastructure:**
+- Uses Docker containers with exact versions: Python 3.11, Node 20, PostgreSQL 15
+- Isolated environment that won't affect your local setup
+- Runs tests in the same order as GitHub Actions
+- Includes all linting, type checking, and security scans
+
+**Additional CI Commands:**
+```bash
+# Fix TypeScript type errors automatically
+make fix-types
+
+# Clean test artifacts and caches
+make clean
+
+# Build CI test containers
+make build-ci
+
+# Stop CI test containers
+make stop-ci
+```
+
+**Test Script Options:**
+```bash
+# Direct script usage (from project root)
+./ci-test/test-ci-local.sh [OPTIONS]
+
+OPTIONS:
+    -p, --python-only       Run only Python tests
+    -f, --frontend-only     Run only frontend tests
+    -i, --integration-only  Run only integration tests
+    -e, --e2e              Include E2E tests
+    -a, --all              Run all tests including E2E
+    -h, --help             Show help message
+```
+
+**Using Act for GitHub Actions Testing (Optional):**
+```bash
+# Install act tool
+make install-act
+
+# Run actual GitHub Actions workflow locally
+make test-with-act
+```
+
+**Troubleshooting Local CI:**
+- If tests pass locally but fail in GitHub Actions (or vice versa):
+  - Update Docker images: `docker-compose -f ci-test/docker-compose.test.yml pull`
+  - Clean and rebuild: `make clean && make build-ci`
+  - Check Python version: CI uses 3.11, not 3.12
+  - Check for uncommitted files that might affect tests
+  - Verify environment variables match between local and CI
+  - Check if your local development has different dependencies installed
+
+**CI Test Environment Details:**
+- Python: 3.11 (exact match with GitHub Actions)
+- Node: 20.x (LTS version used in CI)
+- PostgreSQL: 15 (for integration tests)
+- Operating System: Ubuntu-based containers
+- TypeScript: Uses tsconfig.test.json for relaxed test configuration
+
+**Performance Tips:**
+- Use `--python-only` or `--frontend-only` flags for faster feedback
+- Run `make test-python` while developing Python code
+- Run `make test-frontend` while developing React components
+- Use `make test-ci` only before pushing for full validation
 
 ## Debugging
 
@@ -790,3 +951,62 @@ Built-in utility manages storage with rolling cleanup policy:
 - **Current Impact**: 50% storage reduction (86 files/84MB → 43 files/42MB)
 - **Default**: Keeps 3 most recent files per data source
 - **Safety**: Dry-run mode by default with detailed logging
+
+## Project Structure
+
+The project has been organized for clarity and maintainability:
+
+```
+/
+├── README.md              # Main project documentation
+├── CLAUDE.md             # This file - Claude-specific instructions
+├── Dockerfile            # Main Docker image definition
+├── docker-compose.yml    # Main compose configuration
+├── Makefile             # Includes CI test commands
+├── requirements.txt      # Python dependencies
+├── pyproject.toml       # Python project configuration
+├── pytest.ini           # Pytest configuration
+├── run.py               # Main application entry point
+├── app/                 # Application source code
+│   ├── api/            # API endpoints
+│   ├── core/           # Core scraper framework
+│   ├── database/       # Database models and operations
+│   ├── services/       # Business logic services
+│   └── utils/          # Utility functions
+├── frontend-react/      # React TypeScript frontend
+├── tests/              # Backend test files
+├── scripts/            # Utility and maintenance scripts
+├── migrations/         # Database migrations (Alembic)
+├── ci-test/           # Local CI/CD testing infrastructure
+│   ├── test-ci-local.sh        # Main test runner script
+│   ├── docker-compose.test.yml # Test environment config
+│   ├── Dockerfile.*-test       # Test container definitions
+│   ├── Makefile               # CI test commands
+│   ├── README.md              # CI testing documentation
+│   └── .actrc                 # Act configuration (for GitHub Actions local testing)
+├── docker/            # Docker-related files
+│   ├── entrypoint.sh          # Container entrypoint
+│   ├── docker-build.sh        # Build and deploy script
+│   ├── docker-start.*         # Start scripts (sh/ps1)
+│   ├── docker-compose-minimal.yml # Minimal setup option
+│   └── *.md                   # Docker documentation
+├── docs/              # Project documentation
+│   ├── ARCHITECTURE.md        # System architecture
+│   ├── TESTING.md            # Testing guide
+│   ├── REFACTORING_SUMMARY.md # Refactoring history
+│   └── *.md                  # Other documentation
+├── data/              # Data storage
+│   ├── raw/           # Raw scraped files
+│   └── processed/     # Processed exports
+├── logs/              # Application logs
+├── sql/               # SQL scripts
+└── backups/           # Database backups
+```
+
+**Key Directories:**
+- `ci-test/`: Everything needed for local CI/CD testing
+- `docker/`: All Docker-related scripts and configurations
+- `docs/`: All project documentation (except README.md and CLAUDE.md)
+- `app/`: Python application code
+- `frontend-react/`: React frontend application
+- `scripts/`: Utility scripts for maintenance and operations

@@ -39,81 +39,122 @@ def trigger_scraper(source_id: int) -> Dict[str, any]:
     """
     # Get lock for this source ID to prevent concurrent execution
     scraper_lock = get_or_create_scraper_lock(source_id)
-    
+
     # Try to acquire lock without blocking
     if not scraper_lock.acquire(blocking=False):
         raise ScraperError(f"Scraper for source ID {source_id} is already running")
-    
+
     try:
         # Clean up any stuck scrapers before starting new ones
         if active_config.SCRAPER_CLEANUP_ENABLED:
-            cleanup_count = cleanup_stuck_scrapers(max_age_hours=getattr(active_config, 'SCRAPER_TIMEOUT_HOURS', 2))
+            cleanup_count = cleanup_stuck_scrapers(
+                max_age_hours=getattr(active_config, "SCRAPER_TIMEOUT_HOURS", 2)
+            )
             if cleanup_count > 0:
-                logger.info(f"Cleaned up {cleanup_count} stuck scrapers before starting new scrape")
-        
+                logger.info(
+                    f"Cleaned up {cleanup_count} stuck scrapers before starting new scrape"
+                )
+
         # Get data source
         data_source = DataSource.query.get(source_id)
         if not data_source:
             raise NotFoundError(f"Data source with ID {source_id} not found")
-        
+
         # Find appropriate scraper
         scraper_key = data_source.scraper_key
         if scraper_key not in SCRAPERS:
             raise ScraperError(f"No scraper found for source: {scraper_key}")
-        
+
         scraper_class = SCRAPERS[scraper_key]
-        
-        # Update status to running
-        update_scraper_status(source_id, 'running', 'Scraper started')
-        
+
+        # Update status to working
+        update_scraper_status(source_id, "working", "Scraper started")
+
         # Run scraper in background thread
         def run_scraper():
+            # Create Flask application context for database operations
+            from app import create_app
+            app = create_app()
+            
             try:
-                # Create and run scraper
-                scraper = scraper_class()
-                
-                # Run the scraper (this is async, so we need to handle it properly)
-                if hasattr(scraper, 'scrape'):
-                    # If it's an async method, run it in event loop
+                with app.app_context():
                     try:
-                        loop = asyncio.get_event_loop()
-                        if loop.is_running():
-                            # If we're already in an event loop, create a new thread
-                            import concurrent.futures
-                            with concurrent.futures.ThreadPoolExecutor() as executor:
-                                future = executor.submit(asyncio.run, scraper.scrape())
-                                result = future.result()
+                        # Create and run scraper
+                        scraper = scraper_class()
+
+                        # Run the scraper (handle both sync and async methods)
+                        if not hasattr(scraper, "scrape"):
+                            raise ScraperError(
+                                f"Scraper {scraper_key} does not have a scrape method"
+                            )
+                        
+                        import inspect
+                        
+                        # Check if the scrape method is a coroutine
+                        if inspect.iscoroutinefunction(scraper.scrape):
+                            # It's an async method, run it in a new event loop
+                            try:
+                                # Always use asyncio.run to avoid event loop conflicts
+                                result = asyncio.run(scraper.scrape())
+                            except RuntimeError as e:
+                                if "cannot be called from a running event loop" in str(e):
+                                    # If we're in a running event loop, use thread executor
+                                    import concurrent.futures
+                                    with concurrent.futures.ThreadPoolExecutor() as executor:
+                                        future = executor.submit(asyncio.run, scraper.scrape())
+                                        result = future.result()
+                                else:
+                                    raise e
                         else:
-                            result = asyncio.run(scraper.scrape())
-                    except Exception as e:
-                        if 'coroutine' in str(e):
-                            result = asyncio.run(scraper.scrape())
-                        else:
+                            # It's a synchronous method
                             result = scraper.scrape()
-                else:
-                    raise ScraperError(f"Scraper {scraper_key} does not have a scrape method")
-                
-                # Update status to completed
-                update_scraper_status(source_id, 'completed', f'Scraped {result} records')
-                logger.info(f"Scraper {scraper_key} completed successfully with {result} records")
-                
-            except Exception as e:
-                error_msg = f"Scraper failed: {str(e)}"
-                update_scraper_status(source_id, 'failed', error_msg)
-                logger.error(f"Scraper {scraper_key} failed: {e}")
+
+                        # Update status to completed
+                        update_scraper_status(
+                            source_id, "completed", f"Scraped {result} records"
+                        )
+                        logger.info(
+                            f"Scraper {scraper_key} completed successfully with {result} records"
+                        )
+
+                    except Exception as e:
+                        error_msg = f"Scraper failed: {str(e)}"
+                        logger.error(f"Scraper {scraper_key} failed: {e}", exc_info=True)
+                        
+                        # Ensure status is updated to failed even if there are app context issues
+                        try:
+                            update_scraper_status(source_id, "failed", error_msg)
+                        except Exception as status_error:
+                            logger.error(f"Failed to update scraper status to failed: {status_error}")
+                            
+            except Exception as outer_e:
+                # This catches any issues with app context creation itself
+                logger.error(f"Critical error in scraper thread for {scraper_key}: {outer_e}", exc_info=True)
+                # Try one more time to update status without app context dependency
+                try:
+                    from app import create_app
+                    app = create_app()
+                    with app.app_context():
+                        update_scraper_status(source_id, "failed", f"Critical scraper error: {str(outer_e)}")
+                except Exception:
+                    logger.error(f"Could not update status after critical error for source {source_id}")
             finally:
-                scraper_lock.release()
-        
+                # Always release the lock, no matter what happened
+                try:
+                    scraper_lock.release()
+                except Exception as lock_error:
+                    logger.error(f"Error releasing scraper lock: {lock_error}")
+
         # Start scraper thread
         thread = threading.Thread(target=run_scraper, daemon=True)
         thread.start()
-        
+
         return {
             "status": "started",
             "message": f"Scraper for {data_source.name} started successfully",
-            "source_id": source_id
+            "source_id": source_id,
         }
-        
+
     except Exception as e:
         scraper_lock.release()
         raise e
@@ -126,26 +167,26 @@ def get_scraper_status(source_id: int) -> Dict[str, any]:
         if not status:
             return {
                 "source_id": source_id,
-                "status": "never_run",
-                "message": "Scraper has never been run",
-                "last_run": None
+                "status": "pending",
+                "message": "Ready to run",
+                "last_run": None,
             }
-        
+
         return {
             "source_id": source_id,
             "status": status.status,
-            "message": status.message,
-            "last_run": status.last_run.isoformat() if status.last_run else None,
-            "updated_at": status.updated_at.isoformat() if status.updated_at else None
+            "message": status.details,  # Use details field, not message
+            "last_run": status.last_checked.isoformat() if status.last_checked else None,  # Use last_checked, not last_run
+            "updated_at": status.last_checked.isoformat() if status.last_checked else None,  # Use last_checked for consistency
         }
-        
+
     except Exception as e:
         logger.error(f"Error getting scraper status for source {source_id}: {e}")
         return {
             "source_id": source_id,
             "status": "error",
             "message": f"Error retrieving status: {str(e)}",
-            "last_run": None
+            "last_run": None,
         }
 
 
@@ -154,15 +195,15 @@ def get_all_scraper_statuses() -> List[Dict[str, any]]:
     try:
         data_sources = DataSource.query.all()
         statuses = []
-        
+
         for source in data_sources:
             status_info = get_scraper_status(source.id)
-            status_info['source_name'] = source.name
-            status_info['scraper_key'] = source.scraper_key
+            status_info["source_name"] = source.name
+            status_info["scraper_key"] = source.scraper_key
             statuses.append(status_info)
-        
+
         return statuses
-        
+
     except Exception as e:
         logger.error(f"Error getting all scraper statuses: {e}")
         return []
@@ -175,23 +216,23 @@ def stop_scraper(source_id: int) -> Dict[str, any]:
     """
     try:
         # Update status to indicate stop was requested
-        update_scraper_status(source_id, 'stop_requested', 'Stop requested by user')
-        
+        update_scraper_status(source_id, "stop_requested", "Stop requested by user")
+
         # Note: We can't actually force-stop a running thread in Python
         # The scraper would need to check for stop signals internally
-        
+
         return {
             "status": "stop_requested",
             "message": "Stop signal sent to scraper (may take time to complete current operation)",
-            "source_id": source_id
+            "source_id": source_id,
         }
-        
+
     except Exception as e:
         logger.error(f"Error stopping scraper for source {source_id}: {e}")
         return {
             "status": "error",
             "message": f"Error stopping scraper: {str(e)}",
-            "source_id": source_id
+            "source_id": source_id,
         }
 
 
@@ -202,29 +243,30 @@ def cleanup_stuck_scrapers(max_age_hours: int = 2) -> int:
     """
     try:
         from app.utils.scraper_cleanup import cleanup_stuck_scrapers as cleanup_func
+
         return cleanup_func(max_age_hours)
     except ImportError:
         # Fallback cleanup implementation
         from datetime import timedelta
+
         cutoff_time = datetime.now(timezone.utc) - timedelta(hours=max_age_hours)
-        
+
         stuck_scrapers = ScraperStatus.query.filter(
-            ScraperStatus.status == 'running',
-            ScraperStatus.last_run < cutoff_time
+            ScraperStatus.status == "working", ScraperStatus.last_checked < cutoff_time
         ).all()
-        
+
         cleanup_count = 0
         for scraper in stuck_scrapers:
             update_scraper_status(
-                scraper.source_id, 
-                'failed', 
-                f'Scraper was stuck for {max_age_hours}+ hours and was cleaned up'
+                scraper.source_id,
+                "failed",
+                f"Scraper was stuck for {max_age_hours}+ hours and was cleaned up",
             )
             cleanup_count += 1
-        
+
         if cleanup_count > 0:
             logger.info(f"Cleaned up {cleanup_count} stuck scrapers")
-        
+
         return cleanup_count
 
 
@@ -234,31 +276,30 @@ def run_all_scrapers() -> Dict[str, any]:
     Returns summary of results.
     """
     data_sources = DataSource.query.all()
-    results = {
-        "total": len(data_sources),
-        "started": 0,
-        "errors": 0,
-        "details": []
-    }
-    
+    results = {"total": len(data_sources), "started": 0, "errors": 0, "details": []}
+
     for source in data_sources:
         try:
             result = trigger_scraper(source.id)
             results["started"] += 1
-            results["details"].append({
-                "source_id": source.id,
-                "source_name": source.name,
-                "status": "started"
-            })
+            results["details"].append(
+                {
+                    "source_id": source.id,
+                    "source_name": source.name,
+                    "status": "started",
+                }
+            )
         except Exception as e:
             results["errors"] += 1
-            results["details"].append({
-                "source_id": source.id,
-                "source_name": source.name,
-                "status": "error",
-                "error": str(e)
-            })
-    
+            results["details"].append(
+                {
+                    "source_id": source.id,
+                    "source_name": source.name,
+                    "status": "error",
+                    "error": str(e),
+                }
+            )
+
     return results
 
 
@@ -268,7 +309,9 @@ def get_available_scrapers() -> List[Dict[str, str]]:
         {
             "key": key,
             "class_name": scraper_class.__name__,
-            "description": getattr(scraper_class, '__doc__', 'No description available')
+            "description": getattr(
+                scraper_class, "__doc__", "No description available"
+            ),
         }
         for key, scraper_class in SCRAPERS.items()
     ]

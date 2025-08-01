@@ -12,7 +12,8 @@ from datetime import datetime, timezone
 
 from app import create_app
 from app.database import db
-from app.database.models import Prospect, DataSource, User
+from app.database.models import Prospect, DataSource
+from app.database.user_models import User
 
 
 @pytest.mark.integration

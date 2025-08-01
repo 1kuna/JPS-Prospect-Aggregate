@@ -18,36 +18,82 @@ vi.mock('@tanstack/react-virtual', () => ({
   })
 }));
 
-// Mock TanStack Table
+// Mock TanStack Table - will be initialized after mockProspects is defined
+let mockTable: any = {
+  getHeaderGroups: () => [
+    {
+      id: 'header-group-1',
+      headers: [
+        {
+          id: 'title',
+          isPlaceholder: false,
+          column: {
+            id: 'title',
+            columnDef: { 
+              header: 'Title',
+              enableSorting: true,
+              getCanSort: () => true,
+              getIsSorted: () => false,
+              toggleSorting: vi.fn(),
+              getToggleSortingHandler: () => vi.fn()
+            },
+            getCanSort: () => true,
+            getIsSorted: () => false,
+            toggleSorting: vi.fn(),
+            getToggleSortingHandler: () => vi.fn()
+          },
+          getContext: () => ({ header: { column: { columnDef: { header: 'Title' } } } }),
+          getResizeHandler: () => vi.fn(),
+          getSize: () => 200
+        },
+        {
+          id: 'agency',
+          isPlaceholder: false,
+          column: {
+            id: 'agency',
+            columnDef: { 
+              header: 'Agency',
+              enableSorting: true,
+              getCanSort: () => true,
+              getIsSorted: () => false,
+              toggleSorting: vi.fn(),
+              getToggleSortingHandler: () => vi.fn()
+            },
+            getCanSort: () => true,
+            getIsSorted: () => false,
+            toggleSorting: vi.fn(),
+            getToggleSortingHandler: () => vi.fn()
+          },
+          getContext: () => ({ header: { column: { columnDef: { header: 'Agency' } } } }),
+          getResizeHandler: () => vi.fn(),
+          getSize: () => 150
+        }
+      ]
+    }
+  ],
+  getRowModel: () => ({
+    rows: []  // Will be populated after mockProspects is defined
+  }),
+  getState: () => ({
+    sorting: []
+  }),
+  options: {
+    data: mockProspects
+  }
+};
+
 vi.mock('@tanstack/react-table', () => ({
   createColumnHelper: () => ({
-    accessor: vi.fn(),
-    display: vi.fn()
+    accessor: vi.fn((_, config) => config),
+    display: vi.fn((config) => config)
   }),
-  useReactTable: () => ({
-    getHeaderGroups: () => [
-      {
-        id: 'header-group-1',
-        headers: [
-          {
-            id: 'title',
-            getContext: () => ({
-              column: { columnDef: { header: 'Title' } }
-            }),
-            renderHeader: () => 'Title',
-            getSize: () => 200
-          },
-          {
-            id: 'agency',
-            getContext: () => ({
-              column: { columnDef: { header: 'Agency' } }
-            }),
-            renderHeader: () => 'Agency',
-            getSize: () => 150
-          }
-        ]
-      }
-    ],
+  useReactTable: () => mockTable,
+  flexRender: (content, context) => {
+    if (typeof content === 'function') {
+      return content(context);
+    }
+    return content;
+  },
     getRowModel: () => ({
       rows: [
         {
@@ -170,9 +216,42 @@ const mockProspectStatus = {
   progress: {}
 };
 
+// Update mockTable with actual data now that mockProspects is defined
+mockTable.getRowModel = () => ({
+  rows: mockProspects.map((prospect, index) => ({
+    id: `row-${index}`,
+    index,
+    original: prospect,
+    getValue: (columnId) => prospect[columnId],
+    getVisibleCells: () => [
+      {
+        id: `${index}-title`,
+        column: { id: 'title', columnDef: {} },
+        row: { original: prospect },
+        getValue: () => prospect.title,
+        renderValue: () => prospect.title,
+        getContext: () => ({ getValue: () => prospect.title, row: { original: prospect }, column: { id: 'title' } })
+      },
+      {
+        id: `${index}-agency`,
+        column: { id: 'agency', columnDef: {} },
+        row: { original: prospect },
+        getValue: () => prospect.agency,
+        renderValue: () => prospect.agency,
+        getContext: () => ({ getValue: () => prospect.agency, row: { original: prospect }, column: { id: 'agency' } })
+      }
+    ],
+    getCanSelect: () => true,
+    getIsSelected: () => false,
+    toggleSelected: vi.fn()
+  }))
+});
+
 const defaultProps = {
+  table: mockTable,
   prospects: mockProspects,
   isLoading: false,
+  isFetching: false,
   onProspectClick: vi.fn(),
   getProspectStatus: vi.fn(() => mockProspectStatus),
   addToQueue: vi.fn(),

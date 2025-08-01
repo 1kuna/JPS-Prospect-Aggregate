@@ -28,6 +28,7 @@ class QueueStatus(Enum):
 @dataclass
 class EnhancementProgress:
     """Simple progress tracking for enhancements"""
+
     status: QueueStatus = QueueStatus.IDLE
     enhancement_type: Optional[EnhancementType] = None
     processed: int = 0
@@ -40,7 +41,16 @@ class EnhancementProgress:
 
 class MockQueueItem:
     """Mock queue item for backward compatibility with API expectations"""
-    def __init__(self, prospect_id: str, user_id: int, enhancement_type: str, processing_type: str, status: str, item_id: str = None):
+
+    def __init__(
+        self,
+        prospect_id: str,
+        user_id: int,
+        enhancement_type: str,
+        processing_type: str,
+        status: str,
+        item_id: str = None,
+    ):
         self.prospect_id = prospect_id
         self.user_id = user_id
         self.enhancement_type = enhancement_type
@@ -48,21 +58,25 @@ class MockQueueItem:
         self._status = status
         # Generate a unique ID if not provided
         self.id = item_id or f"{processing_type}_{prospect_id[:8]}_{int(time.time())}"
-    
+
     @property
     def type(self):
         """Mock type enum with value attribute"""
+
         class MockType:
             def __init__(self, value):
                 self.value = value
+
         return MockType(self.processing_type)
-    
-    @property 
+
+    @property
     def status(self):
         """Mock status enum with value attribute"""
+
         class MockStatus:
             def __init__(self, value):
                 self.value = value
+
         return MockStatus(self._status)
 
 
@@ -71,20 +85,20 @@ class SimpleEnhancementQueue:
     Simplified enhancement queue that handles both individual and bulk processing
     without the complexity of priority queues and multiple thread management.
     """
-    
+
     def __init__(self):
         self._progress = EnhancementProgress()
         self._processing = False
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self._lock = threading.Lock()
-        
+
         # Track current enhancement details for API compatibility
         self._current_prospect_id: Optional[str] = None
         self._current_user_id: Optional[int] = None
         self._current_enhancement_type: Optional[str] = None
         self._current_processing_type: str = "individual"  # 'individual' or 'bulk'
-    
+
     def get_status(self) -> Dict[str, Any]:
         """Get current processing status"""
         with self._lock:
@@ -92,44 +106,51 @@ class SimpleEnhancementQueue:
             pending_items = []
             if self._processing and self._current_prospect_id:
                 item_id = f"{self._current_processing_type}_{self._current_prospect_id}_{self._current_user_id or 1}"
-                pending_items.append({
-                    'id': item_id,
-                    'prospect_id': self._current_prospect_id,
-                    'user_id': self._current_user_id or 1,
-                    'type': self._current_processing_type,
-                    'enhancement_type': self._current_enhancement_type or "all",
-                    'status': "processing" if self._processing else "pending"
-                })
-            
+                pending_items.append(
+                    {
+                        "id": item_id,
+                        "prospect_id": self._current_prospect_id,
+                        "user_id": self._current_user_id or 1,
+                        "type": self._current_processing_type,
+                        "enhancement_type": self._current_enhancement_type or "all",
+                        "status": "processing" if self._processing else "pending",
+                    }
+                )
+
             return {
                 "status": self._progress.status.value,
                 "enhancement_type": self._progress.enhancement_type,
                 "processed": self._progress.processed,
                 "total": self._progress.total,
                 "current_prospect_id": self._progress.current_prospect_id,
-                "started_at": self._progress.started_at.isoformat() if self._progress.started_at else None,
-                "completed_at": self._progress.completed_at.isoformat() if self._progress.completed_at else None,
+                "started_at": self._progress.started_at.isoformat()
+                if self._progress.started_at
+                else None,
+                "completed_at": self._progress.completed_at.isoformat()
+                if self._progress.completed_at
+                else None,
                 "errors": self._progress.errors[-10:],  # Keep only last 10 errors
                 "is_processing": self._processing,
                 "pending_items": pending_items,
                 "queue_size": len(pending_items),
-                "worker_running": self._processing
+                "worker_running": self._processing,
             }
-    
+
     def is_processing(self) -> bool:
         """Check if currently processing"""
         return self._processing
-    
+
     def _create_progress_callback(self, prospect_id: str) -> callable:
         """Create a progress callback function for real-time updates"""
+
         def progress_callback(progress_data):
             try:
                 # Import here to avoid circular import
                 from app.api.llm_processing import emit_enhancement_progress
-                
+
                 field = progress_data.get("field", "unknown")
                 status = progress_data.get("status", "processing")
-                
+
                 # Emit the correct event type that frontend expects
                 if status == "processing":
                     event_type = f"{field}_started"
@@ -137,24 +158,32 @@ class SimpleEnhancementQueue:
                 else:
                     event_type = f"{field}_completed"
                     message = f"Completed {field}"
-                
+
                 emit_enhancement_progress(
                     prospect_id=prospect_id,
-                    event_type=event_type, 
+                    event_type=event_type,
                     data={
                         "field": field,
                         "status": status,
                         "step": field,
-                        "message": message
-                    }
+                        "message": message,
+                    },
                 )
-                logger.debug(f"Emitted progress for prospect {prospect_id[:8]}: {event_type}")
+                logger.debug(
+                    f"Emitted progress for prospect {prospect_id[:8]}: {event_type}"
+                )
             except Exception as e:
                 logger.error(f"Error in progress callback: {e}")
-        
+
         return progress_callback
-    
-    def enhance_single_prospect(self, prospect_id: str, enhancement_type: EnhancementType = "all", user_id: Optional[int] = None, force_redo: bool = False) -> Dict[str, Any]:
+
+    def enhance_single_prospect(
+        self,
+        prospect_id: str,
+        enhancement_type: EnhancementType = "all",
+        user_id: Optional[int] = None,
+        force_redo: bool = False,
+    ) -> Dict[str, Any]:
         """
         Enhance a single prospect immediately (synchronous).
         This is for real-time UI updates.
@@ -162,8 +191,11 @@ class SimpleEnhancementQueue:
         try:
             prospect = Prospect.query.get(prospect_id)
             if not prospect:
-                return {"status": "error", "message": f"Prospect {prospect_id} not found"}
-            
+                return {
+                    "status": "error",
+                    "message": f"Prospect {prospect_id} not found",
+                }
+
             # Track current enhancement details for API compatibility
             with self._lock:
                 self._current_prospect_id = prospect_id
@@ -171,28 +203,38 @@ class SimpleEnhancementQueue:
                 self._current_enhancement_type = enhancement_type
                 self._current_processing_type = "individual"
                 self._processing = True
-            
-            logger.info(f"Starting individual enhancement for prospect {prospect_id[:8]}... ({enhancement_type}, force_redo={force_redo})")
-            
+
+            logger.info(
+                f"Starting individual enhancement for prospect {prospect_id[:8]}... ({enhancement_type}, force_redo={force_redo})"
+            )
+
             # Create progress callback for real-time frontend updates
             progress_callback = self._create_progress_callback(prospect_id)
-            
+
             # Emit initial processing event
             from app.api.llm_processing import emit_enhancement_progress
+
             emit_enhancement_progress(
                 prospect_id=prospect_id,
                 event_type="processing_started",
-                data={"enhancement_type": enhancement_type, "message": "Enhancement started"}
+                data={
+                    "enhancement_type": enhancement_type,
+                    "message": "Enhancement started",
+                },
             )
-            
+
             # Note: force_redo parameter not yet implemented in LLM service
             # For now, LLM service will use its default enhancement logic
-            results = llm_service.enhance_single_prospect(prospect, enhancement_type, progress_callback)
-            
+            results = llm_service.enhance_single_prospect(
+                prospect, enhancement_type, progress_callback
+            )
+
             if any(results.values()):
                 db.session.commit()
-                logger.info(f"Successfully enhanced prospect {prospect_id[:8]}... - {results}")
-                
+                logger.info(
+                    f"Successfully enhanced prospect {prospect_id[:8]}... - {results}"
+                )
+
                 # Emit completion event
                 emit_enhancement_progress(
                     prospect_id=prospect_id,
@@ -200,15 +242,15 @@ class SimpleEnhancementQueue:
                     data={
                         "results": results,
                         "enhanced_fields": sum(results.values()),
-                        "message": f"Enhanced {sum(results.values())} fields"
-                    }
+                        "message": f"Enhanced {sum(results.values())} fields",
+                    },
                 )
-                
+
                 return {
                     "status": "completed",
                     "prospect_id": prospect_id,
                     "enhancements": results,
-                    "message": f"Enhanced {sum(results.values())} fields"
+                    "message": f"Enhanced {sum(results.values())} fields",
                 }
             else:
                 # Emit no changes event
@@ -218,35 +260,28 @@ class SimpleEnhancementQueue:
                     data={
                         "results": results,
                         "enhanced_fields": 0,
-                        "message": "No enhancements needed or possible"
-                    }
+                        "message": "No enhancements needed or possible",
+                    },
                 )
-                
+
                 return {
                     "status": "no_changes",
                     "prospect_id": prospect_id,
-                    "message": "No enhancements needed or possible"
+                    "message": "No enhancements needed or possible",
                 }
-                
+
         except Exception as e:
             db.session.rollback()
             logger.error(f"Error enhancing single prospect {prospect_id}: {e}")
-            
+
             # Emit error event
             emit_enhancement_progress(
                 prospect_id=prospect_id,
                 event_type="error",
-                data={
-                    "error": str(e),
-                    "message": f"Enhancement failed: {str(e)}"
-                }
+                data={"error": str(e), "message": f"Enhancement failed: {str(e)}"},
             )
-            
-            return {
-                "status": "error", 
-                "prospect_id": prospect_id,
-                "message": str(e)
-            }
+
+            return {"status": "error", "prospect_id": prospect_id, "message": str(e)}
         finally:
             # Clear current enhancement tracking
             with self._lock:
@@ -254,82 +289,89 @@ class SimpleEnhancementQueue:
                 self._current_user_id = None
                 self._current_enhancement_type = None
                 self._processing = False
-    
-    def start_bulk_enhancement(self, enhancement_type: EnhancementType = "all", 
-                             prospect_ids: Optional[List[str]] = None,
-                             skip_existing: bool = True) -> Dict[str, Any]:
+
+    def start_bulk_enhancement(
+        self,
+        enhancement_type: EnhancementType = "all",
+        prospect_ids: Optional[List[str]] = None,
+        skip_existing: bool = True,
+    ) -> Dict[str, Any]:
         """
         Start bulk enhancement processing in background thread.
         """
         if self._processing:
             return {"status": "error", "message": "Enhancement already in progress"}
-        
+
         # Get prospects to process
         if prospect_ids:
             prospects = Prospect.query.filter(Prospect.id.in_(prospect_ids)).all()
         else:
-            prospects = self._get_prospects_needing_enhancement(enhancement_type, skip_existing)
-        
+            prospects = self._get_prospects_needing_enhancement(
+                enhancement_type, skip_existing
+            )
+
         if not prospects:
             return {
                 "status": "completed",
                 "message": "No prospects need enhancement",
-                "total": 0
+                "total": 0,
             }
-        
+
         # Initialize progress
         with self._lock:
             self._progress = EnhancementProgress(
                 status=QueueStatus.PROCESSING,
                 enhancement_type=enhancement_type,
                 total=len(prospects),
-                started_at=datetime.now(timezone.utc)
+                started_at=datetime.now(timezone.utc),
             )
-        
+
         self._processing = True
         self._stop_event.clear()
-        
+
         # Start background thread
         self._thread = threading.Thread(
             target=self._bulk_processing_worker,
             args=(prospects, enhancement_type),
-            daemon=True
+            daemon=True,
         )
         self._thread.start()
-        
-        logger.info(f"Started bulk enhancement: {len(prospects)} prospects for {enhancement_type}")
-        
+
+        logger.info(
+            f"Started bulk enhancement: {len(prospects)} prospects for {enhancement_type}"
+        )
+
         return {
             "status": "started",
             "enhancement_type": enhancement_type,
             "total": len(prospects),
-            "message": f"Started bulk enhancement of {len(prospects)} prospects"
+            "message": f"Started bulk enhancement of {len(prospects)} prospects",
         }
-    
+
     def stop_processing(self) -> Dict[str, Any]:
         """Stop current processing"""
         if not self._processing:
             return {"status": "error", "message": "No processing currently running"}
-        
+
         logger.info("Stopping enhancement processing...")
         self._stop_event.set()
-        
+
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=5.0)
-        
+
         with self._lock:
             self._progress.status = QueueStatus.STOPPED
             self._progress.completed_at = datetime.now(timezone.utc)
-        
+
         self._processing = False
-        
+
         return {"status": "stopped", "message": "Enhancement processing stopped"}
-    
+
     # Backward compatibility methods for API
     def get_queue_status(self) -> Dict[str, Any]:
         """Alias for get_status for backward compatibility"""
         return self.get_status()
-    
+
     def get_item_status(self, item_id: str) -> Dict[str, Any]:
         """Get status of a specific item (simplified implementation)"""
         status = self.get_status()
@@ -337,24 +379,24 @@ class SimpleEnhancementQueue:
             "item_id": item_id,
             "status": status.get("status", "unknown"),
             "progress": status.get("progress", {}),
-            "message": f"Status for item {item_id}"
+            "message": f"Status for item {item_id}",
         }
-    
+
     def cancel_item(self, item_id: str) -> bool:
         """Cancel a specific item (simplified - just stops current processing)"""
         if self._processing:
             self.stop_processing()
             return True
         return False
-    
+
     def start_worker(self) -> Dict[str, Any]:
         """Start worker (no-op for simplified implementation)"""
         return {"status": "ready", "message": "Worker ready"}
-    
+
     def stop_worker(self) -> Dict[str, Any]:
         """Stop worker (alias for stop_processing)"""
         return self.stop_processing()
-    
+
     @property
     def _queue_items(self) -> Dict[str, MockQueueItem]:
         """Backward compatibility for queue items access"""
@@ -368,79 +410,95 @@ class SimpleEnhancementQueue:
                     enhancement_type=self._current_enhancement_type or "all",
                     processing_type=self._current_processing_type,
                     status="processing" if self._processing else "pending",
-                    item_id=item_id
+                    item_id=item_id,
                 )
                 return {"current": mock_item}
             else:
                 return {}
-    
-    def _get_prospects_needing_enhancement(self, enhancement_type: EnhancementType, skip_existing: bool) -> List[Prospect]:
+
+    def _get_prospects_needing_enhancement(
+        self, enhancement_type: EnhancementType, skip_existing: bool
+    ) -> List[Prospect]:
         """Get prospects that need the specified enhancement type"""
         query = Prospect.query
-        
+
         if skip_existing:
             if enhancement_type == "values":
                 query = query.filter(Prospect.estimated_value_single.is_(None))
             elif enhancement_type == "naics":
                 query = query.filter(
-                    (Prospect.naics.is_(None)) | 
-                    (Prospect.naics_source != 'llm_inferred')
+                    (Prospect.naics.is_(None))
+                    | (Prospect.naics_source != "llm_inferred")
                 )
             elif enhancement_type == "titles":
                 query = query.filter(Prospect.ai_enhanced_title.is_(None))
             elif enhancement_type == "set_asides":
                 query = query.filter(Prospect.set_aside_standardized.is_(None))
             # For "all", we don't filter - check each enhancement individually
-        
+
         return query.limit(10000).all()  # Reasonable limit to prevent memory issues
-    
-    def _bulk_processing_worker(self, prospects: List[Prospect], enhancement_type: EnhancementType):
+
+    def _bulk_processing_worker(
+        self, prospects: List[Prospect], enhancement_type: EnhancementType
+    ):
         """Worker thread for bulk processing"""
         logger.info(f"Bulk processing worker started: {len(prospects)} prospects")
-        
+
         try:
             for i, prospect in enumerate(prospects):
                 if self._stop_event.is_set():
                     logger.info("Bulk processing stopped by user request")
                     break
-                
+
                 # Update progress
                 with self._lock:
                     self._progress.current_prospect_id = prospect.id
-                
+
                 try:
-                    results = llm_service.enhance_single_prospect(prospect, enhancement_type)
-                    
+                    results = llm_service.enhance_single_prospect(
+                        prospect, enhancement_type
+                    )
+
                     if any(results.values()):
                         db.session.commit()
-                        logger.debug(f"Enhanced prospect {prospect.id[:8]}... - {results}")
-                    
+                        logger.debug(
+                            f"Enhanced prospect {prospect.id[:8]}... - {results}"
+                        )
+
                     with self._lock:
                         self._progress.processed = i + 1
-                        
+
                 except Exception as e:
                     logger.error(f"Error processing prospect {prospect.id}: {e}")
                     with self._lock:
-                        self._progress.errors.append(f"Prospect {prospect.id[:8]}...: {str(e)}")
+                        self._progress.errors.append(
+                            f"Prospect {prospect.id[:8]}...: {str(e)}"
+                        )
                         self._progress.processed = i + 1  # Still count as processed
-                
+
                 # Brief pause to prevent overwhelming the system
-                if not self._stop_event.wait(0.1):  # 100ms delay, but can be interrupted
+                if not self._stop_event.wait(
+                    0.1
+                ):  # 100ms delay, but can be interrupted
                     continue
                 else:
                     break
-            
+
             # Mark as completed
             with self._lock:
                 if not self._stop_event.is_set():
                     self._progress.status = QueueStatus.COMPLETED
-                    logger.info(f"Bulk processing completed: {self._progress.processed}/{self._progress.total} prospects")
+                    logger.info(
+                        f"Bulk processing completed: {self._progress.processed}/{self._progress.total} prospects"
+                    )
                 else:
                     self._progress.status = QueueStatus.STOPPED
-                    logger.info(f"Bulk processing stopped: {self._progress.processed}/{self._progress.total} prospects")
-                
+                    logger.info(
+                        f"Bulk processing stopped: {self._progress.processed}/{self._progress.total} prospects"
+                    )
+
                 self._progress.completed_at = datetime.now(timezone.utc)
-                    
+
         except Exception as e:
             logger.error(f"Error in bulk processing worker: {e}")
             with self._lock:
@@ -456,23 +514,32 @@ enhancement_queue = SimpleEnhancementQueue()
 
 
 # Backward compatibility functions
-def add_individual_enhancement(prospect_id: str, enhancement_type: EnhancementType = "all", user_id: Optional[int] = None, force_redo: bool = False) -> Dict[str, Any]:
+def add_individual_enhancement(
+    prospect_id: str,
+    enhancement_type: EnhancementType = "all",
+    user_id: Optional[int] = None,
+    force_redo: bool = False,
+) -> Dict[str, Any]:
     """Add individual prospect enhancement (immediate processing)"""
-    result = enhancement_queue.enhance_single_prospect(prospect_id, enhancement_type, user_id, force_redo)
-    
+    result = enhancement_queue.enhance_single_prospect(
+        prospect_id, enhancement_type, user_id, force_redo
+    )
+
     queue_item_id = f"individual_{prospect_id}_{int(time.time())}"
-    
+
     return {
         "queue_item_id": queue_item_id,
         "was_existing": False,  # For individual enhancements, always treat as new
         "status": result.get("status", "completed"),
         "message": result.get("message", "Enhancement completed"),
         "prospect_id": prospect_id,
-        "enhancements": result.get("enhancements", {})
+        "enhancements": result.get("enhancements", {}),
     }
 
 
-def add_bulk_enhancement(prospect_ids: List[str], enhancement_type: EnhancementType = "all") -> str:
+def add_bulk_enhancement(
+    prospect_ids: List[str], enhancement_type: EnhancementType = "all"
+) -> str:
     """Add bulk enhancement (background processing)"""
     enhancement_queue.start_bulk_enhancement(enhancement_type, prospect_ids)
     return f"bulk_{enhancement_type}_{int(time.time())}"

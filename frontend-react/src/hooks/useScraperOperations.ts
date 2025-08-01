@@ -83,7 +83,7 @@ export function useScraperOperations() {
     let isLoading = false;
     
     if (isScraperWorking) {
-      buttonText = 'Working...';
+      buttonText = 'Running...';
       isLoading = true;
     } else if (isApiCallInProgress) {
       buttonText = 'Starting...';

@@ -13,9 +13,9 @@ from app.database.models import Settings
 def get_maintenance_status():
     """Get the current maintenance mode status from the database."""
     try:
-        setting = db.session.query(Settings).filter_by(key='maintenance_mode').first()
+        setting = db.session.query(Settings).filter_by(key="maintenance_mode").first()
         if setting:
-            return setting.value.lower() == 'true'
+            return setting.value.lower() == "true"
         return False
     except Exception:
         # If database is not available or error occurs, default to not in maintenance
@@ -25,25 +25,25 @@ def get_maintenance_status():
 def maintenance_middleware(app):
     """
     Register maintenance mode middleware with the Flask app.
-    
+
     This middleware will intercept all requests and serve a maintenance page
     if maintenance mode is enabled, except for the admin toggle endpoint.
     """
-    
+
     @app.before_request
     def check_maintenance_mode():
         # Skip maintenance check for all admin endpoints
-        if request.endpoint and request.endpoint.startswith('admin.'):
+        if request.endpoint and request.endpoint.startswith("admin."):
             return None
-            
+
         # Skip maintenance check for static files
-        if request.endpoint == 'static':
+        if request.endpoint == "static":
             return None
-            
+
         # Check if we're in maintenance mode
         if get_maintenance_status():
             return make_maintenance_response()
-        
+
         return None
 
 
@@ -99,8 +99,8 @@ def make_maintenance_response():
     </body>
     </html>
     """
-    
+
     response = make_response(maintenance_html, 503)
-    response.headers['Content-Type'] = 'text/html'
-    response.headers['Retry-After'] = '3600'  # Suggest retry after 1 hour
+    response.headers["Content-Type"] = "text/html"
+    response.headers["Retry-After"] = "3600"  # Suggest retry after 1 hour
     return response

@@ -10,73 +10,10 @@ from app import create_app
 from app.database import db
 from app.database.models import DataSource, ScraperStatus
 from app.utils.logger import logger
+from app.utils.ensure_data_sources import ALL_DATA_SOURCES
 
-# Define the data sources based on available scrapers
-DATA_SOURCES = [
-    {
-        "name": "Acquisition Gateway",
-        "scraper_key": "ACQGW",
-        "url": "https://hallways.cap.gsa.gov/app/#/gateway/acquisition-gateway/forecast-documents",
-        "description": "GSA Acquisition Gateway forecast documents",
-        "frequency": "weekly"
-    },
-    {
-        "name": "Department of Commerce",
-        "scraper_key": "DOC",
-        "url": "https://www.commerce.gov/",
-        "description": "Department of Commerce procurement forecasts",
-        "frequency": "weekly"
-    },
-    {
-        "name": "Department of Homeland Security",
-        "scraper_key": "DHS",
-        "url": "https://www.dhs.gov/",
-        "description": "DHS procurement forecasts",
-        "frequency": "weekly"
-    },
-    {
-        "name": "Department of Justice",
-        "scraper_key": "DOJ",
-        "url": "https://www.justice.gov/",
-        "description": "DOJ procurement forecasts",
-        "frequency": "weekly"
-    },
-    {
-        "name": "Department of State",
-        "scraper_key": "DOS",
-        "url": "https://www.state.gov/",
-        "description": "DOS procurement forecasts",
-        "frequency": "weekly"
-    },
-    {
-        "name": "Department of Transportation",
-        "scraper_key": "DOT",
-        "url": "https://www.transportation.gov/",
-        "description": "DOT procurement forecasts",
-        "frequency": "weekly"
-    },
-    {
-        "name": "Health and Human Services",
-        "scraper_key": "HHS",
-        "url": "https://www.hhs.gov/",
-        "description": "HHS procurement forecasts",
-        "frequency": "weekly"
-    },
-    {
-        "name": "Social Security Administration",
-        "scraper_key": "SSA",
-        "url": "https://www.ssa.gov/",
-        "description": "SSA procurement forecasts",
-        "frequency": "weekly"
-    },
-    {
-        "name": "Department of Treasury",
-        "scraper_key": "TREAS",
-        "url": "https://www.treasury.gov/",
-        "description": "Treasury procurement forecasts",
-        "frequency": "weekly"
-    }
-]
+# Use the centralized data source list
+DATA_SOURCES = ALL_DATA_SOURCES
 
 def populate_data_sources():
     """Populate initial data sources if they don't exist"""
