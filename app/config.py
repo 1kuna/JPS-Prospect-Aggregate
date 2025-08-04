@@ -141,8 +141,14 @@ class Config:
         os.getenv("DUPLICATE_FUZZY_CONTENT_THRESHOLD", "0.90")
     )  # Very high threshold for content-only matching
 
-    # Redis configuration
-    REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+    # Backup configuration
+    BACKUP_RETENTION_DAYS: int = int(os.getenv("BACKUP_RETENTION_DAYS", "7"))
+    BACKUP_DIRECTORY: str = os.getenv("BACKUP_DIRECTORY", os.path.join(BASE_DIR, "backups"))
+    
+    # SQLite configuration
+    SQLITE_JOURNAL_MODE: str = os.getenv("SQLITE_JOURNAL_MODE", "WAL")
+    SQLITE_SYNCHRONOUS: str = os.getenv("SQLITE_SYNCHRONOUS", "NORMAL")
+    SQLITE_CACHE_SIZE: int = int(os.getenv("SQLITE_CACHE_SIZE", "-64000"))
 
 
 class DevelopmentConfig(Config):
@@ -157,7 +163,6 @@ class ProductionConfig(Config):
 
     DEBUG: bool = False
     LOG_LEVEL: str = "INFO"
-    # In production, you might want to use a more robust database
 
 
 class TestingConfig(Config):
@@ -167,6 +172,7 @@ class TestingConfig(Config):
     DEBUG: bool = True
     # Use in-memory SQLite for testing
     SQLALCHEMY_DATABASE_URI: str = "sqlite:///:memory:"
+    USER_DATABASE_URI: str = "sqlite:///:memory:"
 
 
 # Configuration dictionary

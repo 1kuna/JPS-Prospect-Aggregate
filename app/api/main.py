@@ -328,7 +328,7 @@ def database_status():
 
         status_count = db.session.query(func.count(ScraperStatus.id)).scalar()
 
-        # Get database size (works for both SQLite and PostgreSQL)
+        # Get database size for SQLite
         db_size = None
         try:
             from flask import current_app
@@ -342,19 +342,7 @@ def database_status():
                 db_file = db_path.replace("sqlite:///", "")
                 if os.path.exists(db_file):
                     db_size = os.path.getsize(db_file)
-            elif db_path and "postgresql" in db_path:
-                # PostgreSQL: Get database size using SQL query
-                from sqlalchemy import text
-
-                # Extract database name from URL (after the last '/')
-                db_name = db_path.split("/")[-1].split("?")[
-                    0
-                ]  # Handle query parameters
-                result = db.session.execute(
-                    text(f"SELECT pg_database_size('{db_name}')")
-                ).fetchone()
-                if result:
-                    db_size = result[0]  # Size in bytes
+            # Only SQLite is supported
         except Exception:
             # If any error occurs, silently continue with db_size = None
             pass

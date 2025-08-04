@@ -7,7 +7,7 @@ Create Date: 2025-08-01 17:00:00.000000
 """
 from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.dialects import postgresql
+# SQLite-compatible migration
 
 # revision identifiers, used by Alembic.
 revision = '000_create_base_tables'

@@ -82,14 +82,14 @@ class TestConsolidatedScrapers:
             'treasury': [
                 {
                     'Specific Id': 'TREAS-001',
-                    'Desc': 'Test Treasury Opportunity',
-                    'Agency': 'IRS',
+                    'PSC': 'Test Treasury Opportunity',
+                    'Bureau': 'IRS',
                     'NAICS': '541511',
                     'Contract Type': 'FFP',
-                    'Small Business': 'Yes',
-                    'Period/PopEnd': 'FY24 Q3',
-                    'Estimated Value': '$500K - $1M',
-                    'Procurement Office City': 'Washington, DC'
+                    'Type of Small Business Set-aside': 'Small Business',
+                    'Projected Award FY_Qtr': 'FY24 Q3',
+                    'Estimated Total Contract Value': '$500K - $1M',
+                    'Place of Performance': 'Washington, DC'
                 }
             ],
             'dot': [
@@ -121,9 +121,9 @@ class TestConsolidatedScrapers:
                     'Target Award Month/Year (Award by)': '2024-06-30',
                     'Target Solicitation Month/Year': '2024-04-15',
                     'Anticipated Acquisition Strategy': 'Small Business',
-                    'Place of Performance City': 'Atlanta',
-                    'Place of Performance State': 'GA',
-                    'Place of Performance Country': 'USA'
+                    'Program Office POC First Name': 'John',
+                    'Program Office POC Last Name': 'Doe',
+                    'Program Office POC Email': 'john.doe@hhs.gov'
                 }
             ],
             'ssa': [
@@ -309,8 +309,12 @@ class TestConsolidatedScrapers:
                 
                 prospect = prospects[0]
                 assert prospect.native_id == 'TREAS-001'
-                assert prospect.description == 'Test Treasury Opportunity'
+                assert prospect.title == 'Test Treasury Opportunity'  # PSC maps to title
+                assert prospect.description == 'Test Treasury Opportunity'  # Created from title
                 assert prospect.agency == 'IRS'
+                assert prospect.place_city == 'Washington'
+                assert prospect.place_state == 'DC'
+                assert prospect.place_country == 'USA'
                 
         finally:
             if os.path.exists(test_file):
@@ -338,6 +342,9 @@ class TestConsolidatedScrapers:
                 assert prospect.native_id == 'DOT-001'
                 assert prospect.title == 'Test DOT Opportunity'
                 assert prospect.agency == 'FAA'
+                assert prospect.place_city == 'Oklahoma City'
+                assert prospect.place_state == 'OK'
+                assert prospect.place_country == 'USA'
                 
         finally:
             if os.path.exists(test_file):
@@ -350,7 +357,7 @@ class TestConsolidatedScrapers:
         test_file = self.create_test_file(self.test_data['hhs'])
         
         try:
-            with patch('app.core.consolidated_scraper_base.ConsolidatedScraperBase.download_file_via_click', 
+            with patch('app.core.consolidated_scraper_base.ConsolidatedScraperBase.download_with_fallback', 
                       new_callable=AsyncMock, return_value=test_file):
                 
                 scraper = HHSForecastScraper()
@@ -362,10 +369,12 @@ class TestConsolidatedScrapers:
                 assert len(prospects) > 0
                 
                 prospect = prospects[0]
-                assert prospect.native_id == 'HHS-001'
+                assert prospect.native_id == 'HHS-00000'  # Changed due to row_index based ID
                 assert prospect.title == 'Test HHS Opportunity'
                 assert prospect.agency == 'CDC'
                 assert prospect.place_country == 'USA'
+                assert prospect.primary_contact_name == 'John Doe'  # Combined from first/last
+                assert prospect.primary_contact_email == 'john.doe@hhs.gov'
                 
         finally:
             if os.path.exists(test_file):
@@ -396,6 +405,9 @@ class TestConsolidatedScrapers:
                 assert prospect.title == 'Test SSA Opportunity'  # Title mapped from description
                 assert prospect.description == 'Test SSA Opportunity'
                 assert prospect.agency == 'Regional'
+                assert prospect.place_city == 'Baltimore'
+                assert prospect.place_state == 'MD'
+                assert prospect.place_country == 'USA'
                 
         finally:
             if os.path.exists(test_file):
@@ -453,6 +465,8 @@ class TestConsolidatedScrapers:
                 assert prospect.native_id == 'DOJ-001'
                 assert prospect.title == 'Test DOJ Opportunity'
                 assert prospect.agency == 'FBI'
+                assert prospect.place_city == 'Quantico'
+                assert prospect.place_state == 'VA'
                 assert prospect.place_country == 'USA'
                 
         finally:
@@ -539,20 +553,40 @@ class TestConsolidatedScrapers:
         treasury_scraper = TreasuryScraper()
         treasury_df = test_df.copy()
         treasury_df['native_id_primary'] = 'test-id'
+        treasury_df['place_raw'] = 'Washington, DC'
         transformed_treasury = treasury_scraper._custom_treasury_transforms(treasury_df)
         assert 'native_id' in transformed_treasury.columns
         assert transformed_treasury['native_id'].iloc[0] == 'test-id'
         assert 'row_index' in transformed_treasury.columns  # Treasury adds row_index
+        assert 'place_city' in transformed_treasury.columns
+        assert transformed_treasury['place_city'].iloc[0] == 'Washington'
+        assert transformed_treasury['place_state'].iloc[0] == 'DC'
         
         # Test SSA transform
         ssa_scraper = SsaScraper()
         ssa_df = test_df.copy()
         ssa_df['description'] = 'Test SSA Title'
+        ssa_df['place_raw'] = 'Baltimore, MD'
         transformed_ssa = ssa_scraper._custom_ssa_transforms(ssa_df)
         assert 'title' in transformed_ssa.columns
         assert transformed_ssa['title'].iloc[0] == 'Test SSA Title'
         # SSA also keeps description unchanged
         assert transformed_ssa['description'].iloc[0] == 'Test SSA Title'
+        assert 'place_city' in transformed_ssa.columns
+        assert transformed_ssa['place_city'].iloc[0] == 'Baltimore'
+        assert transformed_ssa['place_state'].iloc[0] == 'MD'
+        
+        # Test HHS transform
+        hhs_scraper = HHSForecastScraper()
+        hhs_df = pd.DataFrame([{
+            'Program Office POC First Name': 'John',
+            'Program Office POC Last Name': 'Doe'
+        }])
+        transformed_hhs = hhs_scraper._custom_hhs_transforms(hhs_df)
+        assert 'primary_contact_name' in transformed_hhs.columns
+        assert transformed_hhs['primary_contact_name'].iloc[0] == 'John Doe'
+        assert 'place_country' in transformed_hhs.columns
+        assert transformed_hhs['place_country'].iloc[0] == 'USA'
 
 
 # Standalone test functions for running individual scrapers

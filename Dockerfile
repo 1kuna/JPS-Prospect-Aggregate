@@ -40,7 +40,7 @@ RUN apt-get update && apt-get install -y \
     gnupg \
     curl \
     netcat-traditional \
-    postgresql-client \
+    sqlite3 \
     dos2unix \
     && rm -rf /var/lib/apt/lists/*
 

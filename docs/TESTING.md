@@ -114,7 +114,7 @@ The GitHub Actions workflow (`.github/workflows/ci.yml`) includes:
 - **Build Verification**: Production build test
 
 ### 3. Integration Tests
-- **Database Tests**: Real PostgreSQL integration
+- **Database Tests**: Real SQLite integration
 - **API Tests**: Full request/response cycle testing
 - **Service Integration**: Cross-service communication tests
 
@@ -209,7 +209,7 @@ cd frontend-react && npx playwright test --debug
 
 ### Backend Test Data
 - **Fixtures**: Defined in `tests/conftest.py`
-- **Database**: Automatic SQLite/PostgreSQL test database
+- **Database**: Automatic SQLite test database
 - **Isolation**: Each test gets fresh database state
 - **Mocking**: External services mocked (Ollama, etc.)
 

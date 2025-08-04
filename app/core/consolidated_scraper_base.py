@@ -1631,6 +1631,10 @@ class ConsolidatedScraperBase:
             if "encoding" not in read_options:
                 read_options["encoding"] = "utf-8"
 
+            # Set default na_values to treat empty strings as NaN
+            if "na_values" not in read_options:
+                read_options["na_values"] = ["", '""', "''", "N/A", "n/a", "NA", "na", "None", "none", "NULL", "null"]
+
             df = pd.read_csv(file_path, **read_options)
             self.logger.debug(f"Successfully read CSV file with {len(df)} rows")
             return df
@@ -1811,7 +1815,8 @@ class ConsolidatedScraperBase:
 
         missing_columns = set(rename_map.keys()) - set(df.columns)
         if missing_columns:
-            self.logger.debug(f"Columns not found for renaming: {missing_columns}")
+            # Use trace level for expected missing columns (consumed by custom transforms)
+            self.logger.trace(f"Columns not found for renaming (may be consumed by custom transforms): {missing_columns}")
 
         return df
 

@@ -24,7 +24,7 @@ make test-integration # Integration tests only
 ## How It Works
 
 1. Creates isolated Docker containers matching GitHub Actions environment
-2. Sets up PostgreSQL database for testing
+2. Uses SQLite for fast, isolated testing
 3. Runs tests in the same order as CI pipeline:
    - Python linting (ruff)
    - Python type checking (mypy)
@@ -40,7 +40,7 @@ make test-integration # Integration tests only
 - **Exact CI Environment**: Uses same Python 3.11 and Node 20 versions as GitHub Actions
 - **Fast Feedback**: Find issues before pushing to GitHub
 - **Isolated Testing**: Doesn't affect your local development environment
-- **Database Testing**: Includes PostgreSQL container for integration tests
+- **Database Testing**: Uses SQLite for fast, isolated test databases
 
 ## Requirements
 

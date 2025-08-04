@@ -1,6 +1,5 @@
-# Load environment variables from .env file
-# Copy .env.example to .env and configure your settings
-# This file should contain your secret database passwords and keys
+# JPS Prospect Aggregate - Docker Compose Configuration
+# Simplified setup with SQLite database
 
 services:
   web:
@@ -12,54 +11,19 @@ services:
       - "5001:5001"
     environment:
       - FLASK_ENV=production
-      - DATABASE_URL=postgresql://jps_user:${DB_PASSWORD}@db:5432/jps_prospects
-      - USER_DATABASE_URL=postgresql://jps_user:${DB_PASSWORD}@db:5432/jps_users
       - SECRET_KEY=${SECRET_KEY}
       - FILE_FRESHNESS_SECONDS=86400
+      - OLLAMA_BASE_URL=http://ollama:11434
     volumes:
-      # Use relative paths for cross-platform compatibility
-      # These work on both Windows and Mac/Linux
+      # Mount data directory for SQLite databases
       - ./data:/app/data
+      # Mount logs directory
       - ./logs:/app/logs
+      # Mount backups directory
+      - ./backups:/app/backups
     depends_on:
-      db:
+      ollama:
         condition: service_healthy
-    labels:
-      - "com.centurylinklabs.watchtower.enable=true"
-    networks:
-      - jps-network
-
-  db:
-    image: postgres:15-alpine
-    container_name: jps-db
-    restart: unless-stopped
-    environment:
-      - POSTGRES_USER=jps_user
-      - POSTGRES_PASSWORD=${DB_PASSWORD}
-      - POSTGRES_DB=jps_prospects
-      - POSTGRES_MULTIPLE_DATABASES=jps_prospects,jps_users
-      - PGDATA=/var/lib/postgresql/data/pgdata
-    volumes:
-      # Named volume for database data (cross-platform)
-      - postgres_data:/var/lib/postgresql/data
-      # Backup directory (works on all platforms)
-      - ./backups:/backups
-    # Cross-platform database initialization
-    entrypoint: >
-      sh -c "
-        docker-entrypoint.sh postgres &
-        sleep 15 &&
-        until pg_isready -U jps_user -d postgres; do sleep 1; done &&
-        psql -U jps_user -d postgres -tc \"SELECT 1 FROM pg_database WHERE datname = 'jps_prospects'\" | grep -q 1 || psql -U jps_user -d postgres -c \"CREATE DATABASE jps_prospects\" &&
-        psql -U jps_user -d postgres -tc \"SELECT 1 FROM pg_database WHERE datname = 'jps_users'\" | grep -q 1 || psql -U jps_user -d postgres -c \"CREATE DATABASE jps_users\" &&
-        echo 'Databases created successfully' &&
-        wait
-      "
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U jps_user -d jps_prospects"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
     networks:
       - jps-network
 
@@ -128,47 +92,7 @@ services:
     networks:
       - jps-network
 
-  # Watchtower service for auto-updates (optional - comment out if not needed)
-  # Note: On Windows, Docker Desktop handles the socket mount automatically
-  # On Mac/Linux, this uses the standard Unix socket path
-  watchtower:
-    image: containrrr/watchtower
-    container_name: jps-watchtower
-    restart: unless-stopped
-    volumes:
-      # Docker socket mount - works automatically on all platforms
-      # Windows: Docker Desktop translates this path
-      # Mac/Linux: Uses native Unix socket
-      - /var/run/docker.sock:/var/run/docker.sock
-    environment:
-      - WATCHTOWER_CLEANUP=true
-      - WATCHTOWER_INCLUDE_STOPPED=false
-      - WATCHTOWER_INCLUDE_RESTARTING=true
-      - WATCHTOWER_LABEL_ENABLE=true
-      - WATCHTOWER_POLL_INTERVAL=300  # Check every 5 minutes
-    networks:
-      - jps-network
-    # Make watchtower optional - remove this service if you don't want auto-updates
-    profiles:
-      - full
-
-  backup:
-    image: postgres:15-alpine
-    container_name: jps-backup
-    volumes:
-      - ./backups:/backups
-      - ./docker/backup.sh:/backup.sh:ro
-    environment:
-      - PGPASSWORD=${DB_PASSWORD}
-      - DB_HOST=db
-      - DB_USER=jps_user
-    entrypoint: ["/bin/sh", "-c", "while true; do /backup.sh; sleep 86400; done"]
-    depends_on:
-      - db
-    networks:
-      - jps-network
-
-  # Cloudflare tunnel (optional - comment out if not using)
+  # Cloudflare tunnel (optional - only runs when CLOUDFLARE_TUNNEL_TOKEN is set)
   cloudflared:
     image: cloudflare/cloudflared:latest
     container_name: jps-cloudflared
@@ -180,12 +104,10 @@ services:
       - jps-network
     depends_on:
       - web
-    # Make cloudflared optional - only runs when CLOUDFLARE_TUNNEL_TOKEN is set
     profiles:
       - cloudflare
 
 volumes:
-  postgres_data:
   ollama_data:
 
 networks:

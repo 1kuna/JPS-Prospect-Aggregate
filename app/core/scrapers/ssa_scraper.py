@@ -59,6 +59,17 @@ class SsaScraper(ConsolidatedScraperBase):
                     "'est_value_unit' column not found. Defaulting 'est_value_unit_final' to 'Per FY'."
                 )
 
+            # Parse place_raw to extract city and state
+            if "place_raw" in df.columns:
+                # SSA typically has format like "Baltimore, MD" or just city name
+                df[["place_city", "place_state"]] = df["place_raw"].str.extract(
+                    r'^([^,]+)(?:,\s*([A-Z]{2}))?$', expand=True
+                )
+                df["place_city"] = df["place_city"].str.strip()
+                df["place_state"] = df["place_state"].str.strip()
+                df["place_country"] = "USA"  # Default for SSA data
+                self.logger.debug("Parsed place_raw into city, state, and country.")
+
         except Exception as e:
             self.logger.warning(f"Error in _custom_ssa_transforms: {e}")
 
