@@ -439,7 +439,7 @@ class GoNoGoDecision(db.Model):
 class FileProcessingLog(db.Model):
     """Track file processing success for intelligent data retention."""
 
-    __tablename__ = "file_processing_logs"
+    __tablename__ = "file_processing_log"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     source_id = Column(

@@ -175,9 +175,7 @@ class DuplicateDetector:
             # Validate required fields exist in new_record
             for field in strategy.required_fields:
                 if field not in new_record or new_record.get(field) is None:
-                    logger.debug(
-                        f"Skipping strategy {strategy.name}: missing required field {field}"
-                    )
+                    # Skip strategy silently - this is expected when fields are missing
                     return []
 
             if strategy.name == "exact_native_id":
