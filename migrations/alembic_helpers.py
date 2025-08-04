@@ -35,13 +35,6 @@ def index_exists(index_name):
         {"index_name": index_name}
     )
     return result.scalar() is not None
-        inspector = inspect(conn)
-        for table_name in inspector.get_table_names():
-            indexes = inspector.get_indexes(table_name)
-            for idx in indexes:
-                if idx['name'] == index_name:
-                    return True
-        return False
 
 
 def safe_create_index(index_name, table_name, columns, **kwargs):
