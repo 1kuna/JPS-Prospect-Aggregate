@@ -47,7 +47,7 @@ def health_check():
         return jsonify(
             {
                 "status": "healthy",
-                "timestamp": datetime.now().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat() + 'Z',
                 "database": "connected",
             }
         )
@@ -57,7 +57,7 @@ def health_check():
         return jsonify(
             {
                 "status": "unhealthy",
-                "timestamp": datetime.now().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat() + 'Z',
                 "database": "disconnected",  # More specific status
                 "error": str(e),
             }
@@ -117,7 +117,7 @@ def get_dashboard():
                 "status": "success",
                 "data": {
                     "total_proposals": total_prospects,
-                    "latest_successful_scrape": latest_successful_scrape.isoformat()
+                    "latest_successful_scrape": latest_successful_scrape.isoformat() + 'Z'
                     if latest_successful_scrape
                     else None,
                     "top_agencies": [
@@ -129,7 +129,7 @@ def get_dashboard():
                             "id": p.id,
                             "title": p.title,
                             "agency": p.agency,
-                            "proposal_date": p.release_date.isoformat()
+                            "proposal_date": p.release_date.isoformat() + 'Z'
                             if p.release_date
                             else None,
                         }
@@ -139,7 +139,7 @@ def get_dashboard():
                         {
                             "data_source_name": name,
                             "status": status,
-                            "last_checked": last_checked.isoformat()
+                            "last_checked": last_checked.isoformat() + 'Z'
                             if last_checked
                             else None,
                             "details": details,
@@ -173,7 +173,7 @@ def _execute_database_clear_operation(operation_name: str, clear_function):
             {
                 "status": "success",
                 "message": result["response_message"],
-                "timestamp": datetime.now().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat() + 'Z',
             }
         )
 
@@ -523,7 +523,7 @@ def _format_prospect_for_api(prospect):
         "place_city": prospect.place_city,
         "place_state": prospect.place_state,
         "ai_processed": prospect.ollama_processed_at is not None,
-        "loaded_at": prospect.loaded_at.isoformat() if prospect.loaded_at else None,
+        "loaded_at": prospect.loaded_at.isoformat() + 'Z' if prospect.loaded_at else None,
     }
 
 

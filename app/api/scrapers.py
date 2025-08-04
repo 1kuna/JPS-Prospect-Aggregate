@@ -90,7 +90,7 @@ def check_scraper_status(source_id):
                 "status": "success",
                 "data_source_name": data_source.name,
                 "scraper_status": status_record.status,
-                "last_checked": status_record.last_checked.isoformat()
+                "last_checked": status_record.last_checked.isoformat() + 'Z'
                 if status_record.last_checked
                 else None,
                 "details": status_record.details,

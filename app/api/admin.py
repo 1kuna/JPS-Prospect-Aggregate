@@ -436,10 +436,10 @@ def export_all_decisions():
                     "decision_id": decision.id,
                     "decision": decision.decision,
                     "reason": decision.reason or "",
-                    "decision_created_at": decision.created_at.isoformat()
+                    "decision_created_at": decision.created_at.isoformat() + 'Z'
                     if decision.created_at
                     else "",
-                    "decision_updated_at": decision.updated_at.isoformat()
+                    "decision_updated_at": decision.updated_at.isoformat() + 'Z'
                     if decision.updated_at
                     else "",
                     # User fields
@@ -484,10 +484,10 @@ def export_all_decisions():
                     if prospect and prospect.estimated_value_single
                     else "",
                     # Important dates
-                    "prospect_release_date": prospect.release_date.isoformat()
+                    "prospect_release_date": prospect.release_date.isoformat() + 'Z'
                     if prospect and prospect.release_date
                     else "",
-                    "prospect_award_date": prospect.award_date.isoformat()
+                    "prospect_award_date": prospect.award_date.isoformat() + 'Z'
                     if prospect and prospect.award_date
                     else "",
                     "prospect_award_fiscal_year": str(prospect.award_fiscal_year)
@@ -512,10 +512,10 @@ def export_all_decisions():
                     if prospect
                     else "",
                     # Processing metadata
-                    "prospect_loaded_at": prospect.loaded_at.isoformat()
+                    "prospect_loaded_at": prospect.loaded_at.isoformat() + 'Z'
                     if prospect and prospect.loaded_at
                     else "",
-                    "prospect_ollama_processed_at": prospect.ollama_processed_at.isoformat()
+                    "prospect_ollama_processed_at": prospect.ollama_processed_at.isoformat() + 'Z'
                     if prospect and prospect.ollama_processed_at
                     else "",
                     "prospect_ollama_model_version": prospect.ollama_model_version
@@ -524,7 +524,7 @@ def export_all_decisions():
                     "prospect_enhancement_status": prospect.enhancement_status
                     if prospect
                     else "",
-                    "prospect_enhancement_started_at": prospect.enhancement_started_at.isoformat()
+                    "prospect_enhancement_started_at": prospect.enhancement_started_at.isoformat() + 'Z'
                     if prospect and prospect.enhancement_started_at
                     else "",
                     "prospect_enhancement_user_id": str(prospect.enhancement_user_id)

@@ -3,7 +3,6 @@ import { useState, useCallback } from 'react';
 export interface ProspectFilters {
   naics?: string;
   keywords?: string;
-  agency?: string;
   ai_enrichment?: 'all' | 'enhanced' | 'original';
   dataSourceIds?: number[];
 }
@@ -12,7 +11,6 @@ export function useProspectFilters() {
   const [filters, setFilters] = useState<ProspectFilters>({
     naics: '',
     keywords: '',
-    agency: '',
     ai_enrichment: 'all',
     dataSourceIds: []
   });
@@ -35,7 +33,6 @@ export function useProspectFilters() {
     setFilters({ 
       naics: '', 
       keywords: '', 
-      agency: '', 
       ai_enrichment: 'all', 
       dataSourceIds: [] 
     });

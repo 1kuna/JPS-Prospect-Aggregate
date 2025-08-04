@@ -610,7 +610,7 @@ def _process_naics_enhancement(prospect, llm_service, force_redo):
             # Add backfill tracking to extras
             _ensure_extra_is_dict(prospect)
             prospect.extra["naics_description_backfilled"] = {
-                "backfilled_at": datetime.now(timezone.utc).isoformat(),
+                "backfilled_at": datetime.now(timezone.utc).isoformat() + 'Z',
                 "backfilled_by": "individual_enhancement",
                 "original_source": prospect.naics_source or "unknown",
             }
@@ -666,7 +666,7 @@ def _process_naics_enhancement(prospect, llm_service, force_redo):
                 "naics_confidence": classification["confidence"],
                 "all_naics_codes": classification.get("all_codes", []),
                 "model_used": llm_service.model_name,
-                "classified_at": datetime.now(timezone.utc).isoformat(),
+                "classified_at": datetime.now(timezone.utc).isoformat() + 'Z',
             }
 
             # Commit to database immediately for real-time updates
@@ -765,7 +765,7 @@ def _process_title_enhancement(prospect, llm_service, force_redo):
                 "reasoning": enhanced_title.get("reasoning", ""),
                 "original_title": prospect.title,
                 "model_used": llm_service.model_name,
-                "enhanced_at": datetime.now(timezone.utc).isoformat(),
+                "enhanced_at": datetime.now(timezone.utc).isoformat() + 'Z',
             }
 
             # Commit to database immediately for real-time updates
@@ -1245,7 +1245,7 @@ def emit_enhancement_progress(prospect_id, event_type, data):
 
     event_data = {
         "event_type": event_type,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat() + 'Z',
         "data": data,
     }
 
@@ -1287,7 +1287,7 @@ def enhancement_progress_stream(prospect_id):
                 if current_time - last_heartbeat > 30:
                     heartbeat_event = {
                         "event_type": "keepalive",
-                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "timestamp": datetime.now(timezone.utc).isoformat() + 'Z',
                         "data": {"connection_time": current_time - start_time},
                     }
                     yield f"data: {json.dumps(heartbeat_event)}\n\n"
@@ -1316,7 +1316,7 @@ def enhancement_progress_stream(prospect_id):
 
                             position_event = {
                                 "event_type": "queue_position_update",
-                                "timestamp": datetime.now(timezone.utc).isoformat(),
+                                "timestamp": datetime.now(timezone.utc).isoformat() + 'Z',
                                 "data": {
                                     "position": queue_position,
                                     "estimated_time": estimated_time,
@@ -1331,7 +1331,7 @@ def enhancement_progress_stream(prospect_id):
                         ].get("prospect_id") == int(prospect_id):
                             processing_event = {
                                 "event_type": "processing_started",
-                                "timestamp": datetime.now(timezone.utc).isoformat(),
+                                "timestamp": datetime.now(timezone.utc).isoformat() + 'Z',
                                 "data": {
                                     "queue_item_id": queue_status["current_item"].get(
                                         "id"
@@ -1369,7 +1369,7 @@ def enhancement_progress_stream(prospect_id):
                         # Enhancement is complete but we haven't sent the event yet
                         completion_event = {
                             "event_type": "completed",
-                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                            "timestamp": datetime.now(timezone.utc).isoformat() + 'Z',
                             "data": {
                                 "status": "completed",
                                 "ollama_processed_at": prospect.ollama_processed_at.isoformat()
@@ -1398,7 +1398,7 @@ def enhancement_progress_stream(prospect_id):
             logger.error(f"Error in SSE stream for prospect {prospect_id}: {e}")
             error_event = {
                 "event_type": "error",
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat() + 'Z',
                 "data": {"error": str(e)},
             }
             yield f"data: {json.dumps(error_event)}\n\n"
