@@ -31,5 +31,4 @@ WHERE ollama_processed_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_prospects_extra_naics
 ON prospects (json_extract(extra, '$.llm_classification.all_naics_codes'));
 
--- Note: SQLite doesn't support GIN indexes like PostgreSQL,
--- so we use regular B-tree indexes instead
+-- Note: SQLite uses B-tree indexes for all index types

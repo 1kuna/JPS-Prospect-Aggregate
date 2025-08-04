@@ -66,7 +66,7 @@ if (-not (Test-Path ".env")) {
         Write-Success ".env file created. Please edit it with your configuration."
         Write-Warning-Message "Required configurations:"
         Write-Host "  - Set ENVIRONMENT=production"
-        Write-Host "  - Set a strong DB_PASSWORD"
+        Write-Host "  - Generate and set SECRET_KEY if needed"
         Write-Host "  - Generate and set SECRET_KEY"
         Write-Host ""
         Write-Host "Generate SECRET_KEY with: python -c `"import secrets; print(secrets.token_hex(32))`""

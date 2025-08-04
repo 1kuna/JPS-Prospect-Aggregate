@@ -55,8 +55,8 @@ class HHSForecastScraper(ConsolidatedScraperBase):
                 )
 
             # Set default place_country since it's not in the CSV
-            df["place_country_final"] = "USA"
-            self.logger.debug("Set 'place_country_final' to 'USA' (default).")
+            df["place_country"] = "USA"
+            self.logger.debug("Set 'place_country' to 'USA' (default).")
 
         except Exception as e:
             self.logger.warning(f"Error in _custom_hhs_transforms: {e}")

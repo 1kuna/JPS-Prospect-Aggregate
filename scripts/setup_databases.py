@@ -45,7 +45,7 @@ def run_command(command, description):
     return True
 
 def main():
-    logger.info("Setting up Go/No-Go Feature Databases")
+    logger.info("Setting up JPS Prospect Aggregate Databases")
     logger.info("=" * 50)
     
     # Check if we're in the right directory
@@ -66,7 +66,7 @@ def main():
     logger.info("\nStep 2: Running Database Migrations")
     # Use python -m flask to ensure we use the right Flask
     if not run_command(
-        f"{sys.executable} -m flask db upgrade heads",
+        f"{sys.executable} -m flask db upgrade head",
         "Applying database migrations"
     ):
         logger.error("Failed to run migrations. Please check the error above.")
@@ -94,17 +94,18 @@ def main():
         return False
     
     if business_db.exists():
-        logger.success(f"Business database exists: {business_db}")
+        logger.success(f"Business database created: {business_db}")
     else:
-        logger.warning(f"Business database not found at: {business_db}")
-        logger.info("   This is normal if this is your first setup.")
+        logger.error(f"Business database not found at: {business_db}")
+        return False
     
     logger.info("\n" + "=" * 50)
-    logger.success("Setup Complete!")
+    logger.success("Database Setup Complete!")
     logger.info("\nNext steps:")
-    logger.info("1. Start your Flask server: python run.py")
-    logger.info("2. Start your frontend: cd frontend-react && npm run dev")
-    logger.info("3. Visit the app and create an account!")
+    logger.info("1. Start the Flask server: python run.py")
+    logger.info("2. Start the frontend: cd frontend-react && npm run dev")
+    logger.info("3. Visit http://localhost:5001 and create an account!")
+    logger.info("\nBackup your databases regularly with: ./scripts/backup.sh")
     
     return True
 

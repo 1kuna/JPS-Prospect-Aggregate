@@ -12,16 +12,12 @@ if [ ! -f ".env" ]; then
     echo "❌ Error: .env file not found!"
     echo "   Please copy .env.example to .env and configure:"
     echo "   cp .env.example .env"
-    echo "   Then edit .env with your settings (set ENVIRONMENT=production, DB_PASSWORD, SECRET_KEY)."
+    echo "   Then edit .env with your settings (set ENVIRONMENT=production, SECRET_KEY)."
     exit 1
 fi
 
 # Verify required environment variables are set
 echo "📋 Checking configuration..."
-if ! grep -q "^DB_PASSWORD=" .env || grep -q "CHANGE_THIS_STRONG_PASSWORD" .env; then
-    echo "❌ Error: DB_PASSWORD not configured in .env"
-    exit 1
-fi
 
 if ! grep -q "^SECRET_KEY=" .env || grep -q "CHANGE_THIS_TO_A_RANDOM_STRING" .env; then
     echo "❌ Error: SECRET_KEY not configured in .env"
@@ -66,13 +62,11 @@ else
     exit 1
 fi
 
-# Check database
-if docker-compose ps | grep -q "jps-db.*Up"; then
-    echo "✅ Database service is running!"
+# Check if database file exists
+if [ -f "data/jps_aggregate.db" ]; then
+    echo "✅ SQLite database file exists!"
 else
-    echo "❌ Database service failed to start. Checking logs..."
-    docker-compose logs db
-    exit 1
+    echo "⚠️  SQLite database file not found. It will be created on first run."
 fi
 
 # Check Ollama (may still be downloading model)
@@ -91,6 +85,6 @@ echo "📝 Quick commands:"
 echo "   View logs:           docker-compose logs -f web"
 echo "   Stop services:       docker-compose down"
 echo "   Restart web:         docker-compose restart web"
-echo "   Access database:     docker exec -it jps-db psql -U jps_user -d jps_prospects"
+echo "   Access database:     sqlite3 data/jps_aggregate.db"
 echo ""
 echo "🌐 Access your application at: http://localhost:5001"

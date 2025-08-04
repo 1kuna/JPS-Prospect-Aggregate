@@ -59,7 +59,7 @@ if [ ! -f .env ]; then
         print_status ".env file created. Please edit it with your configuration."
         print_warning "Required configurations:"
         echo "  - Set ENVIRONMENT=production"
-        echo "  - Set a strong DB_PASSWORD"
+        echo "  - Generate and set SECRET_KEY"
         echo "  - Generate and set SECRET_KEY"
         echo ""
         echo "Generate SECRET_KEY with: python3 -c \"import secrets; print(secrets.token_hex(32))\""

@@ -1,57 +1,59 @@
 #!/bin/bash
-# Cross-platform backup script for JPS Prospect Aggregate
-# Works in Docker containers on both Windows and Mac/Linux hosts
+# SQLite backup script for Docker container
+# Backs up SQLite databases with retention management
+
 set -e
 
 # Configuration
-BACKUP_DIR="/backups"
-RETENTION_DAYS=7
-# Use a more portable date format
-TIMESTAMP=$(date +%Y%m%d_%H%M%S 2>/dev/null || date +%Y%m%d_%H%M%S)
+BACKUP_DIR="/app/backups"
+DATA_DIR="/app/data"
+RETENTION_DAYS="${BACKUP_RETENTION_DAYS:-7}"
+TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+
+# Colors for output (works in Docker)
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+NC='\033[0m'
 
 # Create backup directory if it doesn't exist
-mkdir -p ${BACKUP_DIR}
+mkdir -p "$BACKUP_DIR"
 
-# Function to log with timestamp
-log() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S' 2>/dev/null || date)] $1"
-}
+echo -e "${GREEN}=== SQLite Docker Backup ===${NC}"
+echo "Backup directory: $BACKUP_DIR"
+echo "Retention: $RETENTION_DAYS days"
 
-log "Starting database backup..."
-
-# Backup both databases
-for DB in jps_prospects jps_users; do
-    BACKUP_FILE="${BACKUP_DIR}/${DB}_${TIMESTAMP}.sql"
-    log "Backing up ${DB} to ${BACKUP_FILE}..."
+# Function to backup a database
+backup_database() {
+    local db_file="$1"
+    local db_name="$(basename "$db_file" .db)"
+    local backup_file="$BACKUP_DIR/${db_name}_${TIMESTAMP}.db"
     
-    # Use pg_dump with error handling
-    if pg_dump -h ${DB_HOST} -U ${DB_USER} -d ${DB} > ${BACKUP_FILE} 2>/dev/null; then
-        # Compress the backup
-        gzip ${BACKUP_FILE}
-        log "Backup completed: ${BACKUP_FILE}.gz"
+    if [ -f "$db_file" ]; then
+        echo -n "Backing up $db_name... "
         
-        # Verify the backup file was created and has content
-        if [ -f "${BACKUP_FILE}.gz" ] && [ -s "${BACKUP_FILE}.gz" ]; then
-            log "Backup verified: $(du -h ${BACKUP_FILE}.gz | cut -f1)"
+        # Copy database file (SQLite handles locking)
+        cp "$db_file" "$backup_file"
+        
+        if [ $? -eq 0 ]; then
+            # Compress the backup
+            gzip "$backup_file"
+            echo -e "${GREEN}✓${NC}"
         else
-            log "WARNING: Backup file appears to be empty or missing"
+            echo -e "${RED}✗ Failed${NC}"
+            return 1
         fi
     else
-        log "ERROR: Failed to backup ${DB}"
-        rm -f ${BACKUP_FILE} 2>/dev/null
+        echo -e "${YELLOW}⚠ $db_name not found${NC}"
     fi
-done
+}
+
+# Backup databases
+backup_database "$DATA_DIR/jps_aggregate.db"
+backup_database "$DATA_DIR/jps_users.db"
 
 # Clean up old backups
-log "Cleaning up backups older than ${RETENTION_DAYS} days..."
-# Use a more portable find command
-find ${BACKUP_DIR} -name "*.sql.gz" -type f -mtime +${RETENTION_DAYS} -exec rm -f {} \; 2>/dev/null || true
+echo "Cleaning up backups older than $RETENTION_DAYS days..."
+find "$BACKUP_DIR" -name "*.db.gz" -type f -mtime +$RETENTION_DAYS -delete
 
-# Show current backup status
-BACKUP_COUNT=$(find ${BACKUP_DIR} -name "*.sql.gz" -type f 2>/dev/null | wc -l | tr -d ' ')
-log "Current backup count: ${BACKUP_COUNT} files"
-
-log "Backup process completed successfully!"
-
-# Exit with success
-exit 0
+echo -e "${GREEN}Backup completed successfully!${NC}"

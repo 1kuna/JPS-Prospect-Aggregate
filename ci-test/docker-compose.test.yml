@@ -1,29 +1,9 @@
 services:
-  # PostgreSQL database for tests
-  db:
-    image: postgres:15
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: test_jps_prospects
-    ports:
-      - "5433:5432"  # Use different port to avoid conflicts
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    volumes:
-      - postgres_test_data:/var/lib/postgresql/data
-
   # Python test runner - matches CI environment
   python-test:
     build:
       context: ..
       dockerfile: ci-test/Dockerfile.python-test
-    depends_on:
-      db:
-        condition: service_healthy
     env_file:
       - ../.env.test
     environment:
@@ -33,6 +13,8 @@ services:
       - ..:/app
       - pytest_cache:/app/.pytest_cache
       - python_cache:/root/.cache
+      # Mount test databases in volume
+      - test_databases:/app/test_data
     working_dir: /app
     command: sleep infinity  # Keep container running
 
@@ -58,9 +40,6 @@ services:
     build:
       context: ..
       dockerfile: Dockerfile
-    depends_on:
-      db:
-        condition: service_healthy
     env_file:
       - ../.env.test
     environment:
@@ -70,11 +49,13 @@ services:
       - "5002:5001"  # Different port for test instance
     volumes:
       - ..:/app
+      # Mount test databases
+      - test_databases:/app/data
     command: python run.py
 
 volumes:
-  postgres_test_data:
   pytest_cache:
   python_cache:
   node_modules:
   npm_cache:
+  test_databases:

@@ -251,8 +251,6 @@ HHS_CONFIG = ScraperConfig(
         "Target Solicitation Month/Year": "release_date_raw",
         "Anticipated Acquisition Strategy": "set_aside",
         "Program Office POC Email": "primary_contact_email",
-        "Program Office POC First Name": "poc_first_name",
-        "Program Office POC Last Name": "poc_last_name",
     },
     # Date parsing configuration
     date_column_configs=[
@@ -369,8 +367,10 @@ DOJ_CONFIG = ScraperConfig(
         "Target Solicitation Date": "release_date_raw",
         "Target Award Date": "award_date_raw",
         "Place of Performance": "place_raw",
-        "DOJ Small Business POC - Email Address": "primary_contact_email",
-        "DOJ Requirement POC - Name": "primary_contact_name",
+        "DOJ Small Business POC - Email Address": "doj_sb_poc_email",
+        "DOJ Small Business POC - Name": "doj_sb_poc_name",
+        "DOJ Requirement POC - Name": "doj_req_poc_name",
+        "DOJ Requirement POC - Email Address": "doj_req_poc_email",
     },
     # Date parsing configuration
     date_column_configs=[

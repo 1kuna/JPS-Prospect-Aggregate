@@ -25,10 +25,8 @@ This script will:
    cp .env.example .env
    # Edit .env with your settings:
    # - Set ENVIRONMENT=production
-   # - Set strong DB_PASSWORD
    # - Set SECRET_KEY (generate with: python -c "import secrets; print(secrets.token_hex(32))")
-   # - Update DATABASE_URL to use PROD_DATABASE_URL
-   # - Update USER_DATABASE_URL to use PROD_USER_DATABASE_URL
+   # - Set ENVIRONMENT=production
    ```
 
 2. **Build and start all services:**
@@ -225,7 +223,7 @@ make clean
 
 #### CI Pipeline Stages
 1. **Parallel Testing** - Python and Frontend tests run concurrently
-2. **Integration Testing** - Cross-system tests with real PostgreSQL
+2. **Integration Testing** - Cross-system tests with SQLite
 3. **End-to-End Testing** - Full workflow testing with Playwright
 4. **Security Scanning** - Dependency vulnerabilities and code security
 
@@ -397,6 +395,12 @@ cd frontend-react && npm run test:coverage -- --run --coverage.thresholds.statem
 
 ### Maintenance
 ```bash
+# Database backups (automatic retention management)
+./scripts/backup.sh
+
+# Database restore (interactive)
+./scripts/restore.sh
+
 # Data retention cleanup (preview mode by default)
 python app/utils/data_retention.py
 
@@ -406,8 +410,11 @@ python app/utils/data_retention.py --execute
 # Custom retention count
 python app/utils/data_retention.py --execute --retention-count 5
 
-# Database health check
-python -m scripts.health_check
+# Database optimization
+sqlite3 data/jps_aggregate.db "VACUUM; ANALYZE;"
+
+# Database integrity check
+sqlite3 data/jps_aggregate.db "PRAGMA integrity_check;"
 
 # Export data to CSV
 python -m scripts.export_csv
@@ -422,10 +429,14 @@ python scripts/validate_file_naming.py
 - Install Ollama from https://ollama.ai/
 - Required model: `ollama pull qwen3:latest`
 
-**Environment Configuration:**
-- Separate database URLs for business and user data (security isolation)
-- Playwright timeouts configurable via environment variables
-- File processing settings: `FILE_FRESHNESS_SECONDS`
+**Python Requirements:**
+- Python 3.11+ recommended
+- Conda or venv for environment management
+
+**SQLite Configuration:**
+- No installation needed (comes with Python)
+- Databases stored in `data/` directory
+- Automatic backups with retention policy
 
 ## Code Quality & CI/CD
 
@@ -481,7 +492,7 @@ pre-commit autoupdate
 
 **Stage 2: Integration Testing**
 - Cross-system integration tests
-- Database integration with real PostgreSQL
+- Database integration with SQLite
 - API endpoint integration testing
 
 **Stage 3: End-to-End Testing**
@@ -546,7 +557,7 @@ make test-all        # All tests including E2E
 ```
 
 **CI Test Infrastructure:**
-- Uses Docker containers with exact versions: Python 3.11, Node 20, PostgreSQL 15
+- Uses Docker containers with exact versions: Python 3.11, Node 20
 - Isolated environment that won't affect your local setup
 - Runs tests in the same order as GitHub Actions
 - Includes all linting, type checking, and security scans
@@ -601,7 +612,7 @@ make test-with-act
 **CI Test Environment Details:**
 - Python: 3.11 (exact match with GitHub Actions)
 - Node: 20.x (LTS version used in CI)
-- PostgreSQL: 15 (for integration tests)
+- SQLite: Built-in with Python (for all tests)
 - Operating System: Ubuntu-based containers
 - TypeScript: Uses tsconfig.test.json for relaxed test configuration
 
@@ -668,8 +679,8 @@ npm test -- --globals                      # Enable global test APIs
 **Integration Test Issues:**
 ```bash
 # Database not available
-docker-compose up -d db                    # Start database container
-pg_isready -h localhost -p 5432           # Check PostgreSQL availability
+# SQLite requires no setup - just ensure data directory exists
+mkdir -p data                             # Create data directory if needed
 
 # LLM service not available  
 ollama serve                               # Start Ollama service
@@ -677,7 +688,7 @@ ollama pull qwen3:latest                   # Ensure model is available
 curl http://localhost:11434/api/tags       # Check Ollama API
 
 # Port conflicts
-lsof -i :5432                             # Check what's using PostgreSQL port
+lsof -i :5001                             # Check what's using Flask port
 lsof -i :11434                            # Check what's using Ollama port
 ```
 

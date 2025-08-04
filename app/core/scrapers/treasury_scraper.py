@@ -77,6 +77,17 @@ class TreasuryScraper(ConsolidatedScraperBase):
             # Note: Treasury has no email addresses in the data
             # Bureau contact name will go to extras via _treasury_create_extras
 
+            # Parse place_raw to extract city and state
+            if "place_raw" in df.columns:
+                # Treasury typically has format like "Washington, DC" or just city name
+                df[["place_city", "place_state"]] = df["place_raw"].str.extract(
+                    r'^([^,]+)(?:,\s*([A-Z]{2}))?$', expand=True
+                )
+                df["place_city"] = df["place_city"].str.strip()
+                df["place_state"] = df["place_state"].str.strip()
+                df["place_country"] = "USA"  # Default for Treasury data
+                self.logger.debug("Parsed place_raw into city, state, and country.")
+
         except Exception as e:
             self.logger.warning(f"Error in _custom_treasury_transforms: {e}")
 

@@ -37,6 +37,17 @@ class DotScraper(ConsolidatedScraperBase):
             # Current DOT CSV format doesn't include award dates or contract types
             # in the expected columns, so we skip those transforms
 
+            # Parse place_raw to extract city and state
+            if "place_raw" in df.columns:
+                # DOT typically has format like "Oklahoma City, OK" or "Washington, DC"
+                df[["place_city", "place_state"]] = df["place_raw"].str.extract(
+                    r'^([^,]+)(?:,\s*([A-Z]{2}))?$', expand=True
+                )
+                df["place_city"] = df["place_city"].str.strip()
+                df["place_state"] = df["place_state"].str.strip()
+                df["place_country"] = "USA"  # Default for DOT data
+                self.logger.debug("Parsed place_raw into city, state, and country.")
+
             self.logger.debug("DOT custom transforms completed")
 
         except Exception as e:

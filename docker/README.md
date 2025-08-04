@@ -47,7 +47,7 @@ Your Windows PC
     ↓
 Docker Containers:
 - Flask App (port 5001)
-- PostgreSQL Database
+- SQLite Database (file-based)
 - Ollama LLM
 - Automated Backups
 ```

@@ -118,15 +118,25 @@ class DOJForecastScraper(ConsolidatedScraperBase):
                 "place_country_raw"  # From raw_column_rename_map (original: 'Country')
             )
             if place_country_col_raw in df.columns:
-                df["place_country_final"] = df[place_country_col_raw].fillna("USA")
+                df["place_country"] = df[place_country_col_raw].fillna("USA")
                 self.logger.debug(
-                    "Processed 'place_country_final', defaulting NA to USA."
+                    "Processed 'place_country', defaulting NA to USA."
                 )
             else:
-                df["place_country_final"] = "USA"
+                df["place_country"] = "USA"
                 self.logger.debug(
-                    f"'{place_country_col_raw}' not found. Defaulted 'place_country_final' to USA."
+                    f"'{place_country_col_raw}' not found. Defaulted 'place_country' to USA."
                 )
+
+            # Parse place_raw to extract city and state if available
+            if "place_raw" in df.columns:
+                # DOJ typically has format like "Quantico, VA" or just city name
+                df[["place_city", "place_state"]] = df["place_raw"].str.extract(
+                    r'^([^,]+)(?:,\s*([A-Z]{2}))?$', expand=True
+                )
+                df["place_city"] = df["place_city"].str.strip()
+                df["place_state"] = df["place_state"].str.strip()
+                self.logger.debug("Parsed place_raw into city and state.")
 
         except Exception as e:
             self.logger.warning(f"Error in _custom_doj_transforms: {e}")

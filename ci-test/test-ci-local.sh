@@ -12,7 +12,7 @@ NC='\033[0m' # No Color
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PYTHON_VERSION="3.11"
 NODE_VERSION="20"
-POSTGRES_VERSION="15"
+# SQLite is used - no database server needed
 
 # Test stages to run (can be overridden by command line args)
 RUN_PYTHON_TESTS=${RUN_PYTHON_TESTS:-true}
@@ -141,8 +141,8 @@ print_header "Setting up test environment"
 cat > "$PROJECT_ROOT/.env.test" << EOF
 FLASK_ENV=testing
 TESTING=True
-DATABASE_URL=postgresql://postgres:postgres@db:5432/test_jps_prospects
-USER_DATABASE_URL=postgresql://postgres:postgres@db:5432/test_jps_prospects
+DATABASE_URL=sqlite:///test_jps_aggregate.db
+USER_DATABASE_URL=sqlite:///test_jps_users.db
 SECRET_KEY=test-secret-key-for-ci
 ENVIRONMENT=testing
 EOF

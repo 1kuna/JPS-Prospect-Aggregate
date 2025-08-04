@@ -35,7 +35,7 @@ except ImportError:
     def safe_create_index(index_name, table_name, columns, **kwargs):
         conn = op.get_bind()
         result = conn.execute(
-            sa.text("SELECT 1 FROM pg_indexes WHERE indexname = :index_name"),
+            sa.text("SELECT 1 FROM sqlite_master WHERE type='index' AND name = :index_name"),
             {"index_name": index_name}
         )
         if result.scalar() is None:
@@ -111,7 +111,7 @@ def downgrade():
         def safe_drop_index(index_name, table_name=None):
             conn = op.get_bind()
             result = conn.execute(
-                sa.text("SELECT 1 FROM pg_indexes WHERE indexname = :index_name"),
+                sa.text("SELECT 1 FROM sqlite_master WHERE type='index' AND name = :index_name"),
                 {"index_name": index_name}
             )
             if result.scalar() is not None:
