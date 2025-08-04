@@ -64,11 +64,11 @@ def get_data_sources():
                 "name": source.name,
                 "url": source.url,
                 "description": source.description,
-                "last_scraped": source.last_scraped.isoformat()
+                "last_scraped": source.last_scraped.isoformat() + 'Z'
                 if source.last_scraped
                 else None,
                 "prospectCount": p_count if p_count is not None else 0,
-                "last_checked": status_rec.last_checked.isoformat()
+                "last_checked": status_rec.last_checked.isoformat() + 'Z'
                 if status_rec and status_rec.last_checked
                 else None,
                 "status": status_rec.status if status_rec else "unknown",

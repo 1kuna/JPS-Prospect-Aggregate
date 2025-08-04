@@ -18,7 +18,6 @@ const fetchProspects = async (page: number, limit: number, filters?: ProspectFil
   if (filters) {
     if (filters.naics) queryParams.append('naics', filters.naics);
     if (filters.keywords) queryParams.append('keywords', filters.keywords);
-    if (filters.agency) queryParams.append('agency', filters.agency);
     if (filters.ai_enrichment && filters.ai_enrichment !== 'all') {
       queryParams.append('ai_enrichment', filters.ai_enrichment);
     }

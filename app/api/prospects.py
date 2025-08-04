@@ -34,7 +34,6 @@ def get_prospects_route():
         # New filtering parameters
         naics_filter = request.args.get("naics", "", type=str)
         keywords_filter = request.args.get("keywords", "", type=str)
-        agency_filter = request.args.get("agency", "", type=str)
         ai_enrichment_filter = request.args.get("ai_enrichment", "all", type=str)
         source_ids_filter = request.args.get(
             "source_ids", "", type=str
@@ -45,12 +44,11 @@ def get_prospects_route():
             search_term
             or naics_filter
             or keywords_filter
-            or agency_filter
             or ai_enrichment_filter != "all"
             or source_ids_filter
         ):
             logger.debug(
-                f"Requesting prospects with filters: search='{search_term}', naics='{naics_filter}', keywords='{keywords_filter}', agency='{agency_filter}', ai_enrichment='{ai_enrichment_filter}', source_ids='{source_ids_filter}'"
+                f"Requesting prospects with filters: search='{search_term}', naics='{naics_filter}', keywords='{keywords_filter}', ai_enrichment='{ai_enrichment_filter}', source_ids='{source_ids_filter}'"
             )
 
         # Construct the base query
@@ -83,10 +81,6 @@ def get_prospects_route():
                 Prospect.description.ilike(f"%{keywords_filter}%")
             )
             base_query = base_query.filter(keywords_search_filter)
-
-        # Apply agency filter
-        if agency_filter:
-            base_query = base_query.filter(Prospect.agency.ilike(f"%{agency_filter}%"))
 
         # Apply AI enrichment filter
         if ai_enrichment_filter == "enhanced":

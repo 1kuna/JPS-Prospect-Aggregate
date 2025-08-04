@@ -17,7 +17,7 @@ interface ScraperResult {
 
 export function useDataSourceManagement() {
   const queryClient = useQueryClient();
-  const { showSuccessToast, showErrorToast } = useToast();
+  const { showSuccessToast, showErrorToast, showInfoToast } = useToast();
   const clearDataMutation = useClearDataSourceData();
 
   // Fetch data sources with frequent updates when scrapers are running
@@ -38,12 +38,42 @@ export function useDataSourceManagement() {
       deduplicate: true,
       deduplicationKey: 'run-all-scrapers'
     }),
+    onMutate: () => {
+      // Show initial toast when scrapers start
+      showInfoToast('Scrapers Started', 'Running all scrapers... This may take several minutes.');
+    },
     onSuccess: (data) => {
       // All scrapers completed - show results
       if (data.results) {
-        const { message } = formatScraperResults(data.results, data.total_duration);
-        showSuccessToast('Scraper Run Complete', message);
+        const { message, failedCount } = formatScraperResults(data.results, data.total_duration);
+        
+        // Show appropriate toast based on results
+        if (failedCount === 0) {
+          showSuccessToast('All Scrapers Completed', message);
+        } else if (failedCount === data.results.length) {
+          showErrorToast({
+            code: 'ALL_SCRAPERS_FAILED',
+            message: message,
+            severity: ErrorSeverity.ERROR,
+            category: ErrorCategory.SYSTEM,
+            timestamp: new Date(),
+            userMessage: message,
+          });
+        } else {
+          // Some succeeded, some failed
+          showInfoToast('Scrapers Completed with Errors', message);
+        }
       }
+    },
+    onError: (error) => {
+      showErrorToast({
+        code: 'RUN_ALL_SCRAPERS_ERROR',
+        message: error instanceof Error ? error.message : 'Failed to run scrapers',
+        severity: ErrorSeverity.ERROR,
+        category: ErrorCategory.SYSTEM,
+        timestamp: new Date(),
+        userMessage: 'Failed to start scrapers. Please try again.',
+      });
     },
     onSettled: () => {
       // Refetch data sources to update status

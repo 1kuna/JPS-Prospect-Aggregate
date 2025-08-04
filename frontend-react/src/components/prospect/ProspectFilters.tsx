@@ -76,20 +76,6 @@ export function ProspectFilters({
             />
           </div>
           
-          {/* Agency Filter */}
-          <div className="space-y-2">
-            <Label htmlFor="agency" className="text-sm font-medium text-gray-700">
-              Agency
-            </Label>
-            <Input
-              id="agency"
-              placeholder="e.g., DOD, HHS, DHS"
-              value={filters.agency || ''}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => onFilterChange('agency', e.target.value)}
-              className="text-sm"
-            />
-          </div>
-          
           {/* Data Source Filter */}
           <div className="space-y-2">
             <Label className="text-sm font-medium text-gray-700">
@@ -177,17 +163,6 @@ export function ProspectFilters({
                     <button 
                       onClick={() => onFilterChange('naics', '')}
                       className="ml-1 text-green-500 hover:text-green-700"
-                    >
-                      ×
-                    </button>
-                  </div>
-                )}
-                {filters.agency && (
-                  <div className="text-xs bg-purple-50 text-purple-700 px-2 py-1 rounded flex justify-between items-center">
-                    <span>Agency: {filters.agency}</span>
-                    <button 
-                      onClick={() => onFilterChange('agency', '')}
-                      className="ml-1 text-purple-500 hover:text-purple-700"
                     >
                       ×
                     </button>

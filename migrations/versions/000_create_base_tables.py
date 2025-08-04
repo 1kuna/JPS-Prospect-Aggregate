@@ -1,8 +1,8 @@
-"""Create base tables for fresh installations
+"""Create base tables for fresh installations (SQLite compatible)
 
-Revision ID: 000_create_base_tables
+Revision ID: 000_create_base_tables_sqlite_fix
 Revises: 
-Create Date: 2025-07-29 00:00:00.000000
+Create Date: 2025-08-01 17:00:00.000000
 
 """
 from alembic import op
@@ -24,7 +24,7 @@ def upgrade():
     sa.Column('url', sa.String(), nullable=True),
     sa.Column('description', sa.Text(), nullable=True),
     sa.Column('scraper_key', sa.String(), nullable=True),
-    sa.Column('last_scraped', sa.TIMESTAMP(timezone=True), nullable=True),
+    sa.Column('last_scraped', sa.TIMESTAMP(), nullable=True),
     sa.Column('frequency', sa.String(), nullable=True),
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('name')
@@ -43,12 +43,12 @@ def upgrade():
     sa.Column('naics', sa.String(), nullable=True),
     sa.Column('naics_description', sa.String(length=200), nullable=True),
     sa.Column('naics_source', sa.String(length=20), nullable=True),
-    sa.Column('estimated_value', sa.Numeric(), nullable=True),
+    sa.Column('estimated_value', sa.Float(), nullable=True),  # Changed from Numeric
     sa.Column('est_value_unit', sa.String(), nullable=True),
     sa.Column('estimated_value_text', sa.String(length=100), nullable=True),
-    sa.Column('estimated_value_min', sa.Numeric(precision=15, scale=2), nullable=True),
-    sa.Column('estimated_value_max', sa.Numeric(precision=15, scale=2), nullable=True),
-    sa.Column('estimated_value_single', sa.Numeric(precision=15, scale=2), nullable=True),
+    sa.Column('estimated_value_min', sa.Float(), nullable=True),  # Changed from Numeric
+    sa.Column('estimated_value_max', sa.Float(), nullable=True),  # Changed from Numeric
+    sa.Column('estimated_value_single', sa.Float(), nullable=True),  # Changed from Numeric
     sa.Column('release_date', sa.Date(), nullable=True),
     sa.Column('award_date', sa.Date(), nullable=True),
     sa.Column('award_fiscal_year', sa.Integer(), nullable=True),
@@ -61,13 +61,13 @@ def upgrade():
     sa.Column('set_aside_standardized_label', sa.String(length=100), nullable=True),
     sa.Column('primary_contact_email', sa.String(length=100), nullable=True),
     sa.Column('primary_contact_name', sa.String(length=100), nullable=True),
-    sa.Column('loaded_at', sa.TIMESTAMP(timezone=True), server_default=sa.text('now()'), nullable=False),
-    sa.Column('ollama_processed_at', sa.TIMESTAMP(timezone=True), nullable=True),
+    sa.Column('loaded_at', sa.TIMESTAMP(), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=False),  # SQLite compatible
+    sa.Column('ollama_processed_at', sa.TIMESTAMP(), nullable=True),
     sa.Column('ollama_model_version', sa.String(length=50), nullable=True),
     sa.Column('enhancement_status', sa.String(length=20), nullable=True),
-    sa.Column('enhancement_started_at', sa.TIMESTAMP(timezone=True), nullable=True),
+    sa.Column('enhancement_started_at', sa.TIMESTAMP(), nullable=True),
     sa.Column('enhancement_user_id', sa.Integer(), nullable=True),
-    sa.Column('extra', sa.JSON(), nullable=True),
+    sa.Column('extra', sa.Text(), nullable=True),  # Changed from JSON for SQLite
     sa.Column('source_id', sa.Integer(), nullable=True),
     sa.ForeignKeyConstraint(['source_id'], ['data_sources.id'], name='fk_prospects_source_id_data_sources'),
     sa.PrimaryKeyConstraint('id')
@@ -110,8 +110,8 @@ def upgrade():
     sa.Column('inferred_set_aside', sa.Text(), nullable=True),
     sa.Column('inferred_primary_contact_email', sa.String(length=100), nullable=True),
     sa.Column('inferred_primary_contact_name', sa.String(length=100), nullable=True),
-    sa.Column('llm_confidence_scores', sa.JSON(), nullable=True),
-    sa.Column('inferred_at', sa.TIMESTAMP(timezone=False), server_default=sa.text('now()'), nullable=True),
+    sa.Column('llm_confidence_scores', sa.Text(), nullable=True),  # Changed from JSON
+    sa.Column('inferred_at', sa.TIMESTAMP(), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=True),
     sa.Column('inferred_by_model', sa.String(), nullable=True),
     sa.ForeignKeyConstraint(['prospect_id'], ['prospects.id'], name='fk_inferred_prospect_data_prospect_id_prospects'),
     sa.PrimaryKeyConstraint('id'),
@@ -123,24 +123,44 @@ def upgrade():
     sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
     sa.Column('source_id', sa.Integer(), nullable=False),
     sa.Column('status', sa.String(), nullable=True),
-    sa.Column('last_checked', sa.TIMESTAMP(timezone=True), server_default=sa.text('now()'), nullable=True),
+    sa.Column('last_checked', sa.TIMESTAMP(), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=True),
     sa.Column('details', sa.Text(), nullable=True),
     sa.ForeignKeyConstraint(['source_id'], ['data_sources.id'], name='fk_scraper_status_source_id_data_sources'),
     sa.PrimaryKeyConstraint('id')
     )
+    op.create_index(op.f('ix_scraper_status_last_checked'), 'scraper_status', ['last_checked'], unique=False)
     op.create_index(op.f('ix_scraper_status_source_id'), 'scraper_status', ['source_id'], unique=False)
+    op.create_index(op.f('ix_scraper_status_status'), 'scraper_status', ['status'], unique=False)
 
-    # Create users table
-    op.create_table('users',
+    # Create duplicate_prospects table
+    op.create_table('duplicate_prospects',
     sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
-    sa.Column('email', sa.String(length=255), nullable=False),
-    sa.Column('first_name', sa.String(length=100), nullable=False),
-    sa.Column('created_at', sa.TIMESTAMP(timezone=True), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=False),
-    sa.Column('last_login_at', sa.TIMESTAMP(timezone=True), nullable=True),
-    sa.PrimaryKeyConstraint('id'),
-    sa.UniqueConstraint('email')
+    sa.Column('original_id', sa.String(), nullable=False),
+    sa.Column('duplicate_id', sa.String(), nullable=False),
+    sa.Column('confidence', sa.Float(), nullable=True),
+    sa.Column('match_type', sa.String(), nullable=True),
+    sa.Column('marked_at', sa.TIMESTAMP(), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=True),
+    sa.Column('ai_data_preserved', sa.Boolean(), server_default=sa.text('0'), nullable=True),
+    sa.ForeignKeyConstraint(['duplicate_id'], ['prospects.id'], name='fk_duplicate_prospects_duplicate_id_prospects'),
+    sa.ForeignKeyConstraint(['original_id'], ['prospects.id'], name='fk_duplicate_prospects_original_id_prospects'),
+    sa.PrimaryKeyConstraint('id')
     )
-    op.create_index('ix_users_email', 'users', ['email'], unique=False)
+    op.create_index(op.f('ix_duplicate_prospects_confidence'), 'duplicate_prospects', ['confidence'], unique=False)
+    op.create_index(op.f('ix_duplicate_prospects_duplicate_id'), 'duplicate_prospects', ['duplicate_id'], unique=False)
+    op.create_index(op.f('ix_duplicate_prospects_marked_at'), 'duplicate_prospects', ['marked_at'], unique=False)
+    op.create_index(op.f('ix_duplicate_prospects_original_id'), 'duplicate_prospects', ['original_id'], unique=False)
+
+    # Create file_processing_log table
+    op.create_table('file_processing_log',
+    sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
+    sa.Column('source_name', sa.String(), nullable=True),
+    sa.Column('file_path', sa.String(), nullable=True),
+    sa.Column('processed_at', sa.TIMESTAMP(), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=True),
+    sa.Column('row_count', sa.Integer(), nullable=True),
+    sa.Column('success', sa.Boolean(), nullable=True),
+    sa.Column('error_message', sa.Text(), nullable=True),
+    sa.PrimaryKeyConstraint('id')
+    )
 
     # Create go_no_go_decisions table
     op.create_table('go_no_go_decisions',
@@ -149,90 +169,56 @@ def upgrade():
     sa.Column('user_id', sa.Integer(), nullable=False),
     sa.Column('decision', sa.String(length=10), nullable=False),
     sa.Column('reason', sa.Text(), nullable=True),
-    sa.Column('created_at', sa.TIMESTAMP(timezone=True), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=False),
-    sa.Column('updated_at', sa.TIMESTAMP(timezone=True), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=False),
-    sa.PrimaryKeyConstraint('id'),
-    sa.ForeignKeyConstraint(['prospect_id'], ['prospects.id'], ),
-    sa.ForeignKeyConstraint(['user_id'], ['users.id'], )
+    sa.Column('created_at', sa.TIMESTAMP(), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=False),
+    sa.Column('updated_at', sa.TIMESTAMP(), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=False),
+    sa.ForeignKeyConstraint(['prospect_id'], ['prospects.id'], name='fk_go_no_go_decisions_prospect_id_prospects'),
+    sa.PrimaryKeyConstraint('id')
     )
-    op.create_index('ix_go_no_go_decisions_prospect_id', 'go_no_go_decisions', ['prospect_id'], unique=False)
-    op.create_index('ix_go_no_go_decisions_user_id', 'go_no_go_decisions', ['user_id'], unique=False)
-    op.create_index('ix_go_no_go_decisions_decision', 'go_no_go_decisions', ['decision'], unique=False)
+    op.create_index(op.f('ix_go_no_go_decisions_created_at'), 'go_no_go_decisions', ['created_at'], unique=False)
+    op.create_index(op.f('ix_go_no_go_decisions_decision'), 'go_no_go_decisions', ['decision'], unique=False)
+    op.create_index(op.f('ix_go_no_go_decisions_prospect_id'), 'go_no_go_decisions', ['prospect_id'], unique=False)
+    op.create_index(op.f('ix_go_no_go_decisions_user_id'), 'go_no_go_decisions', ['user_id'], unique=False)
+    op.create_index('idx_user_prospect_unique', 'go_no_go_decisions', ['user_id', 'prospect_id'], unique=True)
+
+    # Create llm_outputs table
+    op.create_table('llm_outputs',
+    sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
+    sa.Column('timestamp', sa.TIMESTAMP(), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=False),
+    sa.Column('prospect_id', sa.String(), nullable=False),
+    sa.Column('enhancement_type', sa.String(length=50), nullable=False),
+    sa.Column('prompt', sa.Text(), nullable=False),
+    sa.Column('response', sa.Text(), nullable=True),
+    sa.Column('parsed_result', sa.Text(), nullable=True),  # Changed from JSON
+    sa.Column('success', sa.Boolean(), nullable=False),
+    sa.Column('error_message', sa.Text(), nullable=True),
+    sa.Column('processing_time', sa.Float(), nullable=True),
+    sa.ForeignKeyConstraint(['prospect_id'], ['prospects.id'], name='fk_llm_outputs_prospect_id_prospects'),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index(op.f('ix_llm_outputs_enhancement_type'), 'llm_outputs', ['enhancement_type'], unique=False)
+    op.create_index(op.f('ix_llm_outputs_prospect_id'), 'llm_outputs', ['prospect_id'], unique=False)
+    op.create_index(op.f('ix_llm_outputs_success'), 'llm_outputs', ['success'], unique=False)
+    op.create_index(op.f('ix_llm_outputs_timestamp'), 'llm_outputs', ['timestamp'], unique=False)
 
     # Create settings table
     op.create_table('settings',
     sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
     sa.Column('key', sa.String(length=100), nullable=False),
-    sa.Column('value', sa.String(length=500), nullable=False),
-    sa.Column('description', sa.Text(), nullable=True),
-    sa.Column('updated_at', sa.TIMESTAMP(timezone=True), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=False),
-    sa.PrimaryKeyConstraint('id')
+    sa.Column('value', sa.Text(), nullable=True),
+    sa.Column('created_at', sa.TIMESTAMP(), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=False),
+    sa.Column('updated_at', sa.TIMESTAMP(), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=False),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('key')
     )
-    op.create_index(op.f('ix_settings_key'), 'settings', ['key'], unique=True)
-    
-    # Insert the maintenance_mode setting with default value
-    op.execute("INSERT INTO settings (key, value, description) VALUES ('maintenance_mode', 'false', 'Controls whether the site is in maintenance mode')")
-
-    # Populate initial data sources - these are hardcoded and required for the application to function
-    data_sources_sql = """
-    INSERT INTO data_sources (name, scraper_key, url, description, frequency) VALUES
-    ('Acquisition Gateway', 'ACQGW', 'https://hallways.cap.gsa.gov/app/#/gateway/acquisition-gateway/forecast-documents', 'GSA Acquisition Gateway forecast documents', 'weekly'),
-    ('Department of Commerce', 'DOC', 'https://www.commerce.gov/', 'Department of Commerce procurement forecasts', 'weekly'),
-    ('Department of Homeland Security', 'DHS', 'https://www.dhs.gov/', 'DHS procurement forecasts', 'weekly'),
-    ('Department of Justice', 'DOJ', 'https://www.justice.gov/', 'DOJ procurement forecasts', 'weekly'),
-    ('Department of State', 'DOS', 'https://www.state.gov/', 'DOS procurement forecasts', 'weekly'),
-    ('Department of Transportation', 'DOT', 'https://www.transportation.gov/', 'DOT procurement forecasts', 'weekly'),
-    ('Health and Human Services', 'HHS', 'https://www.hhs.gov/', 'HHS procurement forecasts', 'weekly'),
-    ('Social Security Administration', 'SSA', 'https://www.ssa.gov/', 'SSA procurement forecasts', 'weekly'),
-    ('Department of Treasury', 'TREAS', 'https://www.treasury.gov/', 'Treasury procurement forecasts', 'weekly');
-    """
-    op.execute(data_sources_sql)
-
-    # Create initial scraper status for each data source
-    # Note: This uses a subquery to reference the newly inserted data sources
-    initial_status_sql = """
-    INSERT INTO scraper_status (source_id, status, last_checked, details)
-    SELECT id, 'pending', CURRENT_TIMESTAMP, 'Newly created data source, awaiting first scrape.'
-    FROM data_sources;
-    """
-    op.execute(initial_status_sql)
-
-    # Create file_processing_logs table
-    op.create_table('file_processing_logs',
-    sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
-    sa.Column('source_id', sa.Integer(), nullable=False),
-    sa.Column('file_path', sa.String(length=500), nullable=False),
-    sa.Column('file_name', sa.String(length=255), nullable=False),
-    sa.Column('file_size', sa.Integer(), nullable=True),
-    sa.Column('file_timestamp', sa.TIMESTAMP(timezone=True), nullable=False),
-    sa.Column('processing_started_at', sa.TIMESTAMP(timezone=True), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
-    sa.Column('processing_completed_at', sa.TIMESTAMP(timezone=True), nullable=True),
-    sa.Column('success', sa.Boolean(), nullable=False),
-    sa.Column('records_extracted', sa.Integer(), nullable=True),
-    sa.Column('records_inserted', sa.Integer(), nullable=True),
-    sa.Column('schema_columns', sa.JSON(), nullable=True),
-    sa.Column('schema_issues', sa.JSON(), nullable=True),
-    sa.Column('validation_warnings', sa.JSON(), nullable=True),
-    sa.Column('error_message', sa.Text(), nullable=True),
-    sa.Column('processing_duration', sa.Float(), nullable=True),
-    sa.ForeignKeyConstraint(['source_id'], ['data_sources.id'], ),
-    sa.PrimaryKeyConstraint('id')
-    )
-    op.create_index(op.f('ix_file_processing_logs_file_name'), 'file_processing_logs', ['file_name'], unique=False)
-    op.create_index(op.f('ix_file_processing_logs_file_path'), 'file_processing_logs', ['file_path'], unique=False)
-    op.create_index(op.f('ix_file_processing_logs_file_timestamp'), 'file_processing_logs', ['file_timestamp'], unique=False)
-    op.create_index(op.f('ix_file_processing_logs_processing_completed_at'), 'file_processing_logs', ['processing_completed_at'], unique=False)
-    op.create_index(op.f('ix_file_processing_logs_processing_started_at'), 'file_processing_logs', ['processing_started_at'], unique=False)
-    op.create_index(op.f('ix_file_processing_logs_source_id'), 'file_processing_logs', ['source_id'], unique=False)
-    op.create_index(op.f('ix_file_processing_logs_success'), 'file_processing_logs', ['success'], unique=False)
 
 
 def downgrade():
-    # Drop tables in reverse order to handle foreign key dependencies
-    op.drop_table('file_processing_logs')
+    # Drop tables in reverse order
     op.drop_table('settings')
+    op.drop_table('llm_outputs')
     op.drop_table('go_no_go_decisions')
-    op.drop_table('users')
+    op.drop_table('file_processing_log')
+    op.drop_table('duplicate_prospects')
     op.drop_table('scraper_status')
     op.drop_table('inferred_prospect_data')
     op.drop_table('prospects')
