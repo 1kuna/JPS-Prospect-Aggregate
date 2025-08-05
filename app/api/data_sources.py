@@ -71,7 +71,7 @@ def get_data_sources():
                 "last_checked": status_rec.last_checked.isoformat() + 'Z'
                 if status_rec and status_rec.last_checked
                 else None,
-                "status": status_rec.status if status_rec else "unknown",
+                "status": status_rec.status if status_rec else ("ready" if source.last_scraped is None else "completed"),
             }
             for source, p_count, status_rec in sources_data
         ]
