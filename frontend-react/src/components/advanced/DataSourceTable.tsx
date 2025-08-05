@@ -62,7 +62,18 @@ export function DataSourceTable({
                 <TableCell className="text-sm text-gray-600">{source.description}</TableCell>
                 <TableCell>
                   <span className={`font-medium ${getStatusColor(source.status)}`}>
-                    {source.status}
+                    {(() => {
+                      // Format status display
+                      const statusText = source.status.charAt(0).toUpperCase() + source.status.slice(1);
+                      
+                      // For completed status, show how long ago if we have last_checked
+                      if (source.status === 'completed' && source.last_checked) {
+                        const timeAgo = formatUserDate(source.last_checked, 'relative');
+                        return `${statusText} (${timeAgo})`;
+                      }
+                      
+                      return statusText;
+                    })()}
                     {isScraperWorking && (
                       <span className="ml-2 inline-flex h-2 w-2 rounded-full bg-blue-400 animate-pulse"></span>
                     )}

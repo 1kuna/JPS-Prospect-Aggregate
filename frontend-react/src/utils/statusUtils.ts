@@ -18,6 +18,8 @@ export function getStatusColor(status: string): string {
     case 'pending':
     case 'stopped':
       return 'text-yellow-600';
+    case 'ready':
+      return 'text-gray-500';
     default:
       return 'text-gray-600';
   }
