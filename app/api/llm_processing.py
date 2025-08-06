@@ -4,7 +4,6 @@ from app.database.models import (
     db,
     AIEnrichmentLog,
     LLMOutput,
-    InferredProspectData,
 )
 from app.utils.logger import logger
 from app.services.llm_service import llm_service
@@ -545,11 +544,7 @@ def _process_value_enhancement(prospect, llm_service, force_redo):
                 return False
     else:
         # No data to process - emit skipped completion
-        reason = (
-            "Already has parsed value"
-            if not should_process
-            else "No value text available to parse"
-        )
+        pass
         # Values enhancement skipped
 
     return False
@@ -632,11 +627,11 @@ def _process_naics_enhancement(prospect, llm_service, force_redo):
     else:
         # Not processing NAICS - emit skipped completion
         if prospect.naics and prospect.naics_description:
-            reason = "Already has NAICS code and description"
+            pass
         elif prospect.naics:
-            reason = "Has NAICS code but no description available in lookup table"
+            pass
         else:
-            reason = "No description available for AI classification"
+            pass
 
         # NAICS enhancement skipped
 
@@ -716,7 +711,6 @@ def _process_title_enhancement(prospect, llm_service, force_redo):
 
 def _process_set_aside_enhancement(prospect, llm_service, force_redo):
     """Process set aside standardization and enhancement for a prospect."""
-    from app.services.llm_service import LLMService
 
     # Ensure extra field is properly loaded as dict
     if prospect.extra is None:

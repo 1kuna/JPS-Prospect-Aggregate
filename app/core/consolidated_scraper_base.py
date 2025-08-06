@@ -45,13 +45,11 @@ all functionality and improving maintainability.
 import os
 import json
 import asyncio
-import tempfile
 import hashlib
-from pathlib import Path
-from typing import Optional, List, Dict, Any, Union, Callable
+from typing import Optional, List, Dict, Any, Callable
 from datetime import datetime, timezone
 import pandas as pd
-from urllib.parse import urlparse, unquote
+from urllib.parse import urlparse
 from dataclasses import dataclass, field
 import re
 
@@ -61,13 +59,11 @@ from playwright.async_api import (
     Page,
     Download,
     BrowserContext,
-    APIRequestContext,
 )
 from playwright.async_api import (
     async_playwright,
     TimeoutError as PlaywrightTimeoutError,
 )
-from playwright.sync_api import sync_playwright
 
 # Application imports
 from app.utils.logger import logger
@@ -1386,8 +1382,6 @@ class ConsolidatedScraperBase:
 
         # Get last successful file using existing validation service
         from app.utils.file_processing import (
-            create_processing_log,
-            update_processing_log,
             get_recent_files_for_source,
         )
 
@@ -2510,14 +2504,14 @@ class ConsolidatedScraperBase:
 
                 # Update processing log with failure
                 if processing_log:
-                    processing_duration = (datetime.now() - start_time).total_seconds()
+                    (datetime.now() - start_time).total_seconds()
                     update_processing_log(
                         processing_log, False, error_message=error_msg
                     )
                 raise Exception(f"Failed to read file to DataFrame: {file_path}")
 
-            records_extracted = len(df)
-            actual_columns = list(df.columns) if not df.empty else []
+            len(df)
+            list(df.columns) if not df.empty else []
 
             # Apply transformations
             df = self.transform_dataframe(df)

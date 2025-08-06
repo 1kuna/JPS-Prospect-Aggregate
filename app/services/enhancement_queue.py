@@ -8,7 +8,7 @@ This maintains the same API but with significantly reduced complexity.
 import threading
 import time
 from datetime import datetime, timezone
-from typing import Dict, Optional, List, Literal, Any
+from typing import Dict, Optional, List, Any
 from dataclasses import dataclass, field
 from enum import Enum
 

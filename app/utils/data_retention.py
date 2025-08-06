@@ -6,8 +6,6 @@ This script implements a rolling retention policy that keeps only the most recen
 N files per data source, deleting older files to prevent storage bloat.
 """
 
-import os
-import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Tuple

@@ -47,8 +47,6 @@ def update_scraper_status(source_id: int, status: str, details: Optional[str] = 
         status (str): Status to set (e.g., 'working', 'completed', 'failed').
         details (Optional[str]): Additional details or error message.
     """
-    from app.database import db  # Import db from app.database
-    from app.database.models import DataSource, ScraperStatus
     from flask import has_app_context
     # Ensure datetime is available (already imported at the top)
 

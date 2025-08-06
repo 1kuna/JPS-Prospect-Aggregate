@@ -3,8 +3,6 @@ Set-aside standardization service for normalizing set-aside field values.
 This service provides mapping and LLM-based classification of set-aside types.
 """
 
-from typing import Dict, List, Optional, Tuple
-import re
 from enum import Enum
 
 

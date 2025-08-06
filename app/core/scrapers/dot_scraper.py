@@ -5,7 +5,6 @@ Preserves all original DOT-specific functionality including complex retry logic 
 import pandas as pd
 import time
 import os
-from datetime import datetime
 from typing import Optional
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 

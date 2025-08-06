@@ -5,13 +5,9 @@ from app.exceptions import NotFoundError, ScraperError, DatabaseError
 from app.utils.logger import logger
 from app.utils.scraper_utils import (
     trigger_scraper,
-    get_scraper_status,
-    get_all_scraper_statuses,
-    stop_scraper,
     run_all_scrapers,
 )
-from app.api.auth import admin_required, super_admin_required
-import threading
+from app.api.auth import super_admin_required
 import time
 
 scrapers_bp = Blueprint("scrapers", __name__)

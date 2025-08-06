@@ -7,7 +7,7 @@ when source data changes titles, descriptions, or other identifying fields.
 
 import hashlib
 import difflib
-from typing import List, Dict, Tuple, Optional, Set
+from typing import List, Dict
 from dataclasses import dataclass
 from sqlalchemy.orm import Session
 from app.database.models import Prospect
@@ -603,7 +603,6 @@ class DuplicateDetector:
     ) -> List[MatchCandidate]:
         """Remove duplicate candidates, keeping the highest confidence."""
         seen_ids = {}
-        unique_candidates = []
 
         for candidate in candidates:
             existing = seen_ids.get(candidate.prospect_id)

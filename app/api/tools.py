@@ -6,9 +6,8 @@ import subprocess
 import threading
 import queue
 import json
-import os
 import sys
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 from pathlib import Path
 from flask import Blueprint, request, jsonify, Response, stream_with_context
 from app.api.auth import admin_required
@@ -501,7 +500,7 @@ def stream_output(execution_id):
                 return
 
         # Create queue for this stream
-        output_queue = queue.Queue()
+        queue.Queue()
 
         # Get current output
         with script_lock:

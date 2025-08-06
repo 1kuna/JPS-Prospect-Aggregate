@@ -28,7 +28,7 @@ def create_app():
     )  # Configure origins properly for production
 
     # Configure user database bind BEFORE initializing db
-    user_db = init_user_db(app)  # Configure user database binds
+    init_user_db(app)  # Configure user database binds
 
     # Now initialize SQLAlchemy with the app (after binds are configured)
     db.init_app(app)  # Initialize SQLAlchemy with the app

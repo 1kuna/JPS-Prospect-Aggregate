@@ -6,9 +6,7 @@ from sqlalchemy import (
     cast,
     String,
 )  # Added for sorting and JSON queries
-from sqlalchemy.sql import func
 from app.database.crud import paginate_sqlalchemy_query
-from app.database import db
 from app.database.models import Prospect  # Added db for session access in new route
 from app.exceptions import ValidationError, NotFoundError  # Added NotFoundError
 from app.utils.logger import logger

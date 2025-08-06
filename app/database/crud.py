@@ -1,6 +1,5 @@
 import pandas as pd
-from sqlalchemy import insert  # Changed to core SQLAlchemy insert
-from sqlalchemy.exc import SQLAlchemyError, IntegrityError
+from sqlalchemy.exc import SQLAlchemyError
 import numpy as np
 import math
 
