@@ -26,7 +26,7 @@ vi.mock('./EnhancementErrorBoundary', () => ({
 
 describe('EnhancementButton', () => {
   const defaultProps = {
-    prospect: { id: '123' },
+    prospect: { id: '123', ollama_processed_at: null },
     userId: 1,
     forceRedo: false
   };
@@ -87,8 +87,10 @@ describe('EnhancementButton', () => {
     expect(screen.getByText(/Queued \(#3\)/)).toBeInTheDocument();
     expect(screen.getByText('~2m')).toBeInTheDocument();
     // Check button has orange background for queued state
-    const button = screen.getByRole('button');
-    expect(button.className).toContain('bg-orange-600');
+    const buttons = screen.getAllByRole('button');
+    expect(buttons[0].className).toContain('bg-orange-600');
+    // Check cancel button exists
+    expect(buttons[1]).toBeInTheDocument();
   });
 
   it('shows processing status with current step', () => {
@@ -235,8 +237,8 @@ describe('EnhancementButton', () => {
     // Queued state
     mockGetProspectStatus.mockReturnValue({ status: 'queued' });
     rerender(<EnhancementButton {...defaultProps} />);
-    button = screen.getByRole('button');
-    expect(button).toHaveClass('bg-orange-600');
+    const buttons = screen.getAllByRole('button');
+    expect(buttons[0]).toHaveClass('bg-orange-600');
     
     // Processing state
     mockGetProspectStatus.mockReturnValue({ status: 'processing' });
@@ -262,6 +264,36 @@ describe('EnhancementButton', () => {
     
     await waitFor(() => {
       expect(mockHandleError).toHaveBeenCalledWith(error, 'Enhancement Cancellation');
+    });
+  });
+
+  it('shows "Redo Enhancement" for already enhanced prospects', () => {
+    const enhancedProspect = {
+      ...defaultProps.prospect,
+      ollama_processed_at: '2024-01-01T00:00:00Z'
+    };
+    
+    render(<EnhancementButton {...defaultProps} prospect={enhancedProspect} />);
+    
+    expect(screen.getByText('Redo Enhancement')).toBeInTheDocument();
+  });
+
+  it('sets force_redo to true for already enhanced prospects', async () => {
+    const enhancedProspect = {
+      ...defaultProps.prospect,
+      ollama_processed_at: '2024-01-01T00:00:00Z'
+    };
+    const user = userEvent.setup();
+    
+    render(<EnhancementButton {...defaultProps} prospect={enhancedProspect} />);
+    
+    const button = screen.getByRole('button');
+    await user.click(button);
+    
+    expect(mockAddToQueue).toHaveBeenCalledWith({
+      prospect_id: '123',
+      user_id: 1,
+      force_redo: true
     });
   });
 });

@@ -27,17 +27,12 @@ vi.mock('@/utils/apiUtils', () => ({
   buildQueryString: vi.fn().mockImplementation(() => '')
 }));
 
-vi.mock('@/hooks/api/useEnhancement', () => ({
-  useEnhancement: () => ({
+vi.mock('@/hooks/api/useEnhancementSimple', () => ({
+  useEnhancementSimple: () => ({
     queueEnhancement: vi.fn().mockResolvedValue('queue-item-123'),
     getEnhancementState: vi.fn().mockReturnValue(null),
     cancelEnhancement: vi.fn().mockResolvedValue(true),
-    queueLength: 0,
-    isProcessing: false,
-    queueStatus: null,
-    enhancementStates: {},
-    startQueueWorker: vi.fn(),
-    stopQueueWorker: vi.fn()
+    enhancementStates: {}
   })
 }));
 

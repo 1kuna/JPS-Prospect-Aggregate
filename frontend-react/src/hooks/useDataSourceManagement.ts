@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { get, postProcessing } from '@/utils/apiUtils';
-import { useClearDataSourceData } from '@/hooks/api/useDataSources';
+import { useClearDataSourceData, useListDataSourcesAdmin } from '@/hooks/api/useDataSources';
 import { useToast } from '@/contexts/ToastContext';
 import { formatScraperResults } from '@/utils/statusUtils';
 import { DataSource } from '@/types';
@@ -15,18 +15,19 @@ interface ScraperResult {
   error?: string;
 }
 
-export function useDataSourceManagement() {
+export function useDataSourceManagement(enabled: boolean = true) {
   const queryClient = useQueryClient();
   const { showSuccessToast, showErrorToast, showInfoToast } = useToast();
   const clearDataMutation = useClearDataSourceData();
 
   // Fetch data sources with frequent updates when scrapers are running
-  const { data: sources, isLoading, error } = useQuery<{ status: string; data: DataSource[] }>({
-    queryKey: ['dataSources'],
-    queryFn: () => get<{ status: string; data: DataSource[] }>('/api/data-sources/'),
+  // Using admin endpoint for full data (includes status, last_scraped, etc.)
+  const { data: sourcesData, isLoading, error } = useListDataSourcesAdmin({
     refetchInterval: 5000, // Check every 5 seconds for simplicity
     refetchIntervalInBackground: true,
+    enabled,
   });
+  const sources = sourcesData;
 
   // Mutation for running all scrapers
   const runAllScrapersMutation = useMutation({

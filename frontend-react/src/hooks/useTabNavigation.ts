@@ -10,7 +10,7 @@ interface TabConfig {
   }>;
 }
 
-const tabs: TabConfig[] = [
+const allTabs: TabConfig[] = [
   { id: 'data-sources', label: 'Data Sources', description: 'Manage data sources and scrapers' },
   { 
     id: 'database', 
@@ -25,10 +25,13 @@ const tabs: TabConfig[] = [
   { id: 'tools', label: 'Tools', description: 'System utilities and maintenance scripts' }
 ];
 
-export function useTabNavigation() {
+export function useTabNavigation(isSuperAdmin: boolean = false) {
   const [searchParams, setSearchParams] = useSearchParams();
   
-  const activeTab = searchParams.get('tab') || 'data-sources';
+  // Filter tabs based on user role
+  const tabs = isSuperAdmin ? allTabs : allTabs.filter(tab => tab.id !== 'data-sources');
+  
+  const activeTab = searchParams.get('tab') || tabs[0].id;
   const activeSubTab = searchParams.get('subtab') || 'overview';
   
   const currentTab = tabs.find(tab => tab.id === activeTab) || tabs[0];

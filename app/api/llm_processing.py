@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify, request, Response, stream_with_context
+from flask import Blueprint, jsonify, request
 from app.database.models import (
     Prospect,
     db,
@@ -13,7 +13,6 @@ from app.api.auth import admin_required
 from sqlalchemy import func
 from datetime import datetime, timedelta, timezone
 import time
-import asyncio
 import json
 
 llm_bp = Blueprint("llm_api", __name__, url_prefix="/api/llm")
@@ -471,15 +470,7 @@ def _process_value_enhancement(prospect, llm_service, force_redo):
         f"VALUE_ENHANCEMENT_DEBUG: force_redo={force_redo}, has_existing_value={bool(prospect.estimated_value_single)}"
     )
 
-    # Always emit start event first
-    emit_enhancement_progress(
-        prospect.id,
-        "values_started",
-        {
-            "force_redo": force_redo,
-            "has_existing_value": bool(prospect.estimated_value_single),
-        },
-    )
+    # Values enhancement starting
 
     value_to_parse = None
 
@@ -543,26 +534,14 @@ def _process_value_enhancement(prospect, llm_service, force_redo):
                 # Commit to database immediately for real-time updates
                 db.session.commit()
 
-                # Emit completion event with new values
-                emit_enhancement_progress(
-                    prospect.id,
-                    "values_completed",
-                    {
-                        "estimated_value_single": single_val,
-                        "estimated_value_min": min_val,
-                        "estimated_value_max": max_val,
-                        "is_range": has_range and not has_single,
-                    },
-                )
+                # Values enhancement completed
                 return True
 
             except (ValueError, TypeError) as e:
                 logger.warning(
                     f"Failed to convert LLM parsed values to float for prospect {prospect.id}: {e}"
                 )
-                emit_enhancement_progress(
-                    prospect.id, "values_failed", {"error": str(e)}
-                )
+                # Values enhancement failed
                 return False
     else:
         # No data to process - emit skipped completion
@@ -571,25 +550,14 @@ def _process_value_enhancement(prospect, llm_service, force_redo):
             if not should_process
             else "No value text available to parse"
         )
-        emit_enhancement_progress(
-            prospect.id, "values_completed", {"skipped": True, "reason": reason}
-        )
+        # Values enhancement skipped
 
     return False
 
 
 def _process_naics_enhancement(prospect, llm_service, force_redo):
     """Process NAICS classification enhancement for a prospect."""
-    # Always emit start event first
-    emit_enhancement_progress(
-        prospect.id,
-        "naics_started",
-        {
-            "force_redo": force_redo,
-            "has_existing_naics": bool(prospect.naics),
-            "has_description": bool(prospect.description),
-        },
-    )
+    # NAICS enhancement starting
 
     # CRITICAL: Source NAICS codes should NEVER be overwritten by AI
     # AI classification should ONLY run when there's no NAICS code at all
@@ -618,28 +586,11 @@ def _process_naics_enhancement(prospect, llm_service, force_redo):
             # Commit to database immediately for real-time updates
             db.session.commit()
 
-            # Emit completion event with backfilled description
-            emit_enhancement_progress(
-                prospect.id,
-                "naics_completed",
-                {
-                    "naics": prospect.naics,
-                    "naics_description": official_description,
-                    "naics_source": prospect.naics_source or "unknown",
-                    "action": "backfilled",
-                },
-            )
+            # NAICS enhancement completed with backfilled description
             return True
         else:
             # NAICS code not in our lookup table
-            emit_enhancement_progress(
-                prospect.id,
-                "naics_completed",
-                {
-                    "skipped": True,
-                    "reason": f"No description available for NAICS code {prospect.naics}",
-                },
-            )
+            # NAICS enhancement skipped - no description available
             return False
 
     elif prospect.description and should_classify:
@@ -672,25 +623,10 @@ def _process_naics_enhancement(prospect, llm_service, force_redo):
             # Commit to database immediately for real-time updates
             db.session.commit()
 
-            # Emit completion event with new NAICS data
-            emit_enhancement_progress(
-                prospect.id,
-                "naics_completed",
-                {
-                    "naics": classification["code"],
-                    "naics_description": classification["description"],
-                    "naics_source": "llm_inferred",
-                    "confidence": classification["confidence"],
-                    "action": "classified",
-                },
-            )
+            # NAICS enhancement completed with classification
             return True
         else:
-            emit_enhancement_progress(
-                prospect.id,
-                "naics_failed",
-                {"error": "No valid NAICS classification found"},
-            )
+            # NAICS enhancement failed - no valid classification
             return False
 
     else:
@@ -702,9 +638,7 @@ def _process_naics_enhancement(prospect, llm_service, force_redo):
         else:
             reason = "No description available for AI classification"
 
-        emit_enhancement_progress(
-            prospect.id, "naics_completed", {"skipped": True, "reason": reason}
-        )
+        # NAICS enhancement skipped
 
     return False
 
@@ -716,16 +650,7 @@ def _process_title_enhancement(prospect, llm_service, force_redo):
         f"TITLE_ENHANCEMENT_DEBUG: force_redo={force_redo}, has_title={bool(prospect.title)}, has_enhanced_title={bool(prospect.ai_enhanced_title)}"
     )
 
-    # Always emit start event first
-    emit_enhancement_progress(
-        prospect.id,
-        "titles_started",
-        {
-            "force_redo": force_redo,
-            "has_existing_enhanced_title": bool(prospect.ai_enhanced_title),
-            "has_title": bool(prospect.title),
-        },
-    )
+    # Title enhancement starting
 
     if prospect.title and (force_redo or not prospect.ai_enhanced_title):
         logger.info(
@@ -749,9 +674,7 @@ def _process_title_enhancement(prospect, llm_service, force_redo):
             logger.error(
                 f"TITLE_ENHANCEMENT_DEBUG: LLM service error for prospect {prospect.id}: {e}"
             )
-            emit_enhancement_progress(
-                prospect.id, "titles_failed", {"error": f"LLM service error: {str(e)}"}
-            )
+            # Title enhancement failed - LLM service error
             return False
 
         if enhanced_title["enhanced_title"]:
@@ -771,21 +694,10 @@ def _process_title_enhancement(prospect, llm_service, force_redo):
             # Commit to database immediately for real-time updates
             db.session.commit()
 
-            # Emit completion event with new title
-            emit_enhancement_progress(
-                prospect.id,
-                "titles_completed",
-                {
-                    "ai_enhanced_title": enhanced_title["enhanced_title"],
-                    "original_title": prospect.title,
-                    "confidence": enhanced_title["confidence"],
-                },
-            )
+            # Title enhancement completed
             return True
         else:
-            emit_enhancement_progress(
-                prospect.id, "titles_failed", {"error": "No enhanced title generated"}
-            )
+            # Title enhancement failed - no title generated
             return False
     else:
         # Not processing title - emit skipped completion
@@ -797,9 +709,7 @@ def _process_title_enhancement(prospect, llm_service, force_redo):
         logger.info(
             f"TITLE_ENHANCEMENT_DEBUG: Skipping enhancement for prospect {prospect.id}, reason: {reason}"
         )
-        emit_enhancement_progress(
-            prospect.id, "titles_completed", {"skipped": True, "reason": reason}
-        )
+        # Title enhancement skipped
 
     return False
 
@@ -831,16 +741,7 @@ def _process_set_aside_enhancement(prospect, llm_service, force_redo):
         f"has original_small_business_program: {'original_small_business_program' in (prospect.extra or {})}"
     )
 
-    # Always emit start event first
-    emit_enhancement_progress(
-        prospect.id,
-        "set_asides_started",
-        {
-            "force_redo": force_redo,
-            "has_existing_set_aside": bool(prospect.set_aside),
-            "has_standardized_set_aside": bool(prospect.set_aside_standardized),
-        },
-    )
+    # Set-aside enhancement starting
 
     # Check if we should process set asides using the new standardized fields
     should_process = force_redo or not prospect.set_aside_standardized
@@ -869,48 +770,26 @@ def _process_set_aside_enhancement(prospect, llm_service, force_redo):
 
                     # Check if standardization was successful
                     if prospect.set_aside_standardized:
-                        # Emit completion event with new standardized set aside data
-                        emit_enhancement_progress(
-                            prospect.id,
-                            "set_asides_completed",
-                            {
-                                "set_aside_standardized": prospect.set_aside_standardized,
-                                "set_aside_standardized_label": prospect.set_aside_standardized_label,
-                                "original_set_aside": prospect.set_aside,
-                                "comprehensive_data_used": comprehensive_data,
-                            },
-                        )
+                        # Set-aside enhancement completed with standardized data
                         return True
                     else:
-                        emit_enhancement_progress(
-                            prospect.id,
-                            "set_asides_failed",
-                            {"error": "No standardized data created"},
-                        )
+                        # Set-aside enhancement failed - no standardized data
                         return False
                 else:
-                    emit_enhancement_progress(
-                        prospect.id,
-                        "set_asides_failed",
-                        {"error": "Set aside processing failed"},
-                    )
+                    # Set-aside enhancement failed - processing error
                     return False
 
             except Exception as e:
                 logger.error(
                     f"Error processing set aside for prospect {prospect.id}: {e}"
                 )
-                emit_enhancement_progress(
-                    prospect.id, "set_asides_failed", {"error": str(e)}
-                )
+                # Set-aside enhancement failed with exception
                 return False
         else:
             # No comprehensive data available - emit skipped completion
             reason = "No set aside data available to process (and not forcing)"
             logger.warning(f"Skipping set-aside enhancement: {reason}")
-            emit_enhancement_progress(
-                prospect.id, "set_asides_completed", {"skipped": True, "reason": reason}
-            )
+            # Set-aside enhancement skipped - no data available
     else:
         # Not processing set aside - emit skipped completion
         reason = (
@@ -920,9 +799,7 @@ def _process_set_aside_enhancement(prospect, llm_service, force_redo):
         )
         logger.info(f"Skipping set-aside enhancement: {reason}")
 
-        emit_enhancement_progress(
-            prospect.id, "set_asides_completed", {"skipped": True, "reason": reason}
-        )
+        # Set-aside enhancement skipped
 
     return False
 
@@ -935,20 +812,7 @@ def _finalize_enhancement(prospect, llm_service, processed, enhancements, force_
         prospect.ollama_model_version = llm_service.model_name
         db.session.commit()
 
-        # Emit final completion event
-        emit_enhancement_progress(
-            prospect.id,
-            "completed",
-            {
-                "status": "completed",
-                "processed": True,
-                "enhancements": enhancements,
-                "ollama_processed_at": prospect.ollama_processed_at.isoformat()
-                if prospect.ollama_processed_at
-                else None,
-                "model_version": prospect.ollama_model_version,
-            },
-        )
+        # Enhancement completed
 
         return jsonify(
             {
@@ -959,20 +823,7 @@ def _finalize_enhancement(prospect, llm_service, processed, enhancements, force_
             }
         ), 200
     else:
-        # Also emit completion event for cases where no processing was needed
-        emit_enhancement_progress(
-            prospect.id,
-            "completed",
-            {
-                "status": "completed",
-                "processed": False,
-                "enhancements": [],
-                "ollama_processed_at": prospect.ollama_processed_at.isoformat()
-                if prospect.ollama_processed_at
-                else None,
-                "reason": "Already fully enhanced or no data to enhance",
-            },
-        )
+        # Enhancement completed - no processing needed
 
         return jsonify(
             {
@@ -1000,7 +851,14 @@ def enhance_single_prospect():
 
         force_redo = data.get("force_redo", False)
         user_id = data.get("user_id", 1)  # Default to 1 if no user provided
-        enhancement_type = data.get("enhancement_type", "all")
+        
+        # Handle both enhancement_type (string) and enhancement_types (array)
+        enhancement_types = data.get("enhancement_types", None)
+        if enhancement_types and isinstance(enhancement_types, list):
+            # Convert array to comma-separated string
+            enhancement_type = ",".join(enhancement_types)
+        else:
+            enhancement_type = data.get("enhancement_type", "all")
 
         # Get the prospect
         prospect = Prospect.query.get(prospect_id)
@@ -1234,194 +1092,9 @@ def stop_queue_worker():
         return jsonify({"error": f"Failed to stop queue worker: {str(e)}"}), 500
 
 
-# Global dictionary to store SSE progress events for prospects
-_enhancement_progress_events = {}
+# SSE functionality has been removed - using polling instead
 
 
-def emit_enhancement_progress(prospect_id, event_type, data):
-    """Emit progress event for a specific prospect enhancement"""
-    if prospect_id not in _enhancement_progress_events:
-        _enhancement_progress_events[prospect_id] = []
-
-    event_data = {
-        "event_type": event_type,
-        "timestamp": datetime.now(timezone.utc).isoformat() + 'Z',
-        "data": data,
-    }
-
-    _enhancement_progress_events[prospect_id].append(event_data)
-    logger.info(
-        f"Emitted enhancement progress for prospect {prospect_id}: {event_type}"
-    )
-
-
-@llm_bp.route("/enhancement-progress/<prospect_id>")
-@admin_required
-def enhancement_progress_stream(prospect_id):
-    """Enhanced Server-Sent Events endpoint for real-time enhancement progress"""
-
-    def generate():
-        # Set initial connection message
-        yield f"data: {json.dumps({'event_type': 'connected', 'prospect_id': prospect_id})}\n\n"
-
-        # Initialize events list for this prospect if it doesn't exist
-        if prospect_id not in _enhancement_progress_events:
-            _enhancement_progress_events[prospect_id] = []
-
-        sent_event_count = 0
-        max_wait_time = 600  # 10 minutes max wait (increased)
-        start_time = time.time()
-        last_heartbeat = time.time()
-        last_queue_check = time.time()
-
-        try:
-            while True:
-                current_time = time.time()
-
-                # Check if we've exceeded max wait time
-                if current_time - start_time > max_wait_time:
-                    yield f"data: {json.dumps({'event_type': 'timeout', 'reason': 'max_wait_exceeded'})}\n\n"
-                    break
-
-                # Send heartbeat every 30 seconds
-                if current_time - last_heartbeat > 30:
-                    heartbeat_event = {
-                        "event_type": "keepalive",
-                        "timestamp": datetime.now(timezone.utc).isoformat() + 'Z',
-                        "data": {"connection_time": current_time - start_time},
-                    }
-                    yield f"data: {json.dumps(heartbeat_event)}\n\n"
-                    last_heartbeat = current_time
-
-                # Check queue status every 2 seconds
-                if current_time - last_queue_check > 2:
-                    # Get queue position for this prospect
-                    queue_status = enhancement_queue.get_queue_status()
-                    if queue_status and queue_status.get("pending_items"):
-                        prospect_queue_item = None
-                        queue_position = None
-
-                        for idx, item in enumerate(queue_status["pending_items"]):
-                            if item.get("type") == "individual" and str(
-                                item.get("prospect_id")
-                            ) == str(prospect_id):
-                                prospect_queue_item = item
-                                queue_position = idx + 1
-                                break
-
-                        # If found in queue, send position update
-                        if prospect_queue_item and queue_position:
-                            # Calculate estimated time remaining (rough estimate: 60s per item ahead)
-                            estimated_time = (queue_position - 1) * 60
-
-                            position_event = {
-                                "event_type": "queue_position_update",
-                                "timestamp": datetime.now(timezone.utc).isoformat() + 'Z',
-                                "data": {
-                                    "position": queue_position,
-                                    "estimated_time": estimated_time,
-                                    "queue_size": len(queue_status["pending_items"]),
-                                },
-                            }
-                            yield f"data: {json.dumps(position_event)}\n\n"
-
-                        # Check if processing has started
-                        if queue_status.get("current_item") and queue_status[
-                            "current_item"
-                        ].get("prospect_id") == int(prospect_id):
-                            processing_event = {
-                                "event_type": "processing_started",
-                                "timestamp": datetime.now(timezone.utc).isoformat() + 'Z',
-                                "data": {
-                                    "queue_item_id": queue_status["current_item"].get(
-                                        "id"
-                                    )
-                                },
-                            }
-                            yield f"data: {json.dumps(processing_event)}\n\n"
-
-                    last_queue_check = current_time
-
-                # Send any new events for this prospect
-                prospect_events = _enhancement_progress_events.get(prospect_id, [])
-                new_events = prospect_events[sent_event_count:]
-
-                for event in new_events:
-                    yield f"data: {json.dumps(event)}\n\n"
-                    sent_event_count += 1
-
-                # Check if we've already sent a completion event
-                has_completion_event = any(
-                    event.get("event_type") == "completed" for event in prospect_events
-                )
-
-                if has_completion_event and sent_event_count >= len(prospect_events):
-                    # All events including completion have been sent, close the connection
-                    logger.info(
-                        f"SSE all events sent including completion for prospect {prospect_id}, closing connection"
-                    )
-                    break
-
-                # Also check if prospect has been processed (fallback check)
-                if not has_completion_event and current_time - last_queue_check > 2:
-                    prospect = Prospect.query.get(prospect_id)
-                    if prospect and prospect.ollama_processed_at:
-                        # Enhancement is complete but we haven't sent the event yet
-                        completion_event = {
-                            "event_type": "completed",
-                            "timestamp": datetime.now(timezone.utc).isoformat() + 'Z',
-                            "data": {
-                                "status": "completed",
-                                "ollama_processed_at": prospect.ollama_processed_at.isoformat()
-                                if prospect.ollama_processed_at
-                                else None,
-                            },
-                        }
-                        logger.info(
-                            f"SSE sending completion event for prospect {prospect_id}"
-                        )
-                        yield f"data: {json.dumps(completion_event)}\n\n"
-                        logger.info(
-                            f"SSE completion event sent for prospect {prospect_id}"
-                        )
-                        break
-
-                # Wait before checking again (reduced for better responsiveness)
-                time.sleep(0.2)
-
-        except GeneratorExit:
-            # Client disconnected
-            logger.info(
-                f"Client disconnected from enhancement progress stream for prospect {prospect_id}"
-            )
-        except Exception as e:
-            logger.error(f"Error in SSE stream for prospect {prospect_id}: {e}")
-            error_event = {
-                "event_type": "error",
-                "timestamp": datetime.now(timezone.utc).isoformat() + 'Z',
-                "data": {"error": str(e)},
-            }
-            yield f"data: {json.dumps(error_event)}\n\n"
-        finally:
-            # Clean up old events for this prospect (keep only last hour)
-            if prospect_id in _enhancement_progress_events:
-                cutoff_time = datetime.now(timezone.utc) - timedelta(hours=1)
-                _enhancement_progress_events[prospect_id] = [
-                    event
-                    for event in _enhancement_progress_events[prospect_id]
-                    if datetime.fromisoformat(event["timestamp"].replace("Z", "+00:00"))
-                    > cutoff_time
-                ]
-
-    return Response(
-        stream_with_context(generate()),
-        mimetype="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Headers": "Cache-Control",
-        },
-    )
 
 
 @llm_bp.route("/enhancement-queue/<queue_item_id>", methods=["DELETE"])

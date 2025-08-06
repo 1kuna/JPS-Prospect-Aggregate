@@ -17,6 +17,7 @@ interface EnhancementProgressProps {
       naics?: { completed: boolean; skipped?: boolean };
       set_asides?: { completed: boolean; skipped?: boolean };
     };
+    enhancementTypes?: string[];
   } | null;
   isVisible: boolean;
 }
@@ -24,7 +25,7 @@ interface EnhancementProgressProps {
 export function EnhancementProgress({ status, isVisible }: EnhancementProgressProps) {
   if (!isVisible || !status) return null;
   
-  const steps: ProgressStep[] = [
+  const allSteps: ProgressStep[] = [
     {
       key: 'titles',
       label: 'Enhance Title',
@@ -61,9 +62,15 @@ export function EnhancementProgress({ status, isVisible }: EnhancementProgressPr
     }
   ];
   
+  // Filter steps based on enhancement types if provided
+  const steps = status.enhancementTypes && status.enhancementTypes.length > 0
+    ? allSteps.filter(step => status.enhancementTypes?.includes(step.key))
+    : allSteps;
+  
   return (
     <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-lg">
       <h4 className="text-sm font-medium text-yellow-800 mb-3">AI Enhancement Progress</h4>
+      
       <div className="space-y-2">
         {steps.map((step) => (
           <div key={step.key} className="flex items-center space-x-3">

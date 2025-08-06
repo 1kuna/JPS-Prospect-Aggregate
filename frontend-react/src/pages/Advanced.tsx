@@ -4,15 +4,19 @@ import { AIEnrichment } from '@/components/AIEnrichment';
 import { useConfirmationDialog } from '@/components/ui/ConfirmationDialog';
 import { useDataSourceManagement, useScraperOperations, useTabNavigation } from '@/hooks';
 import { DataSourcesTab, DatabaseTab, TabNavigation, ToolsTab } from '@/components/advanced';
-import { useIsAdmin } from '@/hooks/api';
+import { useIsAdmin, useIsSuperAdmin } from '@/hooks/api';
 
 export default function Advanced() {
   const isAdmin = useIsAdmin();
+  const isSuperAdmin = useIsSuperAdmin();
   const { confirm, ConfirmationDialog } = useConfirmationDialog();
   
   // Use extracted hooks
-  const { tabs, activeTab, activeSubTab, currentTab, setActiveTab } = useTabNavigation();
-  const { sources, isLoading, error, runAllScrapersMutation, clearDataMutation, handleClearData } = useDataSourceManagement();
+  const { tabs, activeTab, activeSubTab, currentTab, setActiveTab } = useTabNavigation(isSuperAdmin);
+  
+  // Only fetch data sources if super admin and on the data-sources tab
+  const shouldFetchDataSources = isSuperAdmin && activeTab === 'data-sources';
+  const { sources, isLoading, error, runAllScrapersMutation, clearDataMutation, handleClearData } = useDataSourceManagement(shouldFetchDataSources);
   const { runAllInProgress, handleRunScraper, handleRunAllScrapers, updateWorkingScrapers, getScraperButtonState } = useScraperOperations();
 
   // Redirect if not admin
@@ -90,7 +94,15 @@ export default function Advanced() {
       case 'tools':
         return <ToolsTab />;
       case 'data-sources':
-      default:
+        // Check if user is super admin
+        if (!isSuperAdmin) {
+          return (
+            <div className="text-center py-8">
+              <h2 className="text-xl font-bold text-red-600 mb-2">Access Denied</h2>
+              <p className="text-gray-600">Super admin privileges are required to access data sources.</p>
+            </div>
+          );
+        }
         return (
           <DataSourcesTab
             sources={sources}
@@ -104,6 +116,18 @@ export default function Advanced() {
             clearDataMutation={clearDataMutation}
           />
         );
+      default:
+        // Default to first available tab
+        const firstTab = tabs[0];
+        if (firstTab.id === 'data-sources' && !isSuperAdmin) {
+          return (
+            <div className="text-center py-8">
+              <h2 className="text-xl font-bold text-red-600 mb-2">Access Denied</h2>
+              <p className="text-gray-600">Super admin privileges are required to access data sources.</p>
+            </div>
+          );
+        }
+        return <DatabaseTab activeSubTab={activeSubTab} onSetActiveTab={setActiveTab} subTabs={firstTab.subTabs || []} />;
     }
   };
 

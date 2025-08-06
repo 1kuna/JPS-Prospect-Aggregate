@@ -5,7 +5,7 @@ import { get, post, put, del } from '@/utils/apiUtils';
 // --- API Call Functions ---
 
 async function fetchDataSourcesAPI(): Promise<{ status: string; data: DataSource[] }> {
-  return get<{ status: string; data: DataSource[] }>('/api/data-sources');
+  return get<{ status: string; data: DataSource[] }>('/api/data-sources/public');
 }
 
 async function createDataSourceAPI(newDataSource: Omit<DataSource, 'id'>): Promise<DataSource> {
@@ -41,6 +41,18 @@ export function useListDataSources() {
     queryFn: fetchDataSourcesAPI,
     staleTime: 5 * 60 * 1000, // 5 minutes
     // Add other React Query options as needed, e.g., onSuccess, onError, refetchOnWindowFocus: false
+  });
+}
+
+// Admin-only hook for full data source management
+export function useListDataSourcesAdmin(options?: { refetchInterval?: number; refetchIntervalInBackground?: boolean; enabled?: boolean }) {
+  return useQuery({
+    queryKey: ['dataSources', 'admin'],
+    queryFn: () => get<{ status: string; data: DataSource[] }>('/api/data-sources'),
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    refetchInterval: options?.refetchInterval,
+    refetchIntervalInBackground: options?.refetchIntervalInBackground,
+    enabled: options?.enabled !== false, // Default to true if not specified
   });
 }
 

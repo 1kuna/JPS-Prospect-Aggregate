@@ -42,7 +42,12 @@ export function useProspectColumns(showAIEnhanced: boolean) {
       size: 350,
     }),
     columnHelper.accessor((row) => {
-      const naics = showAIEnhanced ? row.naics : (row.naics_source === 'llm_inferred' ? null : row.naics);
+      // For NAICS, we need to be more careful about what counts as "AI enhanced"
+      // It should only be considered AI enhanced if:
+      // 1. It has ollama_processed_at (was processed by LLM)
+      // 2. The NAICS source is 'llm_inferred'
+      // 3. There was no NAICS before (to avoid false positives from imports)
+      const naics = row.naics;
       
       if (!naics) return 'N/A';
       
@@ -54,21 +59,27 @@ export function useProspectColumns(showAIEnhanced: boolean) {
       cell: info => {
         const value = info.getValue();
         const row = info.row.original;
-        const isAIEnhanced = row.naics_source === 'llm_inferred';
+        
+        // Check if NAICS was actually changed by AI:
+        // Only show as AI enhanced if:
+        // 1. LLM processed it (has llm_inferred source)
+        // 2. The code was changed (not just description added)
+        const originalNaics = row.extra?.original_naics as string | undefined;
+        const isAIEnhanced = showAIEnhanced && 
+                           row.naics_source === 'llm_inferred' && 
+                           row.ollama_processed_at &&
+                           row.naics &&
+                           (!originalNaics || originalNaics !== row.naics); // Code must be different
+        
         const title = isAIEnhanced 
           ? `${value} (AI Classified)` 
-          : row.naics_source === 'original' 
-          ? `${value} (Original)` 
           : value;
         
         return (
           <div className="w-full truncate" title={title}>
-            <span className={isAIEnhanced && showAIEnhanced ? 'text-blue-700 font-medium' : ''}>
+            <span className={isAIEnhanced ? 'text-blue-700 font-medium' : ''}>
               {value}
             </span>
-            {isAIEnhanced && showAIEnhanced && (
-              <div className="w-2 h-2 bg-blue-500 rounded-full inline-block ml-2" title="AI Enhanced"></div>
-            )}
           </div>
         );
       },
@@ -94,12 +105,18 @@ export function useProspectColumns(showAIEnhanced: boolean) {
         if (row.estimated_value_min && row.estimated_value_max && !row.estimated_value_single) {
           const min = parseFloat(row.estimated_value_min);
           const max = parseFloat(row.estimated_value_max);
-          return `${formatAmount(min)} - ${formatAmount(max)}`;
+          // Check for valid numbers
+          if (!isNaN(min) && !isNaN(max)) {
+            return `${formatAmount(min)} - ${formatAmount(max)}`;
+          }
         }
         // Check for single value
         else if (row.estimated_value_single) {
           const single = parseFloat(row.estimated_value_single);
-          return formatAmount(single);
+          // Check for valid number
+          if (!isNaN(single)) {
+            return formatAmount(single);
+          }
         }
       }
       
@@ -178,12 +195,37 @@ export function useProspectColumns(showAIEnhanced: boolean) {
       },
       size: 120,
     }),
-    columnHelper.accessor((row) => row.set_aside, {
+    columnHelper.accessor((row) => {
+      // Show AI-enhanced set-aside if toggle is on and available
+      if (showAIEnhanced && row.set_aside_standardized_label && row.set_aside_standardized !== 'NOT_AVAILABLE') {
+        return row.set_aside_standardized_label;
+      }
+      return row.set_aside;
+    }, {
       id: 'set_aside',
       header: 'Set Aside',
       cell: info => {
         const value = info.getValue();
-        return <div className="w-full truncate" title={String(value) || 'N/A'}>{String(value) || 'N/A'}</div>;
+        const row = info.row.original;
+        // Check if AI enhanced: has standardized label that's different from original and not just 'N/A'
+        const isAIEnhanced = showAIEnhanced && 
+                           row.set_aside_standardized_label && 
+                           row.set_aside_standardized !== 'NOT_AVAILABLE' &&
+                           row.set_aside_standardized_label !== row.set_aside &&
+                           row.ollama_processed_at;
+        
+        return (
+          <div className="w-full truncate flex items-center" title={String(value) || 'N/A'}>
+            <span className={isAIEnhanced ? 'text-blue-700 font-medium' : ''}>
+              {String(value) || 'N/A'}
+            </span>
+            {isAIEnhanced && (
+              <span className="ml-2 text-xs px-2 py-0.5 rounded bg-blue-100 text-blue-700">
+                AI
+              </span>
+            )}
+          </div>
+        );
       },
       size: 150,
     }),

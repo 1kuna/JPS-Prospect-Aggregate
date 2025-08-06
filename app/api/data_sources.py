@@ -4,7 +4,7 @@ from app.database import db
 from app.database.models import Prospect, DataSource, ScraperStatus
 from app.exceptions import ValidationError, NotFoundError, DatabaseError
 from app.utils.logger import logger
-from app.api.auth import admin_required
+from app.api.auth import admin_required, super_admin_required
 
 data_sources_bp = Blueprint("data_sources", __name__)
 
@@ -13,7 +13,7 @@ logger = logger.bind(name="api.data_sources")
 
 
 @data_sources_bp.route("/", methods=["GET"])
-@admin_required
+@super_admin_required
 def get_data_sources():
     """Get all data sources."""
     session = db.session
@@ -88,8 +88,51 @@ def get_data_sources():
         ), 500
 
 
+@data_sources_bp.route("/public", methods=["GET"])
+def get_data_sources_public():
+    """Get all data sources (public read-only access for filtering)."""
+    session = db.session
+    try:
+        # Simpler query for public access - just basic info needed for filtering
+        prospect_count_subq = (
+            session.query(
+                Prospect.source_id, func.count(Prospect.id).label("prospect_count")
+            )
+            .group_by(Prospect.source_id)
+            .subquery()
+        )
+
+        query = (
+            session.query(DataSource, prospect_count_subq.c.prospect_count)
+            .outerjoin(
+                prospect_count_subq, DataSource.id == prospect_count_subq.c.source_id
+            )
+        )
+
+        sources_data = query.all()
+
+        result = [
+            {
+                "id": source.id,
+                "name": source.name,
+                "prospectCount": p_count if p_count is not None else 0,
+            }
+            for source, p_count in sources_data
+        ]
+
+        return jsonify({"status": "success", "data": result})
+    except Exception as e:
+        logger.error(f"Error in get_data_sources_public: {str(e)}", exc_info=True)
+        return jsonify(
+            {
+                "status": "error",
+                "message": "An internal error occurred processing your request.",
+            }
+        ), 500
+
+
 @data_sources_bp.route("/<int:source_id>", methods=["PUT"])
-@admin_required
+@super_admin_required
 def update_data_source(source_id):
     """Update a data source."""
     session = db.session
@@ -147,7 +190,7 @@ def update_data_source(source_id):
 
 
 @data_sources_bp.route("/", methods=["POST"])
-@admin_required
+@super_admin_required
 def create_data_source():
     """Create a new data source."""
     session = db.session
@@ -204,7 +247,7 @@ def create_data_source():
 
 
 @data_sources_bp.route("/<int:source_id>/clear-data", methods=["POST"])
-@admin_required
+@super_admin_required
 def clear_data_source_data(source_id):
     """Clear all prospects from a data source while keeping the data source itself."""
     session = db.session
@@ -246,7 +289,7 @@ def clear_data_source_data(source_id):
 
 
 @data_sources_bp.route("/<int:source_id>", methods=["DELETE"])
-@admin_required
+@super_admin_required
 def delete_data_source(source_id):
     """Delete a data source and its related prospects and status records."""
     session = db.session

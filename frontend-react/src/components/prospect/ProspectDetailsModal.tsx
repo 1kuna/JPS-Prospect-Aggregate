@@ -10,20 +10,12 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { ReloadIcon, ChevronDownIcon, DotsVerticalIcon } from '@radix-ui/react-icons';
 import { GoNoGoDecision } from '@/components/GoNoGoDecision';
-import { EnhancementButton } from '@/components/EnhancementButton';
+import { EnhancementButtonWithSelector } from '@/components/EnhancementButtonWithSelector';
 import { EnhancementProgress } from '@/components/EnhancementProgress';
 import { EnhancementErrorBoundary } from '@/components/EnhancementErrorBoundary';
 import { useIsSuperAdmin } from '@/hooks/api/useAuth';
 import type { Prospect } from '@/types/prospects';
-import { useState } from 'react';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuCheckboxItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+import { useState, useEffect } from 'react';
 
 interface ProspectDetailsModalProps {
   isOpen: boolean;
@@ -58,55 +50,22 @@ export function ProspectDetailsModal({
 }: ProspectDetailsModalProps) {
   const isSuperAdmin = useIsSuperAdmin();
   const [showRawData, setShowRawData] = useState(false);
+  const [enhancementStarted, setEnhancementStarted] = useState(false);
   
-  // Enhancement types state
-  const [selectedEnhancementTypes, setSelectedEnhancementTypes] = useState({
-    values: true,
-    titles: true,
-    naics: true,
-    set_asides: true,
-  });
+  // Monitor enhancement status and reset the started flag when completed
+  useEffect(() => {
+    if (selectedProspect) {
+      const status = getProspectStatus(selectedProspect.id);
+      if (status && (status.status === 'completed' || status.status === 'failed')) {
+        // Add a small delay before hiding to ensure user sees completion
+        const timer = setTimeout(() => {
+          setEnhancementStarted(false);
+        }, 2000);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [selectedProspect, getProspectStatus]);
   
-  const enhancementOptions = [
-    { key: 'values', label: 'Values' },
-    { key: 'titles', label: 'Titles' },
-    { key: 'naics', label: 'NAICS' },
-    { key: 'set_asides', label: 'Set-Asides' },
-  ] as const;
-  
-  const handleEnhancementTypeChange = (type: string, checked: boolean) => {
-    setSelectedEnhancementTypes(prev => ({
-      ...prev,
-      [type]: checked
-    }));
-  };
-  
-  const getSelectedEnhancementTypes = () => {
-    return Object.entries(selectedEnhancementTypes)
-      .filter(([_, selected]) => selected)
-      .map(([type, _]) => type);
-  };
-  
-  const selectAllEnhancements = () => {
-    setSelectedEnhancementTypes({
-      values: true,
-      titles: true,
-      naics: true,
-      set_asides: true,
-    });
-  };
-  
-  const deselectAllEnhancements = () => {
-    setSelectedEnhancementTypes({
-      values: false,
-      titles: false,
-      naics: false,
-      set_asides: false,
-    });
-  };
-  
-  const hasAnySelected = Object.values(selectedEnhancementTypes).some(selected => selected);
-  const hasAllSelected = Object.values(selectedEnhancementTypes).every(selected => selected);
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
@@ -138,7 +97,10 @@ export function ProspectDetailsModal({
               return (
                 <div className="inline-flex items-center ml-3 px-2 py-1 text-xs font-medium bg-yellow-100 text-yellow-800 rounded-full">
                   <ReloadIcon className="mr-1 h-3 w-3 animate-spin" />
-                  {status?.currentStep || status?.status === 'queued' ? `Queued (#${status.queuePosition})` : 'Being Enhanced'}
+                  {status?.status === 'queued' ? 
+                    `Queued (#${status.queuePosition || 1})` : 
+                    `Processing${status.queuePosition ? ` (#${status.queuePosition})` : ''}`
+                  }
                 </div>
               );
             })()}
@@ -150,27 +112,35 @@ export function ProspectDetailsModal({
         
         {selectedProspect && (
           <div className="space-y-6 mt-6">
-            {/* Enhancement Button */}
-            {!selectedProspect.ollama_processed_at && (
-              <div className="flex justify-end">
-                <EnhancementErrorBoundary>
-                  <EnhancementButton 
-                    prospect={selectedProspect}
-                    userId={1}
-                  />
-                </EnhancementErrorBoundary>
-              </div>
-            )}
+            {/* Enhancement Button - Always show, let button handle its state */}
+            <div className="flex justify-end">
+              <EnhancementErrorBoundary>
+                <EnhancementButtonWithSelector 
+                  prospect={selectedProspect}
+                  userId={1}
+                  onEnhancementStart={() => setEnhancementStarted(true)}
+                />
+              </EnhancementErrorBoundary>
+            </div>
             
             {/* Enhancement Progress */}
             <EnhancementErrorBoundary>
               <EnhancementProgress 
-                status={getProspectStatus(selectedProspect?.id || '')}
+                status={(() => {
+                  const enhancementState = getProspectStatus(selectedProspect?.id || '');
+                  if (!enhancementState) return null;
+                  
+                  return {
+                    currentStep: enhancementState.currentStep,
+                    progress: enhancementState.progress,
+                    enhancementTypes: enhancementState.enhancementTypes
+                  };
+                })()}
                 isVisible={(() => {
                   if (!selectedProspect) return false;
                   const status = getProspectStatus(selectedProspect.id);
-                  // Show progress only when queued or processing
-                  return ['queued', 'processing'].includes(status?.status as string);
+                  // Show progress when enhancement started or when queued/processing
+                  return enhancementStarted || (status !== null && ['queued', 'processing'].includes(status?.status as string));
                 })()}
               />
             </EnhancementErrorBoundary>
@@ -178,118 +148,9 @@ export function ProspectDetailsModal({
             {/* Enhancement Status */}
             {selectedProspect.ollama_processed_at && (
               <div className="bg-blue-50 border border-blue-200 p-3 rounded-lg">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center text-sm text-blue-800">
-                    <div className="w-2 h-2 bg-blue-500 rounded-full mr-2"></div>
-                    {selectedProspect.ollama_processed_at ? 
-                      `AI Enhanced on ${formatUserDate(selectedProspect.ollama_processed_at, 'datetime')}` : 
-                      'Not enhanced'
-                    }
-                  </div>
-                  <div className="flex items-center gap-1">
-                    {/* Enhancement options dropdown */}
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="text-blue-700 border-blue-300 hover:bg-blue-100 disabled:bg-gray-100 disabled:text-gray-400 px-2"
-                          disabled={(() => {
-                            const queueStatus = getProspectStatus(selectedProspect?.id);
-                            return queueStatus?.status === 'processing' || 
-                                   queueStatus?.status === 'queued';
-                          })()}
-                        >
-                          <DotsVerticalIcon className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-48">
-                        <DropdownMenuLabel>Enhancement Options</DropdownMenuLabel>
-                        <DropdownMenuSeparator />
-                        {enhancementOptions.map((option) => (
-                          <DropdownMenuCheckboxItem
-                            key={option.key}
-                            checked={selectedEnhancementTypes[option.key as keyof typeof selectedEnhancementTypes]}
-                            onCheckedChange={(checked) => handleEnhancementTypeChange(option.key, checked)}
-                            onSelect={(event) => {
-                              event.preventDefault(); // Prevent dropdown from closing
-                            }}
-                          >
-                            {option.label}
-                          </DropdownMenuCheckboxItem>
-                        ))}
-                        <DropdownMenuSeparator />
-                        <DropdownMenuCheckboxItem
-                          checked={hasAllSelected}
-                          onCheckedChange={(checked) => checked ? selectAllEnhancements() : deselectAllEnhancements()}
-                          onSelect={(event) => {
-                            event.preventDefault(); // Prevent dropdown from closing
-                          }}
-                          className="font-medium"
-                        >
-                          {hasAllSelected ? 'Deselect All' : 'Select All'}
-                        </DropdownMenuCheckboxItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                    
-                    {/* Main Redo Enhancement button */}
-                    <Button
-                      onClick={() => {
-                        if (selectedProspect && hasAnySelected) {
-                          const selectedTypes = getSelectedEnhancementTypes();
-                          addToQueue({
-                            prospect_id: selectedProspect.id,
-                            force_redo: true,
-                            user_id: 1,
-                            enhancement_types: selectedTypes
-                          });
-                        }
-                      }}
-                      disabled={(() => {
-                        const queueStatus = getProspectStatus(selectedProspect?.id);
-                        return queueStatus?.status === 'processing' || 
-                               queueStatus?.status === 'queued' ||
-                               queueStatus?.status === 'completed' ||
-                               !hasAnySelected;
-                      })()}
-                      variant="outline"
-                      size="sm"
-                      className="text-blue-700 border-blue-300 hover:bg-blue-100 disabled:bg-gray-100 disabled:text-gray-400"
-                    >
-                      {(() => {
-                        const queueStatus = getProspectStatus(selectedProspect?.id);
-                        if (queueStatus?.status === 'processing') {
-                          return (
-                            <>
-                              <ReloadIcon className="mr-2 h-3 w-3 animate-spin" />
-                              {queueStatus?.currentStep || 'Re-enhancing...'}
-                            </>
-                          );
-                        } else if (queueStatus?.status === 'queued') {
-                          return (
-                            <>
-                              <ReloadIcon className="mr-2 h-3 w-3 animate-spin" />
-                              Queued (#{queueStatus.queuePosition})
-                            </>
-                          );
-                        } else if (queueStatus?.status === 'completed') {
-                          // Keep showing queued state during the brief completed phase
-                          return (
-                            <>
-                              <ReloadIcon className="mr-2 h-3 w-3 animate-spin" />
-                              Completing...
-                            </>
-                          );
-                        } else {
-                          const selectedCount = getSelectedEnhancementTypes().length;
-                          const totalCount = enhancementOptions.length;
-                          return selectedCount === totalCount 
-                            ? 'Redo Enhancement' 
-                            : `Redo Enhancement (${selectedCount}/${totalCount})`;
-                        }
-                      })()}
-                    </Button>
-                  </div>
+                <div className="flex items-center text-sm text-blue-800">
+                  <div className="w-2 h-2 bg-blue-500 rounded-full mr-2"></div>
+                  {`AI Enhanced on ${formatUserDate(selectedProspect.ollama_processed_at, 'datetime')}`}
                 </div>
               </div>
             )}
@@ -415,10 +276,7 @@ export function ProspectDetailsModal({
                     })()}
                     <p className="mt-1 text-gray-900">
                       {(() => {
-                        // Show AI NAICS only if toggle is on and it's AI classified
-                        if (!showAIEnhanced && selectedProspect.naics_source === 'llm_inferred') {
-                          return 'N/A (Original data not available)';
-                        }
+                        // Always show NAICS if available
                         return selectedProspect.naics || 'N/A';
                       })()}
                       {(() => {
@@ -427,14 +285,18 @@ export function ProspectDetailsModal({
                                             status?.currentStep?.toLowerCase().includes('classifying');
                         const isNaicsCompleted = status?.progress?.naics?.completed;
                         
-                        return showAIEnhanced && selectedProspect.naics_source && !(isNaicsActive && !isNaicsCompleted);
+                        // Check if NAICS was actually changed by AI
+                        const originalNaics = selectedProspect.extra?.original_naics as string | undefined;
+                        const isAIEnhanced = showAIEnhanced && 
+                                           selectedProspect.naics_source === 'llm_inferred' && 
+                                           selectedProspect.ollama_processed_at &&
+                                           selectedProspect.naics &&
+                                           (!originalNaics || originalNaics !== selectedProspect.naics);
+                        
+                        return isAIEnhanced && !(isNaicsActive && !isNaicsCompleted);
                       })() && (
-                        <span className={`ml-2 text-xs px-2 py-1 rounded ${
-                          selectedProspect.naics_source === 'llm_inferred' 
-                            ? 'bg-blue-100 text-blue-700' 
-                            : 'bg-gray-100 text-gray-600'
-                        }`}>
-                          {selectedProspect.naics_source === 'llm_inferred' ? 'AI Classified' : 'Original'}
+                        <span className="ml-2 text-xs px-2 py-1 rounded bg-blue-100 text-blue-700">
+                          AI Classified
                         </span>
                       )}
                     </p>
@@ -484,6 +346,17 @@ export function ProspectDetailsModal({
                                        status?.currentStep?.toLowerCase().includes('parsing');
                   const isValuesCompleted = status?.progress?.values?.completed;
                   
+                  // Debug logging
+                  console.log('[Value Display Debug]', {
+                    showAIEnhanced,
+                    estimated_value_single: selectedProspect.estimated_value_single,
+                    estimated_value_min: selectedProspect.estimated_value_min,
+                    estimated_value_max: selectedProspect.estimated_value_max,
+                    isValuesActive,
+                    isValuesCompleted,
+                    shouldShow: showAIEnhanced && (selectedProspect.estimated_value_min || selectedProspect.estimated_value_max || selectedProspect.estimated_value_single) && !(isValuesActive && !isValuesCompleted)
+                  });
+                  
                   return showAIEnhanced && (selectedProspect.estimated_value_min || selectedProspect.estimated_value_max || selectedProspect.estimated_value_single) && !(isValuesActive && !isValuesCompleted);
                 })() && (
                   <div className="bg-green-50 p-3 rounded-lg border border-green-200">
@@ -495,13 +368,28 @@ export function ProspectDetailsModal({
                       {/* Show range if min/max exist and single is null */}
                       {selectedProspect.estimated_value_min && selectedProspect.estimated_value_max && !selectedProspect.estimated_value_single && (
                         <p className="text-gray-900">
-                          <span className="text-sm text-gray-600">Range:</span> ${parseFloat(selectedProspect.estimated_value_min).toLocaleString()} - ${parseFloat(selectedProspect.estimated_value_max).toLocaleString()}
+                          <span className="text-sm text-gray-600">Range:</span> 
+                          {(() => {
+                            const min = parseFloat(selectedProspect.estimated_value_min);
+                            const max = parseFloat(selectedProspect.estimated_value_max);
+                            if (!isNaN(min) && !isNaN(max)) {
+                              return ` $${min.toLocaleString()} - $${max.toLocaleString()}`;
+                            }
+                            return ' Invalid values';
+                          })()}
                         </p>
                       )}
                       {/* Show single value if it exists */}
                       {selectedProspect.estimated_value_single && (
                         <p className="text-gray-900">
-                          <span className="text-sm text-gray-600">Value:</span> ${parseFloat(selectedProspect.estimated_value_single).toLocaleString()}
+                          <span className="text-sm text-gray-600">Value:</span> 
+                          {(() => {
+                            const single = parseFloat(selectedProspect.estimated_value_single);
+                            if (!isNaN(single)) {
+                              return ` $${single.toLocaleString()}`;
+                            }
+                            return ' Invalid value';
+                          })()}
                         </p>
                       )}
                     </div>
@@ -516,9 +404,22 @@ export function ProspectDetailsModal({
                   <div>
                     <span className="font-medium text-gray-700">Set Aside:</span>
                     <p className="mt-1 text-gray-900">
-                      {selectedProspect.inferred_set_aside || selectedProspect.set_aside || 'N/A'}
-                      {selectedProspect.inferred_set_aside && selectedProspect.inferred_set_aside !== selectedProspect.set_aside && (
-                        <span className="ml-2 text-sm text-blue-600 font-medium">(AI Enhanced)</span>
+                      {(() => {
+                        // Show AI-enhanced set-aside if toggle is on and available
+                        if (showAIEnhanced && selectedProspect.set_aside_standardized_label && 
+                            selectedProspect.set_aside_standardized !== 'NOT_AVAILABLE') {
+                          return selectedProspect.set_aside_standardized_label;
+                        }
+                        return selectedProspect.set_aside || 'N/A';
+                      })()}
+                      {showAIEnhanced && 
+                       selectedProspect.set_aside_standardized_label && 
+                       selectedProspect.set_aside_standardized !== 'NOT_AVAILABLE' &&
+                       selectedProspect.set_aside_standardized_label !== selectedProspect.set_aside &&
+                       selectedProspect.ollama_processed_at && (
+                        <span className="ml-2 text-xs px-2 py-1 rounded bg-blue-100 text-blue-700">
+                          AI Enhanced
+                        </span>
                       )}
                     </p>
                   </div>

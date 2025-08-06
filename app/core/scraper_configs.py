@@ -329,7 +329,9 @@ DOC_CONFIG = ScraperConfig(
         "Place Of Performance State": "place_state",
         "Place Of Performance Country": "place_country_raw",
         "Estimated Value Range": "estimated_value_text",
-        "Anticipated Set Aside And Type": "set_aside",
+        "Type Of Awardee": "set_aside",  # Fixed: This contains actual set-aside info
+        "Anticipated Set Aside And Type": "competition_strategy",  # This contains competition type
+        "Competition Strategy": "competition_strategy_alt",  # Alternate competition field
         "Point Of Contact Email": "primary_contact_email",
         "Point Of Contact Name": "primary_contact_name",
     },

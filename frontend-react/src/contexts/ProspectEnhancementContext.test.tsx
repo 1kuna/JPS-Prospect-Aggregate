@@ -3,18 +3,21 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import React from 'react';
 import { ProspectEnhancementProvider, useProspectEnhancement } from './ProspectEnhancementContext';
 
-// Mock the useEnhancement hook
+// Mock the useEnhancementSimple hook
 const mockQueueEnhancement = vi.fn();
 const mockGetEnhancementState = vi.fn();
 const mockCancelEnhancement = vi.fn();
 
-vi.mock('@/hooks/api/useEnhancement', () => ({
-  useEnhancement: () => ({
+vi.mock('@/hooks/api/useEnhancementSimple', () => ({
+  useEnhancementSimple: () => ({
     queueEnhancement: mockQueueEnhancement,
     getEnhancementState: mockGetEnhancementState,
     cancelEnhancement: mockCancelEnhancement,
-    queueLength: 3,
-    isProcessing: true
+    enhancementStates: {
+      'prospect-1': { status: 'queued', queuePosition: 1 },
+      'prospect-2': { status: 'queued', queuePosition: 2 },
+      'prospect-3': { status: 'processing', currentStep: 'Enhancing title...' }
+    }
   })
 }));
 
@@ -272,13 +275,12 @@ describe('ProspectEnhancementContext', () => {
     expect(screen.getByTestId('is-processing')).toHaveTextContent('processing');
 
     // Mock the hook to return different values
-    vi.mocked(vi.importMock('@/hooks/api/useEnhancement')).mockImplementation(() => ({
-      useEnhancement: () => ({
+    vi.mocked(vi.importMock('@/hooks/api/useEnhancementSimple')).mockImplementation(() => ({
+      useEnhancementSimple: () => ({
         queueEnhancement: mockQueueEnhancement,
         getEnhancementState: mockGetEnhancementState,
         cancelEnhancement: mockCancelEnhancement,
-        queueLength: 0,
-        isProcessing: false
+        enhancementStates: {}
       })
     }));
 

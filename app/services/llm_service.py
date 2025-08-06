@@ -822,6 +822,7 @@ class LLMService:
         prospect: Prospect,
         enhancement_type: EnhancementType = "all",
         progress_callback: Optional[Callable] = None,
+        force_redo: bool = False,
     ) -> Dict[str, bool]:
         """
         Process all enhancements for a single prospect.
@@ -830,12 +831,13 @@ class LLMService:
             prospect: The prospect to enhance
             enhancement_type: Type of enhancement to perform
             progress_callback: Optional callback for progress updates
+            force_redo: If True, re-process even if fields already exist
 
         Returns:
             Dict with enhancement results for each type
         """
         logger.info(
-            f"LLM Service: Starting enhance_single_prospect for {prospect.id[:8]}... (type: {enhancement_type})"
+            f"LLM Service: Starting enhance_single_prospect for {prospect.id[:8]}... (type: {enhancement_type}, force_redo: {force_redo})"
         )
 
         results = {
@@ -852,8 +854,60 @@ class LLMService:
         self.ensure_extra_is_dict(prospect)
         logger.debug(f"LLM Service: Extra field verified for {prospect.id[:8]}...")
 
-        # Process value enhancement
-        if enhancement_type in ["values", "all"]:
+        # Convert enhancement_type to list for easier checking
+        if isinstance(enhancement_type, str):
+            enhancement_types = [t.strip() for t in enhancement_type.split(",")] if "," in enhancement_type else [enhancement_type]
+        else:
+            enhancement_types = [enhancement_type]
+        
+        # Process title enhancement FIRST (to match frontend order)
+        if "titles" in enhancement_types or "all" in enhancement_types:
+            logger.info(f"LLM Service: Processing titles for {prospect.id[:8]}...")
+            if progress_callback:
+                progress_callback(
+                    {
+                        "status": "processing",
+                        "field": "titles",
+                        "prospect_id": prospect.id,
+                    }
+                )
+
+            if prospect.title and (not prospect.ai_enhanced_title or force_redo):
+                enhanced_title = self.enhance_title_with_llm(
+                    prospect.title,
+                    prospect.description or "",
+                    prospect.agency or "",
+                    prospect_id=prospect.id,
+                )
+
+                if enhanced_title["enhanced_title"]:
+                    prospect.ai_enhanced_title = enhanced_title["enhanced_title"]
+
+                    prospect.extra["llm_title_enhancement"] = {
+                        "confidence": enhanced_title["confidence"],
+                        "reasoning": enhanced_title.get("reasoning", ""),
+                        "original_title": prospect.title,
+                        "enhanced_at": datetime.now(timezone.utc).isoformat(),
+                        "model_used": self.model_name,
+                    }
+                    results["titles"] = True
+
+            # Emit completion callback for titles
+            if progress_callback:
+                progress_callback(
+                    {
+                        "status": "completed",
+                        "field": "titles",
+                        "prospect_id": prospect.id,
+                    }
+                )
+        else:
+            logger.debug(
+                f"LLM Service: Skipping titles processing for {prospect.id[:8]}"
+            )
+
+        # Process value enhancement SECOND (to match frontend order)
+        if "values" in enhancement_types or "all" in enhancement_types:
             logger.info(f"LLM Service: Processing values for {prospect.id[:8]}...")
             if progress_callback:
                 progress_callback(
@@ -865,9 +919,9 @@ class LLMService:
                 )
 
             value_to_parse = None
-            if prospect.estimated_value_text and not prospect.estimated_value_single:
+            if prospect.estimated_value_text and (not prospect.estimated_value_single or force_redo):
                 value_to_parse = prospect.estimated_value_text
-            elif prospect.estimated_value and not prospect.estimated_value_single:
+            elif prospect.estimated_value and (not prospect.estimated_value_single or force_redo):
                 value_to_parse = str(prospect.estimated_value)
 
             logger.debug(
@@ -884,18 +938,27 @@ class LLMService:
                 logger.info(
                     f"LLM Service: Received parsed value for {prospect.id[:8]}: {parsed_value}"
                 )
-                if parsed_value["single"] is not None:
-                    prospect.estimated_value_single = float(parsed_value["single"])
-                    prospect.estimated_value_min = (
-                        float(parsed_value["min"])
-                        if parsed_value["min"]
-                        else float(parsed_value["single"])
-                    )
-                    prospect.estimated_value_max = (
-                        float(parsed_value["max"])
-                        if parsed_value["max"]
-                        else float(parsed_value["single"])
-                    )
+                # Handle both single values and ranges
+                if parsed_value["single"] is not None or (parsed_value["min"] is not None and parsed_value["max"] is not None):
+                    # Set single value if available
+                    if parsed_value["single"] is not None:
+                        prospect.estimated_value_single = float(parsed_value["single"])
+                        prospect.estimated_value_min = (
+                            float(parsed_value["min"])
+                            if parsed_value["min"] is not None
+                            else float(parsed_value["single"])
+                        )
+                        prospect.estimated_value_max = (
+                            float(parsed_value["max"])
+                            if parsed_value["max"] is not None
+                            else float(parsed_value["single"])
+                        )
+                    else:
+                        # We have a range without a single value
+                        prospect.estimated_value_single = None
+                        prospect.estimated_value_min = float(parsed_value["min"]) if parsed_value["min"] is not None else None
+                        prospect.estimated_value_max = float(parsed_value["max"]) if parsed_value["max"] is not None else None
+                    
                     if not prospect.estimated_value_text:
                         prospect.estimated_value_text = value_to_parse
                     results["values"] = True
@@ -917,7 +980,7 @@ class LLMService:
             )
 
         # Process NAICS classification
-        if enhancement_type in ["naics", "all"]:
+        if "naics" in enhancement_types or "all" in enhancement_types:
             if progress_callback:
                 progress_callback(
                     {
@@ -928,8 +991,14 @@ class LLMService:
                 )
 
             if prospect.description and (
-                not prospect.naics or prospect.naics_source != "llm_inferred"
+                not prospect.naics or prospect.naics_source != "llm_inferred" or force_redo
             ):
+                # Store original NAICS if it exists and hasn't been stored yet
+                if prospect.naics and "original_naics" not in prospect.extra:
+                    prospect.extra["original_naics"] = prospect.naics
+                    prospect.extra["original_naics_description"] = prospect.naics_description
+                    prospect.extra["original_naics_source"] = prospect.naics_source or "original"
+                
                 # First check extra field
                 extra_naics = self.extract_naics_from_extra_field(prospect.extra)
 
@@ -978,49 +1047,9 @@ class LLMService:
                     }
                 )
 
-        # Process title enhancement
-        if enhancement_type in ["titles", "all"]:
-            if progress_callback:
-                progress_callback(
-                    {
-                        "status": "processing",
-                        "field": "titles",
-                        "prospect_id": prospect.id,
-                    }
-                )
-
-            if prospect.title and not prospect.ai_enhanced_title:
-                enhanced_title = self.enhance_title_with_llm(
-                    prospect.title,
-                    prospect.description or "",
-                    prospect.agency or "",
-                    prospect_id=prospect.id,
-                )
-
-                if enhanced_title["enhanced_title"]:
-                    prospect.ai_enhanced_title = enhanced_title["enhanced_title"]
-
-                    prospect.extra["llm_title_enhancement"] = {
-                        "confidence": enhanced_title["confidence"],
-                        "reasoning": enhanced_title.get("reasoning", ""),
-                        "original_title": prospect.title,
-                        "enhanced_at": datetime.now(timezone.utc).isoformat(),
-                        "model_used": self.model_name,
-                    }
-                    results["titles"] = True
-
-            # Emit completion callback for titles
-            if progress_callback:
-                progress_callback(
-                    {
-                        "status": "completed",
-                        "field": "titles",
-                        "prospect_id": prospect.id,
-                    }
-                )
 
         # Process set-aside standardization
-        if enhancement_type in ["set_asides", "all"]:
+        if "set_asides" in enhancement_types or "all" in enhancement_types:
             if progress_callback:
                 progress_callback(
                     {
@@ -1030,7 +1059,7 @@ class LLMService:
                     }
                 )
 
-            if not prospect.set_aside_standardized:
+            if not prospect.set_aside_standardized or force_redo:
                 comprehensive_data = self._get_comprehensive_set_aside_data(
                     prospect.set_aside, prospect
                 )

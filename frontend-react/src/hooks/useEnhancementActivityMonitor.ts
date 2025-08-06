@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { useEnhancement } from '@/hooks/api/useEnhancement';
+import { useEnhancementSimple } from '@/hooks/api/useEnhancementSimple';
 import { useEnhancementQueueService } from '@/hooks/api/useEnhancementQueueService';
 
 interface ActivityState {
@@ -19,7 +19,7 @@ interface ActivityState {
  */
 export function useEnhancementActivityMonitor() {
   const queryClient = useQueryClient();
-  const { enhancementStates } = useEnhancement();
+  const { enhancementStates } = useEnhancementSimple();
   const { isWorkerRunning, isIterativeProcessing } = useEnhancementQueueService();
   
   const [activityState, setActivityState] = useState<ActivityState>({
