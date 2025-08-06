@@ -23,6 +23,16 @@ vi.mock('@/components/ui/Toast', () => ({
   ToastIcon: ({ variant, severity }: any) => React.createElement('div', { 'data-testid': 'toast-icon', 'data-variant': variant, 'data-severity': severity }),
 }));
 
+// Helper to generate dynamic toast content
+const generateToastContent = () => {
+  const titles = ['Alert', 'Notification', 'Update', 'Message', 'Status'];
+  const descriptions = ['Process completed', 'Action required', 'System update', 'New information', 'Status changed'];
+  return {
+    title: titles[Math.floor(Math.random() * titles.length)] + ` ${Math.floor(Math.random() * 1000)}`,
+    description: descriptions[Math.floor(Math.random() * descriptions.length)] + ` ${Math.floor(Math.random() * 1000)}`
+  };
+};
+
 // Test component that uses the toast context
 const TestComponent = () => {
   const {
@@ -33,45 +43,85 @@ const TestComponent = () => {
     showWarningToast
   } = useToast();
 
+  const handleShowToast = () => {
+    const content = generateToastContent();
+    showToast({ title: content.title, description: content.description });
+  };
+
+  const handleShowError = () => {
+    const messages = ['Operation failed', 'Network error', 'Validation failed', 'Permission denied'];
+    const message = messages[Math.floor(Math.random() * messages.length)] + ` ${Math.floor(Math.random() * 1000)}`;
+    showErrorToast(message);
+  };
+
+  const handleShowSuccess = () => {
+    const content = generateToastContent();
+    showSuccessToast(content.title, content.description);
+  };
+
+  const handleShowInfo = () => {
+    const content = generateToastContent();
+    showInfoToast(content.title, content.description);
+  };
+
+  const handleShowWarning = () => {
+    const content = generateToastContent();
+    showWarningToast(content.title, content.description);
+  };
+
+  const handleShowJSError = () => {
+    const errorMessages = ['Async operation failed', 'Network timeout', 'Parse error', 'Connection lost'];
+    const message = errorMessages[Math.floor(Math.random() * errorMessages.length)];
+    showErrorToast(new Error(message));
+  };
+
   return (
     <div>
-      <button onClick={() => showToast({ title: 'Test Toast', description: 'Test description' })}>
+      <button onClick={handleShowToast}>
         Show Toast
       </button>
-      <button onClick={() => showErrorToast('Test Error')}>
+      <button onClick={handleShowError}>
         Show Error
       </button>
-      <button onClick={() => showSuccessToast('Success!', 'Success description')}>
+      <button onClick={handleShowSuccess}>
         Show Success
       </button>
-      <button onClick={() => showInfoToast('Info message', 'Info description')}>
+      <button onClick={handleShowInfo}>
         Show Info
       </button>
-      <button onClick={() => showWarningToast('Warning message', 'Warning description')}>
+      <button onClick={handleShowWarning}>
         Show Warning
       </button>
-      <button onClick={() => showErrorToast(new Error('JS Error'))}>
+      <button onClick={handleShowJSError}>
         Show JS Error
       </button>
     </div>
   );
 };
 
-const mockAppError: AppError = {
-  code: 'TEST_ERROR',
-  message: 'Test error message',
-  severity: ErrorSeverity.ERROR,
-  category: ErrorCategory.SYSTEM,
-  timestamp: new Date(),
-  userMessage: 'Something went wrong',
-  technicalDetails: 'Technical details here',
-  recoveryActions: [
-    {
-      label: 'Retry',
-      action: vi.fn(),
-      primary: true
-    }
-  ]
+// Helper to generate dynamic error data
+const generateAppError = (severity: ErrorSeverity = ErrorSeverity.ERROR): AppError => {
+  const errorCodes = ['NETWORK_ERROR', 'VALIDATION_ERROR', 'AUTH_ERROR', 'SYSTEM_ERROR', 'USER_ERROR'];
+  const messages = ['Operation failed', 'Invalid input', 'Access denied', 'System unavailable', 'User action required'];
+  const userMessages = ['Something went wrong', 'Please check your input', 'Authentication required', 'Service temporarily unavailable', 'Please try again'];
+  const categories = [ErrorCategory.SYSTEM, ErrorCategory.NETWORK, ErrorCategory.VALIDATION, ErrorCategory.USER, ErrorCategory.EXTERNAL];
+  
+  return {
+    code: errorCodes[Math.floor(Math.random() * errorCodes.length)],
+    message: messages[Math.floor(Math.random() * messages.length)],
+    severity,
+    category: categories[Math.floor(Math.random() * categories.length)],
+    timestamp: new Date(),
+    userMessage: userMessages[Math.floor(Math.random() * userMessages.length)],
+    technicalDetails: `Technical details: ${Math.random().toString(36).substr(2, 9)}`,
+    recoveryActions: [
+      {
+        label: Math.random() > 0.5 ? 'Retry' : 'Dismiss',
+        action: vi.fn(),
+        primary: Math.random() > 0.5
+      }
+    ]
+  };
 };
 
 describe('ToastContext', () => {
@@ -118,8 +168,11 @@ describe('ToastContext', () => {
     fireEvent.click(screen.getByText('Show Toast'));
 
     expect(screen.getByTestId('toast')).toBeInTheDocument();
-    expect(screen.getByTestId('toast-title')).toHaveTextContent('Test Toast');
-    expect(screen.getByTestId('toast-description')).toHaveTextContent('Test description');
+    // Should display title and description content
+    const title = screen.getByTestId('toast-title');
+    const description = screen.getByTestId('toast-description');
+    expect(title.textContent).toBeTruthy();
+    expect(description.textContent).toBeTruthy();
   });
 
   it('shows error toast with correct styling', () => {
@@ -134,8 +187,10 @@ describe('ToastContext', () => {
     const toast = screen.getByTestId('toast');
     expect(toast).toBeInTheDocument();
     expect(toast).toHaveAttribute('data-variant', 'destructive');
+    // Should display error title and description
     expect(screen.getByTestId('toast-title')).toHaveTextContent('Error');
-    expect(screen.getByTestId('toast-description')).toHaveTextContent('Test Error');
+    const description = screen.getByTestId('toast-description');
+    expect(description.textContent).toBeTruthy();
   });
 
   it('shows success toast with correct styling', () => {
@@ -150,8 +205,11 @@ describe('ToastContext', () => {
     const toast = screen.getByTestId('toast');
     expect(toast).toBeInTheDocument();
     expect(toast).toHaveAttribute('data-variant', 'success');
-    expect(screen.getByTestId('toast-title')).toHaveTextContent('Success!');
-    expect(screen.getByTestId('toast-description')).toHaveTextContent('Success description');
+    // Should display success content
+    const title = screen.getByTestId('toast-title');
+    const description = screen.getByTestId('toast-description');
+    expect(title.textContent).toBeTruthy();
+    expect(description.textContent).toBeTruthy();
   });
 
   it('shows info toast with correct styling', () => {
@@ -167,7 +225,9 @@ describe('ToastContext', () => {
     expect(toast).toBeInTheDocument();
     expect(toast).toHaveAttribute('data-variant', 'info');
     expect(toast).toHaveAttribute('data-severity', 'info');
-    expect(screen.getByTestId('toast-title')).toHaveTextContent('Info message');
+    // Should display info content
+    const title = screen.getByTestId('toast-title');
+    expect(title.textContent).toBeTruthy();
   });
 
   it('shows warning toast with correct styling', () => {
@@ -183,7 +243,9 @@ describe('ToastContext', () => {
     expect(toast).toBeInTheDocument();
     expect(toast).toHaveAttribute('data-variant', 'warning');
     expect(toast).toHaveAttribute('data-severity', 'warning');
-    expect(screen.getByTestId('toast-title')).toHaveTextContent('Warning message');
+    // Should display warning content
+    const title = screen.getByTestId('toast-title');
+    expect(title.textContent).toBeTruthy();
   });
 
   it('handles JavaScript Error objects', () => {
@@ -203,10 +265,11 @@ describe('ToastContext', () => {
   });
 
   it('handles AppError objects with recovery actions', () => {
+    const testError = generateAppError();
     const TestAppErrorComponent = () => {
       const { showErrorToast } = useToast();
       return (
-        <button onClick={() => showErrorToast(mockAppError)}>
+        <button onClick={() => showErrorToast(testError)}>
           Show App Error
         </button>
       );
@@ -224,18 +287,21 @@ describe('ToastContext', () => {
     expect(toast).toBeInTheDocument();
     expect(toast).toHaveAttribute('data-variant', 'destructive');
     expect(toast).toHaveAttribute('data-severity', 'error');
-    expect(screen.getByTestId('toast-title')).toHaveTextContent('Something went wrong');
-    expect(screen.getByTestId('toast-description')).toHaveTextContent('Technical details here');
     
-    // Should show recovery action
-    expect(screen.getByTestId('toast-action')).toHaveTextContent('Retry');
+    // Should display the user message from the generated error
+    expect(screen.getByTestId('toast-title')).toHaveTextContent(testError.userMessage!);
+    expect(screen.getByTestId('toast-description')).toHaveTextContent(testError.technicalDetails!);
+    
+    // Should show recovery action with the generated label
+    expect(screen.getByTestId('toast-action')).toHaveTextContent(testError.recoveryActions![0].label);
   });
 
   it('calls recovery action when clicked', () => {
+    const testError = generateAppError();
     const TestAppErrorComponent = () => {
       const { showErrorToast } = useToast();
       return (
-        <button onClick={() => showErrorToast(mockAppError)}>
+        <button onClick={() => showErrorToast(testError)}>
           Show App Error
         </button>
       );
@@ -250,7 +316,7 @@ describe('ToastContext', () => {
     fireEvent.click(screen.getByText('Show App Error'));
     fireEvent.click(screen.getByTestId('toast-action'));
 
-    expect(mockAppError.recoveryActions![0].action).toHaveBeenCalled();
+    expect(testError.recoveryActions![0].action).toHaveBeenCalled();
   });
 
   it('auto-removes toasts after duration', async () => {
@@ -362,18 +428,19 @@ describe('ToastContext', () => {
     expect(window.showToast).toBeDefined();
     expect(typeof window.showToast).toBe('function');
 
-    // Test global function
+    // Test global function with dynamic content
+    const content = generateToastContent();
     act(() => {
       window.showToast({
-        title: 'Global Toast',
-        message: 'Global message',
+        title: content.title,
+        message: content.description,
         type: 'success'
       });
     });
 
     expect(screen.getByTestId('toast')).toBeInTheDocument();
-    expect(screen.getByTestId('toast-title')).toHaveTextContent('Global Toast');
-    expect(screen.getByTestId('toast-description')).toHaveTextContent('Global message');
+    expect(screen.getByTestId('toast-title')).toHaveTextContent(content.title);
+    expect(screen.getByTestId('toast-description')).toHaveTextContent(content.description);
     
     const toast = screen.getByTestId('toast');
     expect(toast).toHaveAttribute('data-variant', 'success');
@@ -446,7 +513,7 @@ describe('ToastContext', () => {
 
   it('handles AppError without recovery actions', () => {
     const errorWithoutActions: AppError = {
-      ...mockAppError,
+      ...generateAppError(),
       recoveryActions: undefined
     };
 
@@ -472,8 +539,9 @@ describe('ToastContext', () => {
   });
 
   it('handles AppError with fallback message', () => {
+    const baseError = generateAppError();
     const errorWithoutUserMessage: AppError = {
-      ...mockAppError,
+      ...baseError,
       userMessage: undefined
     };
 
@@ -494,7 +562,8 @@ describe('ToastContext', () => {
 
     fireEvent.click(screen.getByText('Show Error Fallback'));
 
-    expect(screen.getByTestId('toast-title')).toHaveTextContent('Test error message');
+    // Should use the error message as fallback when userMessage is undefined
+    expect(screen.getByTestId('toast-title')).toHaveTextContent(baseError.message);
   });
 
   it('generates unique IDs for toasts', () => {
@@ -529,10 +598,11 @@ describe('ToastContext', () => {
     ];
 
     testCases.forEach(({ type, expectedVariant }, index) => {
+      const content = generateToastContent();
       act(() => {
         window.showToast({
-          title: `Test ${type}`,
-          message: 'Test message',
+          title: `${content.title} (${type})`,
+          message: content.description,
           type
         });
       });

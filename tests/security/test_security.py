@@ -97,14 +97,16 @@ class TestSQLInjection:
             # Test search parameter
             response = client.get(f'/api/prospects?keywords={payload}')
             
-            # Should not cause server error or expose database structure
+            # Should handle malicious input gracefully
             assert response.status_code in [200, 400, 422]  # Valid responses
             
             if response.status_code == 200:
                 data = response.get_json()
                 assert 'prospects' in data
-                # Should not return unexpected data
+                # Response structure should remain intact
                 assert isinstance(data['prospects'], list)
+                # SQL injection should not affect query results
+                # (Results should be filtered normally or empty, not expose all data)
     
     def test_prospects_api_sql_injection_in_filters(self, client):
         """Test SQL injection in filter parameters."""

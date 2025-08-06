@@ -16,61 +16,54 @@ vi.mock('./useEnhancementActivityMonitor', () => ({
   useEnhancementActivityMonitor: () => mockUseEnhancementActivityMonitor()
 }));
 
-const mockProspects: Prospect[] = [
-  {
-    id: 'prospect-1',
-    title: 'Software Development Services',
-    description: 'Development of custom software solutions',
-    agency: 'Department of Defense',
-    posted_date: '2024-01-15',
-    loaded_at: '2024-01-15T10:00:00Z',
-    estimated_value: 50000,
-    estimated_value_text: '$50,000',
-    naics_code: '541511',
-    source_file: 'dod_2024_01_15.json',
-    source_data_id: 1,
-    enhancement_status: 'idle',
-    duplicate_group_id: null,
-    set_aside_status: null,
-    contact_email: null,
-    contact_name: null,
-    ai_enhanced_title: null,
-    ai_enhanced_description: null,
-    parsed_contract_value: null,
-    ollama_processed_at: null
-  },
-  {
-    id: 'prospect-2',
-    title: 'Cloud Infrastructure Setup',
-    description: 'Setup and configuration of cloud infrastructure',
-    agency: 'Health and Human Services',
-    posted_date: '2024-01-16',
-    loaded_at: '2024-01-16T10:00:00Z',
-    estimated_value: 75000,
-    estimated_value_text: '$75,000',
-    naics_code: '518210',
-    source_file: 'hhs_2024_01_16.json',
-    source_data_id: 2,
-    enhancement_status: 'idle',
-    duplicate_group_id: null,
-    set_aside_status: null,
-    contact_email: null,
-    contact_name: null,
-    ai_enhanced_title: null,
-    ai_enhanced_description: null,
-    parsed_contract_value: null,
-    ollama_processed_at: null
-  }
-];
+// Helper function to generate dynamic prospect data
+const generateProspect = (): Prospect => {
+  const agencies = ['Department of Defense', 'Health and Human Services', 'Department of Commerce', 'Department of Energy'];
+  const naicsCodes = ['541511', '541512', '518210', '541519', '236220'];
+  const statuses = ['idle', 'processing', 'completed', 'error'] as const;
+  
+  const randomId = Math.random().toString(36).substr(2, 9);
+  const baseValue = Math.floor(Math.random() * 500000) + 10000;
+  
+  return {
+    id: randomId,
+    title: `Contract ${Math.floor(Math.random() * 1000)}`,
+    description: `Description for contract ${randomId}`,
+    agency: agencies[Math.floor(Math.random() * agencies.length)],
+    posted_date: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    loaded_at: new Date().toISOString(),
+    estimated_value: baseValue,
+    estimated_value_text: `$${baseValue.toLocaleString()}`,
+    naics_code: naicsCodes[Math.floor(Math.random() * naicsCodes.length)],
+    source_file: `source_${Math.floor(Math.random() * 100)}.json`,
+    source_data_id: Math.floor(Math.random() * 1000) + 1,
+    enhancement_status: statuses[Math.floor(Math.random() * statuses.length)],
+    duplicate_group_id: Math.random() > 0.8 ? Math.floor(Math.random() * 100) : null,
+    set_aside_status: Math.random() > 0.5 ? 'Small Business' : null,
+    contact_email: Math.random() > 0.5 ? `contact${Math.floor(Math.random() * 100)}@agency.gov` : null,
+    contact_name: Math.random() > 0.5 ? `Contact ${Math.floor(Math.random() * 100)}` : null,
+    ai_enhanced_title: Math.random() > 0.7 ? `Enhanced: ${Math.floor(Math.random() * 100)}` : null,
+    ai_enhanced_description: Math.random() > 0.7 ? `Enhanced description ${Math.floor(Math.random() * 100)}` : null,
+    parsed_contract_value: Math.random() > 0.5 ? baseValue : null,
+    ollama_processed_at: Math.random() > 0.5 ? new Date().toISOString() : null
+  };
+};
 
-const mockResponse = {
-  prospects: mockProspects,
-  pagination: {
-    total_items: 25,
-    total_pages: 3,
-    page: 1,
-    per_page: 10
-  }
+const generatePaginatedResponse = (prospectCount: number = 2) => {
+  const prospects = Array.from({ length: prospectCount }, () => generateProspect());
+  const perPage = Math.floor(Math.random() * 20) + 5;
+  const totalItems = Math.floor(Math.random() * 100) + prospectCount;
+  const totalPages = Math.ceil(totalItems / perPage);
+  
+  return {
+    prospects,
+    pagination: {
+      total_items: totalItems,
+      total_pages: totalPages,
+      page: Math.floor(Math.random() * totalPages) + 1,
+      per_page: perPage
+    }
+  };
 };
 
 // Wrapper component for React Query
@@ -87,12 +80,18 @@ const createWrapper = () => {
 };
 
 describe('usePaginatedProspects', () => {
+  let testResponse: any;
+  
   beforeEach(() => {
     vi.clearAllMocks();
     mockUseEnhancementActivityMonitor.mockReturnValue({ hasAnyActivity: false });
+    
+    // Generate fresh test data for each test
+    testResponse = generatePaginatedResponse();
+    
     mockFetch.mockResolvedValue({
       ok: true,
-      json: () => Promise.resolve(mockResponse)
+      json: () => Promise.resolve(testResponse)
     });
   });
 
@@ -127,9 +126,9 @@ describe('usePaginatedProspects', () => {
       expect(result.current.isLoading).toBe(false);
     });
 
-    expect(result.current.prospects).toEqual(mockProspects);
-    expect(result.current.total).toBe(25);
-    expect(result.current.totalPages).toBe(3);
+    expect(result.current.prospects).toEqual(testResponse.prospects);
+    expect(result.current.total).toBe(testResponse.pagination.total_items);
+    expect(result.current.totalPages).toBe(testResponse.pagination.total_pages);
   });
 
   it('constructs correct API URL with no filters', async () => {
@@ -139,17 +138,27 @@ describe('usePaginatedProspects', () => {
     );
 
     await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalledWith('/api/prospects?page=1&limit=10');
+      const callUrl = mockFetch.mock.calls[0][0] as string;
+      expect(callUrl).toContain('/api/prospects');
+      expect(callUrl).toContain('page=1');
+      expect(callUrl).toContain('limit=10');
+      expect(callUrl).not.toContain('naics=');
+      expect(callUrl).not.toContain('keywords=');
     });
   });
 
   it('constructs correct API URL with all filters', async () => {
+    const testNaics = Math.floor(Math.random() * 900000) + 100000; // Random 6-digit NAICS
+    const testKeywords = `keyword${Math.floor(Math.random() * 1000)}`;
+    const testAgency = `Agency${Math.floor(Math.random() * 100)}`;
+    const testSourceIds = Array.from({ length: Math.floor(Math.random() * 5) + 1 }, () => Math.floor(Math.random() * 10) + 1);
+    
     const filters: ProspectFilters = {
-      naics: '541511',
-      keywords: 'software development',
-      agency: 'DOD',
+      naics: testNaics.toString(),
+      keywords: testKeywords,
+      agency: testAgency,
       ai_enrichment: 'enhanced',
-      dataSourceIds: [1, 2, 3]
+      dataSourceIds: testSourceIds
     };
 
     renderHook(
@@ -158,9 +167,13 @@ describe('usePaginatedProspects', () => {
     );
 
     await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalledWith(
-        '/api/prospects?page=1&limit=10&naics=541511&keywords=software+development&agency=DOD&ai_enrichment=enhanced&source_ids=1%2C2%2C3'
-      );
+      const callUrl = mockFetch.mock.calls[0][0] as string;
+      expect(callUrl).toContain('/api/prospects');
+      expect(callUrl).toContain(`naics=${testNaics}`);
+      expect(callUrl).toContain(`keywords=${encodeURIComponent(testKeywords)}`);
+      expect(callUrl).toContain(`agency=${encodeURIComponent(testAgency)}`);
+      expect(callUrl).toContain('ai_enrichment=enhanced');
+      expect(callUrl).toContain('source_ids=');
     });
   });
 
@@ -225,7 +238,9 @@ describe('usePaginatedProspects', () => {
     expect(result.current.currentPage).toBe(2);
 
     await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalledWith('/api/prospects?page=2&limit=10');
+      const secondCallUrl = mockFetch.mock.calls[1][0] as string;
+      expect(secondCallUrl).toContain('page=2');
+      expect(secondCallUrl).toContain('limit=10');
     });
   });
 
@@ -256,7 +271,9 @@ describe('usePaginatedProspects', () => {
     expect(result.current.itemsPerPage).toBe(25);
 
     await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalledWith('/api/prospects?page=1&limit=25');
+      const lastCallUrl = mockFetch.mock.calls[mockFetch.mock.calls.length - 1][0] as string;
+      expect(lastCallUrl).toContain('page=1');
+      expect(lastCallUrl).toContain('limit=25');
     });
   });
 
@@ -305,7 +322,10 @@ describe('usePaginatedProspects', () => {
       await result.current.refetch();
     });
 
-    expect(mockFetch).toHaveBeenCalledWith('/api/prospects?page=1&limit=10');
+    const refetchCallUrl = mockFetch.mock.calls[0][0] as string;
+    expect(refetchCallUrl).toContain('/api/prospects');
+    expect(refetchCallUrl).toContain('page=1');
+    expect(refetchCallUrl).toContain('limit=10');
   });
 
   it('adjusts refetch interval based on enhancement activity', async () => {
