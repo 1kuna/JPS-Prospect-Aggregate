@@ -3,7 +3,6 @@ Acquisition Gateway scraper using the consolidated architecture.
 This replaces the original acquisition_gateway.py with simplified, unified approach.
 """
 import pandas as pd
-from typing import Optional
 
 from app.core.consolidated_scraper_base import ConsolidatedScraperBase
 from app.core.scraper_configs import get_scraper_config

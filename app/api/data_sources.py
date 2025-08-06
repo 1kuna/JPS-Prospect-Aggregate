@@ -4,7 +4,7 @@ from app.database import db
 from app.database.models import Prospect, DataSource, ScraperStatus
 from app.exceptions import ValidationError, NotFoundError, DatabaseError
 from app.utils.logger import logger
-from app.api.auth import admin_required, super_admin_required
+from app.api.auth import super_admin_required
 
 data_sources_bp = Blueprint("data_sources", __name__)
 
@@ -258,7 +258,7 @@ def clear_data_source_data(source_id):
             raise NotFoundError(f"Data source with ID {source_id} not found")
 
         # Count prospects before deletion
-        prospect_count = (
+        (
             session.query(func.count(Prospect.id))
             .filter(Prospect.source_id == source_id)
             .scalar()

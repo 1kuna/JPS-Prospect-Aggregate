@@ -5,18 +5,15 @@ Replaces FileValidationService with simple utility functions.
 Provides file validation, processing tracking, and content analysis.
 """
 
-import os
-import json
 from pathlib import Path
 from datetime import datetime
-from typing import Optional, Dict, List, Any, Tuple
+from typing import Dict, List, Any
 import pandas as pd
 
 from app.database import db
-from app.database.models import FileProcessingLog, DataSource
+from app.database.models import FileProcessingLog
 from app.utils.logger import logger
 from app.utils.file_utils import extract_timestamp_from_filename
-from app.constants.agency_mapping import get_data_directory_mapping
 
 
 def create_processing_log(source_id: int, file_path: str) -> FileProcessingLog:

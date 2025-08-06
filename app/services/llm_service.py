@@ -12,11 +12,10 @@ import time
 import threading
 from typing import Dict, List, Optional, Any, Literal, Callable
 from datetime import datetime, timezone
-from decimal import Decimal
 
 from app.utils.llm_utils import call_ollama
 from app.database import db
-from app.database.models import Prospect, InferredProspectData, LLMOutput
+from app.database.models import Prospect, LLMOutput
 from app.services.optimized_prompts import (
     get_naics_prompt,
     get_value_prompt,

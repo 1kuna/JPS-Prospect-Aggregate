@@ -8,11 +8,10 @@ Provides scraper execution, status management, and error handling.
 import asyncio
 import threading
 from datetime import datetime, timezone
-from typing import Dict, Optional, List
+from typing import Dict, List
 
-from app.database import db
 from app.database.models import DataSource, ScraperStatus
-from app.exceptions import NotFoundError, ScraperError, DatabaseError
+from app.exceptions import NotFoundError, ScraperError
 from app.utils.logger import logger
 from app.utils.database_helpers import update_scraper_status
 from app.core.scrapers import SCRAPERS
@@ -280,7 +279,7 @@ def run_all_scrapers() -> Dict[str, any]:
 
     for source in data_sources:
         try:
-            result = trigger_scraper(source.id)
+            trigger_scraper(source.id)
             results["started"] += 1
             results["details"].append(
                 {

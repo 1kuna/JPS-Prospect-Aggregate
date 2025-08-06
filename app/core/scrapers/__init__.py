@@ -2,9 +2,6 @@
 JPS Prospect Aggregate - Data Collectors Package
 """
 
-# Import agency mapping for consistent naming
-from app.constants.agency_mapping import AGENCIES
-
 # Import scrapers
 from .acquisition_gateway import AcquisitionGatewayScraper
 from .doc_scraper import DocScraper

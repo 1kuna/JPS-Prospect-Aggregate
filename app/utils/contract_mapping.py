@@ -7,12 +7,10 @@ Handles mapping from various government contract sources to standardized schema.
 
 import re
 import hashlib
-import json
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional
 from datetime import datetime, timezone
 
-from app.database import db
-from app.database.models import Prospect, DataSource
+from app.database.models import Prospect
 from app.utils.logger import logger
 
 
