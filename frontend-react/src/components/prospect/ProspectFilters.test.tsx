@@ -5,32 +5,29 @@ import { ProspectFilters } from './ProspectFilters';
 import type { ProspectFilters as ProspectFiltersType } from '@/hooks/useProspectFilters';
 import type { DataSource } from '@/types';
 
-const mockDataSources: DataSource[] = [
-  {
-    id: 1,
-    name: 'Department of Defense',
-    url: 'https://dod.mil/opportunities',
-    last_scraped: '2024-01-15T10:00:00Z',
-    created_at: '2024-01-01T00:00:00Z',
-    updated_at: '2024-01-15T10:00:00Z'
-  },
-  {
-    id: 2,
-    name: 'Health and Human Services',
-    url: 'https://hhs.gov/opportunities',
-    last_scraped: '2024-01-14T09:30:00Z',
-    created_at: '2024-01-01T00:00:00Z',
-    updated_at: '2024-01-14T09:30:00Z'
-  },
-  {
-    id: 3,
-    name: 'Department of Homeland Security',
-    url: 'https://dhs.gov/opportunities',
-    last_scraped: '2024-01-13T08:45:00Z',
-    created_at: '2024-01-01T00:00:00Z',
-    updated_at: '2024-01-13T08:45:00Z'
-  }
-];
+// Helper function to generate dynamic data sources
+const generateDataSource = (): DataSource => {
+  const departments = [
+    'Department of Defense', 'Department of Energy', 'Health and Human Services',
+    'Department of Commerce', 'Department of Justice', 'Department of State',
+    'Department of Transportation', 'Department of Treasury', 'Social Security Administration'
+  ];
+  const department = departments[Math.floor(Math.random() * departments.length)];
+  const id = Math.floor(Math.random() * 10000) + 1;
+  
+  return {
+    id,
+    name: department,
+    url: `https://${department.toLowerCase().replace(/\s+/g, '')}.gov/opportunities`,
+    last_scraped: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString(),
+    created_at: new Date(Date.now() - Math.random() * 365 * 24 * 60 * 60 * 1000).toISOString(),
+    updated_at: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString()
+  };
+};
+
+const generateDataSources = (count: number = 3): DataSource[] => {
+  return Array.from({ length: count }, () => generateDataSource());
+};
 
 const defaultFilters: ProspectFiltersType = {
   keywords: '',
@@ -40,20 +37,23 @@ const defaultFilters: ProspectFiltersType = {
   ai_enrichment: 'all'
 };
 
-const defaultProps = {
+const createDefaultProps = (dataSources: DataSource[] = generateDataSources()) => ({
   filters: defaultFilters,
-  dataSources: mockDataSources,
+  dataSources,
   onFilterChange: vi.fn(),
   onDataSourceToggle: vi.fn(),
   onClearFilters: vi.fn(),
   hasActiveFilters: false,
   showAIEnhanced: false,
   onShowAIEnhancedChange: vi.fn()
-};
+});
 
 describe('ProspectFilters', () => {
+  let defaultProps: any;
+  
   beforeEach(() => {
     vi.clearAllMocks();
+    defaultProps = createDefaultProps();
   });
 
   it('renders all filter components', () => {
@@ -130,43 +130,54 @@ describe('ProspectFilters', () => {
   it('displays all data sources with checkboxes', () => {
     render(<ProspectFilters {...defaultProps} />);
     
-    expect(screen.getByText('Department of Defense')).toBeInTheDocument();
-    expect(screen.getByText('Health and Human Services')).toBeInTheDocument();
-    expect(screen.getByText('Department of Homeland Security')).toBeInTheDocument();
+    // Verify all data sources are displayed
+    defaultProps.dataSources.forEach((dataSource: DataSource) => {
+      expect(screen.getByText(dataSource.name)).toBeInTheDocument();
+    });
     
     const checkboxes = screen.getAllByRole('checkbox');
-    expect(checkboxes).toHaveLength(3); // 3 data sources (switch is not a checkbox)
+    expect(checkboxes).toHaveLength(defaultProps.dataSources.length);
   });
 
   it('handles data source toggle', async () => {
     const user = userEvent.setup();
     render(<ProspectFilters {...defaultProps} />);
     
-    const dodCheckbox = screen.getByRole('checkbox', { name: /department of defense/i });
-    await user.click(dodCheckbox);
+    // Use the first data source for testing
+    const firstDataSource = defaultProps.dataSources[0];
+    const checkbox = screen.getByRole('checkbox', { name: new RegExp(firstDataSource.name, 'i') });
+    await user.click(checkbox);
     
-    expect(defaultProps.onDataSourceToggle).toHaveBeenCalledWith(1);
+    expect(defaultProps.onDataSourceToggle).toHaveBeenCalledWith(firstDataSource.id);
   });
 
   it('shows selected data sources as checked', () => {
+    // Select the first two data sources
+    const selectedIds = defaultProps.dataSources.slice(0, 2).map((ds: DataSource) => ds.id);
     const filtersWithSources: ProspectFiltersType = {
       ...defaultFilters,
-      dataSourceIds: [1, 3]
+      dataSourceIds: selectedIds
     };
     
     render(<ProspectFilters {...defaultProps} filters={filtersWithSources} />);
     
-    const dodCheckbox = screen.getByRole('checkbox', { name: /department of defense/i });
-    const dhsCheckbox = screen.getByRole('checkbox', { name: /department of homeland security/i });
-    const hhsCheckbox = screen.getByRole('checkbox', { name: /health and human services/i });
+    // Check the first two are selected
+    defaultProps.dataSources.slice(0, 2).forEach((dataSource: DataSource) => {
+      const checkbox = screen.getByRole('checkbox', { name: new RegExp(dataSource.name, 'i') });
+      expect(checkbox).toBeChecked();
+    });
     
-    expect(dodCheckbox).toBeChecked();
-    expect(dhsCheckbox).toBeChecked();
-    expect(hhsCheckbox).not.toBeChecked();
+    // Check the third one is not selected (if it exists)
+    if (defaultProps.dataSources.length > 2) {
+      const thirdDataSource = defaultProps.dataSources[2];
+      const checkbox = screen.getByRole('checkbox', { name: new RegExp(thirdDataSource.name, 'i') });
+      expect(checkbox).not.toBeChecked();
+    }
   });
 
   it('shows message when no data sources available', () => {
-    render(<ProspectFilters {...defaultProps} dataSources={[]} />);
+    const emptyProps = createDefaultProps([]);
+    render(<ProspectFilters {...emptyProps} />);
     
     expect(screen.getByText('No data sources available')).toBeInTheDocument();
   });
@@ -210,11 +221,12 @@ describe('ProspectFilters', () => {
   });
 
   it('displays active filter summary when filters are applied', () => {
+    const selectedDataSources = defaultProps.dataSources.slice(0, 2);
     const activeFilters: ProspectFiltersType = {
       keywords: 'software',
       naics: '541511',
       agency: 'DOD',
-      dataSourceIds: [1, 2],
+      dataSourceIds: selectedDataSources.map((ds: DataSource) => ds.id),
       ai_enrichment: 'enhanced'
     };
     
@@ -225,17 +237,21 @@ describe('ProspectFilters', () => {
     expect(screen.getByText('NAICS: 541511')).toBeInTheDocument();
     expect(screen.getByText('Agency: DOD')).toBeInTheDocument();
     expect(screen.getByText('AI: Enhanced Only')).toBeInTheDocument();
-    expect(screen.getByText('Source: Department of Defense')).toBeInTheDocument();
-    expect(screen.getByText('Source: Health and Human Services')).toBeInTheDocument();
+    
+    // Check for the actual data source names
+    selectedDataSources.forEach((dataSource: DataSource) => {
+      expect(screen.getByText(`Source: ${dataSource.name}`)).toBeInTheDocument();
+    });
   });
 
   it('allows removing individual filters from summary', async () => {
     const user = userEvent.setup();
+    const selectedDataSource = defaultProps.dataSources[0];
     const activeFilters: ProspectFiltersType = {
       keywords: 'software',
       naics: '541511',
       agency: 'DOD',
-      dataSourceIds: [1],
+      dataSourceIds: [selectedDataSource.id],
       ai_enrichment: 'enhanced'
     };
     
@@ -265,11 +281,12 @@ describe('ProspectFilters', () => {
     
     expect(defaultProps.onFilterChange).toHaveBeenCalledWith('ai_enrichment', 'all');
     
-    // Remove data source filter
-    const sourceRemoveButton = screen.getByText('Source: Department of Defense').nextElementSibling;
+    // Remove data source filter - use the first selected data source
+    const firstDataSource = defaultProps.dataSources[0];
+    const sourceRemoveButton = screen.getByText(`Source: ${firstDataSource.name}`).nextElementSibling;
     await user.click(sourceRemoveButton as Element);
     
-    expect(defaultProps.onDataSourceToggle).toHaveBeenCalledWith(1);
+    expect(defaultProps.onDataSourceToggle).toHaveBeenCalledWith(firstDataSource.id);
   });
 
   it('displays filter values correctly in inputs', () => {
@@ -321,24 +338,19 @@ describe('ProspectFilters', () => {
   });
 
   it('shows data source count in scrollable container', () => {
-    const manyDataSources: DataSource[] = Array.from({ length: 10 }, (_, i) => ({
-      id: i + 1,
-      name: `Data Source ${i + 1}`,
-      url: `https://source${i + 1}.gov`,
-      last_scraped: '2024-01-15T10:00:00Z',
-      created_at: '2024-01-01T00:00:00Z',
-      updated_at: '2024-01-15T10:00:00Z'
-    }));
+    const manyDataSources = generateDataSources(10);
+    const manyProps = createDefaultProps(manyDataSources);
     
-    render(<ProspectFilters {...defaultProps} dataSources={manyDataSources} />);
+    render(<ProspectFilters {...manyProps} />);
     
-    const dataSourceContainer = screen.getByText('Data Source 1').closest('.max-h-48');
+    const firstDataSourceName = manyDataSources[0].name;
+    const dataSourceContainer = screen.getByText(firstDataSourceName).closest('.max-h-48');
     expect(dataSourceContainer).toHaveClass('overflow-y-auto');
     
     // All data sources should be rendered
-    for (let i = 1; i <= 10; i++) {
-      expect(screen.getByText(`Data Source ${i}`)).toBeInTheDocument();
-    }
+    manyDataSources.forEach((dataSource) => {
+      expect(screen.getByText(dataSource.name)).toBeInTheDocument();
+    });
   });
 
   it('handles edge case with undefined filter values', () => {

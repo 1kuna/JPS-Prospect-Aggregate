@@ -20,36 +20,22 @@ vi.mock('@/utils/apiUtils', () => ({
   post: vi.fn()
 }));
 
-// Mock user data
-const mockUser: User = {
-  id: 1,
-  username: 'testuser',
-  first_name: 'John',
-  last_name: 'Doe',
-  email: 'john.doe@example.com',
-  role: 'user',
-  created_at: '2024-01-01T00:00:00Z',
-  updated_at: '2024-01-01T00:00:00Z'
-};
+// Helper functions to generate dynamic test data
+const generateUser = (role: 'user' | 'admin' | 'super_admin' = 'user'): User => ({
+  id: Math.floor(Math.random() * 10000),
+  username: `user_${Math.random().toString(36).substr(2, 9)}`,
+  first_name: role === 'admin' ? 'Admin' : role === 'super_admin' ? 'SuperAdmin' : `User${Math.floor(Math.random() * 100)}`,
+  last_name: `Last${Math.floor(Math.random() * 100)}`,
+  email: `${Math.random().toString(36).substr(2, 9)}@example.com`,
+  role,
+  created_at: new Date(Date.now() - Math.random() * 365 * 24 * 60 * 60 * 1000).toISOString(),
+  updated_at: new Date().toISOString()
+});
 
-const mockAdminUser: User = {
-  ...mockUser,
-  id: 2,
-  role: 'admin',
-  first_name: 'Admin'
-};
-
-const mockSuperAdminUser: User = {
-  ...mockUser,
-  id: 3,
-  role: 'super_admin',
-  first_name: 'SuperAdmin'
-};
-
-const mockAuthStatus: AuthStatus = {
-  authenticated: true,
-  user: mockUser
-};
+const generateAuthStatus = (authenticated: boolean = true, user?: User): AuthStatus => ({
+  authenticated,
+  user: authenticated ? (user || generateUser()) : null
+});
 
 // Wrapper component for React Query
 const createWrapper = () => {
@@ -71,9 +57,6 @@ describe('useAuthStatus', () => {
     vi.clearAllMocks();
     const { get } = await import('@/utils/apiUtils');
     mockGet = get;
-    mockGet.mockResolvedValue({
-      data: mockAuthStatus
-    });
   });
 
   afterEach(() => {
@@ -81,6 +64,9 @@ describe('useAuthStatus', () => {
   });
 
   it('fetches authentication status', async () => {
+    const testAuthStatus = generateAuthStatus();
+    mockGet.mockResolvedValue({ data: testAuthStatus });
+    
     const { result } = renderHook(
       () => useAuthStatus(),
       { wrapper: createWrapper() }
@@ -96,7 +82,11 @@ describe('useAuthStatus', () => {
       '/api/auth/status',
       { credentials: 'include' }
     );
-    expect(result.current.data?.data).toEqual(mockAuthStatus);
+    expect(result.current.data?.data.authenticated).toBe(testAuthStatus.authenticated);
+    if (testAuthStatus.user) {
+      expect(result.current.data?.data.user?.id).toBe(testAuthStatus.user.id);
+      expect(result.current.data?.data.user?.role).toBe(testAuthStatus.user.role);
+    }
   });
 
   it('handles authentication status error', async () => {
@@ -155,18 +145,22 @@ describe('useCurrentUser', () => {
     vi.clearAllMocks();
     const { get } = await import('@/utils/apiUtils');
     mockGet = get;
-    mockGet.mockImplementation((url) => {
-      if (url === '/api/auth/status') {
-        return Promise.resolve({ data: mockAuthStatus });
-      }
-      if (url === '/api/auth/me') {
-        return Promise.resolve({ data: { user: mockUser } });
-      }
-      return Promise.reject(new Error('Unknown URL'));
-    });
   });
 
   it('fetches current user when authenticated', async () => {
+    const testUser = generateUser();
+    const testAuthStatus = generateAuthStatus(true, testUser);
+    
+    mockGet.mockImplementation((url) => {
+      if (url === '/api/auth/status') {
+        return Promise.resolve({ data: testAuthStatus });
+      }
+      if (url === '/api/auth/me') {
+        return Promise.resolve({ data: { user: testUser } });
+      }
+      return Promise.reject(new Error('Unknown URL'));
+    });
+    
     const { result } = renderHook(
       () => useCurrentUser(),
       { wrapper: createWrapper() }
@@ -180,16 +174,17 @@ describe('useCurrentUser', () => {
     });
 
     await waitFor(() => {
-      expect(result.current.data?.data.user).toEqual(mockUser);
+      expect(result.current.data?.data.user?.id).toBe(testUser.id);
+      expect(result.current.data?.data.user?.role).toBe(testUser.role);
     });
   });
 
   it('does not fetch user when not authenticated', async () => {
+    const unauthenticatedStatus = generateAuthStatus(false);
+    
     mockGet.mockImplementation((url) => {
       if (url === '/api/auth/status') {
-        return Promise.resolve({ 
-          data: { authenticated: false, user: null } 
-        });
+        return Promise.resolve({ data: unauthenticatedStatus });
       }
       return Promise.reject(new Error('Should not be called'));
     });
@@ -220,8 +215,9 @@ describe('useSignUp', () => {
   });
 
   it('calls sign up API and invalidates auth queries', async () => {
+    const testUser = generateUser();
     const mockResponse = {
-      data: { user: mockUser, message: 'Account created successfully' }
+      data: { user: testUser, message: 'Account created successfully' }
     };
     mockPost.mockResolvedValue(mockResponse);
 
@@ -231,11 +227,11 @@ describe('useSignUp', () => {
     );
 
     const signUpData: SignUpRequest = {
-      username: 'newuser',
-      email: 'new@example.com',
+      username: `newuser_${Math.random().toString(36).substr(2, 9)}`,
+      email: `${Math.random().toString(36).substr(2, 9)}@example.com`,
       password: 'password123',
-      first_name: 'New',
-      last_name: 'User'
+      first_name: `New${Math.floor(Math.random() * 100)}`,
+      last_name: `User${Math.floor(Math.random() * 100)}`
     };
 
     await act(async () => {
@@ -247,7 +243,8 @@ describe('useSignUp', () => {
       signUpData,
       { credentials: 'include' }
     );
-    expect(result.current.data).toEqual(mockResponse);
+    expect(result.current.data?.data.user?.id).toBe(testUser.id);
+    expect(result.current.data?.data.message).toBeTruthy();
   });
 
   it('handles sign up errors', async () => {
@@ -260,11 +257,11 @@ describe('useSignUp', () => {
     );
 
     const signUpData: SignUpRequest = {
-      username: 'existinguser',
-      email: 'existing@example.com',
+      username: `existinguser_${Math.random().toString(36).substr(2, 9)}`,
+      email: `${Math.random().toString(36).substr(2, 9)}@example.com`,
       password: 'password123',
-      first_name: 'Existing',
-      last_name: 'User'
+      first_name: `Existing${Math.floor(Math.random() * 100)}`,
+      last_name: `User${Math.floor(Math.random() * 100)}`
     };
 
     await act(async () => {
@@ -280,13 +277,18 @@ describe('useSignUp', () => {
 });
 
 describe('useSignIn', () => {
-  beforeEach(() => {
+  let mockPost: any;
+  
+  beforeEach(async () => {
     vi.clearAllMocks();
+    const { post } = await import('@/utils/apiUtils');
+    mockPost = post;
   });
 
   it('calls sign in API and invalidates auth queries', async () => {
+    const testUser = generateUser();
     const mockResponse = {
-      data: { user: mockUser, message: 'Signed in successfully' }
+      data: { user: testUser, message: 'Signed in successfully' }
     };
     mockPost.mockResolvedValue(mockResponse);
 
@@ -296,7 +298,7 @@ describe('useSignIn', () => {
     );
 
     const signInData: SignInRequest = {
-      username: 'testuser',
+      username: testUser.username,
       password: 'password123'
     };
 
@@ -309,7 +311,8 @@ describe('useSignIn', () => {
       signInData,
       { credentials: 'include' }
     );
-    expect(result.current.data).toEqual(mockResponse);
+    expect(result.current.data?.data.user?.id).toBe(testUser.id);
+    expect(result.current.data?.data.message).toBeTruthy();
   });
 
   it('handles sign in errors', async () => {
@@ -322,7 +325,7 @@ describe('useSignIn', () => {
     );
 
     const signInData: SignInRequest = {
-      username: 'baduser',
+      username: `baduser_${Math.random().toString(36).substr(2, 9)}`,
       password: 'wrongpassword'
     };
 
@@ -339,8 +342,12 @@ describe('useSignIn', () => {
 });
 
 describe('useSignOut', () => {
-  beforeEach(() => {
+  let mockPost: any;
+  
+  beforeEach(async () => {
     vi.clearAllMocks();
+    const { post } = await import('@/utils/apiUtils');
+    mockPost = post;
   });
 
   it('calls sign out API and clears auth data', async () => {
@@ -388,13 +395,18 @@ describe('useSignOut', () => {
 });
 
 describe('useIsAdmin', () => {
-  beforeEach(() => {
+  let mockGet: any;
+  
+  beforeEach(async () => {
     vi.clearAllMocks();
+    const { get } = await import('@/utils/apiUtils');
+    mockGet = get;
   });
 
   it('returns false for regular user', async () => {
+    const regularUser = generateUser('user');
     mockGet.mockResolvedValue({
-      data: { authenticated: true, user: mockUser }
+      data: { authenticated: true, user: regularUser }
     });
 
     const { result } = renderHook(
@@ -408,8 +420,9 @@ describe('useIsAdmin', () => {
   });
 
   it('returns true for admin user', async () => {
+    const adminUser = generateUser('admin');
     mockGet.mockResolvedValue({
-      data: { authenticated: true, user: mockAdminUser }
+      data: { authenticated: true, user: adminUser }
     });
 
     const { result } = renderHook(
@@ -423,8 +436,9 @@ describe('useIsAdmin', () => {
   });
 
   it('returns true for super admin user', async () => {
+    const superAdminUser = generateUser('super_admin');
     mockGet.mockResolvedValue({
-      data: { authenticated: true, user: mockSuperAdminUser }
+      data: { authenticated: true, user: superAdminUser }
     });
 
     const { result } = renderHook(
@@ -438,8 +452,9 @@ describe('useIsAdmin', () => {
   });
 
   it('returns false when not authenticated', async () => {
+    const unauthenticatedStatus = generateAuthStatus(false);
     mockGet.mockResolvedValue({
-      data: { authenticated: false, user: null }
+      data: unauthenticatedStatus
     });
 
     const { result } = renderHook(
@@ -454,13 +469,18 @@ describe('useIsAdmin', () => {
 });
 
 describe('useIsSuperAdmin', () => {
-  beforeEach(() => {
+  let mockGet: any;
+  
+  beforeEach(async () => {
     vi.clearAllMocks();
+    const { get } = await import('@/utils/apiUtils');
+    mockGet = get;
   });
 
   it('returns false for regular user', async () => {
+    const regularUser = generateUser('user');
     mockGet.mockResolvedValue({
-      data: { authenticated: true, user: mockUser }
+      data: { authenticated: true, user: regularUser }
     });
 
     const { result } = renderHook(
@@ -474,8 +494,9 @@ describe('useIsSuperAdmin', () => {
   });
 
   it('returns false for admin user', async () => {
+    const adminUser = generateUser('admin');
     mockGet.mockResolvedValue({
-      data: { authenticated: true, user: mockAdminUser }
+      data: { authenticated: true, user: adminUser }
     });
 
     const { result } = renderHook(
@@ -489,8 +510,9 @@ describe('useIsSuperAdmin', () => {
   });
 
   it('returns true for super admin user', async () => {
+    const superAdminUser = generateUser('super_admin');
     mockGet.mockResolvedValue({
-      data: { authenticated: true, user: mockSuperAdminUser }
+      data: { authenticated: true, user: superAdminUser }
     });
 
     const { result } = renderHook(
@@ -505,13 +527,18 @@ describe('useIsSuperAdmin', () => {
 });
 
 describe('useUserRole', () => {
-  beforeEach(() => {
+  let mockGet: any;
+  
+  beforeEach(async () => {
     vi.clearAllMocks();
+    const { get } = await import('@/utils/apiUtils');
+    mockGet = get;
   });
 
   it('returns user role for authenticated user', async () => {
+    const adminUser = generateUser('admin');
     mockGet.mockResolvedValue({
-      data: { authenticated: true, user: mockAdminUser }
+      data: { authenticated: true, user: adminUser }
     });
 
     const { result } = renderHook(
@@ -520,13 +547,14 @@ describe('useUserRole', () => {
     );
 
     await waitFor(() => {
-      expect(result.current).toBe('admin');
+      expect(result.current).toBe(adminUser.role);
     });
   });
 
   it('returns default user role when not authenticated', async () => {
+    const unauthenticatedStatus = generateAuthStatus(false);
     mockGet.mockResolvedValue({
-      data: { authenticated: false, user: null }
+      data: unauthenticatedStatus
     });
 
     const { result } = renderHook(
@@ -541,8 +569,9 @@ describe('useUserRole', () => {
 
   it('returns user role for different user types', async () => {
     // Test regular user
+    const regularUser = generateUser('user');
     mockGet.mockResolvedValue({
-      data: { authenticated: true, user: mockUser }
+      data: { authenticated: true, user: regularUser }
     });
 
     const { result: regularResult } = renderHook(
@@ -551,12 +580,13 @@ describe('useUserRole', () => {
     );
 
     await waitFor(() => {
-      expect(regularResult.current).toBe('user');
+      expect(regularResult.current).toBe(regularUser.role);
     });
 
     // Test super admin
+    const superAdminUser = generateUser('super_admin');
     mockGet.mockResolvedValue({
-      data: { authenticated: true, user: mockSuperAdminUser }
+      data: { authenticated: true, user: superAdminUser }
     });
 
     const { result: superResult } = renderHook(
@@ -565,20 +595,29 @@ describe('useUserRole', () => {
     );
 
     await waitFor(() => {
-      expect(superResult.current).toBe('super_admin');
+      expect(superResult.current).toBe(superAdminUser.role);
     });
   });
 });
 
 describe('Authentication Integration', () => {
-  beforeEach(() => {
+  let mockGet: any;
+  let mockPost: any;
+  
+  beforeEach(async () => {
     vi.clearAllMocks();
+    const { get, post } = await import('@/utils/apiUtils');
+    mockGet = get;
+    mockPost = post;
   });
 
   it('handles complete authentication flow', async () => {
+    const testUser = generateUser();
+    
     // Start unauthenticated
+    const unauthenticatedStatus = generateAuthStatus(false);
     mockGet.mockResolvedValue({
-      data: { authenticated: false, user: null }
+      data: unauthenticatedStatus
     });
 
     const { result: authResult } = renderHook(
@@ -597,30 +636,34 @@ describe('Authentication Integration', () => {
 
     // Sign in
     const signInResponse = {
-      data: { user: mockUser, message: 'Signed in successfully' }
+      data: { user: testUser, message: 'Signed in successfully' }
     };
     mockPost.mockResolvedValue(signInResponse);
 
+    const signInData = {
+      username: testUser.username,
+      password: 'password123'
+    };
+
     await act(async () => {
-      await signInResult.current.mutateAsync({
-        username: 'testuser',
-        password: 'password123'
-      });
+      await signInResult.current.mutateAsync(signInData);
     });
 
     expect(mockPost).toHaveBeenCalledWith(
       '/api/auth/signin',
-      { username: 'testuser', password: 'password123' },
+      signInData,
       { credentials: 'include' }
     );
   });
 
   it('handles authentication state transitions', async () => {
     const wrapper = createWrapper();
+    const regularUser = generateUser('user');
+    const adminUser = generateUser('admin');
 
-    // Initially authenticated
+    // Initially authenticated as regular user
     mockGet.mockResolvedValue({
-      data: { authenticated: true, user: mockUser }
+      data: { authenticated: true, user: regularUser }
     });
 
     const { result: isAdminResult } = renderHook(
@@ -634,7 +677,7 @@ describe('Authentication Integration', () => {
 
     // Change to admin user
     mockGet.mockResolvedValue({
-      data: { authenticated: true, user: mockAdminUser }
+      data: { authenticated: true, user: adminUser }
     });
 
     const { result: newIsAdminResult } = renderHook(

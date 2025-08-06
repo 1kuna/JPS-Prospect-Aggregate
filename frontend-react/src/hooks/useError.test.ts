@@ -22,25 +22,38 @@ vi.mock('@/services/errorService', () => ({
   }
 }));
 
-const mockAppError: AppError = {
-  code: 'TEST_ERROR',
-  message: 'Test error message',
-  severity: ErrorSeverity.ERROR,
-  category: ErrorCategory.SYSTEM,
-  timestamp: new Date(),
-  userMessage: 'Something went wrong',
-  technicalDetails: 'Technical details here'
+// Helper to generate dynamic error data
+const generateAppError = (severity: ErrorSeverity = ErrorSeverity.ERROR): AppError => {
+  const errorCodes = ['NETWORK_ERROR', 'VALIDATION_ERROR', 'AUTH_ERROR', 'SYSTEM_ERROR', 'USER_ERROR'];
+  const messages = ['Operation failed', 'Invalid input', 'Access denied', 'System unavailable', 'User action required'];
+  const userMessages = ['Something went wrong', 'Please check your input', 'Authentication required', 'Service temporarily unavailable', 'Please try again'];
+  const categories = [ErrorCategory.SYSTEM, ErrorCategory.NETWORK, ErrorCategory.VALIDATION, ErrorCategory.USER, ErrorCategory.EXTERNAL];
+  
+  return {
+    code: errorCodes[Math.floor(Math.random() * errorCodes.length)],
+    message: messages[Math.floor(Math.random() * messages.length)],
+    severity,
+    category: categories[Math.floor(Math.random() * categories.length)],
+    timestamp: new Date(),
+    userMessage: userMessages[Math.floor(Math.random() * userMessages.length)],
+    technicalDetails: `Technical details: ${Math.random().toString(36).substr(2, 9)}`
+  };
 };
 
 describe('useError', () => {
   let mockHandleError: any;
+  let testError: AppError;
   
   beforeEach(async () => {
     vi.clearAllMocks();
+    
+    // Generate fresh error data
+    testError = generateAppError();
+    
     // Get the mocked errorService
     const { errorService } = await import('@/services/errorService');
     mockHandleError = errorService.handleError;
-    mockHandleError.mockReturnValue(mockAppError);
+    mockHandleError.mockReturnValue(testError);
   });
 
   afterEach(() => {
@@ -64,7 +77,7 @@ describe('useError', () => {
     });
 
     expect(mockHandleError).toHaveBeenCalledWith(testError, undefined);
-    expect(result.current.error).toEqual(mockAppError);
+    expect(result.current.error).toEqual(testError); // Uses the generated error from beforeEach
     expect(result.current.isError).toBe(true);
   });
 
@@ -75,12 +88,12 @@ describe('useError', () => {
       result.current.handleError(new Error('Test error'));
     });
 
-    expect(mockShowErrorToast).toHaveBeenCalledWith(mockAppError);
+    expect(mockShowErrorToast).toHaveBeenCalledWith(testError); // Uses the generated error from beforeEach
   });
 
   it('shows warning toast for warning severity errors', () => {
     const warningError: AppError = {
-      ...mockAppError,
+      ...generateAppError(ErrorSeverity.WARNING),
       severity: ErrorSeverity.WARNING,
       userMessage: 'Warning message'
     };
@@ -98,7 +111,7 @@ describe('useError', () => {
 
   it('uses fallback message when no user message is available', () => {
     const errorWithoutUserMessage: AppError = {
-      ...mockAppError,
+      ...generateAppError(ErrorSeverity.WARNING),
       severity: ErrorSeverity.WARNING,
       userMessage: undefined
     };
@@ -124,7 +137,7 @@ describe('useError', () => {
     });
 
     expect(mockShowErrorToast).not.toHaveBeenCalled();
-    expect(result.current.error).toEqual(mockAppError);
+    expect(result.current.error).toEqual(testError); // Uses the generated error from beforeEach
   });
 
   it('calls custom onError callback', () => {
@@ -135,7 +148,7 @@ describe('useError', () => {
       result.current.handleError(new Error('Test error'), { onError: onErrorCallback });
     });
 
-    expect(onErrorCallback).toHaveBeenCalledWith(mockAppError);
+    expect(onErrorCallback).toHaveBeenCalledWith(testError); // Uses the generated error from beforeEach
   });
 
   it('passes context to error service', () => {
@@ -183,11 +196,12 @@ describe('useError', () => {
   it('sets error directly', () => {
     const { result } = renderHook(() => useError());
     
+    const directError = generateAppError();
     act(() => {
-      result.current.setError(mockAppError);
+      result.current.setError(directError);
     });
     
-    expect(result.current.error).toEqual(mockAppError);
+    expect(result.current.error).toEqual(directError);
     expect(result.current.isError).toBe(true);
     
     // Clear using setError
@@ -207,18 +221,20 @@ describe('useError', () => {
       returnedError = result.current.handleError(new Error('Test error'));
     });
     
-    expect(returnedError!).toEqual(mockAppError);
+    expect(returnedError!).toEqual(testError); // Uses the generated error from beforeEach
   });
 });
 
 describe('useApiError', () => {
   let mockHandleError: any;
+  let testError: AppError;
   
   beforeEach(async () => {
     vi.clearAllMocks();
+    testError = generateAppError();
     const { errorService } = await import('@/services/errorService');
     mockHandleError = errorService.handleError;
-    mockHandleError.mockReturnValue(mockAppError);
+    mockHandleError.mockReturnValue(testError);
   });
 
   it('handles API errors with operation context', () => {
@@ -244,18 +260,20 @@ describe('useApiError', () => {
       returnedError = result.current.handleApiError(new Error('API error'), 'testOperation');
     });
     
-    expect(returnedError!).toEqual(mockAppError);
+    expect(returnedError!).toEqual(testError);
   });
 });
 
 describe('useFormError', () => {
   let mockHandleError: any;
+  let testError: AppError;
   
   beforeEach(async () => {
     vi.clearAllMocks();
+    testError = generateAppError();
     const { errorService } = await import('@/services/errorService');
     mockHandleError = errorService.handleError;
-    mockHandleError.mockReturnValue(mockAppError);
+    mockHandleError.mockReturnValue(testError);
   });
 
   it('initializes with showToast disabled by default', () => {
@@ -296,7 +314,7 @@ describe('useFormError', () => {
 
   it('gets field errors correctly', () => {
     const formErrorWithFields: AppError = {
-      ...mockAppError,
+      ...generateAppError(),
       fields: {
         email: ['Invalid email format'],
         password: ['Password too short']
@@ -322,7 +340,7 @@ describe('useFormError', () => {
 
   it('checks if field has errors', () => {
     const formErrorWithFields: AppError = {
-      ...mockAppError,
+      ...generateAppError(),
       fields: {
         email: ['Invalid email format'],
         username: []
@@ -347,7 +365,7 @@ describe('useFormError', () => {
 
   it('handles errors without fields property', () => {
     const regularError = new Error('Regular error');
-    mockHandleError.mockReturnValue(mockAppError); // mockAppError doesn't have fields property
+    mockHandleError.mockReturnValue(testError); // testError doesn't have fields property
     
     const { result } = renderHook(() => useFormError());
     
@@ -363,12 +381,14 @@ describe('useFormError', () => {
 
 describe('useAsyncError', () => {
   let mockHandleError: any;
+  let testError: AppError;
   
   beforeEach(async () => {
     vi.clearAllMocks();
+    testError = generateAppError();
     const { errorService } = await import('@/services/errorService');
     mockHandleError = errorService.handleError;
-    mockHandleError.mockReturnValue(mockAppError);
+    mockHandleError.mockReturnValue(testError);
   });
 
   it('initializes with correct default state', () => {
@@ -415,7 +435,7 @@ describe('useAsyncError', () => {
     expect(mockHandleError).toHaveBeenCalledWith(testError, undefined);
     expect(result.current.isLoading).toBe(false);
     expect(result.current.data).toBeNull();
-    expect(result.current.error).toEqual(mockAppError);
+    expect(result.current.error).toEqual(testError);
     expect(thrownError).toBe(testError);
   });
 
@@ -457,7 +477,7 @@ describe('useAsyncError', () => {
       }
     });
     
-    expect(result.current.error).toEqual(mockAppError);
+    expect(result.current.error).toEqual(testError);
     
     // Execute a successful operation
     const mockAsyncFn = vi.fn().mockResolvedValue('new data');
@@ -515,7 +535,7 @@ describe('useAsyncError', () => {
       }
     });
     
-    expect(result.current.error).toEqual(mockAppError);
+    expect(result.current.error).toEqual(testError);
     
     // Clear it
     act(() => {

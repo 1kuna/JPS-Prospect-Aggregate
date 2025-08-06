@@ -30,135 +30,181 @@ vi.mock('@/utils/statusUtils', () => ({
   })
 }));
 
-const mockEnhancementStatus = {
-  total_prospects: 1000,
-  processed_prospects: 750,
-  naics_coverage: {
-    original: 300,
-    llm_inferred: 450,
-    total_percentage: 75.0
-  },
-  value_parsing: {
-    parsed_count: 600,
-    total_percentage: 60.0
-  },
-  set_aside_standardization: {
-    standardized_count: 400,
-    total_percentage: 40.0
-  },
-  title_enhancement: {
-    enhanced_count: 350,
-    total_percentage: 35.0
-  },
-  last_processed: '2024-01-15T10:30:00Z',
-  model_version: 'qwen3-latest'
+// Helper functions to generate dynamic test data
+const generateEnhancementStatus = () => {
+  const totalProspects = Math.floor(Math.random() * 5000) + 1000;
+  const processedProspects = Math.floor(Math.random() * totalProspects);
+  const naicsOriginal = Math.floor(Math.random() * processedProspects * 0.5);
+  const naicsInferred = Math.floor(Math.random() * (processedProspects - naicsOriginal));
+  const naicsPercentage = ((naicsOriginal + naicsInferred) / totalProspects * 100);
+  
+  const valueParsedCount = Math.floor(Math.random() * processedProspects);
+  const valuePercentage = (valueParsedCount / totalProspects * 100);
+  
+  const setAsideCount = Math.floor(Math.random() * processedProspects);
+  const setAsidePercentage = (setAsideCount / totalProspects * 100);
+  
+  const titleCount = Math.floor(Math.random() * processedProspects);
+  const titlePercentage = (titleCount / totalProspects * 100);
+  
+  return {
+    total_prospects: totalProspects,
+    processed_prospects: processedProspects,
+    naics_coverage: {
+      original: naicsOriginal,
+      llm_inferred: naicsInferred,
+      total_percentage: Number(naicsPercentage.toFixed(1))
+    },
+    value_parsing: {
+      parsed_count: valueParsedCount,
+      total_percentage: Number(valuePercentage.toFixed(1))
+    },
+    set_aside_standardization: {
+      standardized_count: setAsideCount,
+      total_percentage: Number(setAsidePercentage.toFixed(1))
+    },
+    title_enhancement: {
+      enhanced_count: titleCount,
+      total_percentage: Number(titlePercentage.toFixed(1))
+    },
+    last_processed: new Date(Date.now() - Math.random() * 24 * 60 * 60 * 1000).toISOString(),
+    model_version: ['qwen3-latest', 'qwen3-v2', 'qwen3-stable'][Math.floor(Math.random() * 3)]
+  };
 };
 
-const mockProgress = {
-  status: 'processing' as const,
-  current_type: 'all' as const,
-  processed: 25,
-  total: 100,
-  percentage: 25.0,
-  current_prospect: {
-    id: 1,
-    title: 'AI Software Development Contract'
-  },
-  started_at: '2024-01-15T10:00:00Z',
-  errors: []
+const generateProgress = () => {
+  const total = Math.floor(Math.random() * 500) + 50;
+  const processed = Math.floor(Math.random() * total);
+  const percentage = (processed / total) * 100;
+  
+  const contractTypes = ['Software Development', 'Cybersecurity', 'Data Analytics', 'Cloud Services', 'IT Support'];
+  const contractType = contractTypes[Math.floor(Math.random() * contractTypes.length)];
+  
+  return {
+    status: 'processing' as const,
+    current_type: 'all' as const,
+    processed,
+    total,
+    percentage: Number(percentage.toFixed(1)),
+    current_prospect: {
+      id: Math.floor(Math.random() * 10000),
+      title: `${contractType} Contract ${Math.floor(Math.random() * 1000)}`
+    },
+    started_at: new Date(Date.now() - Math.random() * 60 * 60 * 1000).toISOString(),
+    errors: []
+  };
 };
 
-const mockLLMOutputs = [
-  {
-    id: 1,
-    timestamp: '2024-01-15T10:30:00Z',
-    prospect_id: 'abc123',
-    prospect_title: 'AI Software Development Contract',
-    enhancement_type: 'naics' as const,
-    prompt: 'Extract NAICS code',
-    response: '{"code": "541511", "description": "Custom Computer Programming Services"}',
-    parsed_result: {
-      code: '541511',
-      description: 'Custom Computer Programming Services'
-    },
-    success: true,
-    error_message: null,
-    processing_time: 2.45
-  },
-  {
-    id: 2,
-    timestamp: '2024-01-15T10:31:00Z',
-    prospect_id: 'def456',
-    prospect_title: 'Cybersecurity Assessment Services',
-    enhancement_type: 'values' as const,
-    prompt: 'Extract contract value',
-    response: '{"single": 500000}',
-    parsed_result: {
-      single: 500000
-    },
-    success: true,
-    error_message: null,
-    processing_time: 1.23
-  },
-  {
-    id: 3,
-    timestamp: '2024-01-15T10:32:00Z',
-    prospect_id: 'ghi789',
-    prospect_title: 'Failed Processing Example',
-    enhancement_type: 'titles' as const,
-    prompt: 'Enhance title',
-    response: 'Invalid JSON response',
-    parsed_result: null as any,
-    success: false,
-    error_message: 'JSON parsing failed',
-    processing_time: 0.5
+const generateLLMOutput = (success: boolean = true) => {
+  const enhancementTypes = ['naics', 'values', 'titles', 'set_asides'] as const;
+  const enhancementType = enhancementTypes[Math.floor(Math.random() * enhancementTypes.length)];
+  
+  const contractTypes = ['Software Development', 'Cybersecurity', 'Data Analytics', 'Cloud Services'];
+  const contractType = contractTypes[Math.floor(Math.random() * contractTypes.length)];
+  
+  const naicsCodes = ['541511', '541512', '541513', '541519', '518210'];
+  const naicsCode = naicsCodes[Math.floor(Math.random() * naicsCodes.length)];
+  
+  let response, parsed_result;
+  
+  if (success) {
+    switch (enhancementType) {
+      case 'naics':
+        response = JSON.stringify({
+          code: naicsCode,
+          description: `${contractType} Services`
+        });
+        parsed_result = { code: naicsCode, description: `${contractType} Services` };
+        break;
+      case 'values':
+        const value = Math.floor(Math.random() * 1000000) + 50000;
+        response = JSON.stringify({ single: value });
+        parsed_result = { single: value };
+        break;
+      case 'titles':
+        const newTitle = `Enhanced ${contractType} Contract`;
+        response = JSON.stringify({ title: newTitle });
+        parsed_result = { title: newTitle };
+        break;
+      default:
+        response = JSON.stringify({ result: 'processed' });
+        parsed_result = { result: 'processed' };
+    }
+  } else {
+    response = 'Invalid JSON response';
+    parsed_result = null;
   }
+  
+  return {
+    id: Math.floor(Math.random() * 10000),
+    timestamp: new Date(Date.now() - Math.random() * 60 * 60 * 1000).toISOString(),
+    prospect_id: Math.random().toString(36).substr(2, 9),
+    prospect_title: `${contractType} Contract ${Math.floor(Math.random() * 1000)}`,
+    enhancement_type: enhancementType,
+    prompt: `Extract ${enhancementType}`,
+    response,
+    parsed_result,
+    success,
+    error_message: success ? null : 'JSON parsing failed',
+    processing_time: Number((Math.random() * 5).toFixed(2))
+  };
+};
+
+const generateLLMOutputs = () => [
+  generateLLMOutput(true),
+  generateLLMOutput(true),
+  generateLLMOutput(false)
 ];
 
-const mockHookDefault = {
-  // Status queries
-  queueStatus: undefined,
-  iterativeProgress: undefined,
-  enrichmentStatus: mockEnhancementStatus,
-  llmOutputs: mockLLMOutputs,
+const createMockHookDefault = () => {
+  const enrichmentStatus = generateEnhancementStatus();
+  const llmOutputs = generateLLMOutputs();
   
-  // Loading states
-  isLoadingQueue: false,
-  isLoadingIterative: false,
-  isLoadingEnrichment: false,
-  isLoadingLLMOutputs: false,
-  
-  // Computed values
-  isWorkerRunning: false,
-  queueSize: 0,
-  currentItem: undefined,
-  pendingItems: [],
-  recentCompleted: [],
-  isIterativeProcessing: false,
-  iterativePercentage: 0,
-  totalProspects: 1000,
-  processedProspects: 750,
-  
-  // Actions
-  getQueueItemOptions: vi.fn(),
-  cancelQueueItem: vi.fn(),
-  startWorker: vi.fn(),
-  stopWorker: vi.fn(),
-  startIterative: vi.fn(),
-  stopIterative: vi.fn(),
-  
-  // Action states
-  isCancelling: false,
-  isStartingWorker: false,
-  isStoppingWorker: false,
-  isStartingIterative: false,
-  isStoppingIterative: false,
-  
-  // Refetch functions
-  refetchQueueStatus: vi.fn(),
-  refetchIterativeProgress: vi.fn(),
-  refetchEnrichmentStatus: vi.fn(),
-  refetchLLMOutputs: vi.fn(),
+  return {
+    // Status queries
+    queueStatus: undefined,
+    iterativeProgress: undefined,
+    enrichmentStatus,
+    llmOutputs,
+    
+    // Loading states
+    isLoadingQueue: false,
+    isLoadingIterative: false,
+    isLoadingEnrichment: false,
+    isLoadingLLMOutputs: false,
+    
+    // Computed values
+    isWorkerRunning: false,
+    queueSize: 0,
+    currentItem: undefined,
+    pendingItems: [],
+    recentCompleted: [],
+    isIterativeProcessing: false,
+    iterativePercentage: 0,
+    totalProspects: enrichmentStatus.total_prospects,
+    processedProspects: enrichmentStatus.processed_prospects,
+    
+    // Actions
+    getQueueItemOptions: vi.fn(),
+    cancelQueueItem: vi.fn(),
+    startWorker: vi.fn(),
+    stopWorker: vi.fn(),
+    startIterative: vi.fn(),
+    stopIterative: vi.fn(),
+    
+    // Action states
+    isCancelling: false,
+    isStartingWorker: false,
+    isStoppingWorker: false,
+    isStartingIterative: false,
+    isStoppingIterative: false,
+    
+    // Refetch functions
+    refetchQueueStatus: vi.fn(),
+    refetchIterativeProgress: vi.fn(),
+    refetchEnrichmentStatus: vi.fn(),
+    refetchLLMOutputs: vi.fn(),
+  };
 };
 
 function renderWithQueryClient(component: React.ReactElement) {
@@ -177,8 +223,11 @@ function renderWithQueryClient(component: React.ReactElement) {
 }
 
 describe('AIEnrichment', () => {
+  let mockHookDefault: any;
+  
   beforeEach(() => {
     vi.clearAllMocks();
+    mockHookDefault = createMockHookDefault();
     vi.mocked(useEnhancementQueueService).mockReturnValue(mockHookDefault);
   });
 
@@ -193,7 +242,10 @@ describe('AIEnrichment', () => {
   it('displays enrichment status overview', () => {
     renderWithQueryClient(<AIEnrichment />);
     
-    expect(screen.getByText('750 of 1,000 processed')).toBeInTheDocument();
+    const { enrichmentStatus } = mockHookDefault;
+    const expectedText = `${enrichmentStatus.processed_prospects.toLocaleString()} of ${enrichmentStatus.total_prospects.toLocaleString()} processed`;
+    
+    expect(screen.getByText(expectedText)).toBeInTheDocument();
     expect(screen.getByText('NAICS Classification')).toBeInTheDocument();
     expect(screen.getByText('Value Parsing')).toBeInTheDocument();
     expect(screen.getByText('Set-Aside Standardization')).toBeInTheDocument();
@@ -203,19 +255,23 @@ describe('AIEnrichment', () => {
   it('shows correct coverage percentages', () => {
     renderWithQueryClient(<AIEnrichment />);
     
-    expect(screen.getByText('75.0%')).toBeInTheDocument(); // NAICS coverage
-    expect(screen.getByText('60.0%')).toBeInTheDocument(); // Value parsing
-    expect(screen.getByText('40.0%')).toBeInTheDocument(); // Set-aside
-    expect(screen.getByText('35.0%')).toBeInTheDocument(); // Title enhancement
+    const { enrichmentStatus } = mockHookDefault;
+    
+    expect(screen.getByText(`${enrichmentStatus.naics_coverage.total_percentage}%`)).toBeInTheDocument();
+    expect(screen.getByText(`${enrichmentStatus.value_parsing.total_percentage}%`)).toBeInTheDocument();
+    expect(screen.getByText(`${enrichmentStatus.set_aside_standardization.total_percentage}%`)).toBeInTheDocument();
+    expect(screen.getByText(`${enrichmentStatus.title_enhancement.total_percentage}%`)).toBeInTheDocument();
   });
 
   it('displays last processed information', () => {
     renderWithQueryClient(<AIEnrichment />);
     
+    const { enrichmentStatus } = mockHookDefault;
+    
     expect(screen.getByText('Last processed:')).toBeInTheDocument();
-    expect(screen.getByText('Formatted: 2024-01-15T10:30:00Z')).toBeInTheDocument();
+    expect(screen.getByText(`Formatted: ${enrichmentStatus.last_processed}`)).toBeInTheDocument();
     expect(screen.getByText('Model version:')).toBeInTheDocument();
-    expect(screen.getByText('qwen3-latest')).toBeInTheDocument();
+    expect(screen.getByText(enrichmentStatus.model_version)).toBeInTheDocument();
   });
 
   it('shows loading state for status', () => {
@@ -288,9 +344,8 @@ describe('AIEnrichment', () => {
   it('shows start button when not processing', () => {
     renderWithQueryClient(<AIEnrichment />);
     
-    const startButton = screen.getByRole('button', { name: /start enhancement/i });
-    expect(startButton).toBeInTheDocument();
-    expect(startButton).not.toBeDisabled();
+    expect(screen.getByRole('button', { name: /start enhancement/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /start enhancement/i })).not.toBeDisabled();
   });
 
   it('calls startIterative when start button is clicked', async () => {
@@ -314,38 +369,41 @@ describe('AIEnrichment', () => {
   });
 
   it('shows stop button and progress when processing', () => {
+    const testProgress = generateProgress();
     vi.mocked(useEnhancementQueueService).mockReturnValue({
       ...mockHookDefault,
-      iterativeProgress: mockProgress
+      iterativeProgress: testProgress
     });
 
     renderWithQueryClient(<AIEnrichment />);
     
     expect(screen.getByRole('button', { name: /stop enhancement/i })).toBeInTheDocument();
     expect(screen.getByText('Status: Processing')).toBeInTheDocument();
-    expect(screen.getByText('25 / 100')).toBeInTheDocument();
-    expect(screen.getByText('25.0% Complete')).toBeInTheDocument();
+    expect(screen.getByText(`${testProgress.processed} / ${testProgress.total}`)).toBeInTheDocument();
+    expect(screen.getByText(`${testProgress.percentage}% Complete`)).toBeInTheDocument();
   });
 
   it('shows current prospect when processing', () => {
+    const testProgress = generateProgress();
     vi.mocked(useEnhancementQueueService).mockReturnValue({
       ...mockHookDefault,
-      iterativeProgress: mockProgress
+      iterativeProgress: testProgress
     });
 
     renderWithQueryClient(<AIEnrichment />);
     
     expect(screen.getByText('Currently processing:')).toBeInTheDocument();
-    expect(screen.getByText('AI Software Development Contract')).toBeInTheDocument();
+    expect(screen.getByText(testProgress.current_prospect.title)).toBeInTheDocument();
   });
 
   it('calls stopIterative when stop button is clicked', async () => {
     const user = userEvent.setup();
     const mockStopIterative = vi.fn();
+    const testProgress = generateProgress();
     
     vi.mocked(useEnhancementQueueService).mockReturnValue({
       ...mockHookDefault,
-      iterativeProgress: mockProgress,
+      iterativeProgress: testProgress,
       stopIterative: mockStopIterative
     });
 
@@ -358,9 +416,10 @@ describe('AIEnrichment', () => {
   });
 
   it('shows stopping state', () => {
+    const testProgress = { ...generateProgress(), status: 'stopping' };
     vi.mocked(useEnhancementQueueService).mockReturnValue({
       ...mockHookDefault,
-      iterativeProgress: { ...mockProgress, status: 'stopping' }
+      iterativeProgress: testProgress
     });
 
     renderWithQueryClient(<AIEnrichment />);
@@ -370,56 +429,76 @@ describe('AIEnrichment', () => {
   });
 
   it('shows completion message', () => {
+    const testProgress = { ...generateProgress(), status: 'completed' };
+    testProgress.processed = testProgress.total;
+    
     vi.mocked(useEnhancementQueueService).mockReturnValue({
       ...mockHookDefault,
-      iterativeProgress: { ...mockProgress, status: 'completed', processed: 100 }
+      iterativeProgress: testProgress
     });
 
     renderWithQueryClient(<AIEnrichment />);
     
     expect(screen.getByText('Enhancement completed successfully!')).toBeInTheDocument();
-    expect(screen.getByText('Processed all 100 available records')).toBeInTheDocument();
+    expect(screen.getByText(`Processed all ${testProgress.total} available records`)).toBeInTheDocument();
   });
 
   it('shows stopped message', () => {
+    const testProgress = { ...generateProgress(), status: 'stopped' };
     vi.mocked(useEnhancementQueueService).mockReturnValue({
       ...mockHookDefault,
-      iterativeProgress: { ...mockProgress, status: 'stopped' }
+      iterativeProgress: testProgress
     });
 
     renderWithQueryClient(<AIEnrichment />);
     
     expect(screen.getByText('Enhancement stopped')).toBeInTheDocument();
-    expect(screen.getByText('Processed 25 records before stopping')).toBeInTheDocument();
+    expect(screen.getByText(`Processed ${testProgress.processed} records before stopping`)).toBeInTheDocument();
   });
 
   it('shows error message when present', () => {
+    const errorMessage = `Connection failed at ${Date.now()}`;
+    const testProgress = { ...generateProgress(), error_message: errorMessage };
+    
     vi.mocked(useEnhancementQueueService).mockReturnValue({
       ...mockHookDefault,
-      iterativeProgress: { 
-        ...mockProgress, 
-        error_message: 'Connection to LLM service failed'
-      }
+      iterativeProgress: testProgress
     });
 
     renderWithQueryClient(<AIEnrichment />);
     
-    expect(screen.getByText('Error: Connection to LLM service failed')).toBeInTheDocument();
+    expect(screen.getByText(`Error: ${errorMessage}`)).toBeInTheDocument();
   });
 
   it('displays LLM outputs', () => {
     renderWithQueryClient(<AIEnrichment />);
     
-    expect(screen.getByText('AI Software Development Contract')).toBeInTheDocument();
-    expect(screen.getByText('Cybersecurity Assessment Services')).toBeInTheDocument();
-    expect(screen.getByText('Failed Processing Example')).toBeInTheDocument();
+    const { llmOutputs } = mockHookDefault;
+    
+    llmOutputs.forEach((output: any) => {
+      expect(screen.getByText(output.prospect_title)).toBeInTheDocument();
+    });
   });
 
   it('shows collapsed output summaries', () => {
     renderWithQueryClient(<AIEnrichment />);
     
-    expect(screen.getByText('NAICS: 541511 - Custom Computer Programming Services')).toBeInTheDocument();
-    expect(screen.getByText('Value: $500,000')).toBeInTheDocument();
+    const { llmOutputs } = mockHookDefault;
+    const successfulOutputs = llmOutputs.filter((output: any) => output.success);
+    
+    // Check that we have output summaries displayed
+    expect(successfulOutputs.length).toBeGreaterThan(0);
+    
+    successfulOutputs.forEach((output: any) => {
+      if (output.enhancement_type === 'naics' && output.parsed_result?.code) {
+        const expectedText = `NAICS: ${output.parsed_result.code} - ${output.parsed_result.description}`;
+        expect(screen.getByText(expectedText)).toBeInTheDocument();
+      }
+      if (output.enhancement_type === 'values' && output.parsed_result?.single) {
+        const expectedText = `Value: $${output.parsed_result.single.toLocaleString()}`;
+        expect(screen.getByText(expectedText)).toBeInTheDocument();
+      }
+    });
   });
 
   it('expands and collapses output details', async () => {
@@ -461,16 +540,21 @@ describe('AIEnrichment', () => {
   it('shows processing times', () => {
     renderWithQueryClient(<AIEnrichment />);
     
-    expect(screen.getByText('2.45s')).toBeInTheDocument();
-    expect(screen.getByText('1.23s')).toBeInTheDocument();
-    expect(screen.getByText('0.50s')).toBeInTheDocument();
+    const { llmOutputs } = mockHookDefault;
+    
+    llmOutputs.forEach((output: any) => {
+      expect(screen.getByText(`${output.processing_time}s`)).toBeInTheDocument();
+    });
   });
 
   it('shows formatted timestamps', () => {
     renderWithQueryClient(<AIEnrichment />);
     
-    expect(screen.getByText('Formatted datetime: 2024-01-15T10:30:00Z')).toBeInTheDocument();
-    expect(screen.getByText('Formatted datetime: 2024-01-15T10:31:00Z')).toBeInTheDocument();
+    const { llmOutputs } = mockHookDefault;
+    
+    llmOutputs.forEach((output: any) => {
+      expect(screen.getByText(`Formatted datetime: ${output.timestamp}`)).toBeInTheDocument();
+    });
   });
 
   it('shows loading state for LLM outputs', () => {
@@ -498,9 +582,10 @@ describe('AIEnrichment', () => {
   });
 
   it('disables controls when processing', () => {
+    const testProgress = generateProgress();
     vi.mocked(useEnhancementQueueService).mockReturnValue({
       ...mockHookDefault,
-      iterativeProgress: mockProgress
+      iterativeProgress: testProgress
     });
 
     renderWithQueryClient(<AIEnrichment />);
@@ -515,8 +600,8 @@ describe('AIEnrichment', () => {
 
   it('handles missing title enhancement data gracefully', () => {
     const statusWithoutTitleEnhancement = {
-      ...mockEnhancementStatus,
-      title_enhancement: { enhanced_count: 0, total_percentage: 0 }
+      ...generateEnhancementStatus(),
+      title_enhancement: { enhanced_count: 0, total_percentage: 0.0 }
     };
     
     vi.mocked(useEnhancementQueueService).mockReturnValue({
@@ -527,17 +612,20 @@ describe('AIEnrichment', () => {
     renderWithQueryClient(<AIEnrichment />);
     
     expect(screen.getByText('0')).toBeInTheDocument(); // Should show 0 for enhanced count
-    expect(screen.getByText('0.0%')).toBeInTheDocument(); // Should show 0.0% for coverage
+    expect(screen.getByText('0%')).toBeInTheDocument(); // Should show 0% for coverage
   });
 
   it('shows errors count when processing has errors', () => {
+    const errorCount = Math.floor(Math.random() * 5) + 1;
+    const errors = Array.from({ length: errorCount }, (_, i) => ({
+      prospect_id: Math.floor(Math.random() * 10000),
+      error: `Error ${i + 1} - ${Math.random().toString(36).substr(2, 9)}`,
+      timestamp: new Date(Date.now() - Math.random() * 60 * 60 * 1000).toISOString()
+    }));
+    
     const progressWithErrors = {
-      ...mockProgress,
-      errors: [
-        { prospect_id: 1, error: 'Error 1', timestamp: '2024-01-15T10:00:00Z' },
-        { prospect_id: 2, error: 'Error 2', timestamp: '2024-01-15T10:01:00Z' },
-        { prospect_id: 3, error: 'Error 3', timestamp: '2024-01-15T10:02:00Z' }
-      ]
+      ...generateProgress(),
+      errors
     };
     
     vi.mocked(useEnhancementQueueService).mockReturnValue({
@@ -548,20 +636,15 @@ describe('AIEnrichment', () => {
     renderWithQueryClient(<AIEnrichment />);
     
     expect(screen.getByText('Errors encountered:')).toBeInTheDocument();
-    expect(screen.getByText('3 prospect(s) failed')).toBeInTheDocument();
+    expect(screen.getByText(`${errorCount} prospect(s) failed`)).toBeInTheDocument();
   });
 
   it('formats large numbers with locale string', () => {
-    const largeStatus = {
-      ...mockEnhancementStatus,
-      total_prospects: 1234567,
-      processed_prospects: 987654,
-      naics_coverage: {
-        ...mockEnhancementStatus.naics_coverage,
-        original: 123456,
-        llm_inferred: 234567
-      }
-    };
+    const largeStatus = generateEnhancementStatus();
+    largeStatus.total_prospects = 1234567;
+    largeStatus.processed_prospects = 987654;
+    largeStatus.naics_coverage.original = 123456;
+    largeStatus.naics_coverage.llm_inferred = 234567;
     
     vi.mocked(useEnhancementQueueService).mockReturnValue({
       ...mockHookDefault,

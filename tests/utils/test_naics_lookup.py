@@ -17,20 +17,22 @@ from app.utils.naics_lookup import (
 class TestNAICSValidation:
     """Test NAICS code validation functions."""
     
-    def test_validate_naics_code_valid_codes(self):
-        """Test validation of valid NAICS codes."""
-        valid_codes = [
-            "541511",  # Custom Computer Programming Services
-            "541512",  # Computer Systems Design Services
-            "541519",  # Other Computer Related Services
-            "517311",  # Wired Telecommunications Carriers
-        ]
+    def test_validate_naics_code_valid_format(self):
+        """Test validation accepts properly formatted codes."""
+        import random
+        import string
         
-        for code in valid_codes:
+        # Generate random 6-digit codes to test format validation
+        for _ in range(10):
+            # Generate a random 6-digit numeric code
+            code = ''.join(random.choices(string.digits, k=6))
             result = validate_naics_code(code)
-            # The function might check against a loaded database
-            # We can't assert True without knowing the loaded data
+            
+            # The function should return a boolean for well-formatted codes
             assert isinstance(result, bool), f"validate_naics_code should return bool for {code}"
+            
+            # If it starts with certain prefixes, it might be valid
+            # We're testing the function behavior, not specific codes
     
     def test_validate_naics_code_invalid_codes(self):
         """Test validation of invalid NAICS codes."""
@@ -57,37 +59,47 @@ class TestNAICSDescriptions:
     
     @patch('app.utils.naics_lookup.NAICS_DESCRIPTIONS')
     def test_get_naics_description_existing_codes(self, mock_naics_codes):
-        """Test getting descriptions for existing NAICS codes."""
-        mock_naics_codes.get.side_effect = lambda x: {
-            "541511": "Custom Computer Programming Services",
-            "541512": "Computer Systems Design Services",
-            "541519": "Other Computer Related Services",
-            "517311": "Wired Telecommunications Carriers"
-        }.get(x)
+        """Test getting descriptions for codes that exist in the database."""
+        import random
+        import string
         
-        test_cases = [
-            ("541511", "Custom Computer Programming Services"),
-            ("541512", "Computer Systems Design Services"),
-            ("541519", "Other Computer Related Services"),
-            ("517311", "Wired Telecommunications Carriers"),
-        ]
+        # Create dynamic test data
+        test_descriptions = {}
+        for _ in range(5):
+            code = ''.join(random.choices(string.digits, k=6))
+            desc = f"Test Industry {random.randint(100, 999)}"
+            test_descriptions[code] = desc
         
-        for code, expected_desc in test_cases:
+        mock_naics_codes.get.side_effect = lambda x: test_descriptions.get(x)
+        
+        # Test that existing codes return their descriptions
+        for code, expected_desc in test_descriptions.items():
             result = get_naics_description(code)
-            assert result == expected_desc, f"Description lookup failed for {code}"
+            assert result == expected_desc, f"Description lookup should return the mapped description"
     
     @patch('app.utils.naics_lookup.NAICS_DESCRIPTIONS')
     def test_get_naics_description_non_existing_codes(self, mock_naics_codes):
         """Test getting descriptions for non-existing NAICS codes."""
-        mock_naics_codes.get.side_effect = lambda x: {
-            "541511": "Custom Computer Programming Services"
-        }.get(x)
+        import random
+        import string
         
-        non_existing_codes = ["999999", "123456", "000000"]
+        # Create a small set of known codes
+        known_codes = {}
+        for _ in range(3):
+            code = ''.join(random.choices(string.digits, k=6))
+            known_codes[code] = f"Known Industry {code}"
         
-        for code in non_existing_codes:
-            result = get_naics_description(code)
-            assert result is None, f"Should return None for non-existing code {code}"
+        mock_naics_codes.get.side_effect = lambda x: known_codes.get(x)
+        
+        # Generate codes that are definitely not in our known set
+        for _ in range(5):
+            test_code = ''.join(random.choices(string.digits, k=6))
+            # Make sure it's not accidentally in our known codes
+            while test_code in known_codes:
+                test_code = ''.join(random.choices(string.digits, k=6))
+            
+            result = get_naics_description(test_code)
+            assert result is None, f"Should return None for non-existing codes"
     
     def test_get_naics_description_invalid_input(self):
         """Test description lookup with invalid input."""
@@ -105,16 +117,23 @@ class TestNAICSInfo:
     @patch('app.utils.naics_lookup.validate_naics_code')
     def test_get_naics_info_valid_code(self, mock_validate, mock_get_desc):
         """Test getting info for valid NAICS code."""
-        mock_validate.return_value = True
-        mock_get_desc.return_value = "Custom Computer Programming Services"
+        import random
+        import string
         
-        result = get_naics_info("541511")
+        # Generate random test data
+        test_code = ''.join(random.choices(string.digits, k=6))
+        test_desc = f"Test Industry {random.randint(100, 999)}"
+        
+        mock_validate.return_value = True
+        mock_get_desc.return_value = test_desc
+        
+        result = get_naics_info(test_code)
         
         assert isinstance(result, dict), "Should return a dictionary"
         assert "code" in result
         assert "description" in result
-        assert result["code"] == "541511"
-        assert result["description"] == "Custom Computer Programming Services"
+        assert result["code"] == test_code
+        assert result["description"] == test_desc
     
     @patch('app.utils.naics_lookup.get_naics_description')
     @patch('app.utils.naics_lookup.validate_naics_code')

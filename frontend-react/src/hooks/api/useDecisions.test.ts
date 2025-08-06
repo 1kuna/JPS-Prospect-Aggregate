@@ -25,52 +25,83 @@ vi.mock('@/utils/apiUtils', () => ({
   buildQueryString: vi.fn()
 }));
 
-// Test data
-const mockDecision: GoNoGoDecision = {
-  id: 1,
-  prospect_id: 'prospect-123',
-  user_id: 1,
-  decision: 'go',
-  reason: 'Good fit for our services',
-  decision_date: '2024-01-15T10:00:00Z',
-  created_at: '2024-01-15T10:00:00Z',
-  updated_at: '2024-01-15T10:00:00Z',
-  user: {
-    id: 1,
-    username: 'testuser',
-    first_name: 'John',
-    last_name: 'Doe',
-    email: 'john@example.com',
-    role: 'user',
-    created_at: '2024-01-01T00:00:00Z',
-    updated_at: '2024-01-01T00:00:00Z'
-  }
+// Helper functions to generate dynamic test data
+const generateUser = () => ({
+  id: Math.floor(Math.random() * 10000),
+  username: `user_${Math.random().toString(36).substr(2, 9)}`,
+  first_name: `User${Math.floor(Math.random() * 100)}`,
+  last_name: `Last${Math.floor(Math.random() * 100)}`,
+  email: `${Math.random().toString(36).substr(2, 9)}@example.com`,
+  role: Math.random() > 0.5 ? 'user' : 'admin',
+  created_at: new Date(Date.now() - Math.random() * 365 * 24 * 60 * 60 * 1000).toISOString(),
+  updated_at: new Date().toISOString()
+});
+
+const generateDecision = (): GoNoGoDecision => {
+  const decisions = ['go', 'no-go'] as const;
+  const reasons = ['Good fit for our services', 'Not aligned with strategy', 'Excellent opportunity', 'Budget constraints', 'Timeline mismatch'];
+  
+  return {
+    id: Math.floor(Math.random() * 10000),
+    prospect_id: `prospect-${Math.random().toString(36).substr(2, 9)}`,
+    user_id: Math.floor(Math.random() * 100),
+    decision: decisions[Math.floor(Math.random() * decisions.length)],
+    reason: reasons[Math.floor(Math.random() * reasons.length)],
+    decision_date: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString(),
+    created_at: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString(),
+    updated_at: new Date().toISOString(),
+    user: generateUser()
+  };
 };
 
-const mockDecisionStats: DecisionStats = {
-  total_decisions: 150,
-  go_decisions: 75,
-  no_go_decisions: 75,
-  decisions_by_user: [
-    { user_id: 1, username: 'testuser', decision_count: 50 },
-    { user_id: 2, username: 'analyst', decision_count: 100 }
-  ],
-  recent_decisions: [mockDecision]
+const generateDecisionStats = (): DecisionStats => {
+  const totalDecisions = Math.floor(Math.random() * 500) + 50;
+  const goDecisions = Math.floor(Math.random() * totalDecisions);
+  const noGoDecisions = totalDecisions - goDecisions;
+  const userCount = Math.floor(Math.random() * 10) + 2;
+  
+  const decisionsByUser = Array.from({ length: userCount }, () => ({
+    user_id: Math.floor(Math.random() * 1000),
+    username: `user_${Math.random().toString(36).substr(2, 6)}`,
+    decision_count: Math.floor(Math.random() * 50) + 1
+  }));
+  
+  const recentDecisions = Array.from({ length: Math.min(5, totalDecisions) }, () => generateDecision());
+  
+  return {
+    total_decisions: totalDecisions,
+    go_decisions: goDecisions,
+    no_go_decisions: noGoDecisions,
+    decisions_by_user: decisionsByUser,
+    recent_decisions: recentDecisions
+  };
 };
 
-const mockPaginationMeta: PaginationMeta = {
-  page: 1,
-  per_page: 50,
-  total_items: 150,
-  total_pages: 3,
-  has_next: true,
-  has_prev: false
+const generatePaginationMeta = (): PaginationMeta => {
+  const totalItems = Math.floor(Math.random() * 1000) + 50;
+  const perPage = Math.floor(Math.random() * 50) + 10;
+  const totalPages = Math.ceil(totalItems / perPage);
+  const currentPage = Math.floor(Math.random() * totalPages) + 1;
+  
+  return {
+    page: currentPage,
+    per_page: perPage,
+    total_items: totalItems,
+    total_pages: totalPages,
+    has_next: currentPage < totalPages,
+    has_prev: currentPage > 1
+  };
 };
 
-const mockCreateDecisionRequest: CreateDecisionRequest = {
-  prospect_id: 'prospect-123',
-  decision: 'go',
-  reason: 'Excellent opportunity for growth'
+const generateCreateDecisionRequest = (): CreateDecisionRequest => {
+  const decisions = ['go', 'no-go'] as const;
+  const reasons = ['Excellent opportunity for growth', 'Strategic alignment', 'Budget constraints', 'Timeline concerns', 'Resource availability'];
+  
+  return {
+    prospect_id: `prospect-${Math.random().toString(36).substr(2, 9)}`,
+    decision: decisions[Math.floor(Math.random() * decisions.length)],
+    reason: reasons[Math.floor(Math.random() * reasons.length)]
+  };
 };
 
 // Wrapper component for React Query
@@ -88,9 +119,15 @@ const createWrapper = () => {
 
 describe('useProspectDecisions', () => {
   let mockGet: any;
+  let testDecision: GoNoGoDecision;
+  let testProspectId: string;
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    
+    // Generate fresh test data
+    testDecision = generateDecision();
+    testProspectId = `prospect-${Math.random().toString(36).substr(2, 9)}`;
     
     // Get mocked functions
     const { get } = await import('@/utils/apiUtils');
@@ -102,11 +139,12 @@ describe('useProspectDecisions', () => {
   });
 
   it('fetches decisions for a specific prospect', async () => {
+    const decisions = [testDecision, generateDecision()];
     const mockResponse: ApiResponse<{ prospect_id: string; decisions: GoNoGoDecision[]; total_decisions: number }> = {
       data: {
-        prospect_id: 'prospect-123',
-        decisions: [mockDecision],
-        total_decisions: 1
+        prospect_id: testProspectId,
+        decisions,
+        total_decisions: decisions.length
       },
       message: 'Decisions retrieved successfully',
       status: 'success'
@@ -114,7 +152,7 @@ describe('useProspectDecisions', () => {
 
     mockGet.mockResolvedValue(mockResponse);
 
-    const { result } = renderHook(() => useProspectDecisions('prospect-123'), {
+    const { result } = renderHook(() => useProspectDecisions(testProspectId), {
       wrapper: createWrapper()
     });
 
@@ -215,10 +253,12 @@ describe('useMyDecisions', () => {
   });
 
   it('fetches current user decisions with default pagination', async () => {
+    const testDecision = generateDecision();
+    const testPagination = generatePaginationMeta();
     const mockResponse: ApiResponse<{ decisions: GoNoGoDecision[]; pagination: PaginationMeta }> = {
       data: {
-        decisions: [mockDecision],
-        pagination: mockPaginationMeta
+        decisions: [testDecision],
+        pagination: testPagination
       },
       message: 'User decisions retrieved successfully',
       status: 'success'
@@ -243,8 +283,10 @@ describe('useMyDecisions', () => {
   });
 
   it('fetches user decisions with custom pagination', async () => {
+    const testDecision = generateDecision();
+    const testPagination = generatePaginationMeta();
     const mockResponse = {
-      data: { decisions: [mockDecision], pagination: mockPaginationMeta }
+      data: { decisions: [testDecision], pagination: testPagination }
     };
     mockGet.mockResolvedValue(mockResponse);
 
@@ -264,8 +306,9 @@ describe('useMyDecisions', () => {
   });
 
   it('has longer stale time than prospect decisions', async () => {
+    const testPagination = generatePaginationMeta();
     const mockResponse = {
-      data: { decisions: [], pagination: mockPaginationMeta }
+      data: { decisions: [], pagination: testPagination }
     };
     mockGet.mockResolvedValue(mockResponse);
 
@@ -282,8 +325,9 @@ describe('useMyDecisions', () => {
   });
 
   it('updates query when pagination parameters change', async () => {
+    const testPagination = generatePaginationMeta();
     const mockResponse = {
-      data: { decisions: [], pagination: mockPaginationMeta }
+      data: { decisions: [], pagination: testPagination }
     };
     mockGet.mockResolvedValue(mockResponse);
 
@@ -322,8 +366,9 @@ describe('useDecisionStats', () => {
   });
 
   it('fetches decision statistics', async () => {
+    const testStats = generateDecisionStats();
     const mockResponse: ApiResponse<DecisionStats> = {
-      data: mockDecisionStats,
+      data: testStats,
       message: 'Statistics retrieved successfully',
       status: 'success'
     };
@@ -346,8 +391,9 @@ describe('useDecisionStats', () => {
   });
 
   it('has longest stale time for caching', async () => {
+    const testStats = generateDecisionStats();
     const mockResponse = {
-      data: mockDecisionStats
+      data: testStats
     };
     mockGet.mockResolvedValue(mockResponse);
 
@@ -419,9 +465,11 @@ describe('useCreateDecision', () => {
   };
 
   it('creates decision successfully', async () => {
+    const testDecision = generateDecision();
+    const testRequest = generateCreateDecisionRequest();
     const mockResponse: ApiResponse<{ decision: GoNoGoDecision; message: string }> = {
       data: {
-        decision: mockDecision,
+        decision: testDecision,
         message: 'Decision created successfully'
       },
       message: 'Decision created successfully',
@@ -436,20 +484,22 @@ describe('useCreateDecision', () => {
 
     let response: typeof mockResponse;
     await act(async () => {
-      response = await result.current.mutateAsync(mockCreateDecisionRequest);
+      response = await result.current.mutateAsync(testRequest);
     });
 
     expect(mockPost).toHaveBeenCalledWith(
       '/api/decisions/',
-      mockCreateDecisionRequest,
+      testRequest,
       { credentials: 'include' }
     );
     expect(response!).toEqual(mockResponse);
   });
 
   it('invalidates related queries on success', async () => {
+    const testDecision = generateDecision();
+    const testRequest = generateCreateDecisionRequest();
     const mockResponse = {
-      data: { decision: mockDecision, message: 'Success' }
+      data: { decision: testDecision, message: 'Success' }
     };
     mockPost.mockResolvedValue(mockResponse);
 
@@ -458,12 +508,12 @@ describe('useCreateDecision', () => {
     });
 
     await act(async () => {
-      await result.current.mutateAsync(mockCreateDecisionRequest);
+      await result.current.mutateAsync(testRequest);
     });
 
     // Should invalidate prospect-specific decisions
     expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
-      queryKey: ['decisions', 'prospect', 'prospect-123']
+      queryKey: ['decisions', 'prospect', testRequest.prospect_id]
     });
 
     // Should invalidate user's decisions
@@ -483,6 +533,7 @@ describe('useCreateDecision', () => {
   });
 
   it('handles creation errors gracefully', async () => {
+    const testRequest = generateCreateDecisionRequest();
     const error = new Error('Validation failed');
     mockPost.mockRejectedValue(error);
 
@@ -493,7 +544,7 @@ describe('useCreateDecision', () => {
     let thrownError: Error | undefined;
     await act(async () => {
       try {
-        await result.current.mutateAsync(mockCreateDecisionRequest);
+        await result.current.mutateAsync(testRequest);
       } catch (e) {
         thrownError = e as Error;
       }
@@ -507,15 +558,16 @@ describe('useCreateDecision', () => {
   });
 
   it('handles different decision types', async () => {
+    const testDecision = generateDecision();
     const noGoRequest: CreateDecisionRequest = {
-      prospect_id: 'prospect-456',
+      prospect_id: `prospect-${Math.random().toString(36).substr(2, 9)}`,
       decision: 'no-go',
       reason: 'Not aligned with our strategy'
     };
 
     const mockResponse = {
       data: {
-        decision: { ...mockDecision, decision: 'no-go', prospect_id: 'prospect-456' },
+        decision: { ...testDecision, decision: 'no-go', prospect_id: noGoRequest.prospect_id },
         message: 'No-go decision recorded'
       }
     };
@@ -537,7 +589,7 @@ describe('useCreateDecision', () => {
 
     // Should invalidate the correct prospect's decisions
     expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
-      queryKey: ['decisions', 'prospect', 'prospect-456']
+      queryKey: ['decisions', 'prospect', noGoRequest.prospect_id]
     });
   });
 

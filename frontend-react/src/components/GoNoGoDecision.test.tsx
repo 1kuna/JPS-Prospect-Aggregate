@@ -34,12 +34,25 @@ const mockProspectDecisions = {
   error: null
 };
 
-const mockExistingDecision = {
-  id: 1,
-  decision: 'go',
-  reason: 'Good opportunity for our team',
-  created_at: '2024-01-15T10:30:00Z'
-};
+// Helper function to generate dynamic decision data
+function generateMockDecision() {
+  const decisions = ['go', 'no-go'];
+  const reasons = [
+    'Aligns with our capabilities',
+    'Outside our scope',
+    'Good budget match',
+    'Timeline conflicts',
+    'Strong technical fit',
+    'Resource constraints'
+  ];
+  
+  return {
+    id: Math.floor(Math.random() * 1000) + 1,
+    decision: decisions[Math.floor(Math.random() * decisions.length)],
+    reason: reasons[Math.floor(Math.random() * reasons.length)],
+    created_at: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString()
+  };
+}
 
 function renderWithQueryClient(component: React.ReactElement) {
   const queryClient = new QueryClient({
@@ -94,12 +107,15 @@ describe('GoNoGoDecision', () => {
     });
 
     it('shows existing decision badge when decision exists', () => {
+      const mockDecision = generateMockDecision();
+      mockDecision.decision = 'go'; // Ensure it's a GO decision for this test
+      
       const { useProspectDecisions } = require('../hooks/api');
       useProspectDecisions.mockReturnValue({
         ...mockProspectDecisions,
         data: {
           data: {
-            decisions: [mockExistingDecision]
+            decisions: [mockDecision]
           }
         }
       });
@@ -113,15 +129,15 @@ describe('GoNoGoDecision', () => {
     });
 
     it('shows NO-GO badge for no-go decisions', () => {
+      const mockDecision = generateMockDecision();
+      mockDecision.decision = 'no-go'; // Ensure it's a NO-GO decision for this test
+      
       const { useProspectDecisions } = require('../hooks/api');
       useProspectDecisions.mockReturnValue({
         ...mockProspectDecisions,
         data: {
           data: {
-            decisions: [{
-              ...mockExistingDecision,
-              decision: 'no-go'
-            }]
+            decisions: [mockDecision]
           }
         }
       });
@@ -135,15 +151,15 @@ describe('GoNoGoDecision', () => {
     });
 
     it('does not show reason indicator when no reason exists', () => {
+      const mockDecision = generateMockDecision();
+      mockDecision.reason = null; // Ensure no reason for this test
+      
       const { useProspectDecisions } = require('../hooks/api');
       useProspectDecisions.mockReturnValue({
         ...mockProspectDecisions,
         data: {
           data: {
-            decisions: [{
-              ...mockExistingDecision,
-              reason: null
-            }]
+            decisions: [mockDecision]
           }
         }
       });
@@ -170,12 +186,15 @@ describe('GoNoGoDecision', () => {
     });
 
     it('shows existing decision details in full mode', () => {
+      const mockDecision = generateMockDecision();
+      mockDecision.decision = 'go'; // Set to GO for this test
+      
       const { useProspectDecisions } = require('../hooks/api');
       useProspectDecisions.mockReturnValue({
         ...mockProspectDecisions,
         data: {
           data: {
-            decisions: [mockExistingDecision]
+            decisions: [mockDecision]
           }
         }
       });
@@ -187,17 +206,20 @@ describe('GoNoGoDecision', () => {
       expect(screen.getByText('Current Decision:')).toBeInTheDocument();
       expect(screen.getByText('GO')).toBeInTheDocument();
       expect(screen.getByText('Reason:')).toBeInTheDocument();
-      expect(screen.getByText('Good opportunity for our team')).toBeInTheDocument();
+      expect(screen.getByText(mockDecision.reason)).toBeInTheDocument();
       expect(screen.getByText(/Decision made on/)).toBeInTheDocument();
     });
 
     it('shows change decision options when decision exists', () => {
+      const mockDecision = generateMockDecision();
+      mockDecision.decision = 'go'; // Set to GO for this test
+      
       const { useProspectDecisions } = require('../hooks/api');
       useProspectDecisions.mockReturnValue({
         ...mockProspectDecisions,
         data: {
           data: {
-            decisions: [mockExistingDecision]
+            decisions: [mockDecision]
           }
         }
       });
@@ -212,15 +234,15 @@ describe('GoNoGoDecision', () => {
     });
 
     it('shows opposite change button based on current decision', () => {
+      const mockDecision = generateMockDecision();
+      mockDecision.decision = 'no-go'; // Set to NO-GO for this test
+      
       const { useProspectDecisions } = require('../hooks/api');
       useProspectDecisions.mockReturnValue({
         ...mockProspectDecisions,
         data: {
           data: {
-            decisions: [{
-              ...mockExistingDecision,
-              decision: 'no-go'
-            }]
+            decisions: [mockDecision]
           }
         }
       });
@@ -390,12 +412,14 @@ describe('GoNoGoDecision', () => {
   describe('Undo Decision', () => {
     it('calls delete mutation when undo is clicked', async () => {
       const user = userEvent.setup();
+      const mockDecision = generateMockDecision();
+      
       const { useProspectDecisions } = require('../hooks/api');
       useProspectDecisions.mockReturnValue({
         ...mockProspectDecisions,
         data: {
           data: {
-            decisions: [mockExistingDecision]
+            decisions: [mockDecision]
           }
         }
       });
@@ -407,16 +431,18 @@ describe('GoNoGoDecision', () => {
       const undoButton = screen.getByRole('button', { name: 'Undo Decision' });
       await user.click(undoButton);
 
-      expect(mockDeleteDecision.mutateAsync).toHaveBeenCalledWith(mockExistingDecision.id);
+      expect(mockDeleteDecision.mutateAsync).toHaveBeenCalledWith(mockDecision.id);
     });
 
     it('shows undoing state during deletion', () => {
+      const mockDecision = generateMockDecision();
+      
       const { useProspectDecisions, useDeleteDecision } = require('../hooks/api');
       useProspectDecisions.mockReturnValue({
         ...mockProspectDecisions,
         data: {
           data: {
-            decisions: [mockExistingDecision]
+            decisions: [mockDecision]
           }
         }
       });
@@ -450,12 +476,15 @@ describe('GoNoGoDecision', () => {
     });
 
     it('disables change buttons when create mutation is pending', () => {
+      const mockDecision = generateMockDecision();
+      mockDecision.decision = 'go';
+      
       const { useProspectDecisions, useCreateDecision } = require('../hooks/api');
       useProspectDecisions.mockReturnValue({
         ...mockProspectDecisions,
         data: {
           data: {
-            decisions: [mockExistingDecision]
+            decisions: [mockDecision]
           }
         }
       });
@@ -472,12 +501,14 @@ describe('GoNoGoDecision', () => {
     });
 
     it('disables undo button when delete mutation is pending', () => {
+      const mockDecision = generateMockDecision();
+      
       const { useProspectDecisions, useDeleteDecision } = require('../hooks/api');
       useProspectDecisions.mockReturnValue({
         ...mockProspectDecisions,
         data: {
           data: {
-            decisions: [mockExistingDecision]
+            decisions: [mockDecision]
           }
         }
       });
@@ -548,12 +579,15 @@ describe('GoNoGoDecision', () => {
 
   describe('Styling and Classes', () => {
     it('applies correct styling for GO badge', () => {
+      const mockDecision = generateMockDecision();
+      mockDecision.decision = 'go';
+      
       const { useProspectDecisions } = require('../hooks/api');
       useProspectDecisions.mockReturnValue({
         ...mockProspectDecisions,
         data: {
           data: {
-            decisions: [mockExistingDecision]
+            decisions: [mockDecision]
           }
         }
       });
@@ -567,15 +601,15 @@ describe('GoNoGoDecision', () => {
     });
 
     it('applies correct styling for NO-GO badge', () => {
+      const mockDecision = generateMockDecision();
+      mockDecision.decision = 'no-go';
+      
       const { useProspectDecisions } = require('../hooks/api');
       useProspectDecisions.mockReturnValue({
         ...mockProspectDecisions,
         data: {
           data: {
-            decisions: [{
-              ...mockExistingDecision,
-              decision: 'no-go'
-            }]
+            decisions: [mockDecision]
           }
         }
       });
@@ -625,12 +659,19 @@ describe('GoNoGoDecision', () => {
     });
 
     it('includes title attribute for reason indicator', () => {
+      const mockDecision = generateMockDecision();
+      mockDecision.decision = 'go';
+      // Ensure it has a reason for this test
+      if (!mockDecision.reason) {
+        mockDecision.reason = 'Test reason for tooltip';
+      }
+      
       const { useProspectDecisions } = require('../hooks/api');
       useProspectDecisions.mockReturnValue({
         ...mockProspectDecisions,
         data: {
           data: {
-            decisions: [mockExistingDecision]
+            decisions: [mockDecision]
           }
         }
       });
@@ -640,7 +681,7 @@ describe('GoNoGoDecision', () => {
       );
 
       const reasonIndicator = screen.getByText('(with reason)');
-      expect(reasonIndicator).toHaveAttribute('title', 'Good opportunity for our team');
+      expect(reasonIndicator).toHaveAttribute('title', mockDecision.reason);
     });
   });
 
