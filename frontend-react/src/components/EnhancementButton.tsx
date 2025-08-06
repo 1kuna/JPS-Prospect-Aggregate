@@ -6,6 +6,7 @@ import { useEnhancementErrorHandler } from './EnhancementErrorBoundary';
 interface EnhancementButtonProps {
   prospect: {
     id: string;
+    ollama_processed_at?: string | null;
   };
   userId?: number;
   forceRedo?: boolean;
@@ -22,14 +23,17 @@ export function EnhancementButton({
   const { handleError } = useEnhancementErrorHandler();
   
   const status = getProspectStatus(prospect.id);
+  const isAlreadyEnhanced = !!prospect.ollama_processed_at;
   
   const handleEnhanceClick = async () => {
     try {
+      // Immediately trigger the start callback to show progress box
       onEnhancementStart?.();
+      
       await addToQueue({
         prospect_id: prospect.id,
         user_id: userId,
-        force_redo: forceRedo
+        force_redo: forceRedo || isAlreadyEnhanced
       });
     } catch (error) {
       handleError(error as Error, 'Enhancement Queue');
@@ -53,52 +57,58 @@ export function EnhancementButton({
   
   const getButtonContent = () => {
     if (isProcessing) {
+      // Show queue position if available, along with current step
+      const queueInfo = status?.queuePosition ? `(#${status.queuePosition}) ` : '';
       return (
         <>
           <ReloadIcon className="mr-2 h-4 w-4 animate-spin" />
-          {status?.currentStep || 'Enhancing...'}
+          {queueInfo}{status?.currentStep || 'Enhancing...'}
         </>
       );
     }
     
-    if (isQueued) {
-      return (
-        <div className="flex items-center justify-between w-full">
-          <div className="flex items-center">
-            <ReloadIcon className="mr-2 h-4 w-4 animate-spin" />
-            <span>
-              Queued (#{status?.queuePosition})
-              {status?.estimatedTimeRemaining && (
-                <span className="text-xs ml-1">
-                  ~{Math.ceil(status.estimatedTimeRemaining / 60)}m
-                </span>
-              )}
-            </span>
-          </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-6 w-6 p-0 ml-2 hover:bg-red-100"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleCancelClick();
-            }}
-          >
-            <Cross1Icon className="h-3 w-3 text-red-600" />
-          </Button>
-        </div>
-      );
-    }
     
-    return 'Enhance with AI';
+    return isAlreadyEnhanced ? 'Redo Enhancement' : 'Enhance with AI';
   };
+  
+  if (isQueued) {
+    return (
+      <div className="flex items-center">
+        <Button
+          disabled={true}
+          className="bg-orange-600 text-white disabled:bg-orange-600 disabled:opacity-100 min-w-[140px]"
+        >
+          <ReloadIcon className="mr-2 h-4 w-4 animate-spin" />
+          <span>
+            Queued (#{status?.queuePosition})
+            {status?.estimatedTimeRemaining && (
+              <span className="text-xs ml-1">
+                ~{Math.ceil(status.estimatedTimeRemaining / 60)}m
+              </span>
+            )}
+          </span>
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-9 w-9 p-0 ml-1 hover:bg-red-100"
+          onClick={(e) => {
+            e.stopPropagation();
+            handleCancelClick();
+          }}
+        >
+          <Cross1Icon className="h-4 w-4 text-red-600" />
+        </Button>
+      </div>
+    );
+  }
   
   return (
     <Button
       onClick={handleEnhanceClick}
-      disabled={isDisabled && !isQueued} // Allow clicks on queued items for cancel
+      disabled={isDisabled}
       className={`
-        ${isQueued ? 'bg-orange-600 hover:bg-orange-700' : 'bg-blue-600 hover:bg-blue-700'} 
+        ${isProcessing ? 'bg-blue-600' : 'bg-blue-600 hover:bg-blue-700'} 
         text-white disabled:bg-gray-400 min-w-[140px]
       `}
     >

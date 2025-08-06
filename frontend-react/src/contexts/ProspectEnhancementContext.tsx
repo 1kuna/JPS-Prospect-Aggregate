@@ -1,11 +1,12 @@
 import { createContext, useContext, ReactNode } from 'react';
-import { useEnhancement } from '@/hooks/api/useEnhancement';
+import { useEnhancementSimple } from '@/hooks/api/useEnhancementSimple';
 import { EnhancementStepData } from '@/types';
 
 interface ProspectEnhancementStatus {
   prospect_id: string;
   status: 'idle' | 'queued' | 'processing' | 'completed' | 'failed';
   queuePosition?: number;
+  queueSize?: number;
   estimatedTimeRemaining?: number;
   currentStep?: string;
   progress?: {
@@ -13,7 +14,9 @@ interface ProspectEnhancementStatus {
     contacts?: EnhancementStepData;
     naics?: EnhancementStepData;
     titles?: EnhancementStepData;
+    set_asides?: EnhancementStepData;
   };
+  enhancementTypes?: string[];
   error?: string;
 }
 
@@ -37,9 +40,12 @@ export function ProspectEnhancementProvider({ children }: { children: ReactNode 
     queueEnhancement,
     getEnhancementState,
     cancelEnhancement,
-    queueLength,
-    isProcessing
-  } = useEnhancement();
+    enhancementStates
+  } = useEnhancementSimple();
+  
+  // Derive queue length and processing status from enhancement states
+  const queueLength = Object.values(enhancementStates).filter(s => s.status === 'queued').length;
+  const isProcessing = Object.values(enhancementStates).some(s => s.status === 'processing');
 
   // Adapt the interface to match existing API
   const contextValue: ProspectEnhancementContextType = {
@@ -49,13 +55,23 @@ export function ProspectEnhancementProvider({ children }: { children: ReactNode 
       const state = getEnhancementState(prospect_id);
       if (!state) return null;
       
+      // Convert completedSteps array to progress object for backward compatibility
+      const progress: any = {};
+      if (state.completedSteps) {
+        state.completedSteps.forEach(step => {
+          progress[step] = { completed: true, skipped: false };
+        });
+      }
+      
       return {
         prospect_id,
         status: state.status,
         queuePosition: state.queuePosition,
-        estimatedTimeRemaining: state.estimatedTimeRemaining,
+        queueSize: state.queueSize,
+        estimatedTimeRemaining: undefined, // Not used in simple version
         currentStep: state.currentStep,
-        progress: state.progress,
+        progress,
+        enhancementTypes: state.enhancementTypes,
         error: state.error
       };
     },

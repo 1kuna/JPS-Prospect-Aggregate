@@ -10,7 +10,7 @@ from app.utils.scraper_utils import (
     stop_scraper,
     run_all_scrapers,
 )
-from app.api.auth import admin_required
+from app.api.auth import admin_required, super_admin_required
 import threading
 import time
 
@@ -21,7 +21,7 @@ logger = logger.bind(name="api.scrapers")
 
 
 @scrapers_bp.route("/<int:source_id>/pull", methods=["POST"])
-@admin_required
+@super_admin_required
 def pull_data_source(source_id):
     """Trigger a data pull for a specific data source via ScraperService."""
     try:
@@ -58,7 +58,7 @@ def pull_data_source(source_id):
 
 
 @scrapers_bp.route("/<int:source_id>/status", methods=["GET"])
-@admin_required
+@super_admin_required
 def check_scraper_status(source_id):
     """Check the status of a scraper for a given data source."""
     session = db.session
@@ -107,7 +107,7 @@ def check_scraper_status(source_id):
 
 
 @scrapers_bp.route("/run-all", methods=["POST"])
-@admin_required
+@super_admin_required
 def run_all_scrapers():
     """Run all scrapers synchronously in order."""
     try:

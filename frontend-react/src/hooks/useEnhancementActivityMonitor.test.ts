@@ -9,8 +9,8 @@ const mockEnhancementStates = vi.fn();
 const mockIsWorkerRunning = vi.fn();
 const mockIsIterativeProcessing = vi.fn();
 
-vi.mock('@/hooks/api/useEnhancement', () => ({
-  useEnhancement: () => ({
+vi.mock('@/hooks/api/useEnhancementSimple', () => ({
+  useEnhancementSimple: () => ({
     enhancementStates: mockEnhancementStates()
   })
 }));

@@ -155,21 +155,6 @@ export function useEnhancementErrorHandler() {
     showErrorToast(enhancementError);
   }, [showErrorToast]);
 
-  const handleSSEError = useCallback((error: Event | Error) => {
-    const errorMessage = error instanceof Error ? error.message : 'SSE connection error';
-    
-    const sseError = createNetworkError(errorMessage, {
-      code: 'SSE_CONNECTION_ERROR',
-      userMessage: 'Lost connection to enhancement progress. Trying to reconnect...',
-      severity: ErrorSeverity.WARNING,
-      recoveryActions: [
-        { label: 'Reconnect', action: () => {} }
-      ]
-    });
-    
-    errorService.handleError(sseError);
-    showErrorToast(sseError);
-  }, [showErrorToast]);
 
   const handleNetworkError = useCallback((error: Error) => {
     const networkError = createNetworkError(error.message, {
@@ -187,7 +172,6 @@ export function useEnhancementErrorHandler() {
 
   return {
     handleError,
-    handleSSEError,
     handleNetworkError
   };
 }

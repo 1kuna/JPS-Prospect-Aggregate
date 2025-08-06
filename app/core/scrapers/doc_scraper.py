@@ -107,7 +107,8 @@ class DocScraper(ConsolidatedScraperBase):
                 "Organization Unit": "organization_unit",
                 "Months": "months",
                 "Years": "years",
-                "Type Of Awardee": "type_of_awardee",
+                "Anticipated Set Aside And Type": "anticipated_set_aside_and_type",  # Now storing competition info
+                "Competition Strategy": "competition_strategy",  # Original competition strategy
                 "New Requirement Or Recompete": "new_requirement_or_recompete",
                 "Incumbent Contractor Name": "incumbent_contractor_name",
                 "Awarded Contract Order Number": "awarded_contract_order_number",

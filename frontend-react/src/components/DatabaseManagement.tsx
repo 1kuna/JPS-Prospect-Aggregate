@@ -86,7 +86,7 @@ export function DatabaseManagement() {
   // Mutation for clearing AI entries
   const clearAIMutation = useMutation({
     mutationFn: async () => {
-      const response = await fetch('/api/database/clear-ai', {
+      const response = await fetch('/api/database/clear/ai', {
         method: 'POST',
       });
       if (!response.ok) {
@@ -124,7 +124,7 @@ export function DatabaseManagement() {
   // Mutation for clearing original entries
   const clearOriginalMutation = useMutation({
     mutationFn: async () => {
-      const response = await fetch('/api/database/clear-original', {
+      const response = await fetch('/api/database/clear/original', {
         method: 'POST',
       });
       if (!response.ok) {
