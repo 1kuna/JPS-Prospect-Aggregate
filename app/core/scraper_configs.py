@@ -39,12 +39,18 @@ ACQUISITION_GATEWAY_CONFIG = ScraperConfig(
     raw_column_rename_map={
         "Listing ID": "native_id",
         "Title": "title",
+        # Some exports use 'Description'; others only provide 'Body'.
+        # 'Description' will be filled from 'Body' in a custom transform when missing.
         "Description": "description",
+        # Map 'Organization' to agency to avoid missing agency when this header is present
+        "Organization": "agency",
         "NAICS Code": "naics",  # Changed from naics_code to match Prospect model
         "Estimated Contract Value": "estimated_value_text",
         "Estimated Solicitation Date": "release_date_raw",  # Keep as raw for date parsing
         "Ultimate Completion Date": "award_date_raw",  # Keep as raw for date parsing
         "Agency": "agency",
+        # Frequently present in AG exports
+        "Estimated Award FY": "award_fiscal_year",
         "Place of Performance City": "place_city",
         "Place of Performance State": "place_state",
         "Place of Performance Country": "place_country",
@@ -291,9 +297,14 @@ SSA_CONFIG = ScraperConfig(
         "DESCRIPTION": "description",
         "NAICS": "naics",  # Fixed: changed from naics_code to naics
         "CONTRACT TYPE": "contract_type",
-        "TYPE OF COMPETITION": "set_aside",  # Updated: actual column name in SSA files
-        "EST COST PER FY": "estimated_value_text",  # Updated: actual column name in SSA files
-        # "AWARD FISCAL YEAR": "award_fiscal_year",  # Removed: column doesn't exist in current SSA files
+        # Map both variants commonly seen in SSA files
+        "TYPE OF COMPETITION": "set_aside",
+        "SET ASIDE": "set_aside",
+        # Value field variants
+        "EST COST PER FY": "estimated_value_text",
+        "ESTIMATED VALUE": "estimated_value_text",
+        # If present in some files, capture award fiscal year
+        "AWARD FISCAL YEAR": "award_fiscal_year",
         "PLACE OF PERFORMANCE": "place_raw",
         "PLANNED AWARD DATE": "planned_award_date_raw",  # Keep as raw for date parsing
     },
@@ -369,6 +380,8 @@ DOJ_CONFIG = ScraperConfig(
         "Target Solicitation Date": "release_date_raw",
         "Target Award Date": "award_date_raw",
         "Place of Performance": "place_raw",
+        # Ensure country is mapped for DOJ if present
+        "Country": "place_country_raw",
         "DOJ Small Business POC - Email Address": "doj_sb_poc_email",
         "DOJ Small Business POC - Name": "doj_sb_poc_name",
         "DOJ Requirement POC - Name": "doj_req_poc_name",
@@ -414,6 +427,8 @@ DOS_CONFIG = ScraperConfig(
         "Requirement Title": "title",
         "Requirement Description": "description",
         "Estimated Value": "estimated_value_raw1",
+        # Some files include a separate numeric Dollar Value field
+        "Dollar Value": "estimated_value_raw2",
         "Place of Performance Country": "place_country_raw",
         "Place of Performance City": "place_city_raw",
         "Place of Performance State": "place_state_raw",

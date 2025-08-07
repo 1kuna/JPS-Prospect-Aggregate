@@ -59,6 +59,20 @@ class SsaScraper(ConsolidatedScraperBase):
                     "'est_value_unit' column not found. Defaulting 'est_value_unit_final' to 'Per FY'."
                 )
 
+            # Normalize set_aside variants to unified 'set_aside'
+            if "set_aside" not in df.columns:
+                for variant in ["TYPE OF COMPETITION", "SET ASIDE"]:
+                    if variant in df.columns and df[variant].notna().any():
+                        df["set_aside"] = df[variant]
+                        break
+
+            # Normalize estimated value variants to 'estimated_value_text'
+            if "estimated_value_text" not in df.columns:
+                for variant in ["EST COST PER FY", "ESTIMATED VALUE"]:
+                    if variant in df.columns and df[variant].notna().any():
+                        df["estimated_value_text"] = df[variant]
+                        break
+
             # Parse place_raw to extract city and state
             if "place_raw" in df.columns:
                 # SSA typically has format like "Baltimore, MD" or just city name
