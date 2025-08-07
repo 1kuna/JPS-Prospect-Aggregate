@@ -60,13 +60,15 @@ class TreasuryScraper(ConsolidatedScraperBase):
             df["row_index"] = df.index
             self.logger.debug("Added 'row_index' to DataFrame.")
 
-            # Create description from title if description doesn't exist
-            if "title" in df.columns and "description" not in df.columns:
-                df["description"] = df["title"]
-                self.logger.debug("Created 'description' from 'title'.")
-            elif "description" not in df.columns:
-                df["description"] = None
-                self.logger.debug("Initialized 'description' to None.")
+            # Create description from title or PSC if description doesn't exist
+            if "description" not in df.columns:
+                if "title" in df.columns:
+                    df["description"] = df["title"]
+                elif "PSC" in df.columns:
+                    df["description"] = df["PSC"]
+                else:
+                    df["description"] = None
+                self.logger.debug("Initialized 'description' from title/PSC or None.")
 
             # Handle contact information - Treasury has names but no emails
             # Use Program Office Point of Contact as primary contact name
@@ -77,7 +79,7 @@ class TreasuryScraper(ConsolidatedScraperBase):
             # Note: Treasury has no email addresses in the data
             # Bureau contact name will go to extras via _treasury_create_extras
 
-            # Parse place_raw to extract city and state
+            # Parse place_raw or 'Place of Performance' to extract city and state
             if "place_raw" in df.columns:
                 # Treasury typically has format like "Washington, DC" or just city name
                 df[["place_city", "place_state"]] = df["place_raw"].str.extract(
@@ -87,6 +89,14 @@ class TreasuryScraper(ConsolidatedScraperBase):
                 df["place_state"] = df["place_state"].str.strip()
                 df["place_country"] = "USA"  # Default for Treasury data
                 self.logger.debug("Parsed place_raw into city, state, and country.")
+            elif "Place of Performance" in df.columns:
+                df[["place_city", "place_state"]] = df["Place of Performance"].str.extract(
+                    r'^([^,]+)(?:,\s*([A-Z]{2}))?$', expand=True
+                )
+                df["place_city"] = df["place_city"].str.strip()
+                df["place_state"] = df["place_state"].str.strip()
+                df["place_country"] = "USA"
+                self.logger.debug("Parsed 'Place of Performance' into city, state, and country.")
 
         except Exception as e:
             self.logger.warning(f"Error in _custom_treasury_transforms: {e}")

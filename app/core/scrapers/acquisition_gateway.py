@@ -28,23 +28,23 @@ class AcquisitionGatewayScraper(ConsolidatedScraperBase):
         Also collects acquisition gateway-specific fields into extras JSON.
         """
         try:
-            # Handle Description/Body fallback
+            # Handle Description/Body fallback robustly (pre- and post-rename cases)
+            # Case 1: Pre-rename headers
             if "Description" in df.columns and "Body" in df.columns:
-                # Use Description as primary, fall back to Body if Description is empty
-                mask = df["Description"].isna() | (df["Description"] == "")
+                mask = df["Description"].isna() | (df["Description"].astype(str).str.strip() == "")
                 df.loc[mask, "Description"] = df.loc[mask, "Body"]
-                self.logger.debug("Applied Body fallback for missing descriptions")
-            elif "description" in df.columns and "Body" in df.columns:
-                # Fill missing descriptions with Body values (post-rename case)
-                mask = df["description"].isna() | (df["description"] == "")
+                self.logger.debug("Applied Body fallback for missing descriptions (pre-rename)")
+            
+            # Case 2: Post-rename 'description' + still-present 'Body'
+            if "description" in df.columns and "Body" in df.columns:
+                mask = df["description"].isna() | (df["description"].astype(str).str.strip() == "")
                 df.loc[mask, "description"] = df.loc[mask, "Body"]
-                self.logger.debug(
-                    "Applied Body fallback for missing descriptions (post-rename)"
-                )
+                self.logger.debug("Applied Body fallback for missing descriptions (post-rename)")
 
             # Create extras JSON with acquisition gateway-specific fields
             extras_fields = {
                 "Node_ID": "node_id",
+                # Preserve full body separately for traceability
                 "Body": "body",
                 "Organization": "organization",
                 "Requirement Status": "requirement_status",

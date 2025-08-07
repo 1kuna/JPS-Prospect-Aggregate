@@ -113,20 +113,16 @@ class DOJForecastScraper(ConsolidatedScraperBase):
                     "Selected primary contacts from DOJ requirement POC with small business POC fallback."
                 )
 
-            # Place Country Logic
-            place_country_col_raw = (
-                "place_country_raw"  # From raw_column_rename_map (original: 'Country')
-            )
-            if place_country_col_raw in df.columns:
-                df["place_country"] = df[place_country_col_raw].fillna("USA")
-                self.logger.debug(
-                    "Processed 'place_country', defaulting NA to USA."
-                )
+            # Place Country Logic (handle both raw and direct 'Country')
+            if "place_country_raw" in df.columns:
+                df["place_country"] = df["place_country_raw"].fillna("USA")
+                self.logger.debug("Processed 'place_country' from 'place_country_raw'.")
+            elif "Country" in df.columns:
+                df["place_country"] = df["Country"].fillna("USA")
+                self.logger.debug("Processed 'place_country' from 'Country'.")
             else:
                 df["place_country"] = "USA"
-                self.logger.debug(
-                    f"'{place_country_col_raw}' not found. Defaulted 'place_country' to USA."
-                )
+                self.logger.debug("Defaulted 'place_country' to USA (no source column found).")
 
             # Parse place_raw to extract city and state if available
             if "place_raw" in df.columns:

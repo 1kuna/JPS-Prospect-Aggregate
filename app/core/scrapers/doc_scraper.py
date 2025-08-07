@@ -88,6 +88,11 @@ class DocScraper(ConsolidatedScraperBase):
                 "Processed 'place_country_final', defaulting to USA if needed."
             )
 
+            # Ensure agency is present (DOC sometimes treats Organization as agency)
+            if "agency" not in df.columns and "Organization" in df.columns:
+                df["agency"] = df["Organization"]
+                self.logger.debug("Mapped 'Organization' to 'agency' (DOC).")
+
         except Exception as e:
             self.logger.warning(f"Error in _custom_doc_transforms: {e}")
 
