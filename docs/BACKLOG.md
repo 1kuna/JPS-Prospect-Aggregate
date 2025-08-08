@@ -2,7 +2,7 @@
 
 This document tracks feature requests, bug reports, and questions that need to be addressed. Items are organized by category and priority.
 
-**Last Updated**: 2025-01-03  
+**Last Updated**: 2025-08-08  
 **Source**: Converted from docs/add later.txt
 
 ## Priority Legend
@@ -16,16 +16,22 @@ This document tracks feature requests, bug reports, and questions that need to b
 
 ### Time Display Issue on Data Sources Tab
 **Priority**: 🔴 High  
+**Status**: ⚠️ Needs Verification  
 **Description**: Time displays 4 hours ahead on the Data Sources tab only. All other pages show correct time.  
-**Suggested Fix**: Replace time logic with implementation from other pages that work correctly.
+**Suggested Fix**: Replace time logic with implementation from other pages that work correctly.  
+**Note**: DataSources component may have been refactored - needs verification if issue persists.
 
 ### AI Enhancement Filter Not Working
 **Priority**: 🔴 High  
-**Description**: The AI enrichment filter on the dashboard page doesn't filter results - all results show regardless of selection.
+**Status**: ✅ Likely Fixed  
+**Description**: The AI enrichment filter on the dashboard page doesn't filter results - all results show regardless of selection.  
+**Update**: Filter logic appears to be properly implemented in ProspectFilters.tsx and usePaginatedProspects.ts - needs user verification.
 
 ### Enhancement Activity Display
 **Priority**: 🟡 Medium  
-**Description**: Real enhancement runs don't appear in the "Recent Activity" section. Demo listings should be removed.
+**Status**: ❌ Component Removed  
+**Description**: Real enhancement runs don't appear in the "Recent Activity" section. Demo listings should be removed.  
+**Update**: The "Recent Activity" component has been removed from the codebase. Enhancement status is now shown through other UI elements.
 
 ---
 
@@ -48,11 +54,13 @@ This document tracks feature requests, bug reports, and questions that need to b
 
 ### Go/No-Go Decision Tracking
 **Priority**: 🟡 Medium  
+**Status**: ✅ Implemented  
 **Description**: Add ability to mark opportunities as go/no-go with:
 - User attribution (who marked it)
 - Timestamp (when marked)
 - Queue for manual verification
 - Reasoning field for decisions
+**Update**: Fully implemented with Decision model, API endpoints, and UI components (GoNoGoDecision.tsx)
 
 ### Database Management Enhancements
 **Priority**: 🟡 Medium  
@@ -106,3 +114,6 @@ This document tracks feature requests, bug reports, and questions that need to b
 - Dashboard toasts implementation is complete ✅
 - NAICS inference should stay within 4-digit parent codes unless generic
 - All items converted from informal notes in "add later.txt"
+- Set-aside LLM processing is marked as critical issue in CODEBASE_IMPROVEMENTS.md
+- Extensive test coverage (27k+ lines) has been added since initial backlog creation
+- Go/No-Go decision tracking has been fully implemented with user attribution and reasoning
