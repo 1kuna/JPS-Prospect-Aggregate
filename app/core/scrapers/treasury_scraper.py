@@ -60,15 +60,19 @@ class TreasuryScraper(ConsolidatedScraperBase):
             df["row_index"] = df.index
             self.logger.debug("Added 'row_index' to DataFrame.")
 
-            # Create description from title or PSC if description doesn't exist
+            # Treasury data doesn't have a clear title field
+            # Use "Type of Requirement" as title if available
+            if "title" not in df.columns and "Type of Requirement" in df.columns:
+                df["title"] = df["Type of Requirement"]
+                self.logger.debug("Used 'Type of Requirement' as title for Treasury data.")
+            
+            # Create description from title if description doesn't exist
             if "description" not in df.columns:
                 if "title" in df.columns:
                     df["description"] = df["title"]
-                elif "PSC" in df.columns:
-                    df["description"] = df["PSC"]
                 else:
                     df["description"] = None
-                self.logger.debug("Initialized 'description' from title/PSC or None.")
+                self.logger.debug("Initialized 'description' from title or None.")
 
             # Handle contact information - Treasury has names but no emails
             # Use Program Office Point of Contact as primary contact name
@@ -111,6 +115,7 @@ class TreasuryScraper(ConsolidatedScraperBase):
         try:
             # Define Treasury-specific extras fields mapping (using original CSV column names)
             extras_fields = {
+                "PSC": "product_service_code",  # Product Service Code classification
                 "Type of Requirement": "requirement_type",
                 "Specific Id": "native_id_primary",
                 "ShopCart/req": "native_id_fallback1",
