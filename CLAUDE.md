@@ -2,6 +2,59 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Table of Contents
+
+- [Quick Start](#quick-start)
+- [Prerequisites](#prerequisites)
+- [Setup](#setup)
+  - [Docker Setup](#option-1-docker-setup-recommended-for-production)
+  - [Local Development](#option-2-local-development-setup)
+- [Commands](#commands)
+  - [Backend Development](#backend-development)
+  - [Frontend Development](#frontend-development)
+  - [Testing](#testing-commands)
+  - [Maintenance](#maintenance)
+- [Architecture](#architecture)
+- [API Documentation](#api-layer)
+- [Data Sources](#data-sources)
+- [Common Issues & Troubleshooting](#common-issues--troubleshooting)
+- [Development Workflows](#development-workflows)
+- [Security & Best Practices](#security--best-practices)
+- [Project Structure](#project-structure)
+
+## Quick Start
+
+### Most Common Commands
+
+```bash
+# Start the application
+python run.py                               # Start backend (port 5001)
+cd frontend-react && npm run dev            # Start frontend (port 5173)
+
+# Run scrapers
+python -m scripts.run_scraper --source "DHS"  # Run specific scraper
+python scripts/run_all_scrapers.py            # Run all scrapers
+
+# Database operations
+python scripts/setup_databases.py             # Complete DB setup
+cd migrations && alembic upgrade head         # Run migrations
+
+# Testing
+python -m pytest                              # Run backend tests
+cd frontend-react && npm test                 # Run frontend tests
+
+# LLM Enhancement
+python scripts/enrichment/enhance_prospects_with_llm.py values --limit 100
+```
+
+## Prerequisites
+
+- **Python 3.11+** (required)
+- **Node.js 20.x** (for frontend)
+- **Ollama** (for LLM features) - Install from https://ollama.ai/
+  - Pull model: `ollama pull qwen3:latest`
+- **Playwright browsers**: `playwright install`
+
 ## Setup
 
 ### Option 1: Docker Setup (Recommended for Production)
@@ -125,15 +178,19 @@ python scripts/run_all_scrapers.py
 # Run specific scraper
 python -m scripts.run_scraper --source "DHS"
 
-# Database migrations
+# Database migrations (run from migrations directory)
+cd migrations && alembic upgrade head
+cd migrations && alembic revision --autogenerate -m "description"
+
+# Or set ALEMBIC_CONFIG environment variable
+export ALEMBIC_CONFIG=migrations/alembic.ini
 alembic upgrade head
-alembic revision --autogenerate -m "description"
 
 # Run tests with coverage (configuration in pytest.ini)
 python -m pytest
 
-# Run single test
-python -m pytest tests/test_specific.py::test_function -v
+# Run single test (example)
+python -m pytest tests/api/test_prospects_api.py::test_get_prospects -v
 
 # LLM enhancement (requires Ollama with qwen3 model)
 python scripts/enrichment/enhance_prospects_with_llm.py values --limit 100
@@ -145,19 +202,19 @@ python scripts/enrichment/enhance_prospects_with_llm.py --check-status
 ### Scraper Testing
 ```bash
 # Test all scrapers
-python run_scraper_tests.py
+python scripts/run_scraper_tests.py
 
 # Test specific scraper
-python run_scraper_tests.py --scraper dhs
+python scripts/run_scraper_tests.py --scraper dhs
 
 # Test individual scraper without web server
-python test_scraper_individual.py --scraper acquisition_gateway
+python scripts/test_scraper_individual.py --scraper acquisition_gateway
 
 # Test all scrapers individually
-python test_scraper_individual.py --scraper all
+python scripts/test_scraper_individual.py --scraper all
 
 # List available scrapers
-python test_scraper_individual.py --list
+python scripts/test_scraper_individual.py --list
 ```
 
 ### Decision System & ML Export
@@ -371,8 +428,8 @@ python -m pytest tests/ --benchmark-only            # Run benchmark tests only
 python -m pytest tests/ --benchmark-skip            # Skip benchmark tests
 
 # Test data management
-python scripts/setup_test_data.py                   # Create test fixtures
-python scripts/cleanup_test_data.py                 # Clean test database
+# Note: Test fixtures are managed through pytest conftest.py
+# Database setup/teardown is handled automatically by test framework
 ```
 
 #### Coverage Analysis
@@ -404,7 +461,7 @@ cd frontend-react && npm run test:coverage -- --run --coverage.thresholds.statem
 # Data retention cleanup (preview mode by default)
 python app/utils/data_retention.py
 
-# Execute cleanup (keeps 3 most recent files per source)
+# Execute cleanup (keeps 5 most recent files + 2 successful per source)
 python app/utils/data_retention.py --execute
 
 # Custom retention count
@@ -418,9 +475,24 @@ sqlite3 data/jps_aggregate.db "PRAGMA integrity_check;"
 
 # Export data to CSV
 python -m scripts.export_csv
+# Or directly:
+python scripts/utils/export_db_to_csv.py
 
-# Data validation
+# Data validation and analysis
 python scripts/validate_file_naming.py
+python scripts/validate_data_extraction.py          # Validate data extraction from raw files
+python scripts/validate_raw_data_mapping.py         # Validate raw data field mappings
+python scripts/analyze_field_coverage.py --fixtures tests/fixtures/golden_files  # Analyze field coverage
+
+# Data restoration and backfilling
+python scripts/restore_prospects_from_files.py      # Restore prospects from backup files
+python scripts/backfill_file_logs.py               # Backfill file processing logs
+python scripts/backfill_naics_descriptions.py      # Add NAICS code descriptions
+
+# Monitoring
+python scripts/monitor_scrapers.py                  # Monitor scraper execution status
+python scripts/analyze_set_asides.py               # Analyze set-aside data
+python scripts/check_set_aside_results.py          # Check set-aside processing results
 ```
 
 ## Prerequisites
@@ -437,6 +509,132 @@ python scripts/validate_file_naming.py
 - No installation needed (comes with Python)
 - Databases stored in `data/` directory
 - Automatic backups with retention policy
+
+## Environment Variables
+
+Key environment variables from `.env.example`:
+
+### Required Variables
+```bash
+SECRET_KEY=<generate-secure-key>        # REQUIRED: Generate with command below
+ENVIRONMENT=development                 # or 'production'
+```
+
+Generate SECRET_KEY:
+```bash
+python -c "import secrets; print(secrets.token_hex(32))"
+```
+
+### Database Configuration
+```bash
+DATABASE_URL=sqlite:///data/jps_aggregate.db
+USER_DATABASE_URL=sqlite:///data/jps_users.db
+```
+
+### LLM Integration
+```bash
+# For Docker deployment
+OLLAMA_BASE_URL=http://ollama:11434
+# For local development
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=qwen3:latest
+```
+
+### Development vs Production
+```bash
+# Development (.env)
+DEBUG=True
+FLASK_ENV=development
+LOG_LEVEL=DEBUG
+
+# Production (.env)
+DEBUG=False
+FLASK_ENV=production
+LOG_LEVEL=INFO
+SESSION_COOKIE_SECURE=True
+SESSION_COOKIE_HTTPONLY=True
+```
+
+## Common Issues & Troubleshooting
+
+### Port Conflicts
+```bash
+# Backend port 5001 in use
+lsof -i :5001
+kill -9 <PID>
+
+# Ollama port 11434 in use
+lsof -i :11434
+kill -9 <PID>
+```
+
+### Ollama Issues
+```bash
+# Model not found
+ollama pull qwen3:latest
+
+# Ollama not running
+ollama serve
+
+# Check Ollama status
+curl http://localhost:11434/api/tags
+```
+
+### Database Issues
+```bash
+# Migration errors
+cd migrations && alembic history  # Check migration history
+cd migrations && alembic current  # Check current version
+cd migrations && alembic downgrade -1  # Rollback one migration
+
+# Database locked (SQLite)
+# Stop all processes accessing the database, then:
+sqlite3 data/jps_aggregate.db "PRAGMA journal_mode=WAL;"
+
+# Reset database completely
+rm data/*.db
+python scripts/setup_databases.py
+```
+
+### Scraper Issues
+```bash
+# Scraper stuck in "working" state
+python -c "from app import create_app; from app.utils.scraper_cleanup import cleanup_stuck_scrapers; app = create_app(); app.app_context().push(); cleanup_stuck_scrapers()"
+
+# Playwright browser issues
+playwright install --with-deps
+
+# Download timeout
+# Increase timeout in .env:
+DOWNLOAD_TIMEOUT=120000  # 2 minutes
+```
+
+### Frontend Build Issues
+```bash
+# Clear node modules and reinstall
+cd frontend-react
+rm -rf node_modules package-lock.json
+npm install
+
+# TypeScript errors
+npm run lint -- --fix
+
+# Build failures
+rm -rf dist
+npm run build
+```
+
+### Authentication Issues
+```bash
+# Create super admin user
+python scripts/create_super_admin.py
+
+# Session expired
+# Clear browser cookies for localhost:5001
+
+# User role issues
+python scripts/promote_to_super_admin.py
+```
 
 ## Code Quality & CI/CD
 
@@ -751,7 +949,7 @@ safety check --ignore 12345               # Ignore specific vulnerabilities
 python -c "from app import create_app; from app.database import db; app = create_app(); app.app_context().push(); db.drop_all(); db.create_all()"
 
 # Generate test data
-python scripts/create_test_data.py         # Create sample data for manual testing
+# Note: Test data is managed through pytest fixtures in tests/conftest.py
 python -m pytest tests/ --fixtures        # Show available fixtures
 
 # Mock data debugging
@@ -777,7 +975,7 @@ The scraper system uses a unified architecture for efficient web scraping:
 
 - **ConsolidatedScraperBase** (`app/core/consolidated_scraper_base.py`): Unified base class containing all scraping functionality (browser automation, navigation, downloads, data processing)
 - **ScraperConfig**: Single configuration dataclass for all scraper settings
-- **Config Converter** (`app/core/config_converter.py`): Functions to create configurations for each agency scraper
+- **Scraper Configurations** (`app/core/scraper_configs.py`): Direct dictionary-based configurations for each agency scraper
 - **Agency Scrapers** (`app/core/scrapers/`): Simple implementations focusing only on agency-specific logic (each ~50-100 lines)
 
 Key features:
@@ -789,13 +987,17 @@ Key features:
 
 ### Creating New Scrapers
 ```python
-from app.core.consolidated_scraper_base import ConsolidatedScraperBase
-from app.core.config_converter import create_your_agency_config
+from app.core.consolidated_scraper_base import ConsolidatedScraperBase, ScraperConfig
+from app.config import active_config
 
 class YourAgencyScraper(ConsolidatedScraperBase):
     def __init__(self):
-        config = create_your_agency_config()
-        config.base_url = active_config.YOUR_AGENCY_URL
+        config = ScraperConfig(
+            source_name="Your Agency",
+            folder_name="your_agency",
+            base_url=active_config.YOUR_AGENCY_URL,
+            # Add your configuration options here
+        )
         super().__init__(config)
     
     # Add custom transformations if needed
@@ -814,14 +1016,33 @@ class YourAgencyScraper(ConsolidatedScraperBase):
 Flask app with modular blueprints:
 - **Main API** (`app/api/`): RESTful endpoints for prospects, data sources, duplicates
 - **Decision API** (`/api/decisions/`): CRUD operations for go/no-go decisions
+- **LLM API** (`/api/llm/`): AI enhancement and queue management
+- **Admin API** (`/api/admin/`): Maintenance mode, user management, system stats
 - **Health endpoints**: Database connectivity and system status
 - **Pagination support**: Efficient large dataset handling
 
-Key decision endpoints:
+Key endpoints:
+
+**Decision Management:**
 - `POST /api/decisions/` - Create/update decision
 - `GET /api/decisions/<prospect_id>` - Get decisions for prospect
 - `GET /api/decisions/my` - Get current user's decisions
 - `DELETE /api/decisions/<id>` - Delete a decision
+
+**LLM Enhancement:**
+- `POST /api/llm/enhance` - Start batch enhancement
+- `POST /api/llm/enhance-single` - Enhance single prospect
+- `GET /api/llm/queue/status` - Get queue status
+- `POST /api/llm/queue/item/<id>/cancel` - Cancel queue item
+- `GET /api/llm/status` - Get LLM processing statistics
+
+**Admin Functions (super-admin only):**
+- `GET/POST /api/admin/maintenance` - Control maintenance mode
+- `GET /api/admin/users` - List all users
+- `PUT /api/admin/users/<id>/role` - Update user role
+- `GET /api/admin/decisions/all` - View all decisions
+- `POST /api/admin/enhancement-cleanup` - Clean stale enhancements
+- `POST /api/admin/scraper-cleanup` - Reset stuck scrapers
 
 ### Frontend Architecture
 React TypeScript application with:
@@ -949,19 +1170,27 @@ frontend-react/src/
 
 ## Data Sources
 
-System currently scrapes 9 federal agencies:
+System currently scrapes 9 federal agencies with the following scraper keys:
 
-- Acquisition Gateway, Social Security Administration, Department of Commerce
-- Health and Human Services, Homeland Security, Justice  
-- State, Treasury, Transportation
+- **ACQGW** - Acquisition Gateway (`acquisition_gateway.py`)
+- **SSA** - Social Security Administration (`ssa_scraper.py`)
+- **DOC** - Department of Commerce (`doc_scraper.py`)
+- **HHS** - Health and Human Services (`hhs_scraper.py`)
+- **DHS** - Department of Homeland Security (`dhs_scraper.py`)
+- **DOJ** - Department of Justice (`doj_scraper.py`)
+- **DOS** - Department of State (`dos_scraper.py`)
+- **TREAS** - Department of Treasury (`treasury_scraper.py`)
+- **DOT** - Department of Transportation (`dot_scraper.py`)
 
 ## Data Retention
 
-Built-in utility manages storage with rolling cleanup policy:
+Built-in utility manages storage with intelligent rolling cleanup policy:
 
-- **Current Impact**: 50% storage reduction (86 files/84MB → 43 files/42MB)
-- **Default**: Keeps 3 most recent files per data source
+- **Enhanced Policy**: Keeps 5 most recent files + 2 successfully processed files per data source
+- **File Validation**: Soft validation with warnings for content/schema issues
+- **Processing Tracking**: FileProcessingLog model tracks all file processing attempts
 - **Safety**: Dry-run mode by default with detailed logging
+- **Smart Retention**: Preserves files that were successfully processed even if older
 
 ## Project Structure
 
@@ -1021,3 +1250,270 @@ The project has been organized for clarity and maintainability:
 - `app/`: Python application code
 - `frontend-react/`: React frontend application
 - `scripts/`: Utility scripts for maintenance and operations
+
+## Development Workflows
+
+### Adding a New Feature
+
+1. **Create feature branch**
+   ```bash
+   git checkout -b feature/your-feature-name
+   ```
+
+2. **Set up test data**
+   ```bash
+   python scripts/setup_databases.py  # Ensure clean database
+   ```
+
+3. **Develop iteratively**
+   ```bash
+   # Backend changes
+   python run.py  # Hot reload enabled in development
+   
+   # Frontend changes
+   cd frontend-react && npm run dev  # Vite hot reload
+   ```
+
+4. **Test your changes**
+   ```bash
+   # Run tests
+   python -m pytest tests/ -v
+   cd frontend-react && npm test
+   
+   # Run pre-commit hooks
+   pre-commit run --all-files
+   ```
+
+5. **Create pull request**
+   ```bash
+   git add .
+   git commit -m "feat: your feature description"
+   git push origin feature/your-feature-name
+   ```
+
+### Adding a New Scraper
+
+1. **Create scraper configuration** in `app/core/scraper_configs.py`:
+   ```python
+   YOUR_AGENCY_CONFIG = ScraperConfig(
+       source_name="Your Agency",
+       folder_name="your_agency",
+       base_url="https://agency.gov",
+       # Add configuration options
+   )
+   ```
+
+2. **Create scraper class** in `app/core/scrapers/your_agency.py`:
+   ```python
+   from app.core.consolidated_scraper_base import ConsolidatedScraperBase
+   from app.core.scraper_configs import YOUR_AGENCY_CONFIG
+   
+   class YourAgencyScraper(ConsolidatedScraperBase):
+       def __init__(self):
+           super().__init__(YOUR_AGENCY_CONFIG)
+   ```
+
+3. **Register scraper** in `app/core/scrapers/__init__.py`
+
+4. **Add data source** to database:
+   ```bash
+   python scripts/populate_data_sources.py
+   ```
+
+5. **Test the scraper**:
+   ```bash
+   python scripts/test_scraper_individual.py --scraper your_agency
+   ```
+
+### Database Migrations
+
+1. **Create migration after model changes**:
+   ```bash
+   cd migrations
+   alembic revision --autogenerate -m "describe your changes"
+   ```
+
+2. **Review generated migration**:
+   ```bash
+   # Check the new file in migrations/versions/
+   ```
+
+3. **Apply migration**:
+   ```bash
+   alembic upgrade head
+   ```
+
+4. **Rollback if needed**:
+   ```bash
+   alembic downgrade -1
+   ```
+
+### Debugging Scrapers
+
+1. **Enable debug mode** in scraper config:
+   ```python
+   config.debug_mode = True  # Runs browser in headed mode
+   ```
+
+2. **Check error screenshots**:
+   ```bash
+   ls -la logs/error_screenshots/
+   ```
+
+3. **Review HTML dumps**:
+   ```bash
+   ls -la logs/error_html/
+   ```
+
+4. **Monitor scraper status**:
+   ```bash
+   python scripts/monitor_scrapers.py
+   ```
+
+## Docker vs Local Development
+
+| Aspect | Docker | Local Development |
+|--------|--------|-------------------|
+| **Setup complexity** | Simple (one command) | More steps |
+| **Production-like** | ✅ Yes | ❌ No |
+| **Quick iteration** | ❌ Slower | ✅ Fast |
+| **Debugging** | ❌ Limited | ✅ Full |
+| **Resource isolation** | ✅ Complete | ❌ None |
+| **Dependency management** | ✅ Automatic | ⚠️ Manual |
+| **Multi-service orchestration** | ✅ Built-in | ⚠️ Manual |
+| **Best for** | Production, testing | Development |
+
+## Security & Best Practices
+
+### Security Guidelines
+
+1. **Never commit sensitive data**:
+   - Add `.env` to `.gitignore`
+   - Never commit API keys or passwords
+   - Use environment variables for secrets
+
+2. **Generate secure SECRET_KEY**:
+   ```bash
+   python -c "import secrets; print(secrets.token_hex(32))"
+   ```
+
+3. **Database security**:
+   - Regular backups: `./scripts/backup.sh`
+   - Encrypt sensitive data at rest
+   - Use parameterized queries (SQLAlchemy handles this)
+
+4. **User authentication**:
+   - Passwords are hashed with bcrypt
+   - Sessions expire after inactivity
+   - Role-based access control (user, admin, super-admin)
+
+5. **API security**:
+   - CSRF protection enabled
+   - Rate limiting considerations
+   - Input validation on all endpoints
+
+### Performance Best Practices
+
+1. **Database optimization**:
+   ```bash
+   # SQLite optimizations in .env
+   SQLITE_JOURNAL_MODE=WAL
+   SQLITE_SYNCHRONOUS=NORMAL
+   SQLITE_CACHE_SIZE=-64000
+   ```
+
+2. **Frontend optimization**:
+   - Virtual scrolling for large datasets
+   - Lazy loading of components
+   - Production builds with minification
+
+3. **Scraper optimization**:
+   - Concurrent scraper execution
+   - Retry logic with exponential backoff
+   - Download timeout configuration
+
+## Monitoring & Logging
+
+### Log Files
+- **Application**: `logs/app.log`
+- **Scrapers**: `logs/scrapers.log`
+- **Errors**: `logs/errors.log`
+- **Error screenshots**: `logs/error_screenshots/`
+- **HTML dumps**: `logs/error_html/`
+
+### Monitoring Commands
+```bash
+# Monitor scraper health
+python scripts/monitor_scrapers.py
+
+# Check LLM enhancement status
+python scripts/enrichment/enhance_prospects_with_llm.py --check-status
+
+# Database statistics
+sqlite3 data/jps_aggregate.db "SELECT COUNT(*) FROM prospects;"
+
+# View recent logs
+tail -f logs/app.log
+```
+
+### Log Levels
+Configure in `.env`:
+- `DEBUG`: Detailed debugging information
+- `INFO`: General information
+- `WARNING`: Warning messages
+- `ERROR`: Error messages only
+
+## User Management
+
+### Creating Users
+
+1. **Create super-admin** (full access):
+   ```bash
+   python scripts/create_super_admin.py
+   ```
+
+2. **Promote existing user**:
+   ```bash
+   python scripts/promote_to_super_admin.py
+   ```
+
+3. **User roles**:
+   - **user**: Basic access, can view and make decisions
+   - **admin**: Can manage scrapers and data sources
+   - **super-admin**: Full system access including user management
+
+### Authentication Flow
+
+1. User signs up at `/signup`
+2. Password is hashed with bcrypt
+3. Session created on successful login
+4. Session cookie expires after inactivity
+5. Role-based access enforced on API endpoints
+
+## Contributing Guidelines
+
+### Code Style
+- Python: Follow PEP 8, enforced by Ruff
+- TypeScript: ESLint configuration
+- Commit messages: Conventional commits format
+
+### Testing Requirements
+- Maintain 75%+ backend test coverage
+- Write tests for new features
+- Run pre-commit hooks before pushing
+
+### Pull Request Process
+1. Create feature branch from `main`
+2. Make changes with tests
+3. Run full test suite
+4. Create PR with description
+5. Address review comments
+6. Merge after approval
+
+## Additional Resources
+
+- **Architecture details**: See `docs/ARCHITECTURE.md`
+- **Data mapping guide**: See `docs/DATA_MAPPING_GUIDE.md`
+- **Scraper quirks**: See `docs/SCRAPER_QUIRKS.md`
+- **Testing guide**: See `docs/TESTING.md`
+- **Backlog**: See `docs/BACKLOG.md`
