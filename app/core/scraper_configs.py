@@ -190,7 +190,7 @@ TREASURY_CONFIG = ScraperConfig(
     raw_column_rename_map={
         "Specific Id": "native_id_primary",
         "Bureau": "agency",
-        "PSC": "title",
+        # PSC is Product Service Code, not a title - will be preserved in extras
         "Place of Performance": "place_raw",
         "Contract Type": "contract_type",
         "NAICS": "naics",  # Fixed: changed from naics_code to naics
