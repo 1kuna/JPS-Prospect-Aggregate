@@ -30,7 +30,7 @@ The entire scraping system is built on a consolidated architecture that eliminat
   - Data transformation rules
   - Field mapping configurations
 
-#### Config Converter (`app/core/config_converter.py`)
+#### Scraper Configurations (`app/core/scraper_configs.py`)
 - **Purpose**: Creates agency-specific configurations
 - **Pattern**: Each agency has a `create_[agency]_config()` function
 - **Benefit**: Centralizes all configuration logic
@@ -123,13 +123,17 @@ React TypeScript SPA with modern tooling:
 - Prevents reprocessing of duplicate data
 - Supports intelligent retention policies
 
-#### LLM Enhancement Service
-- Uses Ollama with qwen3 model
-- Enhances data quality:
-  - Value extraction from text
+#### LLM Enhancement Service (`app/services/llm_service.py`)
+- Uses Ollama with qwen3 model locally
+- Single unified service for all LLM operations
+- Enhancement capabilities:
+  - Value extraction from text (parse ranges like "$100K-$500K")
   - Contact information parsing
-  - Title improvement
+  - Title improvement and clarification
   - NAICS code classification
+  - Set-aside standardization (in development)
+- Batch and iterative processing support
+- Comprehensive error handling and retry logic
 
 #### Duplicate Detection Service
 - Fuzzy matching algorithms
@@ -187,17 +191,45 @@ All scraper behavior is controlled through configuration objects, making it easy
    New Prospect → Queue for Enhancement → LLM Processing → Update Record
    ```
 
-## Deployment Considerations
+## Deployment Architecture
 
-- **Environment Variables**: All sensitive configuration in `.env`
+### Docker Deployment (Production)
+- **Multi-container setup** with docker-compose
+- **Services**:
+  - Web: Flask application with Waitress WSGI server
+  - Database: PostgreSQL for production, SQLite for development
+  - Ollama: Local LLM service for data enhancement
+  - Nginx: Reverse proxy and static file serving
+- **Automated deployment** scripts in `docker/` directory
+- **Volume management** for data persistence
+- **Health checks** and automatic restarts
+
+### Local Development
+- **Environment Variables**: All configuration in `.env`
 - **Database Migrations**: Alembic for schema management
 - **Error Monitoring**: Structured logging with Loguru
-- **Performance**: Waitress WSGI server for production
+- **Hot reload**: Development server with auto-restart
 
-## Future Architecture Considerations
+## Testing Architecture
 
-1. **Horizontal Scaling**: Queue-based scraping with workers
-2. **Caching Layer**: Redis for frequently accessed data
-3. **Real-time Updates**: WebSocket support for live status
-4. **Microservices**: Separate scraping from main application
-5. **Container Orchestration**: Kubernetes for scaling
+### Comprehensive Test Coverage
+- **27,000+ lines of test code** across unit, integration, and E2E tests
+- **Test Organization**:
+  - `tests/api/`: API endpoint testing
+  - `tests/core/`: Scraper framework testing
+  - `tests/database/`: Model and operation testing
+  - `tests/services/`: Service layer testing
+  - `tests/integration/`: Cross-system testing
+  - `tests/fixtures/`: Golden files for scraper testing
+
+### Testing Frameworks
+- **Backend**: pytest with coverage reporting (75% minimum)
+- **Frontend**: Vitest with React Testing Library (80% minimum)
+- **E2E**: Playwright for browser automation
+- **CI/CD**: GitHub Actions with parallel test execution
+
+### Quality Gates
+- Pre-commit hooks for linting and formatting
+- Automated security scanning with Bandit
+- Dependency vulnerability checking
+- Code coverage enforcement
