@@ -25,11 +25,11 @@ const mockProspects: Prospect[] = [
     agency: 'Department of Defense',
     posted_date: '2024-01-15',
     loaded_at: '2024-01-15T10:00:00Z',
-    estimated_value: 50000,
+    estimated_value: '50000',
     estimated_value_text: '$50,000',
     naics_code: '541511',
     source_file: 'dod_2024_01_15.json',
-    source_data_id: 1,
+    source_data_id: '1',
     enhancement_status: 'idle',
     duplicate_group_id: null,
     set_aside_status: null,
@@ -73,7 +73,7 @@ const mockPaginatedResponse = {
   }
 };
 
-const mockStatistics: ProspectStatistics = {
+const _mockStatistics: ProspectStatistics = {
   data: {
     total: 1500,
     approved: 450,
@@ -457,7 +457,7 @@ describe('useProspect', () => {
   });
 
   it('does not fetch when prospect ID is empty string', () => {
-    const { result } = renderHook(() => useProspect(''), {
+    renderHook(() => useProspect(''), {
       wrapper: createWrapper()
     });
 

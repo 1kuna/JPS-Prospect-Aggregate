@@ -152,7 +152,7 @@ describe('GoNoGoDecision', () => {
 
     it('does not show reason indicator when no reason exists', () => {
       const mockDecision = generateMockDecision();
-      mockDecision.reason = null; // Ensure no reason for this test
+      mockDecision.reason = ''; // Ensure no reason for this test
       
       const { useProspectDecisions } = require('../hooks/api');
       useProspectDecisions.mockReturnValue({

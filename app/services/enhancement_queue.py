@@ -7,7 +7,9 @@ This maintains the same API but with significantly reduced complexity.
 import threading
 import time
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import timezone
+UTC = timezone.utc
+from datetime import datetime
 from enum import Enum
 from typing import Any
 

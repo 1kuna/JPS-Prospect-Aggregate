@@ -32,7 +32,7 @@ test.describe('Data Source Management', () => {
     await page.waitForSelector('[data-testid="prospects-table"]', { timeout: 10000 });
     
     // Get initial prospect count
-    const initialRows = await page.locator('[data-testid="prospect-row"]').count();
+    const _initialRows = await page.locator('[data-testid="prospect-row"]').count();
     
     // Open data source filter
     const dataSourceFilter = page.locator('[data-testid="agency-filter"], [data-testid="data-source-filter"]');
@@ -87,7 +87,7 @@ test.describe('Data Source Management', () => {
         await expect(statusIndicators.first()).toBeVisible();
         
         // Look for scraping timestamps
-        const timestamps = page.locator('text=/\\d{1,2}\/\\d{1,2}\/\\d{4}|\\d{4}-\\d{2}-\\d{2}/');
+        const timestamps = page.locator('text=/\\d{1,2}\\/\\d{1,2}\\/\\d{4}|\\d{4}-\\d{2}-\\d{2}/');
         if (await timestamps.first().isVisible()) {
           expect(await timestamps.count()).toBeGreaterThan(0);
         }
@@ -156,7 +156,7 @@ test.describe('Data Source Management', () => {
     
     if (await freshnessIndicators.first().isVisible()) {
       // Should show timestamp information
-      const timestamps = page.locator('text=/\\d{1,2}\/\\d{1,2}\/\\d{4}|\\d{4}-\\d{2}-\\d{2}|\\d+\\s+(minute|hour|day)s?\\s+ago/');
+      const timestamps = page.locator('text=/\\d{1,2}\\/\\d{1,2}\\/\\d{4}|\\d{4}-\\d{2}-\\d{2}|\\d+\\s+(minute|hour|day)s?\\s+ago/');
       expect(await timestamps.count()).toBeGreaterThan(0);
     }
   });

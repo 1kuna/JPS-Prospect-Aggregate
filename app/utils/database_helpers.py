@@ -1,6 +1,8 @@
 """Database utility functions."""
 
 import datetime
+from datetime import timezone
+UTC = timezone.utc
 
 # import shutil # Removed as it was only used by rebuild_database
 from app.utils.file_utils import clean_old_files
@@ -85,7 +87,7 @@ def _update_scraper_status_internal(
             .first()
         )
 
-        current_time = datetime.datetime.now(datetime.UTC)
+        current_time = datetime.datetime.now(UTC)
 
         if not status_record:
             status_record = ScraperStatus(

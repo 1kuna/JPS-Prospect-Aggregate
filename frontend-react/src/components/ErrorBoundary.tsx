@@ -31,7 +31,7 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
     
     // Create a boundary error and handle it through the error service
     const boundaryError = createBoundaryError(error, {
-      componentStack: errorInfo.componentStack,
+      componentStack: errorInfo.componentStack || '',
       errorBoundary: 'ErrorBoundary',
       timestamp: new Date(),
     });

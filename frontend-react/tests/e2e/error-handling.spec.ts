@@ -241,7 +241,6 @@ test.describe('Error Handling and Recovery', () => {
   test('should handle localStorage/sessionStorage errors', async ({ page }) => {
     // Mock storage quota exceeded
     await page.addInitScript(() => {
-      const originalSetItem = Storage.prototype.setItem;
       Storage.prototype.setItem = function() {
         throw new Error('QuotaExceededError');
       };

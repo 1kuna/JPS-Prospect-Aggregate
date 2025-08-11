@@ -1,4 +1,6 @@
-from datetime import UTC, date, datetime
+from datetime import timezone
+UTC = timezone.utc
+from datetime import date, datetime
 
 from flask import Blueprint, jsonify
 from sqlalchemy import desc, func

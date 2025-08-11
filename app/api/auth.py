@@ -4,6 +4,8 @@ Provides simple email-based authentication without passwords.
 """
 
 import datetime
+from datetime import timezone
+UTC = timezone.utc
 from functools import wraps
 
 from flask import Blueprint, jsonify, request, session
@@ -163,7 +165,7 @@ def signin():
             ), 404
 
         # Update last login
-        user.last_login_at = datetime.datetime.now(datetime.UTC)
+        user.last_login_at = datetime.datetime.now(UTC)
         db.session.commit()
 
         # Log user in

@@ -2,7 +2,6 @@ import { renderHook, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { useError, useApiError, useFormError, useAsyncError } from './useError';
 import { AppError, ErrorSeverity, ErrorCategory } from '@/types/errors';
-import React from 'react';
 
 // Mock the ToastContext
 const mockShowErrorToast = vi.fn();
@@ -364,7 +363,7 @@ describe('useFormError', () => {
   });
 
   it('handles errors without fields property', () => {
-    const regularError = new Error('Regular error');
+    const _regularError = new Error('Regular error');
     mockHandleError.mockReturnValue(testError); // testError doesn't have fields property
     
     const { result } = renderHook(() => useFormError());

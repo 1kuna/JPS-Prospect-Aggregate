@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ProspectFilters } from './ProspectFilters';
@@ -19,9 +19,7 @@ const generateDataSource = (): DataSource => {
     id,
     name: department,
     url: `https://${department.toLowerCase().replace(/\s+/g, '')}.gov/opportunities`,
-    last_scraped: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString(),
-    created_at: new Date(Date.now() - Math.random() * 365 * 24 * 60 * 60 * 1000).toISOString(),
-    updated_at: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString()
+    last_scraped: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString()
   };
 };
 

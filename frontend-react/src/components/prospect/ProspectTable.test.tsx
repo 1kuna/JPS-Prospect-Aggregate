@@ -17,17 +17,15 @@ function generateRandomProspect(index: number): Prospect {
   const value = Math.floor(Math.random() * 1000000) + 10000;
   
   return {
-    id,
+    id: String(id),
     title: `Contract ${id} - ${['Software', 'Hardware', 'Services', 'Research'][Math.floor(Math.random() * 4)]}`,
     agency: agencies[Math.floor(Math.random() * agencies.length)],
     description: `Description for contract ${id} with various requirements and specifications`,
     naics: naics[Math.floor(Math.random() * naics.length)],
     naics_description: `NAICS Description ${Math.floor(Math.random() * 100)}`,
     naics_source: Math.random() > 0.5 ? 'original' : 'llm_inferred',
-    posted_date: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-    response_date: new Date(Date.now() + Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    release_date: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
     set_aside: setAsides[Math.floor(Math.random() * setAsides.length)],
-    set_aside_parsed: setAsides[Math.floor(Math.random() * setAsides.length)]?.toUpperCase().replace(/[\s-]/g, '_') || null,
     contact_name: `Contact ${Math.floor(Math.random() * 100)}`,
     contact_email: `contact${Math.floor(Math.random() * 100)}@agency.gov`,
     office: `Office ${Math.floor(Math.random() * 20)}`,
@@ -36,7 +34,7 @@ function generateRandomProspect(index: number): Prospect {
     source_id: Math.floor(Math.random() * 5) + 1,
     sol_number: `SOL-${id}`,
     estimated_value_text: `$${value.toLocaleString()}`,
-    estimated_value_single: value,
+    estimated_value_single: String(value),
     original_url: `https://agency.gov/opportunities/${id}`,
     created_at: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString(),
     updated_at: new Date().toISOString(),
@@ -67,10 +65,10 @@ vi.mock('@tanstack/react-virtual', () => ({
 
 // Mock TanStack Table with dynamic behavior
 let mockTable: any;
-let mockProspects: Prospect[] = [];
+let _mockProspects: Prospect[] = [];
 
 function createMockTable(prospects: Prospect[]) {
-  const headers = ['title', 'agency', 'naics', 'value', 'posted_date'];
+  const headers = ['title', 'agency', 'naics', 'value', 'release_date'];
   
   return {
     getHeaderGroups: () => [{
@@ -171,7 +169,7 @@ function generateProspectStatus() {
 
 function createDefaultProps(prospects?: Prospect[]) {
   const testProspects = prospects || generateTestProspects(Math.floor(Math.random() * 5) + 2);
-  mockProspects = testProspects;
+  _mockProspects = testProspects;
   mockTable = createMockTable(testProspects);
   
   return {
@@ -207,7 +205,7 @@ describe('ProspectTable', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     // Reset mock data for each test
-    mockProspects = [];
+    _mockProspects = [];
     mockTable = null;
   });
 
@@ -217,8 +215,12 @@ describe('ProspectTable', () => {
     
     // Verify prospects are rendered
     props.prospects.forEach(prospect => {
-      expect(screen.getByText(prospect.title)).toBeInTheDocument();
-      expect(screen.getByText(prospect.agency)).toBeInTheDocument();
+      if (prospect.title) {
+        expect(screen.getByText(prospect.title)).toBeInTheDocument();
+      }
+      if (prospect.agency) {
+        expect(screen.getByText(prospect.agency)).toBeInTheDocument();
+      }
     });
   });
 
@@ -268,19 +270,23 @@ describe('ProspectTable', () => {
     // Find a prospect with NAICS data
     const prospectWithNaics = props.prospects.find(p => p.naics_description);
     if (prospectWithNaics) {
-      expect(screen.getByText(prospectWithNaics.naics_description)).toBeInTheDocument();
+      if (prospectWithNaics.naics_description) {
+        expect(screen.getByText(prospectWithNaics.naics_description)).toBeInTheDocument();
+      }
     }
     
     // Toggle to show AI enhanced data
     rerender(
       <QueryClientProvider client={new QueryClient()}>
-        <ProspectTable {...props} showAIEnhanced={true} />
+        <ProspectTable {...props} />
       </QueryClientProvider>
     );
     
     // Data should still be present
     props.prospects.forEach(prospect => {
-      expect(screen.getByText(prospect.title)).toBeInTheDocument();
+      if (prospect.title) {
+        expect(screen.getByText(prospect.title)).toBeInTheDocument();
+      }
     });
   });
 
@@ -307,10 +313,10 @@ describe('ProspectTable', () => {
     let callCount = 0;
     props.getProspectStatus = vi.fn(() => {
       const statuses = [
-        { status: 'processing', currentStep: `Step ${callCount}` },
-        { status: 'queued', queuePosition: callCount + 1 },
-        { status: 'idle' },
-        { status: 'completed' }
+        { status: 'processing', currentStep: `Step ${callCount}`, queuePosition: null, progress: { percent: 50 } },
+        { status: 'queued', currentStep: null, queuePosition: callCount + 1, progress: {} },
+        { status: 'idle', currentStep: null, queuePosition: null, progress: {} },
+        { status: 'completed', currentStep: null, queuePosition: null, progress: {} }
       ];
       return statuses[callCount++ % statuses.length];
     });
@@ -364,10 +370,10 @@ describe('ProspectTable', () => {
     renderWithQueryClient(<ProspectTable {...props} />);
     
     // Check that dates are formatted
-    const prospectWithDate = props.prospects.find(p => p.posted_date);
+    const prospectWithDate = props.prospects.find(p => p.release_date);
     if (prospectWithDate) {
       expect(props.formatUserDate).toHaveBeenCalled();
-      const formattedDate = `Formatted: ${prospectWithDate.posted_date}`;
+      const formattedDate = `Formatted: ${prospectWithDate.release_date}`;
       expect(screen.getByText(formattedDate)).toBeInTheDocument();
     }
   });
@@ -428,7 +434,7 @@ describe('ProspectTable', () => {
       
       // Tooltip may show description
       await waitFor(() => {
-        const tooltip = screen.queryByText(firstProspect.description);
+        const _tooltip = firstProspect.description ? screen.queryByText(firstProspect.description) : null;
         // Tooltip behavior depends on implementation
         expect(titleCell).toBeInTheDocument();
       }, { timeout: 1000 });
@@ -442,11 +448,11 @@ describe('ProspectTable', () => {
     
     const checkboxes = screen.queryAllByRole('checkbox');
     if (checkboxes.length > 0) {
-      const isInitiallyChecked = checkboxes[0].checked;
+      const isInitiallyChecked = (checkboxes[0] as HTMLInputElement).checked;
       await user.click(checkboxes[0]);
       
       // State should change after click
-      expect(checkboxes[0].checked).toBe(!isInitiallyChecked);
+      expect((checkboxes[0] as HTMLInputElement).checked).toBe(!isInitiallyChecked);
     }
   });
 
@@ -482,7 +488,7 @@ describe('ProspectTable', () => {
       
       // Menu should show some actions
       await waitFor(() => {
-        const menuItems = screen.queryAllByRole('menuitem');
+        const _menuItems = screen.queryAllByRole('menuitem');
         // Should have some menu items if menu opened
         expect(actionsButtons[0]).toBeInTheDocument();
       }, { timeout: 1000 });
@@ -539,7 +545,7 @@ describe('ProspectTable', () => {
     renderWithQueryClient(<ProspectTable {...props} />);
     
     // May show skeleton rows for pagination
-    const skeletons = screen.queryAllByTestId('row-skeleton');
+    const _skeletons = screen.queryAllByTestId('row-skeleton');
     // Skeleton behavior depends on implementation
     expect(props.prospects.length).toBe(1);
   });

@@ -1,6 +1,8 @@
 import json
 import time
-from datetime import UTC, datetime, timedelta
+from datetime import timezone
+UTC = timezone.utc
+from datetime import datetime, timedelta
 
 from flask import Blueprint, jsonify, request
 from sqlalchemy import func

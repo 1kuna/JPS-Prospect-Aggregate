@@ -1,4 +1,4 @@
-import { renderHook, act, waitFor } from '@testing-library/react';
+import { renderHook, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import React from 'react';
@@ -344,7 +344,7 @@ describe('useEnhancementActivityMonitor', () => {
     );
 
     // Get the query client from the wrapper to check calls
-    const mockInvalidateQueries = vi.fn();
+    const _mockInvalidateQueries = vi.fn();
     
     act(() => {
       result.current.refreshAll();

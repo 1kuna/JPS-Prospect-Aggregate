@@ -19,6 +19,13 @@ export default function Advanced() {
   const { sources, isLoading, error, runAllScrapersMutation, clearDataMutation, handleClearData } = useDataSourceManagement(shouldFetchDataSources);
   const { runAllInProgress, handleRunScraper, handleRunAllScrapers, updateWorkingScrapers, getScraperButtonState } = useScraperOperations();
 
+  // Update working scrapers when sources data changes
+  useEffect(() => {
+    if (sources?.data) {
+      updateWorkingScrapers(sources.data);
+    }
+  }, [sources, updateWorkingScrapers]);
+
   // Redirect if not admin
   if (!isAdmin) {
     return (
@@ -30,13 +37,6 @@ export default function Advanced() {
       </div>
     );
   }
-
-  // Update working scrapers when sources data changes
-  useEffect(() => {
-    if (sources?.data) {
-      updateWorkingScrapers(sources.data);
-    }
-  }, [sources, updateWorkingScrapers]);
 
   // Handle run all scrapers with confirmation
   const handleRunAllScrapersWithConfirm = async () => {

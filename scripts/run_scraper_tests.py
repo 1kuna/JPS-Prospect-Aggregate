@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-Run scraper tests.
+"""Run scraper tests.
 This script runs the comprehensive test suite for all scrapers.
 
 Usage:
@@ -9,9 +8,9 @@ Usage:
     python run_scraper_tests.py --scraper dhs
 """
 
+import argparse
 import subprocess
 import sys
-import argparse
 from pathlib import Path
 
 # Add project root to Python path
@@ -25,87 +24,95 @@ from app.utils.logger import logger
 def run_all_tests(verbose=False):
     """Run all scraper tests."""
     cmd = [
-        sys.executable, "-m", "pytest", 
+        sys.executable,
+        "-m",
+        "pytest",
         "tests/core/scrapers/test_scrapers.py",
         "-v" if verbose else "-q",
-        "--tb=short"
+        "--tb=short",
     ]
-    
+
     logger.info("Running all scraper tests...")
     logger.info(f"Command: {' '.join(cmd)}")
     logger.info("-" * 60)
-    
-    result = subprocess.run(cmd, capture_output=False)
+
+    result = subprocess.run(cmd, capture_output=False, check=False)
     return result.returncode == 0
 
 
 def run_single_scraper_test(scraper_name, verbose=False):
     """Run tests for a specific scraper."""
     test_method_map = {
-        'acquisition_gateway': 'test_acquisition_gateway_scraper',
-        'dhs': 'test_dhs_scraper',
-        'treasury': 'test_treasury_scraper',
-        'dot': 'test_dot_scraper',
-        'hhs': 'test_hhs_scraper',
-        'ssa': 'test_ssa_scraper',
-        'doc': 'test_doc_scraper',
-        'doj': 'test_doj_scraper',
-        'dos': 'test_dos_scraper'
+        "acquisition_gateway": "test_acquisition_gateway_scraper",
+        "dhs": "test_dhs_scraper",
+        "treasury": "test_treasury_scraper",
+        "dot": "test_dot_scraper",
+        "hhs": "test_hhs_scraper",
+        "ssa": "test_ssa_scraper",
+        "doc": "test_doc_scraper",
+        "doj": "test_doj_scraper",
+        "dos": "test_dos_scraper",
     }
-    
+
     if scraper_name not in test_method_map:
         logger.error(f"Unknown scraper: {scraper_name}")
         logger.info(f"Available scrapers: {', '.join(test_method_map.keys())}")
         return False
-    
+
     test_method = test_method_map[scraper_name]
-    
+
     cmd = [
-        sys.executable, "-m", "pytest", 
+        sys.executable,
+        "-m",
+        "pytest",
         f"tests/core/scrapers/test_scrapers.py::TestConsolidatedScrapers::{test_method}",
         "-v" if verbose else "-q",
-        "--tb=short"
+        "--tb=short",
     ]
-    
+
     logger.info(f"Running test for {scraper_name} scraper...")
     logger.info(f"Command: {' '.join(cmd)}")
     logger.info("-" * 60)
-    
-    result = subprocess.run(cmd, capture_output=False)
+
+    result = subprocess.run(cmd, capture_output=False, check=False)
     return result.returncode == 0
 
 
 def run_initialization_test(verbose=False):
     """Run the initialization test for all scrapers."""
     cmd = [
-        sys.executable, "-m", "pytest", 
+        sys.executable,
+        "-m",
+        "pytest",
         "tests/core/scrapers/test_scrapers.py::TestConsolidatedScrapers::test_all_scrapers_initialize",
         "-v" if verbose else "-q",
-        "--tb=short"
+        "--tb=short",
     ]
-    
+
     logger.info("Running scraper initialization test...")
     logger.info(f"Command: {' '.join(cmd)}")
     logger.info("-" * 60)
-    
-    result = subprocess.run(cmd, capture_output=False)
+
+    result = subprocess.run(cmd, capture_output=False, check=False)
     return result.returncode == 0
 
 
 def run_transformation_test(verbose=False):
     """Run the custom transformation test."""
     cmd = [
-        sys.executable, "-m", "pytest", 
+        sys.executable,
+        "-m",
+        "pytest",
         "tests/core/scrapers/test_consolidated_scrapers.py::TestConsolidatedScrapers::test_custom_transformations",
         "-v" if verbose else "-q",
-        "--tb=short"
+        "--tb=short",
     ]
-    
+
     logger.info("Running custom transformation test...")
     logger.info(f"Command: {' '.join(cmd)}")
     logger.info("-" * 60)
-    
-    result = subprocess.run(cmd, capture_output=False)
+
+    result = subprocess.run(cmd, capture_output=False, check=False)
     return result.returncode == 0
 
 
@@ -121,37 +128,39 @@ Examples:
   python run_scraper_tests.py --scraper dhs      # Run only DHS scraper test
   python run_scraper_tests.py --init-only        # Run only initialization test
   python run_scraper_tests.py --transform-only   # Run only transformation test
-        """
+        """,
     )
-    
+
     parser.add_argument(
-        '--scraper',
-        help='Run test for specific scraper',
-        choices=['acquisition_gateway', 'dhs', 'treasury', 'dot', 'hhs', 'ssa', 'doc', 'doj', 'dos']
+        "--scraper",
+        help="Run test for specific scraper",
+        choices=[
+            "acquisition_gateway",
+            "dhs",
+            "treasury",
+            "dot",
+            "hhs",
+            "ssa",
+            "doc",
+            "doj",
+            "dos",
+        ],
     )
-    
+
+    parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
+
     parser.add_argument(
-        '--verbose', '-v',
-        action='store_true',
-        help='Verbose output'
+        "--init-only", action="store_true", help="Run only initialization test"
     )
-    
+
     parser.add_argument(
-        '--init-only',
-        action='store_true',
-        help='Run only initialization test'
+        "--transform-only", action="store_true", help="Run only transformation test"
     )
-    
-    parser.add_argument(
-        '--transform-only',
-        action='store_true',
-        help='Run only transformation test'
-    )
-    
+
     args = parser.parse_args()
-    
+
     success = True
-    
+
     if args.init_only:
         success = run_initialization_test(args.verbose)
     elif args.transform_only:
@@ -160,7 +169,7 @@ Examples:
         success = run_single_scraper_test(args.scraper, args.verbose)
     else:
         success = run_all_tests(args.verbose)
-    
+
     if success:
         logger.success("\n✅ All tests passed!")
         sys.exit(0)

@@ -5,10 +5,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { ReloadIcon, ChevronDownIcon, DotsVerticalIcon } from '@radix-ui/react-icons';
+import { ReloadIcon, ChevronDownIcon } from '@radix-ui/react-icons';
 import { GoNoGoDecision } from '@/components/GoNoGoDecision';
 import { EnhancementButtonWithSelector } from '@/components/EnhancementButtonWithSelector';
 import { EnhancementProgress } from '@/components/EnhancementProgress';
@@ -34,7 +33,7 @@ interface ProspectDetailsModalProps {
       contacts?: { completed: boolean };
     };
   } | null;
-  addToQueue: (params: { prospect_id: string; force_redo: boolean; user_id: number; enhancement_types?: string[] }) => void;
+  _addToQueue?: (params: { prospect_id: string; force_redo: boolean; user_id: number; enhancement_types?: string[] }) => void;
   formatUserDate: (dateString: string | null | undefined, format?: 'date' | 'datetime' | 'time' | 'relative', options?: Partial<Record<string, unknown>>) => string;
 }
 
@@ -45,7 +44,7 @@ export function ProspectDetailsModal({
   showAIEnhanced,
   onShowAIEnhancedChange,
   getProspectStatus,
-  addToQueue,
+  _addToQueue,
   formatUserDate
 }: ProspectDetailsModalProps) {
   const isSuperAdmin = useIsSuperAdmin();
@@ -91,15 +90,15 @@ export function ProspectDetailsModal({
             {(() => {
               if (!selectedProspect) return null;
               const status = getProspectStatus(selectedProspect.id);
-              const isActive = ['queued', 'processing'].includes(status?.status as string);
+              const isActive = status?.status ? ['queued', 'processing'].includes(status.status) : false;
               if (!isActive) return null;
               
               return (
                 <div className="inline-flex items-center ml-3 px-2 py-1 text-xs font-medium bg-yellow-100 text-yellow-800 rounded-full">
                   <ReloadIcon className="mr-1 h-3 w-3 animate-spin" />
                   {status?.status === 'queued' ? 
-                    `Queued (#${status.queuePosition || 1})` : 
-                    `Processing${status.queuePosition ? ` (#${status.queuePosition})` : ''}`
+                    `Queued (#${status?.queuePosition || 1})` : 
+                    `Processing${status?.queuePosition ? ` (#${status.queuePosition})` : ''}`
                   }
                 </div>
               );
@@ -133,14 +132,14 @@ export function ProspectDetailsModal({
                   return {
                     currentStep: enhancementState.currentStep,
                     progress: enhancementState.progress,
-                    enhancementTypes: enhancementState.enhancementTypes
+                    enhancementTypes: (enhancementState as any).enhancementTypes
                   };
                 })()}
                 isVisible={(() => {
                   if (!selectedProspect) return false;
                   const status = getProspectStatus(selectedProspect.id);
                   // Show progress when enhancement started or when queued/processing
-                  return enhancementStarted || (status !== null && ['queued', 'processing'].includes(status?.status as string));
+                  return enhancementStarted || (status !== null && status?.status ? ['queued', 'processing'].includes(status.status) : false);
                 })()}
               />
             </EnhancementErrorBoundary>

@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, act } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import React from 'react';
 import { TimezoneProvider, useTimezone, COMMON_TIMEZONES } from './TimezoneContext';
@@ -144,15 +144,14 @@ describe('TimezoneContext', () => {
     
     const mockUser: User = {
       id: Math.floor(Math.random() * 10000),
-      username: `user_${Math.random().toString(36).substr(2, 9)}`,
       first_name: `User${Math.floor(Math.random() * 100)}`,
-      last_name: `Last${Math.floor(Math.random() * 100)}`,
       email: `${Math.random().toString(36).substr(2, 9)}@example.com`,
+      username: `user${Math.floor(Math.random() * 100)}`,
       role: 'user',
       timezone: userTimezone,
       locale: userLocale,
       created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
+      last_login_at: new Date().toISOString()
     };
 
     render(
@@ -247,7 +246,7 @@ describe('TimezoneContext', () => {
     );
 
     const initialTimezone = screen.getByTestId('current-timezone').textContent;
-    const initialLocale = screen.getByTestId('current-locale').textContent;
+    const _initialLocale = screen.getByTestId('current-locale').textContent;
 
     fireEvent.click(screen.getByTestId('set-timezone'));
 
@@ -399,10 +398,9 @@ describe('TimezoneContext', () => {
     
     const initialUser: User = {
       id: Math.floor(Math.random() * 10000),
-      username: `user_${Math.random().toString(36).substr(2, 9)}`,
       first_name: `User${Math.floor(Math.random() * 100)}`,
-      last_name: `Last${Math.floor(Math.random() * 100)}`,
       email: `${Math.random().toString(36).substr(2, 9)}@example.com`,
+      username: `user${Math.floor(Math.random() * 100)}`,
       role: 'user',
       timezone: initialTimezone,
       locale: initialLocale,
@@ -456,15 +454,14 @@ describe('TimezoneContext', () => {
     
     const mockUser: User = {
       id: Math.floor(Math.random() * 10000),
-      username: `user_${Math.random().toString(36).substr(2, 9)}`,
       first_name: `User${Math.floor(Math.random() * 100)}`,
-      last_name: `Last${Math.floor(Math.random() * 100)}`,
       email: `${Math.random().toString(36).substr(2, 9)}@example.com`,
+      username: `user${Math.floor(Math.random() * 100)}`,
       role: 'user',
       timezone: userTimezone,
       locale: userLocale,
       created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
+      last_login_at: new Date().toISOString()
     };
 
     render(
@@ -491,10 +488,9 @@ describe('TimezoneContext', () => {
     
     const userWithoutTimezone: User = {
       id: Math.floor(Math.random() * 10000),
-      username: `user_${Math.random().toString(36).substr(2, 9)}`,
       first_name: `User${Math.floor(Math.random() * 100)}`,
-      last_name: `Last${Math.floor(Math.random() * 100)}`,
       email: `${Math.random().toString(36).substr(2, 9)}@example.com`,
+      username: `user${Math.floor(Math.random() * 100)}`,
       role: 'user',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()

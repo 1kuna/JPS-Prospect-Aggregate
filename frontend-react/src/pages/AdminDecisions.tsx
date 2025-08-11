@@ -19,6 +19,18 @@ export default function AdminDecisions() {
   const [decisionFilter, setDecisionFilter] = useState<'go' | 'no-go' | 'all'>('all');
   const [selectedUserId, setSelectedUserId] = useState<number | undefined>();
   
+  // Call hooks before any conditional returns
+  const { data: decisionsData, isLoading: decisionsLoading } = useAdminDecisions({
+    page: 1,
+    per_page: 50,
+    decision: decisionFilter === 'all' ? undefined : decisionFilter,
+    user_id: selectedUserId,
+  });
+
+  const { data: statsData } = useAdminDecisionStats();
+  const { data: usersData, isLoading: usersLoading } = useAdminUsers({ page: 1, per_page: 100 });
+  const exportMutation = useExportDecisions();
+  
   // Redirect if not admin
   if (!isAdmin) {
     return (
@@ -30,17 +42,6 @@ export default function AdminDecisions() {
       </div>
     );
   }
-
-  const { data: decisionsData, isLoading: decisionsLoading } = useAdminDecisions({
-    page: 1,
-    per_page: 50,
-    decision: decisionFilter === 'all' ? undefined : decisionFilter,
-    user_id: selectedUserId,
-  });
-
-  const { data: statsData } = useAdminDecisionStats();
-  const { data: usersData, isLoading: usersLoading } = useAdminUsers({ page: 1, per_page: 100 });
-  const exportMutation = useExportDecisions();
 
   const handleExport = async () => {
     try {

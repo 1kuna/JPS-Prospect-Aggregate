@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-Run a specific scraper by source name.
+"""Run a specific scraper by source name.
 
 Usage:
     python -m scripts.run_scraper --source "DHS"
@@ -9,7 +8,6 @@ Usage:
 
 import argparse
 import sys
-import os
 from pathlib import Path
 
 # Add parent directory to path for imports
@@ -36,14 +34,14 @@ def main():
 
     # Create Flask app context
     app = create_app()
-    
+
     with app.app_context():
         # Try to find the data source
         source = DataSource.query.filter(
-            (DataSource.name == args.source) | 
-            (DataSource.scraper_key == args.source.upper())
+            (DataSource.name == args.source)
+            | (DataSource.scraper_key == args.source.upper())
         ).first()
-        
+
         if not source:
             print(f"Error: Data source '{args.source}' not found")
             print("\nAvailable sources:")
@@ -51,13 +49,13 @@ def main():
             for s in sources:
                 print(f"  - {s.name} (key: {s.scraper_key})")
             return 1
-        
+
         print(f"Running scraper for: {source.name} (ID: {source.id})")
-        
+
         try:
             # Run the scraper
             result = trigger_scraper(source.id)
-            
+
             if result.get("success"):
                 print(f"Successfully triggered scraper for {source.name}")
                 if result.get("message"):
@@ -68,7 +66,7 @@ def main():
                 if result.get("error"):
                     print(f"Error: {result['error']}")
                 return 1
-                
+
         except Exception as e:
             print(f"Error running scraper: {e}")
             return 1
