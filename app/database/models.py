@@ -1,18 +1,20 @@
+from datetime import UTC
+
 from sqlalchemy import (
+    JSON,
+    TIMESTAMP,
     Column,
+    Date,
+    Float,
+    ForeignKey,
+    Integer,
+    Numeric,
     String,
     Text,
-    Numeric,
-    Date,
-    TIMESTAMP,
-    JSON,
-    ForeignKey,
-    Float,
-    Integer,
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
-from datetime import timezone
+
 from app.database import db
 
 
@@ -78,7 +80,6 @@ class Prospect(db.Model):  # Renamed back to Prospect
     )
     data_source = relationship("DataSource", back_populates="prospects")  # Renamed back
 
-
     def __repr__(self):
         return f"<Prospect(id='{self.id}', source_id='{self.source_id}', title='{self.title[:30] if self.title else ''}...')>"  # Renamed from Prospect
 
@@ -135,15 +136,15 @@ class Prospect(db.Model):  # Renamed back to Prospect
             "set_aside_standardized_label": self.set_aside_standardized_label,
             "primary_contact_email": self.primary_contact_email,
             "primary_contact_name": self.primary_contact_name,
-            "loaded_at": self.loaded_at.isoformat() + 'Z' if self.loaded_at else None,
-            "ollama_processed_at": self.ollama_processed_at.replace(tzinfo=timezone.utc)
+            "loaded_at": self.loaded_at.isoformat() + "Z" if self.loaded_at else None,
+            "ollama_processed_at": self.ollama_processed_at.replace(tzinfo=UTC)
             .isoformat()
             .replace("+00:00", "Z")
             if self.ollama_processed_at
             else None,
             "ollama_model_version": self.ollama_model_version,
             "enhancement_status": self.enhancement_status,
-            "enhancement_started_at": self.enhancement_started_at.isoformat() + 'Z'
+            "enhancement_started_at": self.enhancement_started_at.isoformat() + "Z"
             if self.enhancement_started_at
             else None,
             "enhancement_user_id": self.enhancement_user_id,
@@ -151,8 +152,6 @@ class Prospect(db.Model):  # Renamed back to Prospect
             "source_id": self.source_id,
             "source_name": self.data_source.name if self.data_source else None,
         }
-
-
 
 
 class DataSource(db.Model):  # Changed from Base to db.Model
@@ -181,7 +180,7 @@ class DataSource(db.Model):  # Changed from Base to db.Model
             "url": self.url,
             "description": self.description,
             "scraper_key": self.scraper_key,  # Added scraper_key
-            "last_scraped": self.last_scraped.isoformat() + 'Z'
+            "last_scraped": self.last_scraped.isoformat() + "Z"
             if self.last_scraped
             else None,
             "frequency": self.frequency,
@@ -211,7 +210,7 @@ class ScraperStatus(db.Model):  # Changed from Base to db.Model
             "id": self.id,
             "source_id": self.source_id,
             "status": self.status,
-            "last_checked": self.last_checked.isoformat() + 'Z'
+            "last_checked": self.last_checked.isoformat() + "Z"
             if self.last_checked
             else None,
             "details": self.details,
@@ -242,7 +241,7 @@ class AIEnrichmentLog(db.Model):
     def to_dict(self):
         return {
             "id": self.id,
-            "timestamp": self.timestamp.isoformat() + 'Z' if self.timestamp else None,
+            "timestamp": self.timestamp.isoformat() + "Z" if self.timestamp else None,
             "enhancement_type": self.enhancement_type,
             "status": self.status,
             "processed_count": self.processed_count,
@@ -279,7 +278,7 @@ class LLMOutput(db.Model):
     def to_dict(self):
         return {
             "id": self.id,
-            "timestamp": self.timestamp.isoformat() + 'Z' if self.timestamp else None,
+            "timestamp": self.timestamp.isoformat() + "Z" if self.timestamp else None,
             "prospect_id": self.prospect_id,
             "prospect_title": self.prospect.title[:100]
             if self.prospect and self.prospect.title
@@ -319,7 +318,9 @@ class Settings(db.Model):
             "key": self.key,
             "value": self.value,
             "description": self.description,
-            "updated_at": self.updated_at.isoformat() + 'Z' if self.updated_at else None,
+            "updated_at": self.updated_at.isoformat() + "Z"
+            if self.updated_at
+            else None,
         }
 
 
@@ -359,8 +360,12 @@ class GoNoGoDecision(db.Model):
             "user_id": self.user_id,
             "decision": self.decision,
             "reason": self.reason,
-            "created_at": self.created_at.isoformat() + 'Z' if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() + 'Z' if self.updated_at else None,
+            "created_at": self.created_at.isoformat() + "Z"
+            if self.created_at
+            else None,
+            "updated_at": self.updated_at.isoformat() + "Z"
+            if self.updated_at
+            else None,
         }
 
         if include_user and user_data:
@@ -413,13 +418,13 @@ class FileProcessingLog(db.Model):
             "file_path": self.file_path,
             "file_name": self.file_name,
             "file_size": self.file_size,
-            "file_timestamp": self.file_timestamp.isoformat() + 'Z'
+            "file_timestamp": self.file_timestamp.isoformat() + "Z"
             if self.file_timestamp
             else None,
-            "processing_started_at": self.processing_started_at.isoformat() + 'Z'
+            "processing_started_at": self.processing_started_at.isoformat() + "Z"
             if self.processing_started_at
             else None,
-            "processing_completed_at": self.processing_completed_at.isoformat() + 'Z'
+            "processing_completed_at": self.processing_completed_at.isoformat() + "Z"
             if self.processing_completed_at
             else None,
             "success": self.success,

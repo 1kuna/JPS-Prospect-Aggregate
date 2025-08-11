@@ -1,5 +1,4 @@
-"""
-API Module for JPS Prospect Aggregate.
+"""API Module for JPS Prospect Aggregate.
 
 This module contains the API blueprints and related functionality
 for the JPS Prospect Aggregate application.

@@ -1,11 +1,10 @@
-"""
-Centralized logging configuration for the application using Loguru.
-"""
+"""Centralized logging configuration for the application using Loguru."""
 
 import os
 import sys
-from loguru import logger
 from pathlib import Path
+
+from loguru import logger
 
 # Define log directory - should match current config
 project_root = Path(__file__).parent.parent.parent.absolute()
@@ -60,8 +59,7 @@ def configure_logging():
 
 # Clean up old log files
 def cleanup_logs(logs_dir=None, keep_count=3):
-    """
-    Clean up old log files, keeping only the most recent ones.
+    """Clean up old log files, keeping only the most recent ones.
 
     Args:
         logs_dir: Directory containing log files (default is LOGS_DIR)

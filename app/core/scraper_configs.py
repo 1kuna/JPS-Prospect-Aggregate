@@ -1,15 +1,11 @@
-"""
-Simplified Scraper Configurations
+"""Simplified Scraper Configurations
 
 Replaces the complex config_converter.py with direct, simple dictionary-based configurations.
 Each scraper now has a clear, readable configuration that can be easily modified.
 """
 
-from typing import List
-
 # Import the proper dataclass ScraperConfig from consolidated_scraper_base
 from app.core.consolidated_scraper_base import ScraperConfig
-
 
 # =============================================================================
 # SIMPLIFIED SCRAPER CONFIGURATIONS
@@ -73,7 +69,12 @@ ACQUISITION_GATEWAY_CONFIG = ScraperConfig(
         },
     ],
     custom_transform_functions=["custom_summary_fallback"],
-    fields_for_id_hash=["native_id", "naics", "title", "description"],  # Changed naics_code to naics
+    fields_for_id_hash=[
+        "native_id",
+        "naics",
+        "title",
+        "description",
+    ],  # Changed naics_code to naics
 )
 
 
@@ -153,7 +154,7 @@ DOT_CONFIG = ScraperConfig(
     retry_attempts=[
         {"delay_before_next_s": 0},
         {"delay_before_next_s": 5},
-        {"delay_before_next_s": 10}
+        {"delay_before_next_s": 10},
     ],
     # Column mappings
     raw_column_rename_map={
@@ -170,7 +171,13 @@ DOT_CONFIG = ScraperConfig(
         "Contact Name": "primary_contact_name",
     },
     custom_transform_functions=["_custom_dot_transforms", "_dot_create_extras"],
-    fields_for_id_hash=["native_id", "naics", "title", "description", "agency"],  # Fixed: changed naics_code to naics
+    fields_for_id_hash=[
+        "native_id",
+        "naics",
+        "title",
+        "description",
+        "agency",
+    ],  # Fixed: changed naics_code to naics
 )
 
 
@@ -272,7 +279,13 @@ HHS_CONFIG = ScraperConfig(
         },
     ],
     custom_transform_functions=["_custom_hhs_transforms", "_hhs_create_extras"],
-    fields_for_id_hash=["title", "description", "agency", "naics", "row_index"],  # Fixed: changed naics_code to naics
+    fields_for_id_hash=[
+        "title",
+        "description",
+        "agency",
+        "naics",
+        "row_index",
+    ],  # Fixed: changed naics_code to naics
 )
 
 
@@ -317,7 +330,12 @@ SSA_CONFIG = ScraperConfig(
         },
     ],
     custom_transform_functions=["_custom_ssa_transforms", "_ssa_create_extras"],
-    fields_for_id_hash=["native_id", "naics", "title", "description"],  # Fixed: changed naics_code to naics
+    fields_for_id_hash=[
+        "native_id",
+        "naics",
+        "title",
+        "description",
+    ],  # Fixed: changed naics_code to naics
 )
 
 
@@ -489,7 +507,7 @@ def get_scraper_config(scraper_type: str) -> ScraperConfig:
     return configs[scraper_type]
 
 
-def list_available_scrapers() -> List[str]:
+def list_available_scrapers() -> list[str]:
     """Get list of available scraper types"""
     return [
         "acquisition_gateway",

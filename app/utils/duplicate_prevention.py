@@ -1,19 +1,19 @@
-"""
-Advanced duplicate prevention and matching utilities.
+"""Advanced duplicate prevention and matching utilities.
 
 This module provides sophisticated matching strategies to prevent duplicates
 when source data changes titles, descriptions, or other identifying fields.
 """
 
-import hashlib
 import difflib
-from typing import List, Dict
+import hashlib
 from dataclasses import dataclass
+from functools import lru_cache
+
 from sqlalchemy.orm import Session
+
+from app.config import active_config
 from app.database.models import Prospect
 from app.utils.logger import logger
-from app.config import active_config
-from functools import lru_cache
 
 logger = logger.bind(name="utils.duplicate_prevention")
 
@@ -27,7 +27,7 @@ class MatchCandidate:
     title: str
     confidence_score: float
     match_type: str  # 'exact', 'strong', 'fuzzy', 'weak'
-    matched_fields: List[str]
+    matched_fields: list[str]
 
 
 @dataclass
@@ -37,14 +37,12 @@ class MatchingStrategy:
     name: str
     weight: float
     min_confidence: float
-    required_fields: List[str]
-    optional_fields: List[str]
+    required_fields: list[str]
+    optional_fields: list[str]
 
 
 class DuplicateDetector:
-    """
-    Advanced duplicate detection with multiple fallback strategies.
-    """
+    """Advanced duplicate detection with multiple fallback strategies."""
 
     def __init__(self):
         self._prospects_cache = None
@@ -135,10 +133,9 @@ class DuplicateDetector:
             logger.info(f"Pre-loaded {len(prospects)} prospects for source {source_id}")
 
     def find_potential_matches(
-        self, session: Session, new_record: Dict, source_id: int
-    ) -> List[MatchCandidate]:
-        """
-        Find potential matching records using multiple strategies.
+        self, session: Session, new_record: dict, source_id: int
+    ) -> list[MatchCandidate]:
+        """Find potential matching records using multiple strategies.
 
         Args:
             session: SQLAlchemy session
@@ -161,10 +158,10 @@ class DuplicateDetector:
     def _apply_strategy(
         self,
         session: Session,
-        new_record: Dict,
+        new_record: dict,
         source_id: int,
         strategy: MatchingStrategy,
-    ) -> List[MatchCandidate]:
+    ) -> list[MatchCandidate]:
         """Apply a specific matching strategy."""
         candidates = []
 
@@ -209,8 +206,8 @@ class DuplicateDetector:
         return candidates
 
     def _exact_native_id_match(
-        self, query, new_record: Dict, strategy: MatchingStrategy
-    ) -> List[MatchCandidate]:
+        self, query, new_record: dict, strategy: MatchingStrategy
+    ) -> list[MatchCandidate]:
         """Native_id matching with content similarity scoring."""
         native_id = new_record.get("native_id")
         if not native_id:
@@ -353,8 +350,8 @@ class DuplicateDetector:
         return candidates
 
     def _native_id_title_fuzzy_match(
-        self, query, new_record: Dict, strategy: MatchingStrategy
-    ) -> List[MatchCandidate]:
+        self, query, new_record: dict, strategy: MatchingStrategy
+    ) -> list[MatchCandidate]:
         """Native ID + fuzzy title matching."""
         native_id = new_record.get("native_id")
         new_title = new_record.get("title", "")
@@ -394,8 +391,8 @@ class DuplicateDetector:
         return candidates
 
     def _naics_location_title_match(
-        self, query, new_record: Dict, strategy: MatchingStrategy
-    ) -> List[MatchCandidate]:
+        self, query, new_record: dict, strategy: MatchingStrategy
+    ) -> list[MatchCandidate]:
         """NAICS + location + title similarity matching."""
         naics = new_record.get("naics")
         city = new_record.get("place_city")
@@ -445,8 +442,8 @@ class DuplicateDetector:
         return candidates
 
     def _agency_location_content_match(
-        self, query, new_record: Dict, strategy: MatchingStrategy
-    ) -> List[MatchCandidate]:
+        self, query, new_record: dict, strategy: MatchingStrategy
+    ) -> list[MatchCandidate]:
         """Agency + location + content similarity matching."""
         agency = new_record.get("agency")
         city = new_record.get("place_city")
@@ -507,8 +504,8 @@ class DuplicateDetector:
         return candidates
 
     def _fuzzy_content_match(
-        self, query, new_record: Dict, strategy: MatchingStrategy
-    ) -> List[MatchCandidate]:
+        self, query, new_record: dict, strategy: MatchingStrategy
+    ) -> list[MatchCandidate]:
         """Fuzzy content-only matching (last resort)."""
         new_title = new_record.get("title", "")
         new_desc = new_record.get("description", "")
@@ -599,8 +596,8 @@ class DuplicateDetector:
         return similarity
 
     def _deduplicate_candidates(
-        self, candidates: List[MatchCandidate]
-    ) -> List[MatchCandidate]:
+        self, candidates: list[MatchCandidate]
+    ) -> list[MatchCandidate]:
         """Remove duplicate candidates, keeping the highest confidence."""
         seen_ids = {}
 
@@ -618,9 +615,8 @@ def enhanced_bulk_upsert_prospects(
     source_id: int,
     preserve_ai_data: bool = True,
     enable_smart_matching: bool = True,
-) -> Dict:
-    """
-    Enhanced bulk upsert with advanced duplicate detection.
+) -> dict:
+    """Enhanced bulk upsert with advanced duplicate detection.
 
     Args:
         df_in: DataFrame containing prospect data
@@ -719,7 +715,7 @@ def enhanced_bulk_upsert_prospects(
     return stats
 
 
-def _generate_primary_hash(record_data: Dict, source_id: int) -> str:
+def _generate_primary_hash(record_data: dict, source_id: int) -> str:
     """Generate primary hash ID for a record."""
     # Use key fields for hashing
     key_fields = [
@@ -741,7 +737,7 @@ def _generate_primary_hash(record_data: Dict, source_id: int) -> str:
     return hashlib.md5(hash_string.encode("utf-8")).hexdigest()
 
 
-def _update_preserving_ai_fields(existing_prospect: Prospect, new_data: Dict):
+def _update_preserving_ai_fields(existing_prospect: Prospect, new_data: dict):
     """Update prospect while preserving AI-enhanced fields."""
     ai_fields = {
         "naics",
@@ -762,14 +758,14 @@ def _update_preserving_ai_fields(existing_prospect: Prospect, new_data: Dict):
             setattr(existing_prospect, key, value)
 
 
-def _update_all_fields(existing_prospect: Prospect, new_data: Dict):
+def _update_all_fields(existing_prospect: Prospect, new_data: dict):
     """Update all fields in prospect."""
     for key, value in new_data.items():
         if hasattr(existing_prospect, key):
             setattr(existing_prospect, key, value)
 
 
-def _insert_new_prospect(session: Session, record_data: Dict):
+def _insert_new_prospect(session: Session, record_data: dict):
     """Insert a new prospect record."""
     new_prospect = Prospect(**record_data)
     session.add(new_prospect)

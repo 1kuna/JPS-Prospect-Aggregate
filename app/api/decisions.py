@@ -1,16 +1,17 @@
-"""
-Go/No-Go Decision API endpoints for JPS Prospect Aggregate.
+"""Go/No-Go Decision API endpoints for JPS Prospect Aggregate.
 
 Handles user decisions on prospects for company preferences.
 """
 
-from flask import Blueprint, request, jsonify, session
-from sqlalchemy import desc, func
-from app.database.models import db, GoNoGoDecision, Prospect
-from app.utils.user_utils import get_user_by_id, get_users_by_ids, get_user_data_dict
-from app.utils.logger import logger
-from app.api.auth import login_required
 import datetime
+
+from flask import Blueprint, jsonify, request, session
+from sqlalchemy import desc, func
+
+from app.api.auth import login_required
+from app.database.models import GoNoGoDecision, Prospect, db
+from app.utils.logger import logger
+from app.utils.user_utils import get_user_by_id, get_user_data_dict, get_users_by_ids
 
 decisions_bp = Blueprint("decisions", __name__, url_prefix="/api/decisions")
 
@@ -64,7 +65,7 @@ def create_decision():
             # Update existing decision
             existing_decision.decision = decision
             existing_decision.reason = reason
-            existing_decision.updated_at = datetime.datetime.now(datetime.timezone.utc)
+            existing_decision.updated_at = datetime.datetime.now(datetime.UTC)
             db.session.commit()
 
             # Get user data for response
@@ -285,9 +286,9 @@ def get_decision_stats():
         )
 
         # Get recent activity (last 30 days)
-        thirty_days_ago = datetime.datetime.now(
-            datetime.timezone.utc
-        ) - datetime.timedelta(days=30)
+        thirty_days_ago = datetime.datetime.now(datetime.UTC) - datetime.timedelta(
+            days=30
+        )
         recent_decisions = (
             db.session.query(func.count(GoNoGoDecision.id))
             .filter(

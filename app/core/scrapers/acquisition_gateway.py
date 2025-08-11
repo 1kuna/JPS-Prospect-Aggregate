@@ -1,18 +1,17 @@
-"""
-Acquisition Gateway scraper using the consolidated architecture.
+"""Acquisition Gateway scraper using the consolidated architecture.
 This replaces the original acquisition_gateway.py with simplified, unified approach.
 """
+
 import pandas as pd
 
+from app.config import active_config
 from app.core.consolidated_scraper_base import ConsolidatedScraperBase
 from app.core.scraper_configs import get_scraper_config
-from app.config import active_config
 from app.utils.logger import logger
 
 
 class AcquisitionGatewayScraper(ConsolidatedScraperBase):
-    """
-    Consolidated Acquisition Gateway scraper.
+    """Consolidated Acquisition Gateway scraper.
     Preserves all original functionality while using unified architecture.
     """
 
@@ -22,8 +21,7 @@ class AcquisitionGatewayScraper(ConsolidatedScraperBase):
         super().__init__(config)
 
     def custom_summary_fallback(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Custom transformation: Handle Description/Body column fallback and create extras JSON.
+        """Custom transformation: Handle Description/Body column fallback and create extras JSON.
         Uses Description as primary, falls back to Body if Description is empty.
         Also collects acquisition gateway-specific fields into extras JSON.
         """
@@ -31,15 +29,23 @@ class AcquisitionGatewayScraper(ConsolidatedScraperBase):
             # Handle Description/Body fallback robustly (pre- and post-rename cases)
             # Case 1: Pre-rename headers
             if "Description" in df.columns and "Body" in df.columns:
-                mask = df["Description"].isna() | (df["Description"].astype(str).str.strip() == "")
+                mask = df["Description"].isna() | (
+                    df["Description"].astype(str).str.strip() == ""
+                )
                 df.loc[mask, "Description"] = df.loc[mask, "Body"]
-                self.logger.debug("Applied Body fallback for missing descriptions (pre-rename)")
-            
+                self.logger.debug(
+                    "Applied Body fallback for missing descriptions (pre-rename)"
+                )
+
             # Case 2: Post-rename 'description' + still-present 'Body'
             if "description" in df.columns and "Body" in df.columns:
-                mask = df["description"].isna() | (df["description"].astype(str).str.strip() == "")
+                mask = df["description"].isna() | (
+                    df["description"].astype(str).str.strip() == ""
+                )
                 df.loc[mask, "description"] = df.loc[mask, "Body"]
-                self.logger.debug("Applied Body fallback for missing descriptions (post-rename)")
+                self.logger.debug(
+                    "Applied Body fallback for missing descriptions (post-rename)"
+                )
 
             # Create extras JSON with acquisition gateway-specific fields
             extras_fields = {
@@ -98,8 +104,7 @@ class AcquisitionGatewayScraper(ConsolidatedScraperBase):
         return df
 
     async def scrape(self) -> int:
-        """
-        Execute the complete scraping workflow.
+        """Execute the complete scraping workflow.
         Uses the standard pattern but can be customized if needed.
         """
         return await self.scrape_with_structure()

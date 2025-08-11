@@ -1,14 +1,16 @@
+import time
+
 from flask import Blueprint, jsonify
+
+from app.api.auth import super_admin_required
 from app.database import db
 from app.database.models import DataSource, ScraperStatus
-from app.exceptions import NotFoundError, ScraperError, DatabaseError
+from app.exceptions import DatabaseError, NotFoundError, ScraperError
 from app.utils.logger import logger
 from app.utils.scraper_utils import (
-    trigger_scraper,
     run_all_scrapers,
+    trigger_scraper,
 )
-from app.api.auth import super_admin_required
-import time
 
 scrapers_bp = Blueprint("scrapers", __name__)
 
@@ -86,7 +88,7 @@ def check_scraper_status(source_id):
                 "status": "success",
                 "data_source_name": data_source.name,
                 "scraper_status": status_record.status,
-                "last_checked": status_record.last_checked.isoformat() + 'Z'
+                "last_checked": status_record.last_checked.isoformat() + "Z"
                 if status_record.last_checked
                 else None,
                 "details": status_record.details,

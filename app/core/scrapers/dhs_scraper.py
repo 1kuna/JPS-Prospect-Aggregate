@@ -1,17 +1,16 @@
-"""
-DHS scraper using the consolidated architecture.
+"""DHS scraper using the consolidated architecture.
 Preserves all original DHS-specific functionality.
 """
+
 import pandas as pd
 
+from app.config import active_config
 from app.core.consolidated_scraper_base import ConsolidatedScraperBase
 from app.core.scraper_configs import get_scraper_config
-from app.config import active_config
 
 
 class DHSForecastScraper(ConsolidatedScraperBase):
-    """
-    Consolidated DHS Opportunity Forecast scraper.
+    """Consolidated DHS Opportunity Forecast scraper.
     Preserves all original functionality while using unified architecture.
     """
 
@@ -21,8 +20,7 @@ class DHSForecastScraper(ConsolidatedScraperBase):
         super().__init__(config)
 
     def _custom_dhs_transforms(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Custom DHS transformations: set place_country to 'USA', combine contact names,
+        """Custom DHS transformations: set place_country to 'USA', combine contact names,
         and consolidate set-aside and small business program fields.
         """
         try:
@@ -66,8 +64,7 @@ class DHSForecastScraper(ConsolidatedScraperBase):
         return df
 
     def _consolidate_set_aside_fields(self, row) -> str:
-        """
-        Consolidate set_aside and small_business_program into a single meaningful value.
+        """Consolidate set_aside and small_business_program into a single meaningful value.
         Prioritizes small_business_program when it contains specific program information.
         """
         set_aside = str(row.get("set_aside", "")).strip()
@@ -98,8 +95,7 @@ class DHSForecastScraper(ConsolidatedScraperBase):
         return None
 
     def _dhs_create_extras(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Create extras JSON with DHS-specific fields that aren't in core schema.
+        """Create extras JSON with DHS-specific fields that aren't in core schema.
         Captures additional data points for comprehensive data retention and metadata.
         """
         try:
@@ -133,9 +129,9 @@ class DHSForecastScraper(ConsolidatedScraperBase):
                     if pd.notna(award_quarter) and str(award_quarter).strip():
                         extras["award_quarter_original"] = str(award_quarter).strip()
                         extras["award_date_is_tentative"] = True
-                        extras[
-                            "award_date_note"
-                        ] = "Date derived from fiscal quarter - represents tentative start of quarter"
+                        extras["award_date_note"] = (
+                            "Date derived from fiscal quarter - represents tentative start of quarter"
+                        )
 
                 # Preserve original small business program value
                 if "small_business_program" in df.columns:

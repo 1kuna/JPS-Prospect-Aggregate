@@ -2,16 +2,17 @@
 
 from flask import jsonify  # current_app removed
 from sqlalchemy.exc import SQLAlchemyError
-from app.utils.logger import logger  # Import centralized logger
+
 from app.exceptions import (
     AppError,
-    ValidationError,
-    NotFoundError,
-    DatabaseError,
-    ScraperError,
     AuthenticationError,
     AuthorizationError,
+    DatabaseError,
+    NotFoundError,
+    ScraperError,
+    ValidationError,
 )
+from app.utils.logger import logger  # Import centralized logger
 
 # Create a bound logger for error handlers
 error_logger = logger.bind(name="api.error_handlers")

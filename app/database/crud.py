@@ -1,7 +1,8 @@
+import math
+
+import numpy as np
 import pandas as pd
 from sqlalchemy.exc import SQLAlchemyError
-import numpy as np
-import math
 
 from app.database import db
 from app.database.models import Prospect  # Changed back to Prospect
@@ -10,8 +11,7 @@ from app.utils.logger import logger
 
 
 def paginate_sqlalchemy_query(query, page: int, per_page: int):
-    """
-    Paginates a SQLAlchemy query.
+    """Paginates a SQLAlchemy query.
 
     Args:
         query: The SQLAlchemy query object.
@@ -259,8 +259,7 @@ def bulk_upsert_prospects(
     preserve_ai_data: bool = True,
     enable_smart_matching: bool = False,
 ):
-    """
-    Performs a bulk UPSERT (INSERT ON CONFLICT DO UPDATE) of prospect data
+    """Performs a bulk UPSERT (INSERT ON CONFLICT DO UPDATE) of prospect data
     from a Pandas DataFrame into the prospects table.
 
     Args:
@@ -273,7 +272,7 @@ def bulk_upsert_prospects(
     """
     if df_in.empty:
         logger.info("DataFrame is empty, skipping database insertion.")
-        return
+        return None
 
     # Try enhanced matching first
     enhanced_result = _try_enhanced_matching(
@@ -288,7 +287,7 @@ def bulk_upsert_prospects(
 
     if not data_to_insert:
         logger.warning("Converted data to insert is empty.")
-        return
+        return None
 
     # Remove duplicates within the batch
     data_to_insert = _remove_batch_duplicates(data_to_insert)
@@ -333,8 +332,7 @@ def bulk_upsert_prospects(
 
 
 def get_prospects_for_llm_enhancement(enhancement_type: str = "all", limit: int = None):
-    """
-    Get prospects that need LLM enhancement.
+    """Get prospects that need LLM enhancement.
 
     Args:
         enhancement_type: Type of enhancement needed ('values', 'contacts', 'naics', 'all')
@@ -372,8 +370,7 @@ def get_prospects_for_llm_enhancement(enhancement_type: str = "all", limit: int 
 
 
 def update_prospect_llm_fields(prospect_id: str, llm_data: dict):
-    """
-    Update prospect with LLM-enhanced fields.
+    """Update prospect with LLM-enhanced fields.
 
     Args:
         prospect_id: The prospect ID to update
@@ -424,8 +421,7 @@ def update_prospect_llm_fields(prospect_id: str, llm_data: dict):
 
 
 def get_prospect_statistics():
-    """
-    Get statistics about prospects and their enhancement status.
+    """Get statistics about prospects and their enhancement status.
 
     Returns:
         Dictionary with various statistics

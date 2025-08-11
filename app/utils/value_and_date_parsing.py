@@ -1,6 +1,8 @@
 import re
 from datetime import datetime
+
 import pandas as pd
+
 from app.utils.logger import logger
 
 
@@ -36,20 +38,14 @@ def parse_value_range(value_str):
     # Regex patterns:
     # 1. Range pattern
     range_pattern = re.compile(
-        r"(?:BETWEEN\s*\$?|\$?)(?P<low>[\d.]+)\s*{unit_pattern}\s*(?:-|TO|AND)\s*\$?\s*(?P<high>[\d.]+)\s*{unit_pattern}".format(
-            unit_pattern=unit_pattern
-        )
+        rf"(?:BETWEEN\s*\$?|\$?)(?P<low>[\d.]+)\s*{unit_pattern}\s*(?:-|TO|AND)\s*\$?\s*(?P<high>[\d.]+)\s*{unit_pattern}"
     )
     # 2. Threshold pattern (Updated to include >=, <=, < OR =, > OR =)
     threshold_pattern = re.compile(
-        r"(?:OVER|UNDER|LESS THAN|>=|<=|>|<|< OR =|> OR =)\s*\$?(?P<thresh>[\d.]+)\s*{unit_pattern}".format(
-            unit_pattern=unit_pattern
-        )
+        rf"(?:OVER|UNDER|LESS THAN|>=|<=|>|<|< OR =|> OR =)\s*\$?(?P<thresh>[\d.]+)\s*{unit_pattern}"
     )
     # 3. Simple Number + Unit pattern
-    simple_unit_pattern = re.compile(
-        r"\$?([\d.]+)\s*{unit_pattern}".format(unit_pattern=unit_pattern)
-    )
+    simple_unit_pattern = re.compile(rf"\$?([\d.]+)\s*{unit_pattern}")
 
     range_match = range_pattern.search(value_str)
     threshold_match = threshold_pattern.search(value_str)

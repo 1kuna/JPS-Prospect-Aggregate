@@ -1,14 +1,11 @@
-"""
-Database utility functions.
-"""
+"""Database utility functions."""
 
 import datetime
-from datetime import timezone
 
 # import shutil # Removed as it was only used by rebuild_database
-from typing import Optional  # Added for type hinting
-from app.utils.logger import logger
 from app.utils.file_utils import clean_old_files
+from app.utils.logger import logger
+
 # from flask import current_app # Removed as it was only used by rebuild_database
 # from pathlib import Path # Removed as it was only used by rebuild_database
 
@@ -16,8 +13,7 @@ from app.utils.file_utils import clean_old_files
 
 
 def cleanup_old_backups(backup_dir, max_backups=5):
-    """
-    Clean up old database backups, keeping only the most recent ones.
+    """Clean up old database backups, keeping only the most recent ones.
 
     Args:
         backup_dir (str): Directory containing the backups
@@ -38,9 +34,8 @@ def cleanup_old_backups(backup_dir, max_backups=5):
 # The rebuild_database function has been removed as it's unused.
 
 
-def update_scraper_status(source_id: int, status: str, details: Optional[str] = None):
-    """
-    Update the scraper status in the database for a given source_id.
+def update_scraper_status(source_id: int, status: str, details: str | None = None):
+    """Update the scraper status in the database for a given source_id.
 
     Args:
         source_id (int): The ID of the data source.
@@ -57,6 +52,7 @@ def update_scraper_status(source_id: int, status: str, details: Optional[str] = 
     # Check if we're in an application context, if not create one
     if not has_app_context():
         from app import create_app
+
         app = create_app()
         with app.app_context():
             return _update_scraper_status_internal(source_id, status, details)
@@ -64,10 +60,10 @@ def update_scraper_status(source_id: int, status: str, details: Optional[str] = 
         return _update_scraper_status_internal(source_id, status, details)
 
 
-def _update_scraper_status_internal(source_id: int, status: str, details: Optional[str] = None):
-    """
-    Internal implementation of update_scraper_status that assumes we're in an app context.
-    """
+def _update_scraper_status_internal(
+    source_id: int, status: str, details: str | None = None
+):
+    """Internal implementation of update_scraper_status that assumes we're in an app context."""
     from app.database import db
     from app.database.models import DataSource, ScraperStatus
 
@@ -89,7 +85,7 @@ def _update_scraper_status_internal(source_id: int, status: str, details: Option
             .first()
         )
 
-        current_time = datetime.datetime.now(timezone.utc)
+        current_time = datetime.datetime.now(datetime.UTC)
 
         if not status_record:
             status_record = ScraperStatus(

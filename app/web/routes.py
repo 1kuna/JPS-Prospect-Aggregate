@@ -1,6 +1,7 @@
 """Routes for the web dashboard."""
 
 import os
+
 from flask import Blueprint, current_app, send_from_directory
 
 # Create blueprints

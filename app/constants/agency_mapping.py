@@ -1,12 +1,10 @@
-"""
-Agency abbreviation mapping for consistent naming across the system.
+"""Agency abbreviation mapping for consistent naming across the system.
 
 This module provides standardized agency abbreviations and mappings to ensure
 consistent naming conventions throughout the JPS Prospect Aggregate system.
 """
 
 from dataclasses import dataclass
-from typing import Dict, List
 
 
 @dataclass
@@ -88,17 +86,17 @@ def get_agency_by_abbreviation(abbrev: str) -> AgencyInfo:
     return AGENCIES[abbrev]
 
 
-def get_all_abbreviations() -> List[str]:
+def get_all_abbreviations() -> list[str]:
     """Get list of all agency abbreviations."""
     return list(AGENCIES.keys())
 
 
-def get_abbreviation_mapping() -> Dict[str, str]:
+def get_abbreviation_mapping() -> dict[str, str]:
     """Get mapping of full names to abbreviations."""
     return {info.full_name: abbrev for abbrev, info in AGENCIES.items()}
 
 
-def get_data_directory_mapping() -> Dict[str, str]:
+def get_data_directory_mapping() -> dict[str, str]:
     """Get mapping of current data directory names to abbreviations."""
     return {info.data_directory: abbrev for abbrev, info in AGENCIES.items()}
 
@@ -109,8 +107,7 @@ def get_data_directory_mapping() -> Dict[str, str]:
 def standardize_file_name(
     agency_abbrev: str, timestamp: str, extension: str = "csv"
 ) -> str:
-    """
-    Generate standardized file name based on agency abbreviation.
+    """Generate standardized file name based on agency abbreviation.
 
     Args:
         agency_abbrev: Standard agency abbreviation (e.g., 'DHS', 'SSA')

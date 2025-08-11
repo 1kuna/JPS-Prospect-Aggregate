@@ -1,19 +1,19 @@
-"""
-File Processing Utilities
+"""File Processing Utilities
 
 Replaces FileValidationService with simple utility functions.
 Provides file validation, processing tracking, and content analysis.
 """
 
-from pathlib import Path
 from datetime import datetime
-from typing import Dict, List, Any
+from pathlib import Path
+from typing import Any
+
 import pandas as pd
 
 from app.database import db
 from app.database.models import FileProcessingLog
-from app.utils.logger import logger
 from app.utils.file_utils import extract_timestamp_from_filename
+from app.utils.logger import logger
 
 
 def create_processing_log(source_id: int, file_path: str) -> FileProcessingLog:
@@ -55,10 +55,9 @@ def update_processing_log(
 
 
 def validate_file_content(
-    file_path: str, expected_columns: List[str] = None
-) -> Dict[str, Any]:
-    """
-    Perform soft validation on file content.
+    file_path: str, expected_columns: list[str] = None
+) -> dict[str, Any]:
+    """Perform soft validation on file content.
     Returns validation results without blocking processing.
     """
     try:
@@ -105,7 +104,7 @@ def validate_file_content(
 
 def get_recent_files_for_source(
     source_id: int, limit: int = 10
-) -> List[FileProcessingLog]:
+) -> list[FileProcessingLog]:
     """Get recent processing logs for a data source."""
     return (
         FileProcessingLog.query.filter_by(source_id=source_id)
@@ -131,7 +130,7 @@ def cleanup_old_processing_logs(days_old: int = 90):
     return deleted_count
 
 
-def analyze_file_processing_trends(source_id: int, days: int = 30) -> Dict[str, Any]:
+def analyze_file_processing_trends(source_id: int, days: int = 30) -> dict[str, Any]:
     """Analyze processing trends for a data source."""
     cutoff_date = datetime.now() - pd.Timedelta(days=days)
 

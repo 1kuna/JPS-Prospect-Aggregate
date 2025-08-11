@@ -1,7 +1,9 @@
-import requests  # Or potentially use 'import ollama' if using the official client
 import json
 import os
-from typing import Optional, Dict, Any
+from typing import Any
+
+import requests  # Or potentially use 'import ollama' if using the official client
+
 from app.utils.logger import logger
 
 # --- Configuration ---
@@ -15,10 +17,9 @@ DEFAULT_TIMEOUT = 240  # Adjust as needed, inference can be slow (Increased from
 
 
 def call_ollama(
-    prompt: str, model_name: str, options: Optional[Dict[str, Any]] = None
-) -> Optional[str]:
-    """
-    Calls the Ollama /api/generate endpoint to get a completion for the given prompt.
+    prompt: str, model_name: str, options: dict[str, Any] | None = None
+) -> str | None:
+    """Calls the Ollama /api/generate endpoint to get a completion for the given prompt.
 
     Args:
         prompt: The input prompt for the LLM.
@@ -28,7 +29,6 @@ def call_ollama(
     Returns:
         The generated text content as a string, or None if an error occurs.
     """
-
     logger.debug(f"Attempting to call Ollama model '{model_name}'...")
 
     # 1. Construct the request payload

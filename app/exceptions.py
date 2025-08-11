@@ -1,6 +1,4 @@
-"""
-Simplified exception handling for the application.
-"""
+"""Simplified exception handling for the application."""
 
 
 class AppError(Exception):

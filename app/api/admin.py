@@ -1,31 +1,31 @@
-"""
-Admin API endpoints for system administration.
-"""
+"""Admin API endpoints for system administration."""
 
-from flask import Blueprint, request, jsonify, session
-from sqlalchemy import desc, func, case
-from app.database import db
-from app.database.models import Settings, GoNoGoDecision, Prospect
-from app.database.user_models import User
-from app.utils.logger import logger
-from app.utils.user_utils import (
-    get_users_by_ids,
-    get_user_data_dict,
-    update_user_role,
-    get_user_by_id,
-)
+import datetime
+
+from flask import Blueprint, jsonify, request, session
+from sqlalchemy import case, desc, func
+
 from app.api.auth import admin_required, super_admin_required
+from app.database import db
+from app.database.models import GoNoGoDecision, Prospect, Settings
+from app.database.user_models import User
 from app.utils.enhancement_cleanup import (
-    cleanup_stuck_enhancements,
     cleanup_all_in_progress_enhancements,
+    cleanup_stuck_enhancements,
     get_enhancement_statistics,
 )
+from app.utils.logger import logger
 from app.utils.scraper_cleanup import (
-    cleanup_stuck_scrapers,
     cleanup_all_working_scrapers,
+    cleanup_stuck_scrapers,
     get_scraper_statistics,
 )
-import datetime
+from app.utils.user_utils import (
+    get_user_by_id,
+    get_user_data_dict,
+    get_users_by_ids,
+    update_user_role,
+)
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/api/admin")
 
@@ -33,8 +33,7 @@ admin_bp = Blueprint("admin", __name__, url_prefix="/api/admin")
 @admin_bp.route("/maintenance", methods=["GET", "POST"])
 @admin_required
 def toggle_maintenance():
-    """
-    GET: Get current maintenance mode status
+    """GET: Get current maintenance mode status
     POST: Toggle maintenance mode on/off
 
     POST Body:
@@ -147,8 +146,7 @@ def admin_health():
 @admin_bp.route("/enhancement-cleanup", methods=["POST"])
 @admin_required
 def cleanup_enhancements():
-    """
-    Clean up stuck enhancement requests.
+    """Clean up stuck enhancement requests.
 
     POST Body (optional):
     {
@@ -197,8 +195,7 @@ def enhancement_statistics():
 @admin_bp.route("/scraper-cleanup", methods=["POST"])
 @admin_required
 def cleanup_scrapers():
-    """
-    Clean up stuck scraper processes.
+    """Clean up stuck scraper processes.
 
     POST Body (optional):
     {
@@ -334,9 +331,9 @@ def get_admin_decision_stats():
         )
 
         # Recent activity (last 30 days)
-        thirty_days_ago = datetime.datetime.now(
-            datetime.timezone.utc
-        ) - datetime.timedelta(days=30)
+        thirty_days_ago = datetime.datetime.now(datetime.UTC) - datetime.timedelta(
+            days=30
+        )
         recent_decisions = (
             db.session.query(func.count(GoNoGoDecision.id))
             .filter(GoNoGoDecision.created_at >= thirty_days_ago)
@@ -436,10 +433,10 @@ def export_all_decisions():
                     "decision_id": decision.id,
                     "decision": decision.decision,
                     "reason": decision.reason or "",
-                    "decision_created_at": decision.created_at.isoformat() + 'Z'
+                    "decision_created_at": decision.created_at.isoformat() + "Z"
                     if decision.created_at
                     else "",
-                    "decision_updated_at": decision.updated_at.isoformat() + 'Z'
+                    "decision_updated_at": decision.updated_at.isoformat() + "Z"
                     if decision.updated_at
                     else "",
                     # User fields
@@ -484,10 +481,10 @@ def export_all_decisions():
                     if prospect and prospect.estimated_value_single
                     else "",
                     # Important dates
-                    "prospect_release_date": prospect.release_date.isoformat() + 'Z'
+                    "prospect_release_date": prospect.release_date.isoformat() + "Z"
                     if prospect and prospect.release_date
                     else "",
-                    "prospect_award_date": prospect.award_date.isoformat() + 'Z'
+                    "prospect_award_date": prospect.award_date.isoformat() + "Z"
                     if prospect and prospect.award_date
                     else "",
                     "prospect_award_fiscal_year": str(prospect.award_fiscal_year)
@@ -512,10 +509,11 @@ def export_all_decisions():
                     if prospect
                     else "",
                     # Processing metadata
-                    "prospect_loaded_at": prospect.loaded_at.isoformat() + 'Z'
+                    "prospect_loaded_at": prospect.loaded_at.isoformat() + "Z"
                     if prospect and prospect.loaded_at
                     else "",
-                    "prospect_ollama_processed_at": prospect.ollama_processed_at.isoformat() + 'Z'
+                    "prospect_ollama_processed_at": prospect.ollama_processed_at.isoformat()
+                    + "Z"
                     if prospect and prospect.ollama_processed_at
                     else "",
                     "prospect_ollama_model_version": prospect.ollama_model_version
@@ -524,7 +522,8 @@ def export_all_decisions():
                     "prospect_enhancement_status": prospect.enhancement_status
                     if prospect
                     else "",
-                    "prospect_enhancement_started_at": prospect.enhancement_started_at.isoformat() + 'Z'
+                    "prospect_enhancement_started_at": prospect.enhancement_started_at.isoformat()
+                    + "Z"
                     if prospect and prospect.enhancement_started_at
                     else "",
                     "prospect_enhancement_user_id": str(prospect.enhancement_user_id)
@@ -539,9 +538,7 @@ def export_all_decisions():
                 "data": {
                     "decisions": csv_data,
                     "total_count": len(csv_data),
-                    "export_timestamp": datetime.datetime.now(
-                        datetime.timezone.utc
-                    ).isoformat(),
+                    "export_timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
                 },
             }
         )

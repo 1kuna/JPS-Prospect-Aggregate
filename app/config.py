@@ -1,6 +1,7 @@
 import os
 import pathlib
-from typing import List, Dict, Any
+from typing import Any, Dict, List
+
 from dotenv import load_dotenv
 
 # Environment variables loading
@@ -63,7 +64,7 @@ class Config:
     DOWNLOAD_TIMEOUT: int = int(os.getenv("DOWNLOAD_TIMEOUT", 60000))  # 60 seconds
 
     # File processing
-    CSV_ENCODINGS: List[str] = ["utf-8", "latin-1", "cp1252"]
+    CSV_ENCODINGS: list[str] = ["utf-8", "latin-1", "cp1252"]
     FILE_FRESHNESS_SECONDS: int = int(
         os.getenv("FILE_FRESHNESS_SECONDS", 86400)
     )  # 24 hours
@@ -143,8 +144,10 @@ class Config:
 
     # Backup configuration
     BACKUP_RETENTION_DAYS: int = int(os.getenv("BACKUP_RETENTION_DAYS", "7"))
-    BACKUP_DIRECTORY: str = os.getenv("BACKUP_DIRECTORY", os.path.join(BASE_DIR, "backups"))
-    
+    BACKUP_DIRECTORY: str = os.getenv(
+        "BACKUP_DIRECTORY", os.path.join(BASE_DIR, "backups")
+    )
+
     # SQLite configuration
     SQLITE_JOURNAL_MODE: str = os.getenv("SQLITE_JOURNAL_MODE", "WAL")
     SQLITE_SYNCHRONOUS: str = os.getenv("SQLITE_SYNCHRONOUS", "NORMAL")
@@ -176,7 +179,7 @@ class TestingConfig(Config):
 
 
 # Configuration dictionary
-config_by_name: Dict[str, Any] = {
+config_by_name: dict[str, Any] = {
     "development": DevelopmentConfig,
     "production": ProductionConfig,
     "testing": TestingConfig,

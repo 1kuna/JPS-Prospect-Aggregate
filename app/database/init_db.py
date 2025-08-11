@@ -1,5 +1,4 @@
-"""
-Database initialization using Flask application context.
+"""Database initialization using Flask application context.
 This module provides unified database initialization for both business and user databases.
 """
 

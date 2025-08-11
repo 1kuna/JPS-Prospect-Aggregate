@@ -1,19 +1,18 @@
-"""
-Cleanup utility for stuck scraper processes.
+"""Cleanup utility for stuck scraper processes.
 
 This module provides functions to clean up scraper statuses that may be
 stuck due to server restarts, crashes, or unexpected shutdowns.
 """
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
+
 from app.database import db
-from app.database.models import ScraperStatus, DataSource
+from app.database.models import DataSource, ScraperStatus
 from app.utils.logger import logger
 
 
 def cleanup_stuck_scrapers(max_age_hours=2):
-    """
-    Reset scraper statuses that have been stuck for too long.
+    """Reset scraper statuses that have been stuck for too long.
 
     Args:
         max_age_hours (int): Maximum hours a scraper can be 'working'
@@ -70,9 +69,8 @@ def cleanup_stuck_scrapers(max_age_hours=2):
 
 
 def cleanup_all_working_scrapers():
-    """
-    Reset scrapers that have been marked 'working' for more than 2 hours.
-    
+    """Reset scrapers that have been marked 'working' for more than 2 hours.
+
     This avoids interfering with legitimately running scrapers while still
     cleaning up truly stuck ones from server restarts or crashes.
 
@@ -80,16 +78,16 @@ def cleanup_all_working_scrapers():
         int: Number of scrapers that were reset
     """
     try:
-        from datetime import datetime, timezone, timedelta
-        
+        from datetime import datetime, timedelta
+
         # Only clean up scrapers that have been working for more than 2 hours
-        cutoff_time = datetime.now(timezone.utc) - timedelta(hours=2)
-        
+        cutoff_time = datetime.now(UTC) - timedelta(hours=2)
+
         stuck_working_scrapers = (
             db.session.query(ScraperStatus)
             .filter(
                 ScraperStatus.status == "working",
-                ScraperStatus.last_checked < cutoff_time
+                ScraperStatus.last_checked < cutoff_time,
             )
             .all()
         )
@@ -127,8 +125,7 @@ def cleanup_all_working_scrapers():
 
 
 def get_scraper_statistics():
-    """
-    Get statistics about current scraper statuses.
+    """Get statistics about current scraper statuses.
 
     Returns:
         dict: Statistics about scraper statuses
@@ -180,8 +177,7 @@ def get_scraper_statistics():
 
 
 def is_scraper_stuck(source_id, max_age_hours=2):
-    """
-    Check if a specific scraper is stuck.
+    """Check if a specific scraper is stuck.
 
     Args:
         source_id (int): The data source ID to check
@@ -211,8 +207,7 @@ def is_scraper_stuck(source_id, max_age_hours=2):
 
 
 def reset_scraper_status(source_id, status="failed", details=None):
-    """
-    Safely reset a specific scraper's status.
+    """Safely reset a specific scraper's status.
 
     Args:
         source_id (int): The data source ID to reset

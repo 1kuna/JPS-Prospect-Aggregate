@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { cn } from '@/lib/utils';
+import { cn } from '../../lib/utils';
 import { useAuth } from '../AuthProvider';
 import { useSignOut, useIsAdmin } from '../../hooks/api';
 import { Button } from '../ui/button';

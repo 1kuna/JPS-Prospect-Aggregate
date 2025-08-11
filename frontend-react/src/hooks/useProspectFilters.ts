@@ -5,6 +5,7 @@ export interface ProspectFilters {
   keywords?: string;
   ai_enrichment?: 'all' | 'enhanced' | 'original';
   dataSourceIds?: number[];
+  agency?: string;
 }
 
 export function useProspectFilters() {

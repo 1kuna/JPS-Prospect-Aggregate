@@ -1,6 +1,4 @@
-"""
-Utility functions for working with user data across separate databases.
-"""
+"""Utility functions for working with user data across separate databases."""
 
 from app.database import db
 from app.database.user_models import User

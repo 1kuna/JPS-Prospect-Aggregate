@@ -1,19 +1,18 @@
-"""
-Cleanup utility for stuck enhancement requests.
+"""Cleanup utility for stuck enhancement requests.
 
 This module provides functions to clean up enhancement statuses that may be
 stuck due to server restarts or unexpected shutdowns.
 """
 
 from datetime import datetime, timedelta
+
 from app.database import db
 from app.database.models import Prospect
 from app.utils.logger import logger
 
 
 def cleanup_stuck_enhancements(max_age_hours=1):
-    """
-    Reset enhancement statuses that have been stuck for too long.
+    """Reset enhancement statuses that have been stuck for too long.
 
     Args:
         max_age_hours (int): Maximum hours an enhancement can be 'in_progress'
@@ -59,8 +58,7 @@ def cleanup_stuck_enhancements(max_age_hours=1):
 
 
 def cleanup_all_in_progress_enhancements():
-    """
-    Reset all prospects that are currently marked as 'in_progress' to 'idle'.
+    """Reset all prospects that are currently marked as 'in_progress' to 'idle'.
 
     This is useful when the server restarts and we want to reset all
     enhancement statuses since in-memory processing state is lost.
@@ -100,8 +98,7 @@ def cleanup_all_in_progress_enhancements():
 
 
 def get_enhancement_statistics():
-    """
-    Get statistics about current enhancement statuses.
+    """Get statistics about current enhancement statuses.
 
     Returns:
         dict: Statistics about enhancement statuses

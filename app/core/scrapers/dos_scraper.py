@@ -1,19 +1,17 @@
-"""
-DOS scraper using the consolidated architecture.
+"""DOS scraper using the consolidated architecture.
 Preserves all original DOS-specific functionality including direct download and complex value processing.
 """
-import pandas as pd
-from typing import Optional
-from app.utils.value_and_date_parsing import fiscal_quarter_to_date, parse_value_range
 
+import pandas as pd
+
+from app.config import active_config
 from app.core.consolidated_scraper_base import ConsolidatedScraperBase
 from app.core.scraper_configs import get_scraper_config
-from app.config import active_config
+from app.utils.value_and_date_parsing import fiscal_quarter_to_date, parse_value_range
 
 
 class DOSForecastScraper(ConsolidatedScraperBase):
-    """
-    Consolidated DOS scraper.
+    """Consolidated DOS scraper.
     Preserves all original functionality including direct download and complex data processing.
     """
 
@@ -23,8 +21,7 @@ class DOSForecastScraper(ConsolidatedScraperBase):
         super().__init__(config)
 
     def _custom_dos_transforms(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Custom DOS transformations preserving the original complex logic.
+        """Custom DOS transformations preserving the original complex logic.
         Handles priority-based date parsing, value range processing, and place standardization.
         """
         try:
@@ -59,9 +56,9 @@ class DOSForecastScraper(ConsolidatedScraperBase):
                     & parsed_direct_award_date.notna()
                 )
                 if needs_fy_from_date_mask.any():
-                    df.loc[
-                        needs_fy_from_date_mask, "award_fiscal_year_final"
-                    ] = parsed_direct_award_date[needs_fy_from_date_mask].dt.year
+                    df.loc[needs_fy_from_date_mask, "award_fiscal_year_final"] = (
+                        parsed_direct_award_date[needs_fy_from_date_mask].dt.year
+                    )
 
             if "award_qtr_raw" in df.columns:
                 # Only parse quarter if both date and fiscal year are still missing
@@ -78,12 +75,12 @@ class DOSForecastScraper(ConsolidatedScraperBase):
                         if pd.notna(x)
                         else (None, None)
                     )
-                    df.loc[
-                        needs_qtr_parse_mask, "award_date_final"
-                    ] = parsed_qtr_info.apply(lambda x: x[0].date() if x[0] else None)
-                    df.loc[
-                        needs_qtr_parse_mask, "award_fiscal_year_final"
-                    ] = parsed_qtr_info.apply(lambda x: x[1])
+                    df.loc[needs_qtr_parse_mask, "award_date_final"] = (
+                        parsed_qtr_info.apply(lambda x: x[0].date() if x[0] else None)
+                    )
+                    df.loc[needs_qtr_parse_mask, "award_fiscal_year_final"] = (
+                        parsed_qtr_info.apply(lambda x: x[1])
+                    )
 
             if "award_fiscal_year_final" in df.columns:  # Ensure Int64 type
                 df["award_fiscal_year_final"] = df["award_fiscal_year_final"].astype(
@@ -138,9 +135,9 @@ class DOSForecastScraper(ConsolidatedScraperBase):
             df["place_country_final"] = (
                 df["place_country_raw"] if "place_country_raw" in df.columns else "USA"
             )
-            df.loc[
-                df["place_country_final"].isna(), "place_country_final"
-            ] = "USA"  # Default NA to USA
+            df.loc[df["place_country_final"].isna(), "place_country_final"] = (
+                "USA"  # Default NA to USA
+            )
             self.logger.debug(
                 "Processed place columns, defaulting country to USA if needed."
             )
@@ -151,8 +148,7 @@ class DOSForecastScraper(ConsolidatedScraperBase):
         return df
 
     def _dos_create_extras(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Create extras JSON with DOS-specific fields that aren't in core schema.
+        """Create extras JSON with DOS-specific fields that aren't in core schema.
         Captures 11 additional data points for comprehensive data retention.
         """
         try:
@@ -195,8 +191,7 @@ class DOSForecastScraper(ConsolidatedScraperBase):
         return df
 
     async def dos_setup(self) -> bool:
-        """
-        DOS-specific setup: minimal setup for direct download.
+        """DOS-specific setup: minimal setup for direct download.
         No browser navigation needed since it's a direct download.
         """
         self.logger.info(
@@ -205,9 +200,8 @@ class DOSForecastScraper(ConsolidatedScraperBase):
         # No actual navigation needed, browser is set up by the base class
         return True
 
-    async def dos_extract(self) -> Optional[str]:
-        """
-        DOS-specific extraction: direct download from configured URL.
+    async def dos_extract(self) -> str | None:
+        """DOS-specific extraction: direct download from configured URL.
         Preserves original DOS direct download behavior.
         """
         self.logger.info(
@@ -218,9 +212,7 @@ class DOSForecastScraper(ConsolidatedScraperBase):
         return await self.download_file_directly(self.config.direct_download_url)
 
     def dos_process(self, file_path: str) -> int:
-        """
-        DOS-specific processing with Excel-specific read options.
-        """
+        """DOS-specific processing with Excel-specific read options."""
         if not file_path:
             # Try to get most recent download
             file_path = self.get_last_downloaded_path()

@@ -1,19 +1,17 @@
-"""
-DOJ scraper using the consolidated architecture.
+"""DOJ scraper using the consolidated architecture.
 Preserves all original DOJ-specific functionality including complex award date processing.
 """
-import pandas as pd
-from typing import Optional
-from app.utils.value_and_date_parsing import fiscal_quarter_to_date
 
+import pandas as pd
+
+from app.config import active_config
 from app.core.consolidated_scraper_base import ConsolidatedScraperBase
 from app.core.scraper_configs import get_scraper_config
-from app.config import active_config
+from app.utils.value_and_date_parsing import fiscal_quarter_to_date
 
 
 class DOJForecastScraper(ConsolidatedScraperBase):
-    """
-    Consolidated DOJ scraper.
+    """Consolidated DOJ scraper.
     Preserves all original functionality including complex award date logic and place country handling.
     """
 
@@ -23,8 +21,7 @@ class DOJForecastScraper(ConsolidatedScraperBase):
         super().__init__(config)
 
     def _custom_doj_transforms(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Custom DOJ transformations preserving the original complex logic.
+        """Custom DOJ transformations preserving the original complex logic.
         Handles award date with fiscal quarter fallback and place country standardization.
         """
         try:
@@ -54,12 +51,12 @@ class DOJForecastScraper(ConsolidatedScraperBase):
                         if pd.notna(x)
                         else (None, None)
                     )
-                    df.loc[
-                        needs_fallback_mask, "award_date_final"
-                    ] = parsed_qtr_info.apply(lambda x: x[0])
-                    df.loc[
-                        needs_fallback_mask, "award_fiscal_year_final"
-                    ] = parsed_qtr_info.apply(lambda x: x[1])
+                    df.loc[needs_fallback_mask, "award_date_final"] = (
+                        parsed_qtr_info.apply(lambda x: x[0])
+                    )
+                    df.loc[needs_fallback_mask, "award_fiscal_year_final"] = (
+                        parsed_qtr_info.apply(lambda x: x[1])
+                    )
 
                 # Final conversion to date object and Int64 for year
                 df["award_date_final"] = pd.to_datetime(
@@ -122,13 +119,15 @@ class DOJForecastScraper(ConsolidatedScraperBase):
                 self.logger.debug("Processed 'place_country' from 'Country'.")
             else:
                 df["place_country"] = "USA"
-                self.logger.debug("Defaulted 'place_country' to USA (no source column found).")
+                self.logger.debug(
+                    "Defaulted 'place_country' to USA (no source column found)."
+                )
 
             # Parse place_raw to extract city and state if available
             if "place_raw" in df.columns:
                 # DOJ typically has format like "Quantico, VA" or just city name
                 df[["place_city", "place_state"]] = df["place_raw"].str.extract(
-                    r'^([^,]+)(?:,\s*([A-Z]{2}))?$', expand=True
+                    r"^([^,]+)(?:,\s*([A-Z]{2}))?$", expand=True
                 )
                 df["place_city"] = df["place_city"].str.strip()
                 df["place_state"] = df["place_state"].str.strip()
@@ -140,8 +139,7 @@ class DOJForecastScraper(ConsolidatedScraperBase):
         return df
 
     def _doj_create_extras(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Create extras JSON with DOJ-specific fields that aren't in core schema.
+        """Create extras JSON with DOJ-specific fields that aren't in core schema.
         Captures 21 additional data points for comprehensive data retention.
         """
         try:
@@ -194,9 +192,7 @@ class DOJForecastScraper(ConsolidatedScraperBase):
         return df
 
     async def doj_setup(self) -> bool:
-        """
-        DOJ-specific setup: navigate to URL and wait for DOM to load.
-        """
+        """DOJ-specific setup: navigate to URL and wait for DOM to load."""
         if not self.base_url:
             self.logger.error("Base URL not configured.")
             return False
@@ -211,9 +207,8 @@ class DOJForecastScraper(ConsolidatedScraperBase):
         await self.wait_for_load_state("domcontentloaded")
         return True
 
-    async def doj_extract(self) -> Optional[str]:
-        """
-        DOJ-specific extraction: wait for download link and click to download.
+    async def doj_extract(self) -> str | None:
+        """DOJ-specific extraction: wait for download link and click to download.
         Preserves original DOJ download behavior.
         """
         self.logger.info(
@@ -234,9 +229,7 @@ class DOJForecastScraper(ConsolidatedScraperBase):
         )
 
     def doj_process(self, file_path: str) -> int:
-        """
-        DOJ-specific processing with Excel-specific read options.
-        """
+        """DOJ-specific processing with Excel-specific read options."""
         if not file_path:
             # Try to get most recent download
             file_path = self.get_last_downloaded_path()

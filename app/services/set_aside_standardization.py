@@ -1,5 +1,4 @@
-"""
-Set-aside standardization service for normalizing set-aside field values.
+"""Set-aside standardization service for normalizing set-aside field values.
 This service provides mapping and LLM-based classification of set-aside types.
 """
 
@@ -34,7 +33,6 @@ class SetAsideStandardizer:
 
     def __init__(self):
         """Initialize the standardizer - no complex rules needed for LLM approach"""
-        pass
 
     def get_llm_prompt(self) -> str:
         """Get the enhanced LLM prompt for set-aside classification"""
