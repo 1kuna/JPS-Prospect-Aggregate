@@ -23,9 +23,26 @@ def create_app():
     app.config.from_object(active_config)  # Use active_config directly
 
     # Initialize extensions
+    # Configure CORS with credentials support for authentication
     CORS(
-        app, resources={r"/api/*": {"origins": "*"}}
-    )  # Configure origins properly for production
+        app, 
+        resources={r"/api/*": {
+            "origins": [
+                "http://localhost:5173", 
+                "http://localhost:5001", 
+                "http://localhost:3000",
+                "http://localhost:3001",
+                "http://127.0.0.1:5173", 
+                "http://127.0.0.1:5001",
+                "http://127.0.0.1:3000",
+                "http://127.0.0.1:3001"
+            ],
+            "allow_credentials": True,
+            "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+            "allow_headers": ["Content-Type", "Authorization"]
+        }},
+        supports_credentials=True
+    )
 
     # Configure user database bind BEFORE initializing db
     init_user_db(app)  # Configure user database binds
@@ -39,6 +56,12 @@ def create_app():
     # Import models here to ensure they are registered with SQLAlchemy
     from app.database import models  # noqa
     from app.database import user_models  # noqa
+    
+    # Automatic database initialization
+    from app.utils.database_initializer import initialize_database
+    if not initialize_database(app):
+        logger.error("Database initialization failed - application may not function properly")
+        # Continue anyway to allow debugging
 
     # Register blueprints
     from app.api.main import main_bp
@@ -77,14 +100,13 @@ def create_app():
         from app.services.enhancement_queue import enhancement_queue  # noqa: F401
         from app.services.llm_service import llm_service  # noqa: F401
         from app.utils.enhancement_cleanup import cleanup_all_in_progress_enhancements
-        from app.utils.ensure_data_sources import ensure_all_data_sources_exist
-        from app.utils.ensure_super_admin import ensure_super_admin_exists
         from app.utils.scraper_cleanup import cleanup_all_working_scrapers
 
-        # Check if database tables exist before running cleanup functions
+        # Database is already initialized above, so tables should exist
+        # Run cleanup functions
         tables_exist = True
         try:
-            # Test if the main tables exist by doing a simple count query
+            # Verify tables exist with a simple query
             db.session.execute(
                 db.text("SELECT COUNT(*) FROM prospects LIMIT 1")
             ).fetchone()
@@ -92,24 +114,12 @@ def create_app():
                 db.text("SELECT COUNT(*) FROM scraper_status LIMIT 1")
             ).fetchone()
         except Exception as e:
-            logger.info(
-                f"Database tables not yet created, skipping cleanup functions: {e}"
+            logger.warning(
+                f"Database tables check failed after initialization: {e}"
             )
             tables_exist = False
 
-        # Ensure super admin exists (this checks for user table existence internally)
-        ensure_super_admin_exists()
-
         if tables_exist:
-            # Ensure all data sources exist
-            try:
-                changes = ensure_all_data_sources_exist()
-                if changes > 0:
-                    logger.info(
-                        f"Data sources updated during startup: {changes} changes"
-                    )
-            except Exception as e:
-                logger.warning(f"Failed to ensure data sources exist: {e}")
             # Clean up any stuck enhancement statuses from previous server runs
             try:
                 cleanup_count = cleanup_all_in_progress_enhancements()
@@ -132,7 +142,7 @@ def create_app():
                     logger.warning(f"Failed to clean up stuck scrapers: {e}")
         else:
             logger.info(
-                "Skipping cleanup functions - database tables will be created by migrations"
+                "Skipping cleanup functions - database tables not available"
             )
 
         # Enhancement queue is ready for use (no worker thread needed in simplified version)

@@ -43,6 +43,13 @@ class Config:
     DEBUG: bool = os.getenv("DEBUG", "False").lower() == "true"
     HOST: str = os.getenv("HOST", "0.0.0.0")
     PORT: int = int(os.getenv("PORT", 5001))
+    
+    # Session configuration for authentication
+    SESSION_COOKIE_SECURE: bool = os.getenv("SESSION_COOKIE_SECURE", "False").lower() == "true"  # Set to True in production with HTTPS
+    SESSION_COOKIE_HTTPONLY: bool = True  # Prevent JavaScript access to session cookies
+    SESSION_COOKIE_SAMESITE: str = "Lax"  # CSRF protection
+    SESSION_PERMANENT: bool = False  # Sessions expire when browser closes
+    PERMANENT_SESSION_LIFETIME: int = 3600  # 1 hour if permanent sessions are used
 
     # Directory paths
     BASE_DIR: str = BASE_DIR
