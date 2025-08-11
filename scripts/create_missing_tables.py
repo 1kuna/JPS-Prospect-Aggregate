@@ -1,11 +1,13 @@
 #!/usr/bin/env python
 """Create missing tables in SQLite database"""
 
-import sqlite3
 import os
+import sqlite3
 
 # Get database path
-db_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'jps_aggregate.db')
+db_path = os.path.join(
+    os.path.dirname(os.path.dirname(__file__)), "data", "jps_aggregate.db"
+)
 
 # SQL statements to create missing tables
 create_tables_sql = [
@@ -49,7 +51,6 @@ create_tables_sql = [
         FOREIGN KEY(source_id) REFERENCES data_sources (id)
     )
     """,
-    
     """
     CREATE TABLE IF NOT EXISTS inferred_prospect_data (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -73,7 +74,6 @@ create_tables_sql = [
         FOREIGN KEY(prospect_id) REFERENCES prospects (id)
     )
     """,
-    
     """
     CREATE TABLE IF NOT EXISTS scraper_status (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -84,7 +84,6 @@ create_tables_sql = [
         FOREIGN KEY(source_id) REFERENCES data_sources (id)
     )
     """,
-    
     """
     CREATE TABLE IF NOT EXISTS duplicate_prospects (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -98,7 +97,6 @@ create_tables_sql = [
         FOREIGN KEY(original_id) REFERENCES prospects (id)
     )
     """,
-    
     """
     CREATE TABLE IF NOT EXISTS file_processing_log (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -110,7 +108,6 @@ create_tables_sql = [
         error_message TEXT
     )
     """,
-    
     """
     CREATE TABLE IF NOT EXISTS go_no_go_decisions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -123,7 +120,6 @@ create_tables_sql = [
         FOREIGN KEY(prospect_id) REFERENCES prospects (id)
     )
     """,
-    
     """
     CREATE TABLE IF NOT EXISTS llm_outputs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -139,7 +135,6 @@ create_tables_sql = [
         FOREIGN KEY(prospect_id) REFERENCES prospects (id)
     )
     """,
-    
     """
     CREATE TABLE IF NOT EXISTS settings (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -148,7 +143,7 @@ create_tables_sql = [
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
     )
-    """
+    """,
 ]
 
 # Create indexes
@@ -174,7 +169,6 @@ create_indexes_sql = [
     "CREATE INDEX IF NOT EXISTS ix_prospects_set_aside_standardized ON prospects (set_aside_standardized)",
     "CREATE INDEX IF NOT EXISTS ix_prospects_source_id ON prospects (source_id)",
     "CREATE INDEX IF NOT EXISTS ix_prospects_title ON prospects (title)",
-    
     # Other indexes
     "CREATE INDEX IF NOT EXISTS ix_scraper_status_last_checked ON scraper_status (last_checked)",
     "CREATE INDEX IF NOT EXISTS ix_scraper_status_source_id ON scraper_status (source_id)",
@@ -194,40 +188,42 @@ create_indexes_sql = [
     "CREATE INDEX IF NOT EXISTS ix_llm_outputs_timestamp ON llm_outputs (timestamp)",
 ]
 
+
 def main():
     """Create missing tables in database"""
     print(f"Creating tables in database: {db_path}")
-    
+
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
-    
+
     try:
         # Create tables
         for sql in create_tables_sql:
             table_name = sql.split("CREATE TABLE IF NOT EXISTS ")[1].split(" ")[0]
             print(f"Creating table: {table_name}")
             cursor.execute(sql)
-        
+
         # Create indexes
         print("\nCreating indexes...")
         for sql in create_indexes_sql:
             cursor.execute(sql)
-        
+
         conn.commit()
         print("\nAll tables and indexes created successfully!")
-        
+
         # List all tables
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
         tables = cursor.fetchall()
         print("\nTables in database:")
         for table in tables:
             print(f"  - {table[0]}")
-            
+
     except Exception as e:
         print(f"Error: {e}")
         conn.rollback()
     finally:
         conn.close()
+
 
 if __name__ == "__main__":
     main()

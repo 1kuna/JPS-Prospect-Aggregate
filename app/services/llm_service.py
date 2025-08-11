@@ -10,7 +10,9 @@ import re
 import threading
 import time
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import timezone
+UTC = timezone.utc
+from datetime import datetime
 from typing import Any, Literal, Optional
 
 from app.database import db

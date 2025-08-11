@@ -244,7 +244,7 @@ test.describe('Decision Workflow', () => {
         
         // Look for bulk decision options
         const bulkGoOption = page.getByRole('menuitem', { name: /mark as go/i });
-        const bulkNoGoOption = page.getByRole('menuitem', { name: /mark as no.?go/i });
+        const _bulkNoGoOption = page.getByRole('menuitem', { name: /mark as no.?go/i });
         
         if (await bulkGoOption.isVisible()) {
           await bulkGoOption.click();

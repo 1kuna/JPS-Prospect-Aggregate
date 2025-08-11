@@ -1,6 +1,8 @@
 """Admin API endpoints for system administration."""
 
 import datetime
+from datetime import timezone
+UTC = timezone.utc
 
 from flask import Blueprint, jsonify, request, session
 from sqlalchemy import case, desc, func
@@ -331,7 +333,7 @@ def get_admin_decision_stats():
         )
 
         # Recent activity (last 30 days)
-        thirty_days_ago = datetime.datetime.now(datetime.UTC) - datetime.timedelta(
+        thirty_days_ago = datetime.datetime.now(UTC) - datetime.timedelta(
             days=30
         )
         recent_decisions = (
@@ -538,7 +540,7 @@ def export_all_decisions():
                 "data": {
                     "decisions": csv_data,
                     "total_count": len(csv_data),
-                    "export_timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
+                    "export_timestamp": datetime.datetime.now(UTC).isoformat(),
                 },
             }
         )

@@ -44,7 +44,7 @@ test.describe('Admin Functionality', () => {
         // Look for queue controls
         const startButton = page.getByRole('button', { name: /start|begin|process/i });
         const stopButton = page.getByRole('button', { name: /stop|pause|halt/i });
-        const clearButton = page.getByRole('button', { name: /clear|reset|empty/i });
+        const _clearButton = page.getByRole('button', { name: /clear|reset|empty/i });
         
         if (await startButton.isVisible()) {
           await startButton.click();
@@ -112,8 +112,8 @@ test.describe('Admin Functionality', () => {
         await expect(page.getByText(/department|agency|source/i)).toBeVisible();
         
         // Look for source controls
-        const enableButton = page.getByRole('button', { name: /enable|activate/i });
-        const disableButton = page.getByRole('button', { name: /disable|deactivate/i });
+        const _enableButton = page.getByRole('button', { name: /enable|activate/i });
+        const _disableButton = page.getByRole('button', { name: /disable|deactivate/i });
         const refreshButton = page.getByRole('button', { name: /refresh|update|scrape/i });
         
         if (await refreshButton.isVisible()) {
@@ -148,8 +148,8 @@ test.describe('Admin Functionality', () => {
         
         // Look for user management actions
         const addUserButton = page.getByRole('button', { name: /add|create|invite/i });
-        const editButton = page.getByRole('button', { name: /edit|modify/i });
-        const deleteButton = page.getByRole('button', { name: /delete|remove/i });
+        const _editButton = page.getByRole('button', { name: /edit|modify/i });
+        const _deleteButton = page.getByRole('button', { name: /delete|remove/i });
         
         if (await addUserButton.isVisible()) {
           await addUserButton.click();
@@ -255,8 +255,8 @@ test.describe('Admin Functionality', () => {
         if (await bulkOptions.first().isVisible()) {
           // Look for common bulk operations
           const exportOption = page.getByText(/export|download/i);
-          const deleteOption = page.getByText(/delete|remove/i);
-          const enhanceOption = page.getByText(/enhance|process/i);
+          const _deleteOption = page.getByText(/delete|remove/i);
+          const _enhanceOption = page.getByText(/enhance|process/i);
           
           if (await exportOption.isVisible()) {
             await exportOption.click();

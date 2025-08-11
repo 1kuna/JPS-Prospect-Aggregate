@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-Analyze field coverage across sample source files and validate mapping normalization.
+"""Analyze field coverage across sample source files and validate mapping normalization.
 
 Usage:
   python scripts/analyze_field_coverage.py \
@@ -10,13 +9,12 @@ Usage:
 This is standalone and does not import the app codebase to avoid heavy deps.
 It replicates the normalization strategy to assess presence/inferability.
 """
+
 import argparse
 import os
 import sys
-from typing import Dict, List, Tuple
 
 import pandas as pd
-
 
 STANDARD_FIELDS = [
     "title",
@@ -38,7 +36,7 @@ STANDARD_FIELDS = [
 
 
 # Candidate source headers per standardized field (used for pre-normalization coverage)
-CANDIDATES: Dict[str, List[str]] = {
+CANDIDATES: dict[str, list[str]] = {
     "title": ["Title", "Contract Name", "Project Title", "Requirement Title"],
     "description": [
         "Description",
@@ -140,7 +138,9 @@ def read_table(path: str) -> pd.DataFrame:
         try:
             return pd.read_csv(path)
         except Exception:
-            return pd.read_csv(path, engine="python", on_bad_lines="skip", skip_blank_lines=True)
+            return pd.read_csv(
+                path, engine="python", on_bad_lines="skip", skip_blank_lines=True
+            )
     if ext in [".xlsx", ".xls", ".xlsm"]:
         try:
             return pd.read_excel(path)
@@ -162,13 +162,17 @@ def read_table(path: str) -> pd.DataFrame:
 def normalize(df: pd.DataFrame) -> pd.DataFrame:
     # Helper similar to base normalization
     def has_nonempty(col: str) -> bool:
-        return col in df.columns and df[col].notna().any() and df[col].astype(str).str.strip().ne("").any()
+        return (
+            col in df.columns
+            and df[col].notna().any()
+            and df[col].astype(str).str.strip().ne("").any()
+        )
 
     def ensure_col(col: str):
         if col not in df.columns:
             df[col] = None
 
-    def fill_first_available(target: str, candidates: List[str]):
+    def fill_first_available(target: str, candidates: list[str]):
         ensure_col(target)
         if has_nonempty(target):
             return
@@ -207,14 +211,20 @@ def normalize(df: pd.DataFrame) -> pd.DataFrame:
     # Place handling
     # Combined to place_raw if present
     if "place_raw" not in df.columns:
-        for cand in ["Place of Performance", "PLACE OF PERFORMANCE", "Place Of Performance"]:
+        for cand in [
+            "Place of Performance",
+            "PLACE OF PERFORMANCE",
+            "Place Of Performance",
+        ]:
             if cand in df.columns:
                 df["place_raw"] = df[cand]
                 break
 
     # Split city/state from place_raw if needed
     if "place_raw" in df.columns:
-        extracted = df["place_raw"].astype(str).str.extract(r"^([^,]+)(?:,\s*([A-Z]{2}))?$")
+        extracted = (
+            df["place_raw"].astype(str).str.extract(r"^([^,]+)(?:,\s*([A-Z]{2}))?$")
+        )
         ensure_col("place_city")
         ensure_col("place_state")
         df.loc[df["place_city"].isna(), "place_city"] = extracted[0]
@@ -232,12 +242,14 @@ def normalize(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def analyze(fixtures_root: str, min_threshold: float) -> int:
-    sources: List[Tuple[str, str]] = []
+    sources: list[tuple[str, str]] = []
     for dirpath, dirnames, filenames in os.walk(fixtures_root):
         # Only deepest source dirs
         for fname in filenames:
             if fname.lower().endswith((".csv", ".xlsx", ".xls", ".html", ".htm")):
-                sources.append((os.path.basename(dirpath), os.path.join(dirpath, fname)))
+                sources.append(
+                    (os.path.basename(dirpath), os.path.join(dirpath, fname))
+                )
                 break
 
     if not sources:
@@ -287,14 +299,14 @@ def analyze(fixtures_root: str, min_threshold: float) -> int:
                 missing_by_field[f].append(src_name)
 
     print("\nField coverage across sources (after normalization):")
-    promotable: List[str] = []
+    promotable: list[str] = []
     for f in STANDARD_FIELDS:
         pct = coverage_after[f] / total
         print(f"- {f}: {coverage_after[f]}/{total} ({pct:.0%})")
         if pct >= min_threshold:
             promotable.append(f)
 
-    print("\nFields meeting threshold (>= {:.0%}):".format(min_threshold))
+    print(f"\nFields meeting threshold (>= {min_threshold:.0%}):")
     if promotable:
         print("  " + ", ".join(promotable))
     else:
@@ -303,7 +315,9 @@ def analyze(fixtures_root: str, min_threshold: float) -> int:
     print("\nGaps by field (after normalization):")
     for f in STANDARD_FIELDS:
         if missing_by_field[f]:
-            print(f"- {f}: missing in {len(missing_by_field[f])}/{total} -> {sorted(set(missing_by_field[f]))}")
+            print(
+                f"- {f}: missing in {len(missing_by_field[f])}/{total} -> {sorted(set(missing_by_field[f]))}"
+            )
 
     print("\nPre-normalization candidate header presence:")
     for f in STANDARD_FIELDS:
@@ -314,9 +328,15 @@ def analyze(fixtures_root: str, min_threshold: float) -> int:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Analyze field coverage across sources")
-    parser.add_argument("--fixtures", default="tests/fixtures/golden_files", help="Root of fixtures")
-    parser.add_argument("--min-threshold", type=float, default=0.8, help="Promotion threshold (0-1)")
+    parser = argparse.ArgumentParser(
+        description="Analyze field coverage across sources"
+    )
+    parser.add_argument(
+        "--fixtures", default="tests/fixtures/golden_files", help="Root of fixtures"
+    )
+    parser.add_argument(
+        "--min-threshold", type=float, default=0.8, help="Promotion threshold (0-1)"
+    )
     args = parser.parse_args()
 
     if not os.path.isdir(args.fixtures):
@@ -329,5 +349,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-

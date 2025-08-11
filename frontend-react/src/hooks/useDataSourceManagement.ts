@@ -1,5 +1,5 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { get, postProcessing } from '@/utils/apiUtils';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { postProcessing } from '@/utils/apiUtils';
 import { useClearDataSourceData, useListDataSourcesAdmin } from '@/hooks/api/useDataSources';
 import { useToast } from '@/contexts/ToastContext';
 import { formatScraperResults } from '@/utils/statusUtils';

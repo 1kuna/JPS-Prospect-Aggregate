@@ -4,6 +4,8 @@ Handles user decisions on prospects for company preferences.
 """
 
 import datetime
+from datetime import timezone
+UTC = timezone.utc
 
 from flask import Blueprint, jsonify, request, session
 from sqlalchemy import desc, func
@@ -32,7 +34,11 @@ def create_decision():
 
         prospect_id = data.get("prospect_id")
         decision = data.get("decision", "").strip().lower()
-        reason = data.get("reason", "").strip() if data.get("reason") else None
+        reason_raw = data.get("reason")
+        if reason_raw is not None:
+            reason = reason_raw.strip() if reason_raw.strip() else None
+        else:
+            reason = None
 
         if not prospect_id or not decision:
             return jsonify(
@@ -65,7 +71,7 @@ def create_decision():
             # Update existing decision
             existing_decision.decision = decision
             existing_decision.reason = reason
-            existing_decision.updated_at = datetime.datetime.now(datetime.UTC)
+            existing_decision.updated_at = datetime.datetime.now(UTC)
             db.session.commit()
 
             # Get user data for response
@@ -286,7 +292,7 @@ def get_decision_stats():
         )
 
         # Get recent activity (last 30 days)
-        thirty_days_ago = datetime.datetime.now(datetime.UTC) - datetime.timedelta(
+        thirty_days_ago = datetime.datetime.now(UTC) - datetime.timedelta(
             days=30
         )
         recent_decisions = (

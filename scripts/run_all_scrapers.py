@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-Script to run all scrapers sequentially.
+"""Script to run all scrapers sequentially.
 
 This script runs all configured scrapers to pull data from various government sources.
 """
@@ -17,48 +16,46 @@ if str(project_root) not in sys.path:
 # --- End Path Setup ---
 
 # --- Import Application Components ---
-from app import create_app
-from app.database import db
-from app.database.models import DataSource
-from app.utils.scraper_utils import trigger_scraper, run_all_scrapers
-from app.exceptions import ScraperError, NotFoundError
 # --- End Imports ---
-
 # --- Logging Setup ---
 # Special Loguru configuration for stdout-only output
 from loguru import logger
+
+from app import create_app
+from app.database import db
+from app.database.models import DataSource
+from app.exceptions import NotFoundError, ScraperError
+from app.utils.scraper_utils import trigger_scraper
 
 # Remove default handlers
 logger.remove()
 
 # Add stdout-only handler with custom format
 logger.add(
-    sys.stdout,
-    level="INFO",
-    format="{time:YYYY-MM-DD HH:mm:ss} - {level} - {message}"
+    sys.stdout, level="INFO", format="{time:YYYY-MM-DD HH:mm:ss} - {level} - {message}"
 )
 
 # Silence SQLAlchemy logs directly
 import logging
-logging.getLogger('sqlalchemy.engine').setLevel(logging.WARNING)
-logging.getLogger('sqlalchemy.pool').setLevel(logging.WARNING)
+
+logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
+logging.getLogger("sqlalchemy.pool").setLevel(logging.WARNING)
 # --- End Logging Setup ---
 
 
 def run_single_scraper(source_id: int, source_name: str):
-    """
-    Runs a single scraper and logs the outcome.
-    
+    """Runs a single scraper and logs the outcome.
+
     Args:
         source_id: The database ID of the data source
         source_name: The name of the data source
-        
+
     Returns:
         tuple: (success: bool, duration: float, message: str)
     """
     start_time = time.time()
     logger.info(f"--- Running Scraper: {source_name} (ID: {source_id}) ---")
-    
+
     try:
         result = trigger_scraper(source_id)
         duration = time.time() - start_time
@@ -73,13 +70,15 @@ def run_single_scraper(source_id: int, source_name: str):
     except Exception as e:
         duration = time.time() - start_time
         error_msg = f"Unexpected error: {str(e)}"
-        logger.error(f"--- FAILED {source_name} after {duration:.2f}s: {error_msg} ---", exc_info=True)
+        logger.error(
+            f"--- FAILED {source_name} after {duration:.2f}s: {error_msg} ---",
+            exc_info=True,
+        )
         return False, duration, error_msg
 
 
 def main():
     """Main function to run all scrapers sequentially."""
-    
     app = create_app()
     with app.app_context():
         # --- Ensure Database Tables Exist ---
@@ -91,60 +90,66 @@ def main():
             logger.error(f"Error creating database tables: {e}", exc_info=True)
             sys.exit(1)
         # --- End Table Creation ---
-        
+
         logger.info(">>> Starting all scrapers <<<")
         overall_start_time = time.time()
-        
+
         # Get all data sources that have scraper_keys configured
         try:
-            data_sources = DataSource.query.filter(
-                DataSource.scraper_key.isnot(None)
-            ).order_by(DataSource.id).all()
-            
+            data_sources = (
+                DataSource.query.filter(DataSource.scraper_key.isnot(None))
+                .order_by(DataSource.id)
+                .all()
+            )
+
             if not data_sources:
                 logger.warning("No data sources with configured scrapers found!")
                 return
-                
+
             logger.info(f"Found {len(data_sources)} data sources to scrape")
-            
+
         except Exception as e:
             logger.error(f"Error fetching data sources: {e}", exc_info=True)
             sys.exit(1)
-        
+
         # Run each scraper
         success_count = 0
         failure_count = 0
         results = []
-        
+
         for source in data_sources:
             success, duration, message = run_single_scraper(source.id, source.name)
-            results.append({
-                'source': source.name,
-                'success': success,
-                'duration': duration,
-                'message': message
-            })
-            
+            results.append(
+                {
+                    "source": source.name,
+                    "success": success,
+                    "duration": duration,
+                    "message": message,
+                }
+            )
+
             if success:
                 success_count += 1
             else:
                 failure_count += 1
-            
+
             # Small delay between scrapers to be respectful
             if source != data_sources[-1]:  # Don't wait after the last one
                 logger.info("Waiting 2 seconds before next scraper...")
                 time.sleep(2)
-        
+
         overall_duration = time.time() - overall_start_time
         logger.info(">>> All scrapers finished <<<")
         logger.info(f"Summary: Success={success_count}, Failure={failure_count}")
         logger.info(f"Total execution time: {overall_duration:.2f}s")
-        
+
         # Print detailed results
         logger.info("\n=== Detailed Results ===")
         for result in results:
-            status = "SUCCESS" if result['success'] else "FAILED"
-            logger.info(f"{result['source']}: {status} ({result['duration']:.2f}s) - {result['message']}")
+            status = "SUCCESS" if result["success"] else "FAILED"
+            logger.info(
+                f"{result['source']}: {status} ({result['duration']:.2f}s) - {result['message']}"
+            )
 
 
 if __name__ == "__main__":

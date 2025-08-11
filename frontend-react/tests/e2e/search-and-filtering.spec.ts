@@ -29,7 +29,7 @@ test.describe('Search and Filtering Functionality', () => {
       if (rowCount > 0) {
         // At least one result should contain the search term
         const firstRow = rows.first();
-        const rowText = await firstRow.textContent();
+        const _rowText = await firstRow.textContent();
         // Note: Search might be case-insensitive or partial match
       }
     }

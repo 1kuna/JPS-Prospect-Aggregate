@@ -23,13 +23,11 @@ vi.mock('@/utils/apiUtils', () => ({
 // Helper functions to generate dynamic test data
 const generateUser = (role: 'user' | 'admin' | 'super_admin' = 'user'): User => ({
   id: Math.floor(Math.random() * 10000),
-  username: `user_${Math.random().toString(36).substr(2, 9)}`,
   first_name: role === 'admin' ? 'Admin' : role === 'super_admin' ? 'SuperAdmin' : `User${Math.floor(Math.random() * 100)}`,
-  last_name: `Last${Math.floor(Math.random() * 100)}`,
   email: `${Math.random().toString(36).substr(2, 9)}@example.com`,
   role,
   created_at: new Date(Date.now() - Math.random() * 365 * 24 * 60 * 60 * 1000).toISOString(),
-  updated_at: new Date().toISOString()
+  last_login_at: new Date().toISOString()
 });
 
 const generateAuthStatus = (authenticated: boolean = true, user?: User): AuthStatus => ({
@@ -125,7 +123,7 @@ describe('useAuthStatus', () => {
   });
 
   it('configures query with correct options', () => {
-    const { result } = renderHook(
+    renderHook(
       () => useAuthStatus(),
       { wrapper: createWrapper() }
     );
@@ -151,7 +149,7 @@ describe('useCurrentUser', () => {
     const testUser = generateUser();
     const testAuthStatus = generateAuthStatus(true, testUser);
     
-    mockGet.mockImplementation((url) => {
+    mockGet.mockImplementation((url: string) => {
       if (url === '/api/auth/status') {
         return Promise.resolve({ data: testAuthStatus });
       }
@@ -182,7 +180,7 @@ describe('useCurrentUser', () => {
   it('does not fetch user when not authenticated', async () => {
     const unauthenticatedStatus = generateAuthStatus(false);
     
-    mockGet.mockImplementation((url) => {
+    mockGet.mockImplementation((url: string) => {
       if (url === '/api/auth/status') {
         return Promise.resolve({ data: unauthenticatedStatus });
       }
@@ -227,11 +225,8 @@ describe('useSignUp', () => {
     );
 
     const signUpData: SignUpRequest = {
-      username: `newuser_${Math.random().toString(36).substr(2, 9)}`,
       email: `${Math.random().toString(36).substr(2, 9)}@example.com`,
-      password: 'password123',
-      first_name: `New${Math.floor(Math.random() * 100)}`,
-      last_name: `User${Math.floor(Math.random() * 100)}`
+      first_name: `New${Math.floor(Math.random() * 100)}`
     };
 
     await act(async () => {
@@ -257,11 +252,8 @@ describe('useSignUp', () => {
     );
 
     const signUpData: SignUpRequest = {
-      username: `existinguser_${Math.random().toString(36).substr(2, 9)}`,
       email: `${Math.random().toString(36).substr(2, 9)}@example.com`,
-      password: 'password123',
-      first_name: `Existing${Math.floor(Math.random() * 100)}`,
-      last_name: `User${Math.floor(Math.random() * 100)}`
+      first_name: `Existing${Math.floor(Math.random() * 100)}`
     };
 
     await act(async () => {
@@ -298,8 +290,7 @@ describe('useSignIn', () => {
     );
 
     const signInData: SignInRequest = {
-      username: testUser.username,
-      password: 'password123'
+      email: testUser.email
     };
 
     await act(async () => {
@@ -325,8 +316,7 @@ describe('useSignIn', () => {
     );
 
     const signInData: SignInRequest = {
-      username: `baduser_${Math.random().toString(36).substr(2, 9)}`,
-      password: 'wrongpassword'
+      email: `baduser_${Math.random().toString(36).substr(2, 9)}`
     };
 
     await act(async () => {
@@ -641,8 +631,7 @@ describe('Authentication Integration', () => {
     mockPost.mockResolvedValue(signInResponse);
 
     const signInData = {
-      username: testUser.username,
-      password: 'password123'
+      email: testUser.email
     };
 
     await act(async () => {

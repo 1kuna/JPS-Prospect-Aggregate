@@ -107,7 +107,7 @@ test.describe('Prospect Enhancement Flow', () => {
     
     // Look for decision buttons
     const goButton = page.getByRole('button', { name: /go/i });
-    const noGoButton = page.getByRole('button', { name: /no.go/i });
+    const _noGoButton = page.getByRole('button', { name: /no.go/i });
     
     if (await goButton.isVisible()) {
       // Make a "Go" decision
@@ -176,8 +176,8 @@ test.describe('Prospect Enhancement Flow', () => {
   test('should support pagination', async ({ page }) => {
     // Look for pagination controls
     const nextButton = page.getByRole('button', { name: /next/i });
-    const prevButton = page.getByRole('button', { name: /previous/i });
-    const pageInfo = page.locator('[data-testid="page-info"]');
+    const _prevButton = page.getByRole('button', { name: /previous/i });
+    const _pageInfo = page.locator('[data-testid="page-info"]');
     
     if (await nextButton.isVisible()) {
       // Click next page

@@ -49,7 +49,9 @@ import os
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import timezone
+UTC = timezone.utc
+from datetime import datetime
 from typing import Any
 from urllib.parse import urlparse
 
