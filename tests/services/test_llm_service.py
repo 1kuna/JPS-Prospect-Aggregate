@@ -22,7 +22,7 @@ import string
 from app import create_app
 from app.database import db
 from app.services.llm_service import LLMService
-from app.database.models import Prospect, InferredProspectData, LLMOutput
+from app.database.models import Prospect, LLMOutput
 from app.services.set_aside_standardization import StandardSetAside
 
 

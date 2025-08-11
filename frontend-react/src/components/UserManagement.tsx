@@ -24,6 +24,10 @@ export default function UserManagement() {
     userName: string;
   } | null>(null);
   
+  // Hooks must be called unconditionally
+  const { data: usersData, isLoading: usersLoading } = useAdminUsers({ page: 1, per_page: 100 });
+  const updateUserRoleMutation = useUpdateUserRole();
+  
   // Only allow super admins to access this component
   if (!isSuperAdmin) {
     return (
@@ -35,9 +39,6 @@ export default function UserManagement() {
       </div>
     );
   }
-
-  const { data: usersData, isLoading: usersLoading } = useAdminUsers({ page: 1, per_page: 100 });
-  const updateUserRoleMutation = useUpdateUserRole();
 
   const users = usersData?.data?.users || [];
   

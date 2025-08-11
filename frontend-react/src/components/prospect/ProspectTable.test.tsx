@@ -106,7 +106,11 @@ function createMockTable(prospects: Prospect[]) {
         getValue: (columnId: string) => prospect[columnId as keyof Prospect],
         getVisibleCells: () => headers.map(columnId => ({
           id: `${prospect.id}-${columnId}`,
-          column: { id: columnId, columnDef: {} },
+          column: { 
+            id: columnId, 
+            columnDef: {},
+            getSize: () => 150  // Add getSize method to column
+          },
           row: { original: prospect },
           getValue: () => prospect[columnId as keyof Prospect],
           renderValue: () => prospect[columnId as keyof Prospect],
@@ -176,6 +180,7 @@ function createDefaultProps(prospects?: Prospect[]) {
     isLoading: false,
     isFetching: false,
     onProspectClick: vi.fn(),
+    onRowClick: vi.fn(),  // Add onRowClick prop
     getProspectStatus: vi.fn(() => generateProspectStatus()),
     addToQueue: vi.fn(),
     formatUserDate: vi.fn((date: string) => `Formatted: ${date}`),

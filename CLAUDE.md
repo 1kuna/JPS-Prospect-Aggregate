@@ -1,523 +1,158 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
-## Table of Contents
-
-- [Quick Start](#quick-start)
-- [Prerequisites](#prerequisites)
-- [Setup](#setup)
-  - [Docker Setup](#option-1-docker-setup-recommended-for-production)
-  - [Local Development](#option-2-local-development-setup)
-- [Commands](#commands)
-  - [Backend Development](#backend-development)
-  - [Frontend Development](#frontend-development)
-  - [Testing](#testing-commands)
-  - [Maintenance](#maintenance)
-- [Architecture](#architecture)
-- [API Documentation](#api-layer)
-- [Data Sources](#data-sources)
-- [Common Issues & Troubleshooting](#common-issues--troubleshooting)
-- [Development Workflows](#development-workflows)
-- [Security & Best Practices](#security--best-practices)
-- [Project Structure](#project-structure)
+This file provides guidance to Claude Code when working with this repository.
 
 ## Quick Start
 
-### Most Common Commands
-
 ```bash
-# Start the application
-python run.py                               # Start backend (port 5001)
-cd frontend-react && npm run dev            # Start frontend (port 5173)
+# Start application
+python run.py                                 # Backend (port 5001)
+cd frontend-react && npm run dev              # Frontend (port 5173)
 
 # Run scrapers
-python -m scripts.run_scraper --source "DHS"  # Run specific scraper
-python scripts/run_all_scrapers.py            # Run all scrapers
+python -m scripts.run_scraper --source "DHS"  # Specific scraper
+python scripts/run_all_scrapers.py            # All scrapers
 
-# Database operations
-python scripts/setup_databases.py             # Complete DB setup
-cd migrations && alembic upgrade head         # Run migrations
+# Database
+python scripts/setup_databases.py             # Initialize
+cd migrations && alembic upgrade head         # Migrations
 
 # Testing
-python -m pytest                              # Run backend tests
-cd frontend-react && npm test                 # Run frontend tests
+python -m pytest                              # Backend tests
+cd frontend-react && npm test                 # Frontend tests
+make test-ci                                  # Full CI suite locally
 
 # LLM Enhancement
 python scripts/enrichment/enhance_prospects_with_llm.py values --limit 100
 ```
 
-## Prerequisites
-
-- **Python 3.11+** (required)
-- **Node.js 20.x** (for frontend)
-- **Ollama** (for LLM features) - Install from https://ollama.ai/
-  - Pull model: `ollama pull qwen3:latest`
-- **Playwright browsers**: `playwright install`
-
 ## Setup
 
-### Option 1: Docker Setup (Recommended for Production)
+### Prerequisites
+- Python 3.11+ (required)
+- Node.js 20.x (frontend)
+- Ollama with qwen3:latest model (LLM features)
+- Playwright browsers: `playwright install`
 
-**Quick Start (Automated):**
+### Local Development
 ```bash
-# Use the automated build script
-./docker/docker-build.sh
-```
+# 1. Python environment
+conda activate your_env
 
-This script will:
-- Check for .env file and required configurations
-- Validate environment settings
-- Build and start all services
-- Verify services are running correctly
-
-**Manual Setup:**
-
-1. **Copy environment file and configure:**
-   ```bash
-   cp .env.example .env
-   # Edit .env with your settings:
-   # - Set ENVIRONMENT=production
-   # - Set SECRET_KEY (generate with: python -c "import secrets; print(secrets.token_hex(32))")
-   # - Set ENVIRONMENT=production
-   ```
-
-2. **Build and start all services:**
-   ```bash
-   docker-compose up --build -d
-   # Or use helper scripts:
-   # Unix/Mac: ./docker/docker-start.sh
-   # Windows:  ./docker/docker-start.ps1
-   ```
-
-3. **Access the application:**
-   - Web interface: http://localhost:5001
-   - Ollama LLM API: http://localhost:11434
-
-4. **Monitor services:**
-   ```bash
-   docker-compose ps
-   docker-compose logs -f web
-   ```
-
-### Option 2: Local Development Setup
-
-1. Activate your conda environment (Python 3.11 recommended):
-   ```bash
-   conda activate your_environment_name
-   ```
-2. Install dependencies and browsers:
-   ```bash
-   pip install -r requirements.txt
-   playwright install
-   ```
-3. Copy `.env.example` to `.env` and set ENVIRONMENT=development
-4. Initialize database:
-   ```bash
-   # Complete database setup (includes all initialization steps)
-   python scripts/setup_databases.py
-   ```
-5. Install frontend dependencies:
-   ```bash
-   cd frontend-react && npm install && cd ..
-   ```
-
-## Commands
-
-### Docker Operations
-```bash
-# Automated build and deploy (recommended)
-./docker/docker-build.sh
-
-# Or manual Docker commands:
-# Build and start all services
-docker-compose up --build -d
-
-# Stop all services
-docker-compose down
-
-# View service status
-docker-compose ps
-
-# View logs
-docker-compose logs -f web
-docker-compose logs -f db
-docker-compose logs -f ollama
-
-# Manual backup
-docker exec jps-backup /backup.sh
-
-# Access database directly
-docker exec -it jps-db psql -U jps_user -d jps_prospects
-
-# Restart specific service
-docker-compose restart web
-
-# Clean rebuild (if you have issues)
-docker-compose down -v
-docker-compose up --build -d
-
-# Use minimal setup (without Ollama)
-docker-compose -f docker-compose-minimal.yml up -d
-```
-
-**Docker Helper Scripts:**
-- `docker/docker-build.sh` - Automated build with environment validation
-- `docker/docker-start.sh` - Start services (Unix/Mac)
-- `docker/docker-start.ps1` - Start services (Windows PowerShell)
-- `docker/deploy.sh` or `deploy.ps1` - Full deployment scripts
-
-### Backend Development
-```bash
-# Start development server (Waitress + Flask)
-python run.py
-
-# Run all scrapers
-python scripts/run_all_scrapers.py
-
-# Run specific scraper
-python -m scripts.run_scraper --source "DHS"
-
-# Database migrations (run from migrations directory)
-cd migrations && alembic upgrade head
-cd migrations && alembic revision --autogenerate -m "description"
-
-# Or set ALEMBIC_CONFIG environment variable
-export ALEMBIC_CONFIG=migrations/alembic.ini
-alembic upgrade head
-
-# Run tests with coverage (configuration in pytest.ini)
-python -m pytest
-
-# Run single test (example)
-python -m pytest tests/api/test_prospects_api.py::test_get_prospects -v
-
-# LLM enhancement (requires Ollama with qwen3 model)
-python scripts/enrichment/enhance_prospects_with_llm.py values --limit 100
-
-# Check LLM status
-python scripts/enrichment/enhance_prospects_with_llm.py --check-status
-```
-
-### Scraper Testing
-```bash
-# Test all scrapers
-python scripts/run_scraper_tests.py
-
-# Test specific scraper
-python scripts/run_scraper_tests.py --scraper dhs
-
-# Test individual scraper without web server
-python scripts/test_scraper_individual.py --scraper acquisition_gateway
-
-# Test all scrapers individually
-python scripts/test_scraper_individual.py --scraper all
-
-# List available scrapers
-python scripts/test_scraper_individual.py --list
-```
-
-### Decision System & ML Export
-```bash
-# Export decisions for LLM training
-python scripts/export_decisions_for_llm.py --format jsonl
-
-# Export only decisions with reasoning
-python scripts/export_decisions_for_llm.py --reasons-only
-
-# Export to both JSONL and CSV
-python scripts/export_decisions_for_llm.py --format both
-```
-
-### Frontend Development
-```bash
-cd frontend-react
-
-# Development with CSS watching (uses concurrently)
-npm run dev
-
-# Build for production
-npm run build
-
-# Lint TypeScript
-npm run lint
-
-# Preview production build
-npm run preview
-
-# Run tests
-npm run test
-
-# Run tests with UI
-npm run test:ui
-
-# Run tests with coverage
-npm run test:coverage
-```
-
-### CI/CD Quick Reference
-
-#### Local CI Testing (Pre-Push)
-```bash
-# Run full CI test suite locally (recommended before pushing)
-make test-ci
-
-# Run specific test suites
-make test-python        # Python tests, linting, type checking
-make test-frontend      # Frontend tests, TypeScript, ESLint
-make test-integration   # Integration tests only
-make test-all          # Everything including E2E tests
-
-# Quick checks
-make lint-python       # Just Python linting
-make lint-frontend     # Just frontend linting
-make type-check-python # Just Python type checking
-make type-check-frontend # Just TypeScript checking
-
-# Clean test artifacts
-make clean
-```
-
-#### CI Pipeline Stages
-1. **Parallel Testing** - Python and Frontend tests run concurrently
-2. **Integration Testing** - Cross-system tests with SQLite
-3. **End-to-End Testing** - Full workflow testing with Playwright
-4. **Security Scanning** - Dependency vulnerabilities and code security
-
-#### Common CI Failures and Fixes
-```bash
-# TypeScript strict mode errors in tests
-cd frontend-react && npm test -- --typecheck
-
-# Python version mismatch (CI uses 3.11)
-conda create -n jps-py311 python=3.11
-conda activate jps-py311
+# 2. Install dependencies
 pip install -r requirements.txt
+playwright install
 
-# Missing browser dependencies for E2E
-npx playwright install --with-deps
+# 3. Configure environment
+cp .env.example .env
+# Edit .env: Set ENVIRONMENT=development
 
-# Database connection issues
-docker-compose -f ci-test/docker-compose.test.yml up -d db
+# 4. Initialize database
+python scripts/setup_databases.py
+
+# 5. Frontend setup
+cd frontend-react && npm install
 ```
 
-### Testing Commands
-
-#### Backend Testing
+### Docker Production
 ```bash
-# Run all backend tests with coverage
-python -m pytest tests/ -v --cov=app --cov-report=html --cov-report=term-missing
-
-# Run specific test modules
-python -m pytest tests/database/ -v                 # Database tests only
-python -m pytest tests/api/ -v                      # API tests only  
-python -m pytest tests/core/ -v                     # Core scraper tests
-python -m pytest tests/services/ -v                 # Service layer tests
-python -m pytest tests/utils/ -v                    # Utility function tests
-
-# Run tests with different verbosity levels
-python -m pytest tests/ -v                          # Verbose output
-python -m pytest tests/ -vv                         # Extra verbose
-python -m pytest tests/ -q                          # Quiet output
-
-# Run tests matching specific patterns
-python -m pytest tests/ -k "test_prospect"          # Tests containing "prospect"
-python -m pytest tests/ -k "api and not slow"       # API tests excluding slow ones
-python -m pytest tests/ -m "not integration"        # Skip integration tests
-
-# Run tests with coverage thresholds
-python -m pytest tests/ --cov=app --cov-fail-under=75
-
-# Run tests with performance profiling
-python -m pytest tests/ --durations=10              # Show 10 slowest tests
-
-# Run specific test files or functions
-python -m pytest tests/api/test_prospects_api.py::test_get_prospects -v
-python -m pytest tests/database/test_models.py -v
-
-# Run tests in parallel (requires pytest-xdist)
-python -m pytest tests/ -n auto                     # Auto-detect CPU cores
-python -m pytest tests/ -n 4                        # Use 4 workers
-
-# Run tests with database setup/teardown
-python -m pytest tests/ --setup-show                # Show fixture setup
-python -m pytest tests/ --tb=short                  # Short traceback format
-python -m pytest tests/ --tb=line                   # Line-only traceback
+./docker/docker-build.sh  # Automated setup
+# Or manually:
+docker-compose up --build -d
 ```
 
-#### Frontend Testing  
+## Essential Commands
+
+### Development
 ```bash
-cd frontend-react
-
-# Run all frontend tests
-npm run test                                         # Interactive mode
-npm run test -- --run                               # Run once and exit
-npm run test -- --watch                             # Watch mode (default)
-
-# Run tests with coverage
-npm run test:coverage                                # Generate coverage report
-npm run test:coverage -- --run                      # Coverage in CI mode
-
-# Run specific test files
-npm test -- ProspectTable.test.tsx                  # Single component test
-npm test -- --testNamePattern="ProspectTable"       # Tests matching pattern
-
-# Run tests with different reporters
-npm test -- --reporter=verbose                      # Detailed output
-npm test -- --reporter=basic                        # Minimal output
-npm test -- --reporter=json                         # JSON output
-
-# Run tests in UI mode (browser interface)
-npm run test:ui                                      # Interactive test UI
-
-# Debug specific tests
-npm test -- --no-coverage ProspectTable.test.tsx    # Run without coverage
-npm test -- --run --reporter=verbose                # Debug mode
+python run.py                                  # Start backend
+cd frontend-react && npm run dev               # Start frontend
+python -m scripts.run_scraper --source "DHS"   # Run scraper
+python scripts/test_scraper_individual.py --scraper dhs  # Test scraper
 ```
 
-#### Integration Testing
+### Database
 ```bash
-# Run integration tests only
-python -m pytest tests/integration/ -v -m integration
-
-# Run LLM integration tests (requires Ollama)
-python -m pytest tests/integration/test_llm_api_integration.py -v
-
-# Run API integration tests
-python -m pytest tests/api/ -v --integration
+python scripts/setup_databases.py              # Setup
+cd migrations && alembic upgrade head          # Migrate
+alembic revision --autogenerate -m "msg"       # New migration
+sqlite3 data/jps_aggregate.db "VACUUM;"        # Optimize
 ```
 
-#### End-to-End Testing
+### Testing
 ```bash
-cd frontend-react
-
-# Install Playwright browsers (first time setup)
-npx playwright install
-
-# Run all E2E tests
-npx playwright test
-
-# Run E2E tests in headed mode (see browser)
-npx playwright test --headed
-
-# Run specific E2E test files
-npx playwright test prospect-management.spec.ts
-
-# Run E2E tests with debugging
-npx playwright test --debug                         # Step through tests
-npx playwright test --trace on                      # Generate traces
-
-# Generate test report
-npx playwright show-report
-```
-
-#### Test Utilities and Debugging
-```bash
-# Pre-commit testing (runs automatically before commits)
-pre-commit run --all-files                          # Run all pre-commit hooks
-pre-commit run pytest-check                         # Run only pytest hook
-pre-commit run vitest-check                         # Run only frontend tests
-
-# Security testing
-bandit -r app/ -f json                              # Python security scan
-npm audit --audit-level moderate                    # Frontend dependency audit
-safety check                                        # Check Python dependencies
-
-# Performance testing
-python -m pytest tests/ --benchmark-only            # Run benchmark tests only
-python -m pytest tests/ --benchmark-skip            # Skip benchmark tests
-
-# Test data management
-# Note: Test fixtures are managed through pytest conftest.py
-# Database setup/teardown is handled automatically by test framework
-```
-
-#### Coverage Analysis
-```bash
-# Generate detailed coverage reports
-python -m pytest tests/ --cov=app --cov-report=html --cov-report=xml
-cd frontend-react && npm run test:coverage -- --run
-
-# View coverage reports
-open htmlcov/index.html                             # Python coverage report
-open frontend-react/coverage/index.html             # Frontend coverage report
-
-# Coverage with missing lines
-python -m pytest tests/ --cov=app --cov-report=term-missing
-
-# Fail build if coverage drops below threshold
-python -m pytest tests/ --cov=app --cov-fail-under=75
-cd frontend-react && npm run test:coverage -- --run --coverage.thresholds.statements=80
+python -m pytest tests/ -v                     # All tests
+python -m pytest tests/api/ -v                 # API tests
+cd frontend-react && npm test                  # Frontend tests
+make test-ci                                   # Local CI testing
 ```
 
 ### Maintenance
 ```bash
-# Database backups (automatic retention management)
-./scripts/backup.sh
-
-# Database restore (interactive)
-./scripts/restore.sh
-
-# Data retention cleanup (preview mode by default)
-python app/utils/data_retention.py
-
-# Execute cleanup (keeps 5 most recent files + 2 successful per source)
-python app/utils/data_retention.py --execute
-
-# Custom retention count
-python app/utils/data_retention.py --execute --retention-count 5
-
-# Database optimization
-sqlite3 data/jps_aggregate.db "VACUUM; ANALYZE;"
-
-# Database integrity check
-sqlite3 data/jps_aggregate.db "PRAGMA integrity_check;"
-
-# Export data to CSV
-python -m scripts.export_csv
-# Or directly:
-python scripts/utils/export_db_to_csv.py
-
-# Data validation and analysis
-python scripts/validate_file_naming.py
-python scripts/validate_data_extraction.py          # Validate data extraction from raw files
-python scripts/validate_raw_data_mapping.py         # Validate raw data field mappings
-python scripts/analyze_field_coverage.py --fixtures tests/fixtures/golden_files  # Analyze field coverage
-
-# Data restoration and backfilling
-python scripts/restore_prospects_from_files.py      # Restore prospects from backup files
-python scripts/backfill_file_logs.py               # Backfill file processing logs
-python scripts/backfill_naics_descriptions.py      # Add NAICS code descriptions
-
-# Monitoring
-python scripts/monitor_scrapers.py                  # Monitor scraper execution status
-python scripts/analyze_set_asides.py               # Analyze set-aside data
-python scripts/check_set_aside_results.py          # Check set-aside processing results
+./scripts/backup.sh                            # Backup DB
+python app/utils/data_retention.py --execute   # Clean old files
+python scripts/monitor_scrapers.py             # Monitor status
+python scripts/export_decisions_for_llm.py     # Export decisions
 ```
 
-## Prerequisites
+## Architecture Overview
 
-**LLM Requirements:**
-- Install Ollama from https://ollama.ai/
-- Required model: `ollama pull qwen3:latest`
+### Scraper System
+- **Base Class**: `ConsolidatedScraperBase` - Unified scraping framework
+- **Config**: `ScraperConfig` dataclass defines behavior
+- **Scrapers**: 9 agencies (ACQGW, SSA, DOC, HHS, DHS, DOJ, DOS, TREAS, DOT)
 
-**Python Requirements:**
-- Python 3.11+ recommended
-- Conda or venv for environment management
+### Database
+- **Models**: SQLAlchemy with SQLite
+- **Migrations**: Alembic-managed
+- **Dual DB**: Main prospects + separate user auth
 
-**SQLite Configuration:**
-- No installation needed (comes with Python)
-- Databases stored in `data/` directory
-- Automatic backups with retention policy
+### API Endpoints
+```
+/api/prospects/           # CRUD operations
+/api/decisions/           # Go/no-go decisions
+/api/llm/enhance          # AI enhancement
+/api/admin/               # Admin functions
+/api/scrapers/run         # Trigger scrapers
+```
+
+### Frontend
+- React + TypeScript
+- TanStack Table (virtualization)
+- TanStack Query (state management)
+- Tailwind CSS + Radix UI
+
+## Creating a New Scraper
+
+1. Add configuration in `app/core/scraper_configs.py`:
+```python
+YOUR_AGENCY_CONFIG = ScraperConfig(
+    source_name="Your Agency",
+    folder_name="your_agency",
+    base_url="https://agency.gov",
+    # Additional config...
+)
+```
+
+2. Create scraper in `app/core/scrapers/your_agency.py`:
+```python
+from app.core.consolidated_scraper_base import ConsolidatedScraperBase
+from app.core.scraper_configs import YOUR_AGENCY_CONFIG
+
+class YourAgencyScraper(ConsolidatedScraperBase):
+    def __init__(self):
+        super().__init__(YOUR_AGENCY_CONFIG)
+```
+
+3. Register in `app/core/scrapers/__init__.py`
+4. Test: `python scripts/test_scraper_individual.py --scraper your_agency`
 
 ## Environment Variables
 
-Key environment variables from `.env.example`:
-
-### Required Variables
+### Required
 ```bash
-SECRET_KEY=<generate-secure-key>        # REQUIRED: Generate with command below
-ENVIRONMENT=development                 # or 'production'
+SECRET_KEY=<generate-with-command-below>
+ENVIRONMENT=development  # or production
 ```
 
 Generate SECRET_KEY:
@@ -525,995 +160,159 @@ Generate SECRET_KEY:
 python -c "import secrets; print(secrets.token_hex(32))"
 ```
 
-### Database Configuration
+### Database
 ```bash
 DATABASE_URL=sqlite:///data/jps_aggregate.db
 USER_DATABASE_URL=sqlite:///data/jps_users.db
 ```
 
-### LLM Integration
+### LLM
 ```bash
-# For Docker deployment
-OLLAMA_BASE_URL=http://ollama:11434
-# For local development
-OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_BASE_URL=http://localhost:11434  # Local
 OLLAMA_MODEL=qwen3:latest
 ```
 
-### Development vs Production
-```bash
-# Development (.env)
-DEBUG=True
-FLASK_ENV=development
-LOG_LEVEL=DEBUG
-
-# Production (.env)
-DEBUG=False
-FLASK_ENV=production
-LOG_LEVEL=INFO
-SESSION_COOKIE_SECURE=True
-SESSION_COOKIE_HTTPONLY=True
-```
-
-## Common Issues & Troubleshooting
+## Common Issues
 
 ### Port Conflicts
 ```bash
-# Backend port 5001 in use
-lsof -i :5001
-kill -9 <PID>
-
-# Ollama port 11434 in use
-lsof -i :11434
-kill -9 <PID>
-```
-
-### Ollama Issues
-```bash
-# Model not found
-ollama pull qwen3:latest
-
-# Ollama not running
-ollama serve
-
-# Check Ollama status
-curl http://localhost:11434/api/tags
+lsof -i :5001 && kill -9 <PID>           # Backend port
+lsof -i :11434 && kill -9 <PID>          # Ollama port
 ```
 
 ### Database Issues
 ```bash
-# Migration errors
-cd migrations && alembic history  # Check migration history
-cd migrations && alembic current  # Check current version
-cd migrations && alembic downgrade -1  # Rollback one migration
-
-# Database locked (SQLite)
-# Stop all processes accessing the database, then:
-sqlite3 data/jps_aggregate.db "PRAGMA journal_mode=WAL;"
-
-# Reset database completely
-rm data/*.db
-python scripts/setup_databases.py
+rm data/*.db && python scripts/setup_databases.py  # Reset DB
+sqlite3 data/jps_aggregate.db "PRAGMA journal_mode=WAL;"  # Fix locks
 ```
 
 ### Scraper Issues
 ```bash
-# Scraper stuck in "working" state
-python -c "from app import create_app; from app.utils.scraper_cleanup import cleanup_stuck_scrapers; app = create_app(); app.app_context().push(); cleanup_stuck_scrapers()"
-
-# Playwright browser issues
-playwright install --with-deps
-
-# Download timeout
-# Increase timeout in .env:
-DOWNLOAD_TIMEOUT=120000  # 2 minutes
+playwright install --with-deps            # Browser issues
+# Stuck scrapers: Check logs/error_screenshots/
 ```
 
-### Frontend Build Issues
-```bash
-# Clear node modules and reinstall
-cd frontend-react
-rm -rf node_modules package-lock.json
-npm install
-
-# TypeScript errors
-npm run lint -- --fix
-
-# Build failures
-rm -rf dist
-npm run build
-```
-
-### Authentication Issues
-```bash
-# Create super admin user
-python scripts/create_super_admin.py
-
-# Session expired
-# Clear browser cookies for localhost:5001
-
-# User role issues
-python scripts/promote_to_super_admin.py
-```
-
-## Code Quality & CI/CD
-
-### Static Analysis and Linting
-
-**Python Code Quality (configured in `pyproject.toml`):**
-- **Ruff**: Fast Python linter with 40+ rule categories (pycodestyle, Pyflakes, isort, pydocstyle, etc.)
-- **MyPy**: Static type checking with strict configuration
-- **Bandit**: Security vulnerability scanning for Python code
-- **Coverage**: Code coverage analysis with HTML and XML reporting
-
-**Frontend Code Quality:**
-- **ESLint**: TypeScript/JavaScript linting with React-specific rules
-- **TypeScript Compiler**: Strict type checking with `noEmit` flag
-- **Prettier**: Code formatting (integrated with ESLint)
-
-**Configuration Files:**
-- `pyproject.toml`: Python tools configuration (ruff, mypy, coverage, bandit)
-- `frontend-react/eslint.config.js`: ESLint configuration
-- `frontend-react/tsconfig.json`: TypeScript configuration
-- `.pre-commit-config.yaml`: Pre-commit hooks configuration
-
-### Pre-commit Hooks
-
-Automated quality gates that run before each commit:
-
-```bash
-# Install pre-commit hooks (first time setup)
-pre-commit install
-
-# Run hooks manually
-pre-commit run --all-files
-
-# Update hook versions
-pre-commit autoupdate
-```
-
-**Hook Categories:**
-- **General**: Trailing whitespace, file formatting, large file detection
-- **Python**: Ruff linting/formatting, MyPy type checking, Bandit security scan
-- **Frontend**: ESLint, TypeScript checking
-- **Testing**: pytest (Python changes), Vitest (frontend changes)
-- **Security**: NPM audit for frontend dependencies
-- **Documentation**: Spell checking, commit message formatting
-
-### CI/CD Pipeline
-
-**GitHub Actions Workflow (`.github/workflows/ci.yml`):**
-
-**Stage 1: Parallel Testing**
-- **Python Tests**: Run pytest with coverage, linting, and type checking
-- **Frontend Tests**: Run Vitest with coverage, ESLint, and TypeScript compilation
-
-**Stage 2: Integration Testing**
-- Cross-system integration tests
-- Database integration with SQLite
-- API endpoint integration testing
-
-**Stage 3: End-to-End Testing**
-- Full application workflow testing with Playwright
-- Browser automation testing critical user paths
-- Visual regression testing (if configured)
-
-**Stage 4: Security Scanning**
-- Python dependency vulnerability scanning with Safety
-- Bandit security analysis for Python code
-- NPM audit for frontend dependency vulnerabilities
-
-**Coverage Requirements:**
-- Backend: 75% minimum coverage (enforced)
-- Frontend: 80% minimum coverage (enforced)
-- Build fails if coverage drops below thresholds
-
-**Deployment Gates:**
-- All tests must pass before deployment
-- Security scans must complete without critical issues
-- Code coverage thresholds must be met
-- No linting errors allowed
-
-### Quality Metrics and Monitoring
-
-**Code Quality Metrics:**
-- Test coverage percentage (backend/frontend)
-- Cyclomatic complexity (tracked by ruff)
-- Type coverage (MyPy strict mode)
-- Security vulnerability count (Bandit + Safety + NPM Audit)
-- Technical debt indicators (code smells, duplication)
-
-**Performance Monitoring:**
-- Test execution time tracking
-- Bundle size monitoring (frontend)
-- Database query performance (slow query detection)
-- Memory usage patterns in tests
-
-**Failure Prevention:**
-- Pre-commit hooks catch issues before commits
-- CI pipeline prevents broken code from reaching main branch
-- Automated dependency updates with testing
-- Regular security scanning and vulnerability patching
-
-### Local CI/CD Testing
-
-**Run the full CI/CD pipeline locally before pushing to GitHub:**
-
-The project includes a comprehensive local CI testing infrastructure in the `ci-test/` directory that mirrors the GitHub Actions environment exactly.
-
-**Quick Start:**
-```bash
-# Run full CI test suite (recommended before pushing)
-make test-ci
-
-# Run specific test suites
-make test-python      # Python tests only (with linting and type checking)
-make test-frontend    # Frontend tests only (with TypeScript and ESLint)
-make test-integration # Integration tests only
-make test-e2e        # End-to-end tests (requires running services)
-make test-all        # All tests including E2E
-```
-
-**CI Test Infrastructure:**
-- Uses Docker containers with exact versions: Python 3.11, Node 20
-- Isolated environment that won't affect your local setup
-- Runs tests in the same order as GitHub Actions
-- Includes all linting, type checking, and security scans
-
-**Additional CI Commands:**
-```bash
-# Fix TypeScript type errors automatically
-make fix-types
-
-# Clean test artifacts and caches
-make clean
-
-# Build CI test containers
-make build-ci
-
-# Stop CI test containers
-make stop-ci
-```
-
-**Test Script Options:**
-```bash
-# Direct script usage (from project root)
-./ci-test/test-ci-local.sh [OPTIONS]
-
-OPTIONS:
-    -p, --python-only       Run only Python tests
-    -f, --frontend-only     Run only frontend tests
-    -i, --integration-only  Run only integration tests
-    -e, --e2e              Include E2E tests
-    -a, --all              Run all tests including E2E
-    -h, --help             Show help message
-```
-
-**Using Act for GitHub Actions Testing (Optional):**
-```bash
-# Install act tool
-make install-act
-
-# Run actual GitHub Actions workflow locally
-make test-with-act
-```
-
-**Troubleshooting Local CI:**
-- If tests pass locally but fail in GitHub Actions (or vice versa):
-  - Update Docker images: `docker-compose -f ci-test/docker-compose.test.yml pull`
-  - Clean and rebuild: `make clean && make build-ci`
-  - Check Python version: CI uses 3.11, not 3.12
-  - Check for uncommitted files that might affect tests
-  - Verify environment variables match between local and CI
-  - Check if your local development has different dependencies installed
-
-**CI Test Environment Details:**
-- Python: 3.11 (exact match with GitHub Actions)
-- Node: 20.x (LTS version used in CI)
-- SQLite: Built-in with Python (for all tests)
-- Operating System: Ubuntu-based containers
-- TypeScript: Uses tsconfig.test.json for relaxed test configuration
-
-**Performance Tips:**
-- Use `--python-only` or `--frontend-only` flags for faster feedback
-- Run `make test-python` while developing Python code
-- Run `make test-frontend` while developing React components
-- Use `make test-ci` only before pushing for full validation
-
-## Debugging
-
-### Application Error Handling
-- Screenshots saved to: `logs/error_screenshots/`
-- HTML dumps saved to: `logs/error_html/`
-- Logs: `logs/app.log`, `logs/scrapers.log`, `logs/errors.log`
-
-### Test Debugging and Troubleshooting
-
-**Common Test Issues and Solutions:**
-
-**Python/Pytest Issues:**
-```bash
-# Database connection issues
-export DATABASE_URL="sqlite:///test.db"  # Use SQLite for local testing
-python -c "from app import create_app; from app.database import db; app = create_app(); app.app_context().push(); db.create_all()"
-
-# Import errors or missing dependencies
-pip install -r requirements.txt
-pip install pytest-cov pytest-mock pytest-asyncio
-
-# Fixture or mock issues
-python -m pytest tests/ -v --setup-show    # Show fixture setup/teardown
-python -m pytest tests/ -s                 # Don't capture stdout (show prints)
-
-# Slow tests
-python -m pytest tests/ --durations=0      # Show all test durations
-python -m pytest tests/ -m "not slow"      # Skip slow tests
-
-# Failed assertions
-python -m pytest tests/ -vv --tb=long      # Detailed traceback
-python -m pytest tests/ --pdb              # Drop into debugger on failure
-```
-
-**Frontend/Vitest Issues:**
+### Frontend Issues
 ```bash
 cd frontend-react
-
-# Component rendering issues
-npm test -- --no-coverage SomeComponent.test.tsx  # Run without coverage
-
-# Mock issues
-npm test -- --reporter=verbose             # Detailed test output
-npm test -- --run --reporter=verbose       # Non-interactive verbose mode
-
-# TypeScript errors in tests
-npx tsc --noEmit                           # Check TypeScript compilation
-npm test -- --typecheck                    # Enable type checking in tests
-
-# Test environment issues
-npm test -- --environment=jsdom            # Ensure correct test environment
-npm test -- --globals                      # Enable global test APIs
+rm -rf node_modules && npm install       # Clean reinstall
 ```
 
-**Integration Test Issues:**
+### Ollama Issues
 ```bash
-# Database not available
-# SQLite requires no setup - just ensure data directory exists
-mkdir -p data                             # Create data directory if needed
-
-# LLM service not available  
-ollama serve                               # Start Ollama service
-ollama pull qwen3:latest                   # Ensure model is available
-curl http://localhost:11434/api/tags       # Check Ollama API
-
-# Port conflicts
-lsof -i :5001                             # Check what's using Flask port
-lsof -i :11434                            # Check what's using Ollama port
+ollama pull qwen3:latest                  # Download model
+ollama serve                              # Start service
 ```
-
-**E2E Test Issues:**
-```bash
-cd frontend-react
-
-# Browser installation issues
-npx playwright install --with-deps        # Install browsers and dependencies
-npx playwright install-deps               # Install system dependencies only
-
-# Test timeout issues
-npx playwright test --timeout=60000       # Increase timeout to 60 seconds
-npx playwright test --workers=1           # Run tests sequentially
-
-# Visual debugging
-npx playwright test --headed              # Run with visible browser
-npx playwright test --debug               # Step through tests interactively
-npx playwright test --trace on            # Generate detailed traces
-
-# Test artifacts
-npx playwright show-report                # View test results
-ls test-results/                          # Check test artifacts directory
-```
-
-**Performance and Memory Issues:**
-```bash
-# Memory usage monitoring
-python -m pytest tests/ --memray          # Memory profiling (if memray installed)
-python -m pytest tests/ -v --tb=no        # Minimal output to reduce memory
-
-# Test parallelization issues
-python -m pytest tests/ -n 1              # Run tests sequentially
-python -m pytest tests/ --dist=loadfile   # Distribute by file instead of function
-
-# Coverage performance
-python -m pytest tests/ --no-cov          # Skip coverage collection
-python -m pytest tests/ --cov-config=.coveragerc  # Use custom coverage config
-```
-
-**CI/CD Debugging:**
-```bash
-# Reproduce CI environment locally
-act                                        # Run GitHub Actions locally (if act installed)
-docker run --rm -it python:3.11 bash     # Test in CI Python environment
-
-# Pre-commit debugging
-pre-commit run --all-files --verbose      # Run with detailed output
-pre-commit clean                          # Clean pre-commit cache
-pre-commit install --install-hooks        # Reinstall hooks
-
-# Security scan false positives
-bandit -r app/ --skip B101,B601           # Skip specific security checks
-safety check --ignore 12345               # Ignore specific vulnerabilities
-```
-
-**Test Data and Fixtures:**
-```bash
-# Reset test database
-python -c "from app import create_app; from app.database import db; app = create_app(); app.app_context().push(); db.drop_all(); db.create_all()"
-
-# Generate test data
-# Note: Test data is managed through pytest fixtures in tests/conftest.py
-python -m pytest tests/ --fixtures        # Show available fixtures
-
-# Mock data debugging
-python -c "from tests.conftest import *; print(sample_prospects())"  # Test fixture generation
-```
-
-**Log Analysis:**
-```bash
-# Test logs
-tail -f logs/app.log                       # Follow application logs during tests
-grep ERROR logs/app.log                    # Find error messages
-grep -A 5 -B 5 "test_function_name" logs/app.log  # Context around specific test
-
-# Frontend test logs
-cd frontend-react
-npm test -- --reporter=verbose 2>&1 | tee test.log  # Save test output to file
-```
-
-## Architecture
-
-### Scraper Framework
-The scraper system uses a unified architecture for efficient web scraping:
-
-- **ConsolidatedScraperBase** (`app/core/consolidated_scraper_base.py`): Unified base class containing all scraping functionality (browser automation, navigation, downloads, data processing)
-- **ScraperConfig**: Single configuration dataclass for all scraper settings
-- **Scraper Configurations** (`app/core/scraper_configs.py`): Direct dictionary-based configurations for each agency scraper
-- **Agency Scrapers** (`app/core/scrapers/`): Simple implementations focusing only on agency-specific logic (each ~50-100 lines)
-
-Key features:
-- Unified configuration system
-- Built-in error handling with screenshots and HTML dumps
-- Stealth mode for avoiding detection
-- Automatic retry logic
-- Structured data processing pipeline
-
-### Creating New Scrapers
-```python
-from app.core.consolidated_scraper_base import ConsolidatedScraperBase, ScraperConfig
-from app.config import active_config
-
-class YourAgencyScraper(ConsolidatedScraperBase):
-    def __init__(self):
-        config = ScraperConfig(
-            source_name="Your Agency",
-            folder_name="your_agency",
-            base_url=active_config.YOUR_AGENCY_URL,
-            # Add your configuration options here
-        )
-        super().__init__(config)
-    
-    # Add custom transformations if needed
-    def custom_transform(self, df):
-        return df
-```
-
-### Database Layer
-- **Models** (`app/database/models.py`): SQLAlchemy models for prospects, data sources, scraper status
-- **Operations** (`app/database/operations.py`): High-level database operations with duplicate detection and bulk operations
-- **Migrations** (`migrations/`): Alembic-managed schema changes
-- **User Authentication**: Separate user database for security isolation
-- **Decision Tracking**: Go/no-go decisions linked to users and prospects
-
-### API Layer
-Flask app with modular blueprints:
-- **Main API** (`app/api/`): RESTful endpoints for prospects, data sources, duplicates
-- **Decision API** (`/api/decisions/`): CRUD operations for go/no-go decisions
-- **LLM API** (`/api/llm/`): AI enhancement and queue management
-- **Admin API** (`/api/admin/`): Maintenance mode, user management, system stats
-- **Health endpoints**: Database connectivity and system status
-- **Pagination support**: Efficient large dataset handling
-
-Key endpoints:
-
-**Decision Management:**
-- `POST /api/decisions/` - Create/update decision
-- `GET /api/decisions/<prospect_id>` - Get decisions for prospect
-- `GET /api/decisions/my` - Get current user's decisions
-- `DELETE /api/decisions/<id>` - Delete a decision
-
-**LLM Enhancement:**
-- `POST /api/llm/enhance` - Start batch enhancement
-- `POST /api/llm/enhance-single` - Enhance single prospect
-- `GET /api/llm/queue/status` - Get queue status
-- `POST /api/llm/queue/item/<id>/cancel` - Cancel queue item
-- `GET /api/llm/status` - Get LLM processing statistics
-
-**Admin Functions (super-admin only):**
-- `GET/POST /api/admin/maintenance` - Control maintenance mode
-- `GET /api/admin/users` - List all users
-- `PUT /api/admin/users/<id>/role` - Update user role
-- `GET /api/admin/decisions/all` - View all decisions
-- `POST /api/admin/enhancement-cleanup` - Clean stale enhancements
-- `POST /api/admin/scraper-cleanup` - Reset stuck scrapers
-
-### Frontend Architecture
-React TypeScript application with:
-- **TanStack Table**: Virtualized tables for performance with large datasets
-- **TanStack Query**: API state management and caching
-- **Tailwind + Radix UI**: Component system and styling
-- **Type-safe API integration**: Full TypeScript coverage for API responses
-
-### Data Processing Pipeline
-1. **Scraping**: Agency-specific scrapers collect raw data using configuration-driven processing
-2. **Duplicate Detection**: Fuzzy matching with confidence scoring in `app/services/duplicate_detection.py`
-3. **LLM Enhancement**: AI processing for value extraction, contact parsing, and title improvement using qwen3 via Ollama
-4. **Data Retention**: Automated cleanup preserving recent data while managing storage
-
-### Key Patterns
-
-**Configuration-Driven Development**: Each scraper uses dataclass configurations defining:
-- Field mappings from raw data to database schema
-- Data processing rules (value parsing, date formatting)
-- Download behavior and file handling
-- Duplicate detection criteria
-
-**Unified Architecture**: Scrapers inherit from a single base class with unified configuration:
-```python
-class AgencyScraper(ConsolidatedScraperBase):
-    def __init__(self):
-        config = create_agency_config()
-        super().__init__(config)
-```
-
-**Error Handling Strategy**: All scrapers capture screenshots and HTML dumps on failure, with structured logging via Loguru for debugging.
-
-**Performance Optimizations**:
-- N+1 query prevention in duplicate detection
-- Table virtualization in frontend for large datasets  
-- Bulk database operations for imports
-- Efficient pagination with SQLAlchemy
-
-### LLM Integration
-The system uses Ollama with qwen3 model for data enhancement:
-- **Value Parsing**: Extract contract values from unstructured text
-- **Contact Extraction**: Parse emails and contact names
-- **Title Enhancement**: Improve prospect titles for clarity
-- **NAICS Classification**: Automatic categorization
-
-LLM services are in `app/services/llm_service.py` with comprehensive logging and error handling.
-
-### Testing Strategy
-
-The project implements a comprehensive testing strategy designed to prevent breaking changes during refactoring and ensure system reliability:
-
-**Multi-Layer Testing Architecture:**
-- **Unit Tests**: Individual component and function testing with 75%+ backend coverage requirement
-- **Integration Tests**: Database operations, API endpoint testing, and service layer integration
-- **Component Tests**: Frontend React component testing with user interaction simulation
-- **End-to-End Tests**: Full application workflow testing with Playwright
-- **Security Tests**: Vulnerability scanning for dependencies and code security analysis
-- **Performance Tests**: Load testing for large datasets and virtual scrolling validation
-
-**Testing Frameworks:**
-- **Backend**: pytest with coverage reporting, mocking with pytest-mock
-- **Frontend**: Vitest with @testing-library for React component testing
-- **E2E**: Playwright for browser automation and user workflow testing
-- **Security**: Bandit for Python security scanning, npm audit for frontend dependencies
-
-**Coverage Requirements:**
-- Backend: Minimum 75% test coverage (enforced in CI)
-- Frontend Components: Minimum 80% test coverage (enforced in CI)
-- Critical paths: 90%+ coverage for core business logic
-
-**Test Organization:**
-```
-tests/
-├── database/           # Database model and operation tests
-├── api/               # API endpoint and route tests  
-├── core/              # Scraper framework and core logic tests
-├── services/          # Service layer integration tests
-├── utils/             # Utility function tests
-└── integration/       # Cross-system integration tests
-
-frontend-react/src/
-├── components/        # Component test files (*.test.tsx)
-├── hooks/            # Custom hooks tests
-├── contexts/         # Context and state management tests
-└── test/             # Test utilities and setup
-```
-
-**Automated Testing Pipeline:**
-- **Pre-commit Hooks**: Run tests, linting, and security scans before commits
-- **CI/CD Pipeline**: Multi-stage testing with GitHub Actions
-- **Parallel Testing**: Backend and frontend tests run concurrently for speed
-- **Test Isolation**: Each test suite runs in isolated environments
-- **Failure Fast**: Pipeline stops on first critical failure to save resources
-
-**Comprehensive Test Coverage:**
-
-**Backend Tests (`tests/` directory):**
-- `database/test_models.py`: Database model relationships, validations, cascade deletes
-- `api/test_prospects_api.py`: Prospects API endpoints with pagination, filtering, security
-- `api/test_decisions_api.py`: Decision CRUD operations, validation, bulk operations
-- `core/test_consolidated_scraper_base.py`: Scraper framework, browser automation, data processing
-- `services/test_llm_service.py`: LLM integration, error handling, response parsing
-- `services/test_enhancement_queue.py`: Queue management, progress tracking, status monitoring
-- `utils/test_value_and_date_parsing.py`: Contract value parsing, date formatting, edge cases
-- `utils/test_naics_lookup.py`: NAICS code validation, search, hierarchy traversal
-- `integration/test_llm_api_integration.py`: End-to-end LLM workflow testing
-
-**Frontend Tests (`frontend-react/src/components/` directory):**
-- `ProspectTable.test.tsx`: Data table virtualization, sorting, enhancement buttons, accessibility
-- `ProspectFilters.test.tsx`: Filter interactions, data source selection, AI enhancement toggles
-- `AIEnrichment.test.tsx`: Status dashboard, progress tracking, LLM output display, controls
-- `GoNoGoDecision.test.tsx`: Decision workflows, compact/full modes, reason validation
-- `Navigation.test.tsx`: User authentication states, admin navigation, responsive design
-- `EnhancementButton.test.tsx`: Button states, loading indicators, error handling
-- `ProspectDetailsModal.test.tsx`: Modal interactions, data display, form validation
-
-**Test Coverage Areas:**
-- **User Interactions**: Click events, form submissions, keyboard navigation
-- **Error States**: Network failures, validation errors, loading states
-- **Edge Cases**: Null data, empty states, boundary conditions, malformed inputs
-- **Accessibility**: ARIA attributes, keyboard navigation, screen reader compatibility
-- **Performance**: Large datasets, virtual scrolling, memory usage patterns
-- **Security**: SQL injection prevention, XSS protection, input sanitization
-- **Integration**: Database operations, API communication, external service integration
-
-## Data Sources
-
-System currently scrapes 9 federal agencies with the following scraper keys:
-
-- **ACQGW** - Acquisition Gateway (`acquisition_gateway.py`)
-- **SSA** - Social Security Administration (`ssa_scraper.py`)
-- **DOC** - Department of Commerce (`doc_scraper.py`)
-- **HHS** - Health and Human Services (`hhs_scraper.py`)
-- **DHS** - Department of Homeland Security (`dhs_scraper.py`)
-- **DOJ** - Department of Justice (`doj_scraper.py`)
-- **DOS** - Department of State (`dos_scraper.py`)
-- **TREAS** - Department of Treasury (`treasury_scraper.py`)
-- **DOT** - Department of Transportation (`dot_scraper.py`)
-
-## Data Retention
-
-Built-in utility manages storage with intelligent rolling cleanup policy:
-
-- **Enhanced Policy**: Keeps 5 most recent files + 2 successfully processed files per data source
-- **File Validation**: Soft validation with warnings for content/schema issues
-- **Processing Tracking**: FileProcessingLog model tracks all file processing attempts
-- **Safety**: Dry-run mode by default with detailed logging
-- **Smart Retention**: Preserves files that were successfully processed even if older
 
 ## Project Structure
 
-The project has been organized for clarity and maintainability:
-
 ```
 /
-├── README.md              # Main project documentation
-├── CLAUDE.md             # This file - Claude-specific instructions
-├── Dockerfile            # Main Docker image definition
-├── docker-compose.yml    # Main compose configuration
-├── Makefile             # Includes CI test commands
-├── requirements.txt      # Python dependencies
-├── pyproject.toml       # Python project configuration
-├── pytest.ini           # Pytest configuration
-├── run.py               # Main application entry point
-├── app/                 # Application source code
-│   ├── api/            # API endpoints
-│   ├── core/           # Core scraper framework
-│   ├── database/       # Database models and operations
-│   ├── services/       # Business logic services
-│   └── utils/          # Utility functions
-├── frontend-react/      # React TypeScript frontend
-├── tests/              # Backend test files
-├── scripts/            # Utility and maintenance scripts
-├── migrations/         # Database migrations (Alembic)
-├── ci-test/           # Local CI/CD testing infrastructure
-│   ├── test-ci-local.sh        # Main test runner script
-│   ├── docker-compose.test.yml # Test environment config
-│   ├── Dockerfile.*-test       # Test container definitions
-│   ├── Makefile               # CI test commands
-│   ├── README.md              # CI testing documentation
-│   └── .actrc                 # Act configuration (for GitHub Actions local testing)
-├── docker/            # Docker-related files
-│   ├── entrypoint.sh          # Container entrypoint
-│   ├── docker-build.sh        # Build and deploy script
-│   ├── docker-start.*         # Start scripts (sh/ps1)
-│   ├── docker-compose-minimal.yml # Minimal setup option
-│   └── *.md                   # Docker documentation
-├── docs/              # Project documentation
-│   ├── ARCHITECTURE.md        # System architecture
-│   ├── TESTING.md            # Testing guide
-│   ├── REFACTORING_SUMMARY.md # Refactoring history
-│   └── *.md                  # Other documentation
-├── data/              # Data storage
-│   ├── raw/           # Raw scraped files
-│   └── processed/     # Processed exports
-├── logs/              # Application logs
-├── sql/               # SQL scripts
-└── backups/           # Database backups
+├── app/                   # Backend application
+│   ├── api/              # API endpoints
+│   ├── core/             # Scraper framework
+│   │   ├── consolidated_scraper_base.py
+│   │   ├── scraper_configs.py
+│   │   └── scrapers/     # Agency scrapers
+│   ├── database/         # Models & operations
+│   ├── services/         # Business logic
+│   └── utils/            # Utilities
+├── frontend-react/        # React frontend
+├── tests/                 # Backend tests
+├── scripts/               # Utility scripts
+├── migrations/            # Alembic migrations
+├── ci-test/              # Local CI testing
+├── docker/               # Docker configs
+├── data/                 # SQLite databases
+│   ├── raw/             # Scraped files
+│   └── processed/       # Exports
+└── logs/                 # Application logs
 ```
 
-**Key Directories:**
-- `ci-test/`: Everything needed for local CI/CD testing
-- `docker/`: All Docker-related scripts and configurations
-- `docs/`: All project documentation (except README.md and CLAUDE.md)
-- `app/`: Python application code
-- `frontend-react/`: React frontend application
-- `scripts/`: Utility scripts for maintenance and operations
+## Testing & CI/CD
 
-## Development Workflows
-
-### Adding a New Feature
-
-1. **Create feature branch**
-   ```bash
-   git checkout -b feature/your-feature-name
-   ```
-
-2. **Set up test data**
-   ```bash
-   python scripts/setup_databases.py  # Ensure clean database
-   ```
-
-3. **Develop iteratively**
-   ```bash
-   # Backend changes
-   python run.py  # Hot reload enabled in development
-   
-   # Frontend changes
-   cd frontend-react && npm run dev  # Vite hot reload
-   ```
-
-4. **Test your changes**
-   ```bash
-   # Run tests
-   python -m pytest tests/ -v
-   cd frontend-react && npm test
-   
-   # Run pre-commit hooks
-   pre-commit run --all-files
-   ```
-
-5. **Create pull request**
-   ```bash
-   git add .
-   git commit -m "feat: your feature description"
-   git push origin feature/your-feature-name
-   ```
-
-### Adding a New Scraper
-
-1. **Create scraper configuration** in `app/core/scraper_configs.py`:
-   ```python
-   YOUR_AGENCY_CONFIG = ScraperConfig(
-       source_name="Your Agency",
-       folder_name="your_agency",
-       base_url="https://agency.gov",
-       # Add configuration options
-   )
-   ```
-
-2. **Create scraper class** in `app/core/scrapers/your_agency.py`:
-   ```python
-   from app.core.consolidated_scraper_base import ConsolidatedScraperBase
-   from app.core.scraper_configs import YOUR_AGENCY_CONFIG
-   
-   class YourAgencyScraper(ConsolidatedScraperBase):
-       def __init__(self):
-           super().__init__(YOUR_AGENCY_CONFIG)
-   ```
-
-3. **Register scraper** in `app/core/scrapers/__init__.py`
-
-4. **Add data source** to database:
-   ```bash
-   python scripts/populate_data_sources.py
-   ```
-
-5. **Test the scraper**:
-   ```bash
-   python scripts/test_scraper_individual.py --scraper your_agency
-   ```
-
-### Database Migrations
-
-1. **Create migration after model changes**:
-   ```bash
-   cd migrations
-   alembic revision --autogenerate -m "describe your changes"
-   ```
-
-2. **Review generated migration**:
-   ```bash
-   # Check the new file in migrations/versions/
-   ```
-
-3. **Apply migration**:
-   ```bash
-   alembic upgrade head
-   ```
-
-4. **Rollback if needed**:
-   ```bash
-   alembic downgrade -1
-   ```
-
-### Debugging Scrapers
-
-1. **Enable debug mode** in scraper config:
-   ```python
-   config.debug_mode = True  # Runs browser in headed mode
-   ```
-
-2. **Check error screenshots**:
-   ```bash
-   ls -la logs/error_screenshots/
-   ```
-
-3. **Review HTML dumps**:
-   ```bash
-   ls -la logs/error_html/
-   ```
-
-4. **Monitor scraper status**:
-   ```bash
-   python scripts/monitor_scrapers.py
-   ```
-
-## Docker vs Local Development
-
-| Aspect | Docker | Local Development |
-|--------|--------|-------------------|
-| **Setup complexity** | Simple (one command) | More steps |
-| **Production-like** | ✅ Yes | ❌ No |
-| **Quick iteration** | ❌ Slower | ✅ Fast |
-| **Debugging** | ❌ Limited | ✅ Full |
-| **Resource isolation** | ✅ Complete | ❌ None |
-| **Dependency management** | ✅ Automatic | ⚠️ Manual |
-| **Multi-service orchestration** | ✅ Built-in | ⚠️ Manual |
-| **Best for** | Production, testing | Development |
-
-## Security & Best Practices
-
-### Security Guidelines
-
-1. **Never commit sensitive data**:
-   - Add `.env` to `.gitignore`
-   - Never commit API keys or passwords
-   - Use environment variables for secrets
-
-2. **Generate secure SECRET_KEY**:
-   ```bash
-   python -c "import secrets; print(secrets.token_hex(32))"
-   ```
-
-3. **Database security**:
-   - Regular backups: `./scripts/backup.sh`
-   - Encrypt sensitive data at rest
-   - Use parameterized queries (SQLAlchemy handles this)
-
-4. **User authentication**:
-   - Passwords are hashed with bcrypt
-   - Sessions expire after inactivity
-   - Role-based access control (user, admin, super-admin)
-
-5. **API security**:
-   - CSRF protection enabled
-   - Rate limiting considerations
-   - Input validation on all endpoints
-
-### Performance Best Practices
-
-1. **Database optimization**:
-   ```bash
-   # SQLite optimizations in .env
-   SQLITE_JOURNAL_MODE=WAL
-   SQLITE_SYNCHRONOUS=NORMAL
-   SQLITE_CACHE_SIZE=-64000
-   ```
-
-2. **Frontend optimization**:
-   - Virtual scrolling for large datasets
-   - Lazy loading of components
-   - Production builds with minification
-
-3. **Scraper optimization**:
-   - Concurrent scraper execution
-   - Retry logic with exponential backoff
-   - Download timeout configuration
-
-## Monitoring & Logging
-
-### Log Files
-- **Application**: `logs/app.log`
-- **Scrapers**: `logs/scrapers.log`
-- **Errors**: `logs/errors.log`
-- **Error screenshots**: `logs/error_screenshots/`
-- **HTML dumps**: `logs/error_html/`
-
-### Monitoring Commands
+### Quick Testing
 ```bash
-# Monitor scraper health
-python scripts/monitor_scrapers.py
-
-# Check LLM enhancement status
-python scripts/enrichment/enhance_prospects_with_llm.py --check-status
-
-# Database statistics
-sqlite3 data/jps_aggregate.db "SELECT COUNT(*) FROM prospects;"
-
-# View recent logs
-tail -f logs/app.log
+make test-ci              # Full CI suite locally
+make test-python          # Python only
+make test-frontend        # Frontend only
 ```
 
-### Log Levels
-Configure in `.env`:
-- `DEBUG`: Detailed debugging information
-- `INFO`: General information
-- `WARNING`: Warning messages
-- `ERROR`: Error messages only
+### Coverage Requirements
+- Backend: 75% minimum
+- Frontend: 80% minimum
+
+### Pre-commit Hooks
+```bash
+pre-commit install        # Setup
+pre-commit run --all-files  # Run manually
+```
+
+### CI Pipeline Stages
+1. Parallel Python/Frontend testing
+2. Integration tests
+3. E2E tests (Playwright)
+4. Security scanning
+
+## Key Workflows
+
+### Feature Development
+```bash
+git checkout -b feature/name
+# Make changes
+python -m pytest tests/ -v
+pre-commit run --all-files
+git commit -m "feat: description"
+```
+
+### Database Migration
+```bash
+cd migrations
+alembic revision --autogenerate -m "description"
+alembic upgrade head
+```
+
+### Debugging
+- Screenshots: `logs/error_screenshots/`
+- HTML dumps: `logs/error_html/`
+- Logs: `logs/app.log`, `logs/scrapers.log`
 
 ## User Management
 
-### Creating Users
+```bash
+python scripts/create_super_admin.py      # Create admin
+python scripts/promote_to_super_admin.py  # Promote user
+```
 
-1. **Create super-admin** (full access):
-   ```bash
-   python scripts/create_super_admin.py
-   ```
+Roles:
+- **user**: Basic access
+- **admin**: Manage scrapers
+- **super-admin**: Full system access
 
-2. **Promote existing user**:
-   ```bash
-   python scripts/promote_to_super_admin.py
-   ```
+## Performance Tips
 
-3. **User roles**:
-   - **user**: Basic access, can view and make decisions
-   - **admin**: Can manage scrapers and data sources
-   - **super-admin**: Full system access including user management
+### Database
+```bash
+# .env optimizations
+SQLITE_JOURNAL_MODE=WAL
+SQLITE_SYNCHRONOUS=NORMAL
+SQLITE_CACHE_SIZE=-64000
+```
 
-### Authentication Flow
+### Frontend
+- Virtual scrolling for large datasets
+- Production build: `npm run build`
 
-1. User signs up at `/signup`
-2. Password is hashed with bcrypt
-3. Session created on successful login
-4. Session cookie expires after inactivity
-5. Role-based access enforced on API endpoints
+### Scrapers
+- Concurrent execution
+- Retry with exponential backoff
+- Configure timeout in .env
 
-## Contributing Guidelines
+## Additional Documentation
 
-### Code Style
-- Python: Follow PEP 8, enforced by Ruff
-- TypeScript: ESLint configuration
-- Commit messages: Conventional commits format
-
-### Testing Requirements
-- Maintain 75%+ backend test coverage
-- Write tests for new features
-- Run pre-commit hooks before pushing
-
-### Pull Request Process
-1. Create feature branch from `main`
-2. Make changes with tests
-3. Run full test suite
-4. Create PR with description
-5. Address review comments
-6. Merge after approval
-
-## Additional Resources
-
-- **Architecture details**: See `docs/ARCHITECTURE.md`
-- **Data mapping guide**: See `docs/DATA_MAPPING_GUIDE.md`
-- **Scraper quirks**: See `docs/SCRAPER_QUIRKS.md`
-- **Testing guide**: See `docs/TESTING.md`
-- **Backlog**: See `docs/BACKLOG.md`
+For detailed information, see:
+- `docs/ARCHITECTURE.md` - System design
+- `docs/TESTING.md` - Comprehensive testing guide
+- `docs/DATA_MAPPING_GUIDE.md` - Field mappings
+- `docs/SCRAPER_QUIRKS.md` - Agency-specific issues
+- `README.md` - Project overview

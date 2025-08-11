@@ -13,7 +13,7 @@ from sqlalchemy import select
 from app import create_app
 from app.database import db
 from app.database.models import (
-    Prospect, DataSource, InferredProspectData, LLMOutput, 
+    Prospect, DataSource, LLMOutput, 
     AIEnrichmentLog, GoNoGoDecision
 )
 from app.database.user_models import User
