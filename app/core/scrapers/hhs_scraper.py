@@ -1,18 +1,16 @@
-"""
-HHS scraper using the consolidated architecture.
+"""HHS scraper using the consolidated architecture.
 Preserves all original HHS-specific functionality including View All workflow.
 """
-import pandas as pd
-from typing import Optional
 
+import pandas as pd
+
+from app.config import active_config
 from app.core.consolidated_scraper_base import ConsolidatedScraperBase
 from app.core.scraper_configs import get_scraper_config
-from app.config import active_config
 
 
 class HHSForecastScraper(ConsolidatedScraperBase):
-    """
-    Consolidated HHS Opportunity Forecast scraper.
+    """Consolidated HHS Opportunity Forecast scraper.
     Preserves all original functionality including View All button workflow.
     """
 
@@ -22,8 +20,7 @@ class HHSForecastScraper(ConsolidatedScraperBase):
         super().__init__(config)
 
     def _custom_hhs_transforms(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Custom HHS transformations for the new CSV format.
+        """Custom HHS transformations for the new CSV format.
         Creates native_id, handles contact names, and place_country.
         """
         try:
@@ -64,8 +61,7 @@ class HHSForecastScraper(ConsolidatedScraperBase):
         return df
 
     def _hhs_create_extras(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Create extras JSON with HHS-specific fields that aren't in core schema.
+        """Create extras JSON with HHS-specific fields that aren't in core schema.
         Captures 3 additional data points for comprehensive data retention.
         """
         try:
@@ -100,8 +96,7 @@ class HHSForecastScraper(ConsolidatedScraperBase):
         return df
 
     async def hhs_setup(self) -> bool:
-        """
-        HHS-specific setup: navigate and click 'View All' button.
+        """HHS-specific setup: navigate and click 'View All' button.
         Enhanced for JavaScript-heavy HHS site with multi-step navigation.
         """
         if not self.base_url:
@@ -167,9 +162,8 @@ class HHSForecastScraper(ConsolidatedScraperBase):
 
         return True
 
-    async def hhs_extract(self) -> Optional[str]:
-        """
-        HHS-specific extraction: download via CSV button.
+    async def hhs_extract(self) -> str | None:
+        """HHS-specific extraction: download via CSV button.
         Preserves original HHS download behavior.
         """
         self.logger.info(
@@ -182,9 +176,7 @@ class HHSForecastScraper(ConsolidatedScraperBase):
         )
 
     def hhs_process(self, file_path: str) -> int:
-        """
-        HHS-specific processing.
-        """
+        """HHS-specific processing."""
         if not file_path:
             # Try to get most recent download
             file_path = self.get_last_downloaded_path()

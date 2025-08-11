@@ -1,19 +1,17 @@
-"""
-DOC scraper using the consolidated architecture.
+"""DOC scraper using the consolidated architecture.
 Preserves all original DOC-specific functionality including link text finding and fiscal quarter processing.
 """
-import pandas as pd
-from typing import Optional
-from app.utils.value_and_date_parsing import fiscal_quarter_to_date
 
+import pandas as pd
+
+from app.config import active_config
 from app.core.consolidated_scraper_base import ConsolidatedScraperBase
 from app.core.scraper_configs import get_scraper_config
-from app.config import active_config
+from app.utils.value_and_date_parsing import fiscal_quarter_to_date
 
 
 class DocScraper(ConsolidatedScraperBase):
-    """
-    Consolidated DOC scraper.
+    """Consolidated DOC scraper.
     Preserves all original functionality including link text finding and custom transforms.
     """
 
@@ -23,8 +21,7 @@ class DocScraper(ConsolidatedScraperBase):
         super().__init__(config)
 
     def _custom_doc_transforms(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Custom DOC transformations preserving the original logic.
+        """Custom DOC transformations preserving the original logic.
         Derives release date from fiscal year/quarter and handles place country standardization.
         """
         try:
@@ -69,9 +66,9 @@ class DocScraper(ConsolidatedScraperBase):
 
             # Initialize award dates as None (DOC source doesn't provide them)
             df["award_date_final"] = None
-            df[
-                "award_fiscal_year_final"
-            ] = pd.NA  # Use pandas NA for Int64 compatibility
+            df["award_fiscal_year_final"] = (
+                pd.NA
+            )  # Use pandas NA for Int64 compatibility
             self.logger.debug(
                 "Initialized 'award_date_final' and 'award_fiscal_year_final' to None/NA."
             )
@@ -99,8 +96,7 @@ class DocScraper(ConsolidatedScraperBase):
         return df
 
     def _doc_create_extras(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Create extras JSON with DOC-specific fields that aren't in core schema.
+        """Create extras JSON with DOC-specific fields that aren't in core schema.
         Captures 15 additional data points for comprehensive data retention.
         """
         try:
@@ -148,9 +144,7 @@ class DocScraper(ConsolidatedScraperBase):
         return df
 
     async def doc_setup(self) -> bool:
-        """
-        DOC-specific setup: simple navigation to base URL.
-        """
+        """DOC-specific setup: simple navigation to base URL."""
         if not self.base_url:
             self.logger.error("Base URL not configured.")
             return False
@@ -158,9 +152,8 @@ class DocScraper(ConsolidatedScraperBase):
         self.logger.info(f"DOC setup: Navigating to {self.base_url}")
         return await self.navigate_to_url(self.base_url)
 
-    async def doc_extract(self) -> Optional[str]:
-        """
-        DOC-specific extraction: find link by text and download via browser click.
+    async def doc_extract(self) -> str | None:
+        """DOC-specific extraction: find link by text and download via browser click.
         Uses interactive download to avoid 403 errors with direct downloads.
         """
         self.logger.info(
@@ -202,7 +195,7 @@ class DocScraper(ConsolidatedScraperBase):
             return None
 
         self.logger.info(
-            f"Found download link, attempting interactive download via click"
+            "Found download link, attempting interactive download via click"
         )
 
         # Download by clicking the link with fallback (avoids 403 errors)
@@ -211,9 +204,7 @@ class DocScraper(ConsolidatedScraperBase):
         )
 
     def doc_process(self, file_path: str) -> int:
-        """
-        DOC-specific processing with Excel-specific read options.
-        """
+        """DOC-specific processing with Excel-specific read options."""
         if not file_path:
             # Try to get most recent download
             file_path = self.get_last_downloaded_path()

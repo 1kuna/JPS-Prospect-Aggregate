@@ -20,6 +20,8 @@ export enum ErrorCategory {
   AUTHORIZATION = 'authorization',
   SYSTEM = 'system',
   USER_INPUT = 'user_input',
+  USER = 'user',
+  EXTERNAL = 'external',
   UNKNOWN = 'unknown'
 }
 

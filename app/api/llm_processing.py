@@ -1,18 +1,20 @@
+import json
+import time
+from datetime import UTC, datetime, timedelta
+
 from flask import Blueprint, jsonify, request
+from sqlalchemy import func
+
+from app.api.auth import admin_required
 from app.database.models import (
-    Prospect,
-    db,
     AIEnrichmentLog,
     LLMOutput,
+    Prospect,
+    db,
 )
-from app.utils.logger import logger
+from app.services.enhancement_queue import add_individual_enhancement, enhancement_queue
 from app.services.llm_service import llm_service
-from app.services.enhancement_queue import enhancement_queue, add_individual_enhancement
-from app.api.auth import admin_required
-from sqlalchemy import func
-from datetime import datetime, timedelta, timezone
-import time
-import json
+from app.utils.logger import logger
 
 llm_bp = Blueprint("llm_api", __name__, url_prefix="/api/llm")
 
@@ -198,7 +200,7 @@ def trigger_llm_enhancement():
         duration = time.time() - start_time
 
         response_data = {
-            "message": f"LLM enhancement completed successfully",
+            "message": "LLM enhancement completed successfully",
             "processed_count": processed_count,
             "duration": round(duration, 1),
             "enhancement_type": enhancement_type,
@@ -260,9 +262,9 @@ def preview_llm_enhancement():
                         else None,
                     }
                 )
-                confidence_scores[
-                    "values"
-                ] = 0.85  # Could be enhanced to return actual confidence
+                confidence_scores["values"] = (
+                    0.85  # Could be enhanced to return actual confidence
+                )
 
         if "titles" in enhancement_types and prospect.title and prospect.description:
             enhanced_title = llm_service.enhance_title_with_llm(
@@ -573,7 +575,7 @@ def _process_naics_enhancement(prospect, llm_service, force_redo):
             # Add backfill tracking to extras
             _ensure_extra_is_dict(prospect)
             prospect.extra["naics_description_backfilled"] = {
-                "backfilled_at": datetime.now(timezone.utc).isoformat() + 'Z',
+                "backfilled_at": datetime.now(UTC).isoformat() + "Z",
                 "backfilled_by": "individual_enhancement",
                 "original_source": prospect.naics_source or "unknown",
             }
@@ -612,7 +614,7 @@ def _process_naics_enhancement(prospect, llm_service, force_redo):
                 "naics_confidence": classification["confidence"],
                 "all_naics_codes": classification.get("all_codes", []),
                 "model_used": llm_service.model_name,
-                "classified_at": datetime.now(timezone.utc).isoformat() + 'Z',
+                "classified_at": datetime.now(UTC).isoformat() + "Z",
             }
 
             # Commit to database immediately for real-time updates
@@ -624,14 +626,10 @@ def _process_naics_enhancement(prospect, llm_service, force_redo):
             # NAICS enhancement failed - no valid classification
             return False
 
+    elif prospect.naics and prospect.naics_description or prospect.naics:
+        pass
     else:
-        # Not processing NAICS - emit skipped completion
-        if prospect.naics and prospect.naics_description:
-            pass
-        elif prospect.naics:
-            pass
-        else:
-            pass
+        pass
 
         # NAICS enhancement skipped
 
@@ -683,7 +681,7 @@ def _process_title_enhancement(prospect, llm_service, force_redo):
                 "reasoning": enhanced_title.get("reasoning", ""),
                 "original_title": prospect.title,
                 "model_used": llm_service.model_name,
-                "enhanced_at": datetime.now(timezone.utc).isoformat() + 'Z',
+                "enhanced_at": datetime.now(UTC).isoformat() + "Z",
             }
 
             # Commit to database immediately for real-time updates
@@ -711,7 +709,6 @@ def _process_title_enhancement(prospect, llm_service, force_redo):
 
 def _process_set_aside_enhancement(prospect, llm_service, force_redo):
     """Process set aside standardization and enhancement for a prospect."""
-
     # Ensure extra field is properly loaded as dict
     if prospect.extra is None:
         prospect.extra = {}
@@ -802,7 +799,7 @@ def _finalize_enhancement(prospect, llm_service, processed, enhancements, force_
     """Finalize the enhancement process and return appropriate response."""
     # Always update timestamp for force_redo, even if no new enhancements
     if processed or force_redo:
-        prospect.ollama_processed_at = datetime.now(timezone.utc)
+        prospect.ollama_processed_at = datetime.now(UTC)
         prospect.ollama_model_version = llm_service.model_name
         db.session.commit()
 
@@ -845,7 +842,7 @@ def enhance_single_prospect():
 
         force_redo = data.get("force_redo", False)
         user_id = data.get("user_id", 1)  # Default to 1 if no user provided
-        
+
         # Handle both enhancement_type (string) and enhancement_types (array)
         enhancement_types = data.get("enhancement_types", None)
         if enhancement_types and isinstance(enhancement_types, list):
@@ -982,7 +979,7 @@ def cleanup_stale_enhancement_locks():
     """Clean up enhancement locks that are older than 10 minutes"""
     try:
         # Calculate cutoff time (10 minutes ago)
-        cutoff_time = datetime.now(timezone.utc) - timedelta(minutes=10)
+        cutoff_time = datetime.now(UTC) - timedelta(minutes=10)
 
         # Find prospects with stale locks
         stale_prospects = (
@@ -1087,8 +1084,6 @@ def stop_queue_worker():
 
 
 # SSE functionality has been removed - using polling instead
-
-
 
 
 @llm_bp.route("/enhancement-queue/<queue_item_id>", methods=["DELETE"])

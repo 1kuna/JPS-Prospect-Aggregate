@@ -1,19 +1,18 @@
-"""
-Treasury scraper using the consolidated architecture.
+"""Treasury scraper using the consolidated architecture.
 Simplified to download XLS files only - no HTML fallbacks.
 """
-import os
-import pandas as pd
-from typing import Optional
 
+import os
+
+import pandas as pd
+
+from app.config import active_config
 from app.core.consolidated_scraper_base import ConsolidatedScraperBase
 from app.core.scraper_configs import get_scraper_config
-from app.config import active_config
 
 
 class TreasuryScraper(ConsolidatedScraperBase):
-    """
-    Consolidated Treasury scraper.
+    """Consolidated Treasury scraper.
     Preserves all original functionality including complex native_id handling.
     """
 
@@ -23,8 +22,7 @@ class TreasuryScraper(ConsolidatedScraperBase):
         super().__init__(config)
 
     def _custom_treasury_transforms(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Custom Treasury transformations using original working logic.
+        """Custom Treasury transformations using original working logic.
         Handles native_id selection from primary/fallback fields and description creation.
         """
         try:
@@ -64,8 +62,10 @@ class TreasuryScraper(ConsolidatedScraperBase):
             # Use "Type of Requirement" as title if available
             if "title" not in df.columns and "Type of Requirement" in df.columns:
                 df["title"] = df["Type of Requirement"]
-                self.logger.debug("Used 'Type of Requirement' as title for Treasury data.")
-            
+                self.logger.debug(
+                    "Used 'Type of Requirement' as title for Treasury data."
+                )
+
             # Create description from title if description doesn't exist
             if "description" not in df.columns:
                 if "title" in df.columns:
@@ -87,20 +87,22 @@ class TreasuryScraper(ConsolidatedScraperBase):
             if "place_raw" in df.columns:
                 # Treasury typically has format like "Washington, DC" or just city name
                 df[["place_city", "place_state"]] = df["place_raw"].str.extract(
-                    r'^([^,]+)(?:,\s*([A-Z]{2}))?$', expand=True
+                    r"^([^,]+)(?:,\s*([A-Z]{2}))?$", expand=True
                 )
                 df["place_city"] = df["place_city"].str.strip()
                 df["place_state"] = df["place_state"].str.strip()
                 df["place_country"] = "USA"  # Default for Treasury data
                 self.logger.debug("Parsed place_raw into city, state, and country.")
             elif "Place of Performance" in df.columns:
-                df[["place_city", "place_state"]] = df["Place of Performance"].str.extract(
-                    r'^([^,]+)(?:,\s*([A-Z]{2}))?$', expand=True
-                )
+                df[["place_city", "place_state"]] = df[
+                    "Place of Performance"
+                ].str.extract(r"^([^,]+)(?:,\s*([A-Z]{2}))?$", expand=True)
                 df["place_city"] = df["place_city"].str.strip()
                 df["place_state"] = df["place_state"].str.strip()
                 df["place_country"] = "USA"
-                self.logger.debug("Parsed 'Place of Performance' into city, state, and country.")
+                self.logger.debug(
+                    "Parsed 'Place of Performance' into city, state, and country."
+                )
 
         except Exception as e:
             self.logger.warning(f"Error in _custom_treasury_transforms: {e}")
@@ -108,8 +110,7 @@ class TreasuryScraper(ConsolidatedScraperBase):
         return df
 
     def _treasury_create_extras(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Create extras JSON with Treasury-specific fields that aren't in core schema.
+        """Create extras JSON with Treasury-specific fields that aren't in core schema.
         Captures additional data points for comprehensive data retention.
         """
         try:
@@ -151,16 +152,14 @@ class TreasuryScraper(ConsolidatedScraperBase):
     def _is_html_content(self, file_path: str) -> bool:
         """Check if file contains HTML content even with .xls extension."""
         try:
-            with open(file_path, "r", encoding="utf-8") as f:
+            with open(file_path, encoding="utf-8") as f:
                 first_chunk = f.read(100).strip().lower()
                 return first_chunk.startswith("<table") or "<html" in first_chunk
         except:
             return False
 
-    def read_file_to_dataframe(self, file_path: str) -> Optional[pd.DataFrame]:
-        """
-        Treasury-specific file reading that handles HTML content in .xls files.
-        """
+    def read_file_to_dataframe(self, file_path: str) -> pd.DataFrame | None:
+        """Treasury-specific file reading that handles HTML content in .xls files."""
         if not file_path or not os.path.exists(file_path):
             self.logger.error(f"File does not exist: {file_path}")
             return None
@@ -225,9 +224,7 @@ class TreasuryScraper(ConsolidatedScraperBase):
         return super().read_file_to_dataframe(file_path)
 
     async def treasury_setup(self) -> bool:
-        """
-        Simple Treasury setup like other working scrapers.
-        """
+        """Simple Treasury setup like other working scrapers."""
         if not self.base_url:
             self.logger.error("Base URL not configured.")
             return False
@@ -253,10 +250,8 @@ class TreasuryScraper(ConsolidatedScraperBase):
 
         return success
 
-    async def treasury_extract(self) -> Optional[str]:
-        """
-        Simple Treasury extraction like other working scrapers.
-        """
+    async def treasury_extract(self) -> str | None:
+        """Simple Treasury extraction like other working scrapers."""
         self.logger.info("Starting Treasury XLS file download.")
 
         selector = self.config.export_button_selector
@@ -277,9 +272,7 @@ class TreasuryScraper(ConsolidatedScraperBase):
         )
 
     def treasury_process(self, file_path: str) -> int:
-        """
-        Treasury-specific processing for XLS files only.
-        """
+        """Treasury-specific processing for XLS files only."""
         if not file_path:
             # Try to get most recent download
             file_path = self.get_last_downloaded_path()

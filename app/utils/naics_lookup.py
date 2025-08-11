@@ -1,9 +1,7 @@
-"""
-NAICS Code to Description Lookup Utility
+"""NAICS Code to Description Lookup Utility
 Provides standardized NAICS descriptions based on official NAICS 2022 codes
 """
 
-from typing import Optional, Dict
 from app.utils.logger import logger
 
 # NAICS 2022 Complete Lookup Table
@@ -592,9 +590,8 @@ NAICS_DESCRIPTIONS = {
 }
 
 
-def get_naics_description(naics_code: str) -> Optional[str]:
-    """
-    Get the official NAICS description for a given 6-digit NAICS code.
+def get_naics_description(naics_code: str) -> str | None:
+    """Get the official NAICS description for a given 6-digit NAICS code.
 
     Args:
         naics_code: 6-digit NAICS code (e.g., "541511")
@@ -621,8 +618,7 @@ def get_naics_description(naics_code: str) -> Optional[str]:
 
 
 def validate_naics_code(naics_code: str) -> bool:
-    """
-    Validate if a NAICS code is properly formatted and exists in our lookup.
+    """Validate if a NAICS code is properly formatted and exists in our lookup.
 
     Args:
         naics_code: NAICS code to validate
@@ -640,9 +636,8 @@ def validate_naics_code(naics_code: str) -> bool:
     return len(clean_code) == 6 and clean_code in NAICS_DESCRIPTIONS
 
 
-def get_naics_info(naics_code: str) -> Dict[str, Optional[str]]:
-    """
-    Get comprehensive NAICS information for a code.
+def get_naics_info(naics_code: str) -> dict[str, str | None]:
+    """Get comprehensive NAICS information for a code.
 
     Args:
         naics_code: 6-digit NAICS code

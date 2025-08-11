@@ -1,21 +1,20 @@
-"""
-DOT scraper using the consolidated architecture.
+"""DOT scraper using the consolidated architecture.
 Preserves all original DOT-specific functionality including complex retry logic and new page downloads.
 """
-import pandas as pd
-import time
+
 import os
-from typing import Optional
+import time
+
+import pandas as pd
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
+from app.config import active_config
 from app.core.consolidated_scraper_base import ConsolidatedScraperBase
 from app.core.scraper_configs import get_scraper_config
-from app.config import active_config
 
 
 class DotScraper(ConsolidatedScraperBase):
-    """
-    Consolidated DOT scraper.
+    """Consolidated DOT scraper.
     Preserves all original functionality including complex navigation retry logic.
     """
 
@@ -25,8 +24,7 @@ class DotScraper(ConsolidatedScraperBase):
         super().__init__(config)
 
     def _custom_dot_transforms(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Custom DOT transformations preserving the original complex logic.
+        """Custom DOT transformations preserving the original complex logic.
         Handles complex award date parsing and contract type fallbacks.
         """
         try:
@@ -40,7 +38,7 @@ class DotScraper(ConsolidatedScraperBase):
             if "place_raw" in df.columns:
                 # DOT typically has format like "Oklahoma City, OK" or "Washington, DC"
                 df[["place_city", "place_state"]] = df["place_raw"].str.extract(
-                    r'^([^,]+)(?:,\s*([A-Z]{2}))?$', expand=True
+                    r"^([^,]+)(?:,\s*([A-Z]{2}))?$", expand=True
                 )
                 df["place_city"] = df["place_city"].str.strip()
                 df["place_state"] = df["place_state"].str.strip()
@@ -55,8 +53,7 @@ class DotScraper(ConsolidatedScraperBase):
         return df
 
     def _dot_create_extras(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Create extras JSON with DOT-specific fields that aren't in core schema.
+        """Create extras JSON with DOT-specific fields that aren't in core schema.
         Captures 19 additional data points for comprehensive data retention.
         """
         try:
@@ -107,8 +104,7 @@ class DotScraper(ConsolidatedScraperBase):
         return df
 
     async def dot_setup(self) -> bool:
-        """
-        DOT-specific setup with complex retry logic and Apply button click.
+        """DOT-specific setup with complex retry logic and Apply button click.
         Preserves original DOT navigation behavior.
         """
         if not self.base_url:
@@ -234,9 +230,8 @@ class DotScraper(ConsolidatedScraperBase):
         self.logger.error("All navigation attempts failed for DOT scraper setup.")
         return False
 
-    async def dot_extract(self) -> Optional[str]:
-        """
-        DOT-specific extraction - handle batch processing workflow.
+    async def dot_extract(self) -> str | None:
+        """DOT-specific extraction - handle batch processing workflow.
         DOT uses a batch processing system where clicking the download link starts
         a background job, and we need to wait for completion.
         """
@@ -258,9 +253,8 @@ class DotScraper(ConsolidatedScraperBase):
         # DOT download - fix the CSV download or fail
         return await self._dot_fix_csv_download()
 
-    async def _dot_fix_csv_download(self) -> Optional[str]:
-        """
-        DOT CSV download with proper new tab detection and batch processing monitoring.
+    async def _dot_fix_csv_download(self) -> str | None:
+        """DOT CSV download with proper new tab detection and batch processing monitoring.
 
         DOT's "Download CSV" button opens a new tab with a batch processing page.
         We need to detect the new tab and monitor it for completion.
@@ -594,7 +588,7 @@ class DotScraper(ConsolidatedScraperBase):
 
                         # Verify the file is CSV, not HTML
                         if download_path and os.path.exists(download_path):
-                            with open(download_path, "r", encoding="utf-8") as f:
+                            with open(download_path, encoding="utf-8") as f:
                                 first_line = f.readline().strip()
 
                             if (
@@ -654,9 +648,7 @@ class DotScraper(ConsolidatedScraperBase):
             return None
 
     def dot_process(self, file_path: str) -> int:
-        """
-        DOT-specific processing.
-        """
+        """DOT-specific processing."""
         if not file_path:
             # Try to get most recent download
             file_path = self.get_last_downloaded_path()

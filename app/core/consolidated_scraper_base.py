@@ -1,5 +1,4 @@
-"""
-Consolidated ScraperBase class that combines all functionality from BaseScraper and mixins.
+"""Consolidated ScraperBase class that combines all functionality from BaseScraper and mixins.
 This preserves all existing scraper behavior while eliminating artificial separation.
 
 ARCHITECTURE OVERVIEW:
@@ -34,7 +33,7 @@ class AgencyScraper(ConsolidatedScraperBase):
         config = create_agency_config()  # From config_converter
         config.base_url = active_config.AGENCY_URL
         super().__init__(config)
-    
+
     # Optional: Override only for agency-specific transforms
     def custom_transform(self, df):
         return df
@@ -42,57 +41,60 @@ class AgencyScraper(ConsolidatedScraperBase):
 This architecture reduces ~20,000 lines of code to ~2,000 while maintaining
 all functionality and improving maintainability.
 """
-import os
-import json
+
 import asyncio
 import hashlib
-from typing import Optional, List, Dict, Any, Callable
-from datetime import datetime, timezone
-import pandas as pd
-from urllib.parse import urlparse
-from dataclasses import dataclass, field
+import json
+import os
 import re
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from typing import Any
+from urllib.parse import urlparse
+
+import pandas as pd
 
 # Playwright imports
 from playwright.async_api import (
     Browser,
-    Page,
-    Download,
     BrowserContext,
+    Download,
+    Page,
+    async_playwright,
 )
 from playwright.async_api import (
-    async_playwright,
     TimeoutError as PlaywrightTimeoutError,
 )
 
+from app.config import active_config
+from app.database import db
+from app.database.crud import bulk_upsert_prospects
+from app.database.models import DataSource
+from app.services.llm_service import LLMService
+from app.utils.file_processing import create_processing_log, update_processing_log
+
 # Application imports
 from app.utils.logger import logger
-from app.config import active_config
-from app.database.crud import bulk_upsert_prospects
-from app.database import db
-from app.database.models import DataSource
-from app.utils.file_processing import create_processing_log, update_processing_log
-from app.services.llm_service import LLMService
 
 
 @dataclass
 class ScraperConfig:
-    """
-    Unified configuration class for scrapers.
+    """Unified configuration class for scrapers.
     Combines BaseScraperConfig and DataProcessingRules functionality.
     """
 
     # Core identification
     source_name: str
-    base_url: Optional[str] = None
-    folder_name: Optional[
-        str
-    ] = None  # Custom folder name for file storage (defaults to sanitized source_name)
+    base_url: str | None = None
+    folder_name: str | None = (
+        None  # Custom folder name for file storage (defaults to sanitized source_name)
+    )
 
     # Browser configuration
     use_stealth: bool = False
     debug_mode: bool = False  # Controls headless mode
-    special_browser_args: Optional[List[str]] = None  # For sites needing specific args
+    special_browser_args: list[str] | None = None  # For sites needing specific args
 
     # Timeouts (in milliseconds)
     # These defaults are based on empirical testing across all agency sites:
@@ -110,12 +112,12 @@ class ScraperConfig:
     save_html_on_error: bool = False
 
     # Selectors and interaction
-    export_button_selector: Optional[str] = None
-    csv_button_selector: Optional[str] = None
-    pre_export_click_selector: Optional[str] = None
-    excel_link_selectors: Optional[List[str]] = None
-    download_link_text: Optional[str] = None  # For DOC-style text-based link finding
-    direct_download_url: Optional[str] = None  # For DOS-style direct downloads
+    export_button_selector: str | None = None
+    csv_button_selector: str | None = None
+    pre_export_click_selector: str | None = None
+    excel_link_selectors: list[str] | None = None
+    download_link_text: str | None = None  # For DOC-style text-based link finding
+    direct_download_url: str | None = None  # For DOS-style direct downloads
 
     # Wait times for specific actions
     explicit_wait_ms_before_download: int = 0
@@ -126,28 +128,28 @@ class ScraperConfig:
     file_read_strategy: str = (
         "auto"  # "csv_then_excel", "html_then_excel", "excel", etc.
     )
-    csv_read_options: Dict[str, Any] = field(default_factory=dict)
-    excel_read_options: Dict[str, Any] = field(default_factory=dict)
-    html_read_options: Dict[str, Any] = field(default_factory=dict)
-    read_options: Dict[str, Any] = field(default_factory=dict)  # For general options
+    csv_read_options: dict[str, Any] = field(default_factory=dict)
+    excel_read_options: dict[str, Any] = field(default_factory=dict)
+    html_read_options: dict[str, Any] = field(default_factory=dict)
+    read_options: dict[str, Any] = field(default_factory=dict)  # For general options
 
     # Data processing configuration
-    custom_transform_functions: List[str] = field(default_factory=list)
-    raw_column_rename_map: Dict[str, str] = field(default_factory=dict)
-    date_column_configs: List[Dict[str, Any]] = field(default_factory=list)
-    value_column_configs: List[Dict[str, Any]] = field(default_factory=list)
-    place_column_configs: List[Dict[str, Any]] = field(default_factory=list)
-    fiscal_year_configs: List[Dict[str, Any]] = field(default_factory=list)
-    db_column_rename_map: Dict[str, str] = field(default_factory=dict)
-    fields_for_id_hash: List[str] = field(default_factory=list)
-    required_fields_for_load: Optional[List[str]] = None
+    custom_transform_functions: list[str] = field(default_factory=list)
+    raw_column_rename_map: dict[str, str] = field(default_factory=dict)
+    date_column_configs: list[dict[str, Any]] = field(default_factory=list)
+    value_column_configs: list[dict[str, Any]] = field(default_factory=list)
+    place_column_configs: list[dict[str, Any]] = field(default_factory=list)
+    fiscal_year_configs: list[dict[str, Any]] = field(default_factory=list)
+    db_column_rename_map: dict[str, str] = field(default_factory=dict)
+    fields_for_id_hash: list[str] = field(default_factory=list)
+    required_fields_for_load: list[str] | None = None
     dropna_how_all: bool = True
 
     # Special retry configuration (for DOT-style scrapers)
     # Some agencies (like DOT) have multiple download endpoints that may fail intermittently.
     # This allows defining a list of retry strategies with different selectors/approaches.
     # Example: [{"selector": "button.export", "wait_ms": 1000}, {"selector": "a.download", "wait_ms": 2000}]
-    retry_attempts: Optional[List[Dict[str, Any]]] = None
+    retry_attempts: list[dict[str, Any]] | None = None
 
     # New page download configuration (for DOT-style scrapers)
     new_page_download_expect_timeout_ms: int = 60000
@@ -160,8 +162,7 @@ class ScraperConfig:
 
 
 class ConsolidatedScraperBase:
-    """
-    Consolidated scraper base class that combines functionality from:
+    """Consolidated scraper base class that combines functionality from:
     - BaseScraper
     - NavigationMixin
     - DownloadMixin
@@ -177,9 +178,9 @@ class ConsolidatedScraperBase:
         self.base_url = config.base_url
 
         # Runtime state
-        self.browser: Optional[Browser] = None
-        self.page: Optional[Page] = None
-        self.context: Optional[BrowserContext] = None
+        self.browser: Browser | None = None
+        self.page: Page | None = None
+        self.context: BrowserContext | None = None
         self.download_dir = None
         self.last_downloaded_file = None
         self.data_source = None
@@ -280,9 +281,9 @@ class ConsolidatedScraperBase:
             }
             # Set appropriate referer
             if "Treasury" in self.source_name:
-                context_kwargs["extra_http_headers"][
-                    "Referer"
-                ] = "https://www.treasury.gov/"
+                context_kwargs["extra_http_headers"]["Referer"] = (
+                    "https://www.treasury.gov/"
+                )
             else:
                 context_kwargs["extra_http_headers"]["Referer"] = "https://www.hhs.gov/"
         else:
@@ -577,8 +578,7 @@ class ConsolidatedScraperBase:
     # ============================================================================
 
     async def navigate_to_url(self, url: str, wait_until: str = "networkidle") -> bool:
-        """
-        Navigate to URL with enhanced error handling and wait state control.
+        """Navigate to URL with enhanced error handling and wait state control.
 
         Args:
             url: URL to navigate to
@@ -648,8 +648,7 @@ class ConsolidatedScraperBase:
     async def scroll_into_view(
         self, selector: str, behavior: str = "smooth", block: str = "center"
     ) -> bool:
-        """
-        Scroll element into viewport before interaction to mimic human behavior.
+        """Scroll element into viewport before interaction to mimic human behavior.
 
         Args:
             selector: CSS selector or XPath of element to scroll to
@@ -700,8 +699,7 @@ class ConsolidatedScraperBase:
             return False
 
     async def human_like_hover(self, selector: str) -> bool:
-        """
-        Hover over element with human-like mouse movement to avoid bot detection.
+        """Hover over element with human-like mouse movement to avoid bot detection.
 
         Args:
             selector: CSS selector or XPath of element to hover
@@ -744,8 +742,7 @@ class ConsolidatedScraperBase:
             return False
 
     async def random_wait(self, min_ms: int = 1000, max_ms: int = 3000) -> None:
-        """
-        Wait for a random amount of time to mimic human behavior.
+        """Wait for a random amount of time to mimic human behavior.
 
         Args:
             min_ms: Minimum wait time in milliseconds
@@ -762,11 +759,10 @@ class ConsolidatedScraperBase:
         selector: str,
         ensure_visible: bool = True,
         use_js: bool = False,
-        timeout: Optional[int] = None,
+        timeout: int | None = None,
         js_click_fallback: bool = True,
     ) -> bool:
-        """
-        Enhanced click with visibility checks, scrolling, and human-like behavior.
+        """Enhanced click with visibility checks, scrolling, and human-like behavior.
 
         Args:
             selector: CSS selector or XPath
@@ -844,11 +840,10 @@ class ConsolidatedScraperBase:
         self,
         selector: str,
         use_js: bool = False,
-        timeout: Optional[int] = None,
+        timeout: int | None = None,
         js_click_fallback: bool = False,
     ) -> bool:
-        """
-        Click an element with robust error handling and JS fallback.
+        """Click an element with robust error handling and JS fallback.
 
         Args:
             selector: CSS selector or XPath
@@ -921,10 +916,9 @@ class ConsolidatedScraperBase:
             return False
 
     async def wait_for_selector(
-        self, selector: str, state: str = "visible", timeout: Optional[int] = None
+        self, selector: str, state: str = "visible", timeout: int | None = None
     ) -> bool:
-        """
-        Wait for element to reach specified state.
+        """Wait for element to reach specified state.
 
         Args:
             selector: CSS selector or XPath
@@ -950,7 +944,7 @@ class ConsolidatedScraperBase:
             return False
 
     async def fill_input(
-        self, selector: str, text: str, timeout: Optional[int] = None
+        self, selector: str, text: str, timeout: int | None = None
     ) -> bool:
         """Fill an input field with text."""
         timeout = timeout or self.config.interaction_timeout_ms
@@ -968,8 +962,8 @@ class ConsolidatedScraperBase:
             return False
 
     async def get_element_attribute(
-        self, selector: str, attribute: str, timeout: Optional[int] = None
-    ) -> Optional[str]:
+        self, selector: str, attribute: str, timeout: int | None = None
+    ) -> str | None:
         """Get attribute value from an element."""
         timeout = timeout or self.config.interaction_timeout_ms
 
@@ -983,8 +977,8 @@ class ConsolidatedScraperBase:
             return None
 
     async def get_element_text(
-        self, selector: str, timeout: Optional[int] = None
-    ) -> Optional[str]:
+        self, selector: str, timeout: int | None = None
+    ) -> str | None:
         """Get text content from an element."""
         timeout = timeout or self.config.interaction_timeout_ms
 
@@ -996,7 +990,7 @@ class ConsolidatedScraperBase:
             return None
 
     async def wait_for_load_state(
-        self, state: str = "networkidle", timeout: Optional[int] = None
+        self, state: str = "networkidle", timeout: int | None = None
     ):
         """Wait for page to reach specified load state."""
         timeout = timeout or self.config.navigation_timeout_ms
@@ -1019,13 +1013,12 @@ class ConsolidatedScraperBase:
     async def download_file_via_click(
         self,
         selector: str,
-        pre_click_selector: Optional[str] = None,
+        pre_click_selector: str | None = None,
         wait_after_click: int = 0,
-        timeout: Optional[int] = None,
+        timeout: int | None = None,
         js_click_fallback: bool = False,
-    ) -> Optional[str]:
-        """
-        Download file by clicking a button/link.
+    ) -> str | None:
+        """Download file by clicking a button/link.
 
         Args:
             selector: Selector for download button/link
@@ -1076,10 +1069,9 @@ class ConsolidatedScraperBase:
             return None
 
     async def download_file_directly(
-        self, url: str, filename: Optional[str] = None
-    ) -> Optional[str]:
-        """
-        Download file directly via HTTP request.
+        self, url: str, filename: str | None = None
+    ) -> str | None:
+        """Download file directly via HTTP request.
 
         Args:
             url: Direct download URL
@@ -1124,9 +1116,8 @@ class ConsolidatedScraperBase:
             self.logger.error(f"Direct download error: {e}")
             return None
 
-    async def download_file_via_new_page(self, selector: str) -> Optional[str]:
-        """
-        Download file by clicking a link that opens a new page/tab.
+    async def download_file_via_new_page(self, selector: str) -> str | None:
+        """Download file by clicking a link that opens a new page/tab.
         Specialized for DOT-style downloads.
         """
         try:
@@ -1230,9 +1221,8 @@ class ConsolidatedScraperBase:
             await self.capture_error_info(e, "new_page_download_setup_error")
             return None
 
-    async def find_excel_link(self) -> Optional[str]:
-        """
-        Find Excel file link on the page using configured selectors.
+    async def find_excel_link(self) -> str | None:
+        """Find Excel file link on the page using configured selectors.
         Used for SSA-style scrapers that need to find Excel download links.
         """
         if not self.config.excel_link_selectors:
@@ -1280,9 +1270,8 @@ class ConsolidatedScraperBase:
 
     async def find_link_by_text(
         self, link_text: str, timeout_ms: int = 30000
-    ) -> Optional[str]:
-        """
-        Find download link by text content and return its href.
+    ) -> str | None:
+        """Find download link by text content and return its href.
         Used for DOC-style scrapers that need to find links by text.
         """
         self.logger.info(f"Looking for link with text: '{link_text}'")
@@ -1325,7 +1314,7 @@ class ConsolidatedScraperBase:
             )
             return None
 
-    def get_last_downloaded_path(self) -> Optional[str]:
+    def get_last_downloaded_path(self) -> str | None:
         """Get path to the most recently downloaded file."""
         if self.last_downloaded_file and os.path.exists(self.last_downloaded_file):
             return self.last_downloaded_file
@@ -1348,9 +1337,8 @@ class ConsolidatedScraperBase:
 
         return None
 
-    async def download_with_fallback(self, selector: str, **kwargs) -> Optional[str]:
-        """
-        Download file with automatic fallback to last successful file.
+    async def download_with_fallback(self, selector: str, **kwargs) -> str | None:
+        """Download file with automatic fallback to last successful file.
 
         This method tries to download a file normally, and if that fails,
         falls back to using the most recent successfully processed file
@@ -1449,9 +1437,8 @@ class ConsolidatedScraperBase:
             self.logger.error(f"Error getting data source: {e}")
             return None
 
-    def _find_filesystem_fallback(self) -> Optional[str]:
-        """
-        Find most recent file in download directory as filesystem-based fallback.
+    def _find_filesystem_fallback(self) -> str | None:
+        """Find most recent file in download directory as filesystem-based fallback.
 
         This method scans the download directory directly for files when the
         database-tracked approach fails, providing a secondary fallback mechanism.
@@ -1503,8 +1490,7 @@ class ConsolidatedScraperBase:
             return None
 
     def _validate_fallback_file(self, file_path: str) -> bool:
-        """
-        Validate that a potential fallback file is usable.
+        """Validate that a potential fallback file is usable.
 
         Args:
             file_path: Path to file to validate
@@ -1534,7 +1520,7 @@ class ConsolidatedScraperBase:
             # For CSV files, do a quick content check
             if ext == ".csv":
                 try:
-                    with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+                    with open(file_path, encoding="utf-8", errors="ignore") as f:
                         first_line = f.readline().lower()
                         # Check if it looks like HTML error page
                         if "<html" in first_line or "<title>error" in first_line:
@@ -1557,9 +1543,8 @@ class ConsolidatedScraperBase:
     # DATA PROCESSING FUNCTIONALITY (from DataProcessingMixin)
     # ============================================================================
 
-    def read_file_to_dataframe(self, file_path: str) -> Optional[pd.DataFrame]:
-        """
-        Read file to DataFrame with intelligent format detection and strategy handling.
+    def read_file_to_dataframe(self, file_path: str) -> pd.DataFrame | None:
+        """Read file to DataFrame with intelligent format detection and strategy handling.
 
         Args:
             file_path: Path to file to read
@@ -1593,7 +1578,7 @@ class ConsolidatedScraperBase:
             self.logger.error(f"Error reading file {file_path}: {e}")
             return None
 
-    def _read_csv_then_excel(self, file_path: str) -> Optional[pd.DataFrame]:
+    def _read_csv_then_excel(self, file_path: str) -> pd.DataFrame | None:
         """Try CSV first, fallback to Excel."""
         # Try CSV first
         df = self._read_csv_file(file_path)
@@ -1604,7 +1589,7 @@ class ConsolidatedScraperBase:
         self.logger.info("CSV reading failed, trying Excel")
         return self._read_excel_file(file_path)
 
-    def _read_html_then_excel(self, file_path: str) -> Optional[pd.DataFrame]:
+    def _read_html_then_excel(self, file_path: str) -> pd.DataFrame | None:
         """Try HTML first, fallback to Excel."""
         # Try HTML first
         df = self._read_html_file(file_path)
@@ -1615,7 +1600,7 @@ class ConsolidatedScraperBase:
         self.logger.info("HTML reading failed, trying Excel")
         return self._read_excel_file(file_path)
 
-    def _read_csv_file(self, file_path: str) -> Optional[pd.DataFrame]:
+    def _read_csv_file(self, file_path: str) -> pd.DataFrame | None:
         """Read CSV file with configuration options."""
         try:
             # Merge general read options with CSV-specific options
@@ -1627,7 +1612,19 @@ class ConsolidatedScraperBase:
 
             # Set default na_values to treat empty strings as NaN
             if "na_values" not in read_options:
-                read_options["na_values"] = ["", '""', "''", "N/A", "n/a", "NA", "na", "None", "none", "NULL", "null"]
+                read_options["na_values"] = [
+                    "",
+                    '""',
+                    "''",
+                    "N/A",
+                    "n/a",
+                    "NA",
+                    "na",
+                    "None",
+                    "none",
+                    "NULL",
+                    "null",
+                ]
 
             df = pd.read_csv(file_path, **read_options)
             self.logger.debug(f"Successfully read CSV file with {len(df)} rows")
@@ -1637,7 +1634,7 @@ class ConsolidatedScraperBase:
             self.logger.warning(f"Failed to read as CSV: {e}")
             return None
 
-    def _read_excel_file(self, file_path: str) -> Optional[pd.DataFrame]:
+    def _read_excel_file(self, file_path: str) -> pd.DataFrame | None:
         """Read Excel file with configuration options."""
         try:
             # Merge general read options with Excel-specific options
@@ -1658,7 +1655,7 @@ class ConsolidatedScraperBase:
             self.logger.warning(f"Failed to read as Excel: {e}")
             return None
 
-    def _read_html_file(self, file_path: str) -> Optional[pd.DataFrame]:
+    def _read_html_file(self, file_path: str) -> pd.DataFrame | None:
         """Read HTML file with configuration options."""
         try:
             # Merge general read options with HTML-specific options
@@ -1680,7 +1677,7 @@ class ConsolidatedScraperBase:
             self.logger.warning(f"Failed to read as HTML: {e}")
             return None
 
-    def _read_auto_detect(self, file_path: str) -> Optional[pd.DataFrame]:
+    def _read_auto_detect(self, file_path: str) -> pd.DataFrame | None:
         """Auto-detect file format and read appropriately."""
         file_ext = os.path.splitext(file_path)[1].lower()
 
@@ -1700,8 +1697,7 @@ class ConsolidatedScraperBase:
             return self._read_excel_file(file_path)
 
     def transform_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Apply comprehensive data transformations based on configuration.
+        """Apply comprehensive data transformations based on configuration.
 
         Args:
             df: Input DataFrame
@@ -1792,7 +1788,7 @@ class ConsolidatedScraperBase:
         return df
 
     def _apply_column_renaming(
-        self, df: pd.DataFrame, rename_map: Dict[str, str]
+        self, df: pd.DataFrame, rename_map: dict[str, str]
     ) -> pd.DataFrame:
         """Apply column renaming with logging."""
         if not rename_map:
@@ -1810,12 +1806,14 @@ class ConsolidatedScraperBase:
         missing_columns = set(rename_map.keys()) - set(df.columns)
         if missing_columns:
             # Use trace level for expected missing columns (consumed by custom transforms)
-            self.logger.trace(f"Columns not found for renaming (may be consumed by custom transforms): {missing_columns}")
+            self.logger.trace(
+                f"Columns not found for renaming (may be consumed by custom transforms): {missing_columns}"
+            )
 
         return df
 
     def _process_date_columns(
-        self, df: pd.DataFrame, date_configs: List[Dict[str, Any]]
+        self, df: pd.DataFrame, date_configs: list[dict[str, Any]]
     ) -> pd.DataFrame:
         """Process date columns according to configuration."""
         for config in date_configs:
@@ -1831,7 +1829,7 @@ class ConsolidatedScraperBase:
         return df
 
     def _parse_standard_date(
-        self, df: pd.DataFrame, config: Dict[str, Any]
+        self, df: pd.DataFrame, config: dict[str, Any]
     ) -> pd.DataFrame:
         """Parse standard date column."""
         source_col = config.get("column")
@@ -1855,7 +1853,7 @@ class ConsolidatedScraperBase:
         return df
 
     def _parse_fiscal_quarter_date(
-        self, df: pd.DataFrame, config: Dict[str, Any]
+        self, df: pd.DataFrame, config: dict[str, Any]
     ) -> pd.DataFrame:
         """Parse fiscal quarter (e.g., 'FY24 Q2') into date and fiscal year."""
         source_col = config.get("column")
@@ -1945,7 +1943,7 @@ class ConsolidatedScraperBase:
         return df
 
     def _process_value_columns(
-        self, df: pd.DataFrame, value_configs: List[Dict[str, Any]]
+        self, df: pd.DataFrame, value_configs: list[dict[str, Any]]
     ) -> pd.DataFrame:
         """Process value columns (extract numeric values and units)."""
         for config in value_configs:
@@ -2006,7 +2004,7 @@ class ConsolidatedScraperBase:
         return df
 
     def _process_place_columns(
-        self, df: pd.DataFrame, place_configs: List[Dict[str, Any]]
+        self, df: pd.DataFrame, place_configs: list[dict[str, Any]]
     ) -> pd.DataFrame:
         """Process place columns (split location strings)."""
         for config in place_configs:
@@ -2051,7 +2049,7 @@ class ConsolidatedScraperBase:
         return df
 
     def _process_fiscal_year_columns(
-        self, df: pd.DataFrame, fy_configs: List[Dict[str, Any]]
+        self, df: pd.DataFrame, fy_configs: list[dict[str, Any]]
     ) -> pd.DataFrame:
         """Process fiscal year columns."""
         for config in fy_configs:
@@ -2141,7 +2139,7 @@ class ConsolidatedScraperBase:
         return df
 
     def _generate_id_hash(
-        self, df: pd.DataFrame, hash_fields: List[str]
+        self, df: pd.DataFrame, hash_fields: list[str]
     ) -> pd.DataFrame:
         """Generate unique ID hash from specified fields."""
         try:
@@ -2177,8 +2175,7 @@ class ConsolidatedScraperBase:
         return df
 
     def _collect_unmapped_columns_to_extras(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Collect unmapped columns into extras_json field before they get filtered out.
+        """Collect unmapped columns into extras_json field before they get filtered out.
         This preserves additional data that isn't explicitly mapped but may be useful for AI processing.
         """
         try:
@@ -2279,8 +2276,7 @@ class ConsolidatedScraperBase:
         return df
 
     def prepare_and_load_data(self, df: pd.DataFrame) -> int:
-        """
-        Prepare DataFrame for database loading and execute bulk load.
+        """Prepare DataFrame for database loading and execute bulk load.
 
         Args:
             df: Transformed DataFrame
@@ -2300,7 +2296,7 @@ class ConsolidatedScraperBase:
             df["source_id"] = self.data_source.id
 
             # Add loaded_at timestamp
-            df["loaded_at"] = datetime.now(timezone.utc)
+            df["loaded_at"] = datetime.now(UTC)
 
             # Validate required fields if specified
             if self.config.required_fields_for_load:
@@ -2316,29 +2312,31 @@ class ConsolidatedScraperBase:
 
             # Get valid Prospect model columns
             from app.database.models import Prospect
-            valid_columns = [
-                column.name for column in Prospect.__table__.columns
-            ]
-            
+
+            valid_columns = [column.name for column in Prospect.__table__.columns]
+
             # Add special columns that are handled separately
-            special_columns = ["extras_json"]  # This gets renamed to 'extra' by the model
-            
+            special_columns = [
+                "extras_json"
+            ]  # This gets renamed to 'extra' by the model
+
             # Filter dataframe to only include valid columns
             columns_to_keep = [
-                col for col in df.columns 
+                col
+                for col in df.columns
                 if col in valid_columns or col in special_columns
             ]
-            
+
             # Log which columns are being filtered out
             filtered_columns = set(df.columns) - set(columns_to_keep)
             if filtered_columns:
                 self.logger.debug(
                     f"Filtering out {len(filtered_columns)} non-model columns: {sorted(filtered_columns)}"
                 )
-            
+
             # Keep only valid columns
             df = df[columns_to_keep]
-            
+
             # Rename extras_json to extra to match the model
             if "extras_json" in df.columns:
                 df = df.rename(columns={"extras_json": "extra"})
@@ -2378,7 +2376,7 @@ class ConsolidatedScraperBase:
                 loaded_count = 0
 
             # Update data source last_scraped timestamp
-            self.data_source.last_scraped = datetime.now(timezone.utc)
+            self.data_source.last_scraped = datetime.now(UTC)
             db.session.commit()
 
             self.logger.info(f"Successfully loaded {loaded_count} records to database")
@@ -2424,7 +2422,7 @@ class ConsolidatedScraperBase:
 
         return success
 
-    async def standard_extract(self) -> Optional[str]:
+    async def standard_extract(self) -> str | None:
         """Standard extraction: download via configured button selector."""
         selector = self.config.export_button_selector or self.config.csv_button_selector
 
@@ -2522,9 +2520,7 @@ class ConsolidatedScraperBase:
             # Update processing log with success
             if processing_log:
                 update_processing_log(
-                    processing_log,
-                    True,
-                    records_processed=records_inserted
+                    processing_log, True, records_processed=records_inserted
                 )
 
             return records_inserted
@@ -2535,23 +2531,18 @@ class ConsolidatedScraperBase:
 
             # Update processing log with failure
             if processing_log:
-                update_processing_log(
-                    processing_log,
-                    False,
-                    error_message=error_msg
-                )
+                update_processing_log(processing_log, False, error_message=error_msg)
 
             # Re-raise the exception to maintain existing error handling
             raise
 
     async def scrape_with_structure(
         self,
-        setup_method: Optional[Callable] = None,
-        extract_method: Optional[Callable] = None,
-        process_method: Optional[Callable] = None,
+        setup_method: Callable | None = None,
+        extract_method: Callable | None = None,
+        process_method: Callable | None = None,
     ) -> int:
-        """
-        Execute structured scraping workflow.
+        """Execute structured scraping workflow.
 
         Args:
             setup_method: Custom setup method (defaults to standard_setup)

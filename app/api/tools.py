@@ -1,19 +1,18 @@
-"""
-Tools API endpoints for executing system scripts with admin permissions.
-"""
+"""Tools API endpoints for executing system scripts with admin permissions."""
 
-import subprocess
-import threading
-import queue
 import json
+import queue
+import subprocess
 import sys
-from typing import Dict, List, Optional
+import threading
+from dataclasses import asdict, dataclass
+from enum import Enum
 from pathlib import Path
-from flask import Blueprint, request, jsonify, Response, stream_with_context
+
+from flask import Blueprint, Response, jsonify, request, stream_with_context
+
 from app.api.auth import admin_required
 from app.utils.logger import logger
-from dataclasses import dataclass, asdict
-from enum import Enum
 
 tools_bp = Blueprint("tools", __name__, url_prefix="/api/tools")
 
@@ -31,9 +30,9 @@ class ScriptParameter:
     name: str
     type: str  # 'string', 'number', 'boolean', 'choice'
     required: bool = False
-    default: Optional[str] = None
-    description: Optional[str] = None
-    choices: Optional[List[str]] = None
+    default: str | None = None
+    description: str | None = None
+    choices: list[str] | None = None
 
 
 @dataclass
@@ -43,7 +42,7 @@ class ScriptConfig:
     description: str
     script_path: str
     category: ScriptCategory
-    parameters: List[ScriptParameter] = None
+    parameters: list[ScriptParameter] = None
     dangerous: bool = False
     requires_confirmation: bool = False
     timeout: int = 300  # 5 minutes default
@@ -271,11 +270,11 @@ SCRIPT_CONFIGS = [
 SCRIPTS_BY_ID = {script.id: script for script in SCRIPT_CONFIGS}
 
 # Running scripts tracking
-running_scripts: Dict[str, dict] = {}
+running_scripts: dict[str, dict] = {}
 script_lock = threading.Lock()
 
 
-def build_command(script_config: ScriptConfig, parameters: dict) -> List[str]:
+def build_command(script_config: ScriptConfig, parameters: dict) -> list[str]:
     """Build command line arguments for script execution."""
     # Get the project root directory
     project_root = Path(__file__).parent.parent.parent
@@ -310,16 +309,14 @@ def build_command(script_config: ScriptConfig, parameters: dict) -> List[str]:
                     cmd.append("--check-status")
                 else:
                     cmd.append(value)
-            else:
-                # String, number, or choice parameters
-                if param.name == "scraper":
-                    cmd.extend(["--scraper", str(value)])
-                elif param.name == "format":
-                    cmd.extend(["--format", str(value)])
-                elif param.name == "limit":
-                    cmd.extend(["--limit", str(value)])
-                elif param.name == "retention_count":
-                    cmd.extend(["--retention-count", str(value)])
+            elif param.name == "scraper":
+                cmd.extend(["--scraper", str(value)])
+            elif param.name == "format":
+                cmd.extend(["--format", str(value)])
+            elif param.name == "limit":
+                cmd.extend(["--limit", str(value)])
+            elif param.name == "retention_count":
+                cmd.extend(["--retention-count", str(value)])
 
     return cmd
 
@@ -369,9 +366,9 @@ def execute_script_with_streaming(
                 output_queue.put(("status", "completed"))
             else:
                 running_scripts[execution_id]["status"] = "failed"
-                running_scripts[execution_id][
-                    "error"
-                ] = f"Process exited with code {return_code}"
+                running_scripts[execution_id]["error"] = (
+                    f"Process exited with code {return_code}"
+                )
                 output_queue.put(("error", f"Process exited with code {return_code}"))
 
     except Exception as e:

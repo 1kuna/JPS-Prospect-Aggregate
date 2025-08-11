@@ -1,13 +1,15 @@
+from datetime import UTC, date, datetime
+
 from flask import Blueprint, jsonify
-from sqlalchemy import func, desc
+from sqlalchemy import desc, func
+
 from app.database import db
 from app.database.models import (
-    Prospect,
     DataSource,
+    Prospect,
     ScraperStatus,
 )  # Added ScraperStatus
 from app.utils.logger import logger
-from datetime import datetime, timezone, date
 
 main_bp = Blueprint("main", __name__)
 
@@ -45,7 +47,7 @@ def health_check():
         return jsonify(
             {
                 "status": "healthy",
-                "timestamp": datetime.now(timezone.utc).isoformat() + 'Z',
+                "timestamp": datetime.now(UTC).isoformat() + "Z",
                 "database": "connected",
             }
         )
@@ -55,7 +57,7 @@ def health_check():
         return jsonify(
             {
                 "status": "unhealthy",
-                "timestamp": datetime.now(timezone.utc).isoformat() + 'Z',
+                "timestamp": datetime.now(UTC).isoformat() + "Z",
                 "database": "disconnected",  # More specific status
                 "error": str(e),
             }
@@ -115,7 +117,8 @@ def get_dashboard():
                 "status": "success",
                 "data": {
                     "total_proposals": total_prospects,
-                    "latest_successful_scrape": latest_successful_scrape.isoformat() + 'Z'
+                    "latest_successful_scrape": latest_successful_scrape.isoformat()
+                    + "Z"
                     if latest_successful_scrape
                     else None,
                     "top_agencies": [
@@ -127,7 +130,7 @@ def get_dashboard():
                             "id": p.id,
                             "title": p.title,
                             "agency": p.agency,
-                            "proposal_date": p.release_date.isoformat() + 'Z'
+                            "proposal_date": p.release_date.isoformat() + "Z"
                             if p.release_date
                             else None,
                         }
@@ -137,7 +140,7 @@ def get_dashboard():
                         {
                             "data_source_name": name,
                             "status": status,
-                            "last_checked": last_checked.isoformat() + 'Z'
+                            "last_checked": last_checked.isoformat() + "Z"
                             if last_checked
                             else None,
                             "details": details,
@@ -171,7 +174,7 @@ def _execute_database_clear_operation(operation_name: str, clear_function):
             {
                 "status": "success",
                 "message": result["response_message"],
-                "timestamp": datetime.now(timezone.utc).isoformat() + 'Z',
+                "timestamp": datetime.now(UTC).isoformat() + "Z",
             }
         )
 
@@ -189,8 +192,7 @@ def _execute_database_clear_operation(operation_name: str, clear_function):
 @main_bp.route("/database/clear", methods=["POST"])
 @main_bp.route("/database/clear/<clear_type>", methods=["POST"])
 def clear_database(clear_type="all"):
-    """
-    Clear data from the database based on type.
+    """Clear data from the database based on type.
 
     Args:
         clear_type: Type of data to clear ('all', 'ai', 'original')
@@ -357,7 +359,7 @@ def database_status():
                     "data_source_count": data_source_count,
                     "status_record_count": status_count,
                     "database_size_bytes": db_size,
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "timestamp": datetime.now(UTC).isoformat(),
                 },
             }
         )
@@ -390,9 +392,11 @@ def get_ai_preservation_config():
 def set_ai_preservation_config():
     """Set AI data preservation configuration."""
     try:
-        from flask import request
-        from app.config import active_config
         import os
+
+        from flask import request
+
+        from app.config import active_config
 
         data = request.get_json()
         if not data:
@@ -509,7 +513,9 @@ def _format_prospect_for_api(prospect):
         "place_city": prospect.place_city,
         "place_state": prospect.place_state,
         "ai_processed": prospect.ollama_processed_at is not None,
-        "loaded_at": prospect.loaded_at.isoformat() + 'Z' if prospect.loaded_at else None,
+        "loaded_at": prospect.loaded_at.isoformat() + "Z"
+        if prospect.loaded_at
+        else None,
     }
 
 
@@ -662,8 +668,9 @@ def _process_prospects_for_duplicates(prospects_to_process, scan_id, min_confide
 def detect_duplicates():
     """Detect potential duplicate prospects in the database."""
     try:
-        from flask import request
         import time
+
+        from flask import request
 
         # Parse request parameters
         data = request.get_json() or {}

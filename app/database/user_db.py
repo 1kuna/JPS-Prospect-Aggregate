@@ -1,10 +1,8 @@
-"""
-Separate database instance for user authentication data.
+"""Separate database instance for user authentication data.
 
 This provides security isolation between user authentication data
 and business prospect data.
 """
-
 
 # Import the main db instance and use binds instead of separate instance
 from app.database import db

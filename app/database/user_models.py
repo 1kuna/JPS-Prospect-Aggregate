@@ -1,12 +1,12 @@
-"""
-User authentication models in separate database.
+"""User authentication models in separate database.
 
 This file contains only user-related models that will be stored
 in a separate database for security isolation.
 """
 
-from sqlalchemy import Column, String, Integer, TIMESTAMP
+from sqlalchemy import TIMESTAMP, Column, Integer, String
 from sqlalchemy.sql import func
+
 from app.database import db
 
 

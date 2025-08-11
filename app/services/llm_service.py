@@ -1,39 +1,38 @@
-"""
-Unified LLM Service for Contract Data Enhancement
+"""Unified LLM Service for Contract Data Enhancement
 
-This service consolidates all LLM-related functionality into a single, 
+This service consolidates all LLM-related functionality into a single,
 comprehensive service that handles both batch and iterative processing
 modes without the complexity of multiple inheritance layers.
 """
 
 import json
 import re
-import time
 import threading
-from typing import Dict, List, Optional, Any, Literal, Callable
-from datetime import datetime, timezone
+import time
+from collections.abc import Callable
+from datetime import UTC, datetime
+from typing import Any, Literal, Optional
 
-from app.utils.llm_utils import call_ollama
 from app.database import db
-from app.database.models import Prospect, LLMOutput
+from app.database.models import LLMOutput, Prospect
 from app.services.optimized_prompts import (
     get_naics_prompt,
-    get_value_prompt,
     get_title_prompt,
+    get_value_prompt,
 )
-from app.utils.naics_lookup import get_naics_description, validate_naics_code
 from app.services.set_aside_standardization import (
     SetAsideStandardizer,
     StandardSetAside,
 )
+from app.utils.llm_utils import call_ollama
 from app.utils.logger import logger
+from app.utils.naics_lookup import get_naics_description, validate_naics_code
 
 EnhancementType = Literal["all", "values", "titles", "naics", "set_asides"]
 
 
 class LLMService:
-    """
-    Unified LLM service for all contract data enhancement needs.
+    """Unified LLM service for all contract data enhancement needs.
 
     This service handles:
     - Individual prospect enhancement (real-time)
@@ -52,9 +51,9 @@ class LLMService:
 
         # For iterative processing
         self._processing = False
-        self._thread: Optional[threading.Thread] = None
+        self._thread: threading.Thread | None = None
         self._stop_event = threading.Event()
-        self._progress: Dict[str, any] = {
+        self._progress: dict[str, any] = {
             "status": "idle",
             "current_type": None,
             "processed": 0,
@@ -64,7 +63,7 @@ class LLMService:
             "errors": [],
         }
         self._lock = threading.Lock()
-        self._emit_callback: Optional[Callable] = None
+        self._emit_callback: Callable | None = None
 
     # =============================================================================
     # UTILITY FUNCTIONS (from llm_service_utils.py)
@@ -92,13 +91,13 @@ class LLMService:
     def update_prospect_timestamps(self, prospect: Prospect) -> None:
         """Update prospect's ollama processing timestamps and model version."""
         try:
-            prospect.ollama_processed_at = datetime.now(timezone.utc)
+            prospect.ollama_processed_at = datetime.now(UTC)
             prospect.ollama_model_version = self.model_name
         except Exception as e:
             logger.error(f"Failed to update prospect timestamps: {e}")
 
     def emit_field_update(
-        self, prospect_id: str, field_type: str, field_data: Dict[str, Any]
+        self, prospect_id: str, field_type: str, field_data: dict[str, Any]
     ) -> None:
         """Emit a real-time field update event for a prospect."""
         if not self._emit_callback:
@@ -111,7 +110,7 @@ class LLMService:
                     "prospect_id": prospect_id,
                     "field_type": field_type,
                     "fields": field_data,
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "timestamp": datetime.now(UTC).isoformat(),
                 },
             )
         except Exception as e:
@@ -121,9 +120,7 @@ class LLMService:
     # CORE LLM ENHANCEMENT METHODS
     # =============================================================================
 
-    def parse_existing_naics(
-        self, naics_str: Optional[str]
-    ) -> Dict[str, Optional[str]]:
+    def parse_existing_naics(self, naics_str: str | None) -> dict[str, str | None]:
         """Parse existing NAICS codes from source data formats and standardize them."""
         if not naics_str:
             return {"code": None, "description": None, "standardized_format": None}
@@ -185,9 +182,7 @@ class LLMService:
             "original_format": "unknown",
         }
 
-    def extract_naics_from_extra_field(
-        self, extra_data: Any
-    ) -> Dict[str, Optional[str]]:
+    def extract_naics_from_extra_field(self, extra_data: Any) -> dict[str, str | None]:
         """Extract NAICS information from the extra field JSON data."""
         if not extra_data:
             return {"code": None, "description": None, "found_in_extra": False}
@@ -278,7 +273,7 @@ class LLMService:
         enhancement_type: str,
         prompt: str,
         response: str,
-        parsed_result: Dict,
+        parsed_result: dict,
         success: bool,
         error_message: str = None,
         processing_time: float = None,
@@ -311,7 +306,7 @@ class LLMService:
         set_aside: str = None,
         estimated_value: str = None,
         additional_info: str = None,
-    ) -> Dict:
+    ) -> dict:
         """NAICS Classification using LLM with all available prospect information."""
         prompt = get_naics_prompt(
             title=title,
@@ -432,7 +427,7 @@ class LLMService:
 
     def parse_contract_value_with_llm(
         self, value_text: str, prospect_id: str = None
-    ) -> Dict[str, Optional[float]]:
+    ) -> dict[str, float | None]:
         """Parse contract value text using LLM for intelligent understanding."""
         prompt = get_value_prompt(value_text)
 
@@ -512,7 +507,7 @@ class LLMService:
 
     def enhance_title_with_llm(
         self, title: str, description: str, agency: str = "", prospect_id: str = None
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Enhance a prospect title to be clearer and more descriptive."""
         prompt = get_title_prompt(title, description, agency)
 
@@ -585,7 +580,7 @@ class LLMService:
 
     def standardize_set_aside_with_llm(
         self, set_aside_text: str, prospect_id: str = None, prospect: "Prospect" = None
-    ) -> Optional[StandardSetAside]:
+    ) -> StandardSetAside | None:
         """Standardize set-aside values using LLM-based classification."""
         comprehensive_data = self._get_comprehensive_set_aside_data(
             set_aside_text, prospect
@@ -664,7 +659,7 @@ class LLMService:
 
     def _classify_set_aside_with_llm(
         self, set_aside_text: str, prospect_id: str = None
-    ) -> Optional[StandardSetAside]:
+    ) -> StandardSetAside | None:
         """Use LLM to intelligently classify set-aside values into standardized categories."""
         try:
             prompt = self.set_aside_standardizer.get_llm_prompt().format(set_aside_text)
@@ -776,7 +771,7 @@ class LLMService:
 
     def _match_response_to_enum(
         self, response_text: str, original_input: str
-    ) -> Optional[StandardSetAside]:
+    ) -> StandardSetAside | None:
         """Match LLM response to StandardSetAside enum with fuzzy matching."""
         if not response_text:
             return None
@@ -820,11 +815,10 @@ class LLMService:
         self,
         prospect: Prospect,
         enhancement_type: EnhancementType = "all",
-        progress_callback: Optional[Callable] = None,
+        progress_callback: Callable | None = None,
         force_redo: bool = False,
-    ) -> Dict[str, bool]:
-        """
-        Process all enhancements for a single prospect.
+    ) -> dict[str, bool]:
+        """Process all enhancements for a single prospect.
 
         Args:
             prospect: The prospect to enhance
@@ -855,10 +849,14 @@ class LLMService:
 
         # Convert enhancement_type to list for easier checking
         if isinstance(enhancement_type, str):
-            enhancement_types = [t.strip() for t in enhancement_type.split(",")] if "," in enhancement_type else [enhancement_type]
+            enhancement_types = (
+                [t.strip() for t in enhancement_type.split(",")]
+                if "," in enhancement_type
+                else [enhancement_type]
+            )
         else:
             enhancement_types = [enhancement_type]
-        
+
         # Process title enhancement FIRST (to match frontend order)
         if "titles" in enhancement_types or "all" in enhancement_types:
             logger.info(f"LLM Service: Processing titles for {prospect.id[:8]}...")
@@ -886,7 +884,7 @@ class LLMService:
                         "confidence": enhanced_title["confidence"],
                         "reasoning": enhanced_title.get("reasoning", ""),
                         "original_title": prospect.title,
-                        "enhanced_at": datetime.now(timezone.utc).isoformat(),
+                        "enhanced_at": datetime.now(UTC).isoformat(),
                         "model_used": self.model_name,
                     }
                     results["titles"] = True
@@ -918,9 +916,13 @@ class LLMService:
                 )
 
             value_to_parse = None
-            if prospect.estimated_value_text and (not prospect.estimated_value_single or force_redo):
+            if prospect.estimated_value_text and (
+                not prospect.estimated_value_single or force_redo
+            ):
                 value_to_parse = prospect.estimated_value_text
-            elif prospect.estimated_value and (not prospect.estimated_value_single or force_redo):
+            elif prospect.estimated_value and (
+                not prospect.estimated_value_single or force_redo
+            ):
                 value_to_parse = str(prospect.estimated_value)
 
             logger.debug(
@@ -938,7 +940,9 @@ class LLMService:
                     f"LLM Service: Received parsed value for {prospect.id[:8]}: {parsed_value}"
                 )
                 # Handle both single values and ranges
-                if parsed_value["single"] is not None or (parsed_value["min"] is not None and parsed_value["max"] is not None):
+                if parsed_value["single"] is not None or (
+                    parsed_value["min"] is not None and parsed_value["max"] is not None
+                ):
                     # Set single value if available
                     if parsed_value["single"] is not None:
                         prospect.estimated_value_single = float(parsed_value["single"])
@@ -955,9 +959,17 @@ class LLMService:
                     else:
                         # We have a range without a single value
                         prospect.estimated_value_single = None
-                        prospect.estimated_value_min = float(parsed_value["min"]) if parsed_value["min"] is not None else None
-                        prospect.estimated_value_max = float(parsed_value["max"]) if parsed_value["max"] is not None else None
-                    
+                        prospect.estimated_value_min = (
+                            float(parsed_value["min"])
+                            if parsed_value["min"] is not None
+                            else None
+                        )
+                        prospect.estimated_value_max = (
+                            float(parsed_value["max"])
+                            if parsed_value["max"] is not None
+                            else None
+                        )
+
                     if not prospect.estimated_value_text:
                         prospect.estimated_value_text = value_to_parse
                     results["values"] = True
@@ -990,14 +1002,20 @@ class LLMService:
                 )
 
             if prospect.description and (
-                not prospect.naics or prospect.naics_source != "llm_inferred" or force_redo
+                not prospect.naics
+                or prospect.naics_source != "llm_inferred"
+                or force_redo
             ):
                 # Store original NAICS if it exists and hasn't been stored yet
                 if prospect.naics and "original_naics" not in prospect.extra:
                     prospect.extra["original_naics"] = prospect.naics
-                    prospect.extra["original_naics_description"] = prospect.naics_description
-                    prospect.extra["original_naics_source"] = prospect.naics_source or "original"
-                
+                    prospect.extra["original_naics_description"] = (
+                        prospect.naics_description
+                    )
+                    prospect.extra["original_naics_source"] = (
+                        prospect.naics_source or "original"
+                    )
+
                 # First check extra field
                 extra_naics = self.extract_naics_from_extra_field(prospect.extra)
 
@@ -1007,7 +1025,7 @@ class LLMService:
                     prospect.naics_source = "original"
 
                     prospect.extra["naics_extracted_from_extra"] = {
-                        "extracted_at": datetime.now(timezone.utc).isoformat(),
+                        "extracted_at": datetime.now(UTC).isoformat(),
                         "original_code": extra_naics["code"],
                         "original_description": extra_naics["description"],
                     }
@@ -1032,7 +1050,7 @@ class LLMService:
                         prospect.extra["llm_classification"] = {
                             "naics_confidence": classification["confidence"],
                             "model_used": self.model_name,
-                            "classified_at": datetime.now(timezone.utc).isoformat(),
+                            "classified_at": datetime.now(UTC).isoformat(),
                         }
                         results["naics"] = True
 
@@ -1045,7 +1063,6 @@ class LLMService:
                         "prospect_id": prospect.id,
                     }
                 )
-
 
         # Process set-aside standardization
         if "set_asides" in enhancement_types or "all" in enhancement_types:
@@ -1073,7 +1090,7 @@ class LLMService:
                         prospect.extra["set_aside_standardization"] = {
                             "original_set_aside": prospect.set_aside,
                             "comprehensive_data_used": comprehensive_data,
-                            "standardized_at": datetime.now(timezone.utc).isoformat(),
+                            "standardized_at": datetime.now(UTC).isoformat(),
                         }
                         results["set_asides"] = True
 
@@ -1103,13 +1120,12 @@ class LLMService:
 
     def enhance_prospects_batch(
         self,
-        prospects: List[Prospect],
+        prospects: list[Prospect],
         enhancement_type: EnhancementType = "all",
         commit_batch_size: int = 100,
         emit_updates: bool = False,
     ) -> int:
-        """
-        Enhance multiple prospects in batch mode.
+        """Enhance multiple prospects in batch mode.
 
         Args:
             prospects: List of prospects to enhance
@@ -1192,7 +1208,7 @@ class LLMService:
         """Set callback for real-time field updates."""
         self._emit_callback = emit_callback
 
-    def get_progress(self) -> Dict[str, any]:
+    def get_progress(self) -> dict[str, any]:
         """Get current processing progress."""
         with self._lock:
             return self._progress.copy()
@@ -1204,17 +1220,17 @@ class LLMService:
     # Backward compatibility methods for API
     def start_enhancement(
         self, enhancement_type: EnhancementType, skip_existing: bool = True
-    ) -> Dict[str, any]:
+    ) -> dict[str, any]:
         """Start enhancement processing (alias for start_iterative_enhancement)"""
         return self.start_iterative_enhancement(enhancement_type, skip_existing)
 
-    def stop_enhancement(self) -> Dict[str, any]:
+    def stop_enhancement(self) -> dict[str, any]:
         """Stop enhancement processing (alias for stop_iterative_enhancement)"""
         return self.stop_iterative_enhancement()
 
     def start_iterative_enhancement(
         self, enhancement_type: EnhancementType, skip_existing: bool = True
-    ) -> Dict[str, any]:
+    ) -> dict[str, any]:
         """Start iterative enhancement processing in background thread."""
         if self._processing:
             return {"status": "error", "message": "Enhancement already in progress"}
@@ -1244,7 +1260,7 @@ class LLMService:
                     "processed": 0,
                     "total": len(prospects_to_process),
                     "current_prospect": None,
-                    "started_at": datetime.now(timezone.utc).isoformat(),
+                    "started_at": datetime.now(UTC).isoformat(),
                     "errors": [],
                 }
             )
@@ -1263,7 +1279,7 @@ class LLMService:
             "total_to_process": len(prospects_to_process),
         }
 
-    def stop_iterative_enhancement(self) -> Dict[str, any]:
+    def stop_iterative_enhancement(self) -> dict[str, any]:
         """Stop the current iterative enhancement process."""
         if not self._processing:
             return {"status": "error", "message": "No enhancement currently running"}
@@ -1282,7 +1298,7 @@ class LLMService:
 
     def _get_prospects_to_process(
         self, enhancement_type: EnhancementType, skip_existing: bool = True
-    ) -> List[Prospect]:
+    ) -> list[Prospect]:
         """Get list of prospects that need processing for the given enhancement type."""
         query = Prospect.query
 
@@ -1303,7 +1319,7 @@ class LLMService:
         return query.all()
 
     def _iterative_processing_worker(
-        self, prospects: List[Prospect], enhancement_type: EnhancementType
+        self, prospects: list[Prospect], enhancement_type: EnhancementType
     ):
         """Worker thread for iterative processing."""
         try:
@@ -1331,7 +1347,7 @@ class LLMService:
                             {
                                 "prospect_id": prospect.id,
                                 "error": str(e),
-                                "timestamp": datetime.now(timezone.utc).isoformat(),
+                                "timestamp": datetime.now(UTC).isoformat(),
                             }
                         )
 
@@ -1352,7 +1368,7 @@ class LLMService:
                 self._progress["errors"].append(
                     {
                         "error": str(e),
-                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "timestamp": datetime.now(UTC).isoformat(),
                     }
                 )
         finally:

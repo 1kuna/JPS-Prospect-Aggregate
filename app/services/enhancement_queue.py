@@ -1,5 +1,4 @@
-"""
-Simplified Enhancement Queue
+"""Simplified Enhancement Queue
 
 Replaces the complex EnhancementQueueService with simple function-based processing.
 This maintains the same API but with significantly reduced complexity.
@@ -7,14 +6,14 @@ This maintains the same API but with significantly reduced complexity.
 
 import threading
 import time
-from datetime import datetime, timezone
-from typing import Dict, Optional, List, Any
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from enum import Enum
+from typing import Any
 
-from app.utils.logger import logger
 from app.database.models import Prospect, db
-from app.services.llm_service import llm_service, EnhancementType
+from app.services.llm_service import EnhancementType, llm_service
+from app.utils.logger import logger
 
 
 class QueueStatus(Enum):
@@ -30,13 +29,13 @@ class EnhancementProgress:
     """Simple progress tracking for enhancements"""
 
     status: QueueStatus = QueueStatus.IDLE
-    enhancement_type: Optional[EnhancementType] = None
+    enhancement_type: EnhancementType | None = None
     processed: int = 0
     total: int = 0
-    current_prospect_id: Optional[str] = None
-    started_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
-    errors: List[str] = field(default_factory=list)
+    current_prospect_id: str | None = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    errors: list[str] = field(default_factory=list)
 
 
 class MockQueueItem:
@@ -81,8 +80,7 @@ class MockQueueItem:
 
 
 class SimpleEnhancementQueue:
-    """
-    Simplified enhancement queue that handles both individual and bulk processing
+    """Simplified enhancement queue that handles both individual and bulk processing
     without the complexity of priority queues and multiple thread management.
     """
 
@@ -90,21 +88,25 @@ class SimpleEnhancementQueue:
         self._progress = EnhancementProgress()
         self._processing = False
         self._stop_event = threading.Event()
-        self._thread: Optional[threading.Thread] = None
+        self._thread: threading.Thread | None = None
         self._lock = threading.Lock()
 
         # Track current enhancement details for API compatibility
-        self._current_prospect_id: Optional[str] = None
-        self._current_user_id: Optional[int] = None
-        self._current_enhancement_type: Optional[str] = None
+        self._current_prospect_id: str | None = None
+        self._current_user_id: int | None = None
+        self._current_enhancement_type: str | None = None
         self._current_processing_type: str = "individual"  # 'individual' or 'bulk'
-        
-        # Cache recent enhancement results for polling
-        self._recent_results: Dict[str, Dict[str, Any]] = {}
-        self._completed_steps: Dict[str, List[str]] = {}  # Track completed steps per prospect
-        self._initial_queue_positions: Dict[str, int] = {}  # Track initial queue positions
 
-    def get_status(self) -> Dict[str, Any]:
+        # Cache recent enhancement results for polling
+        self._recent_results: dict[str, dict[str, Any]] = {}
+        self._completed_steps: dict[
+            str, list[str]
+        ] = {}  # Track completed steps per prospect
+        self._initial_queue_positions: dict[
+            str, int
+        ] = {}  # Track initial queue positions
+
+    def get_status(self) -> dict[str, Any]:
         """Get current processing status"""
         with self._lock:
             # Create pending items list for API compatibility
@@ -153,7 +155,7 @@ class SimpleEnhancementQueue:
                 # Log progress for debugging
                 field = progress_data.get("field", "unknown")
                 status = progress_data.get("status", "processing")
-                
+
                 # Update current enhancement type based on field
                 with self._lock:
                     if field in ["title", "titles"]:
@@ -164,7 +166,7 @@ class SimpleEnhancementQueue:
                         self._current_enhancement_type = "naics"
                     elif field in ["set_aside", "set_asides"]:
                         self._current_enhancement_type = "set_asides"
-                    
+
                     # Track completed steps - normalize field names to match frontend expectations
                     if status == "completed" and prospect_id in self._completed_steps:
                         # Map field names to expected frontend names
@@ -177,15 +179,15 @@ class SimpleEnhancementQueue:
                             normalized_field = "naics"
                         elif field in ["set_aside", "set_asides"]:
                             normalized_field = "set_asides"
-                            
+
                         if normalized_field not in self._completed_steps[prospect_id]:
                             self._completed_steps[prospect_id].append(normalized_field)
-                
+
                 if status == "processing":
                     message = f"Processing {field}..."
                 else:
                     message = f"Completed {field}"
-                    
+
                 logger.debug(f"Enhancement progress for {prospect_id[:8]}: {message}")
             except Exception as e:
                 logger.error(f"Error in progress callback: {e}")
@@ -196,11 +198,10 @@ class SimpleEnhancementQueue:
         self,
         prospect_id: str,
         enhancement_type: EnhancementType = "all",
-        user_id: Optional[int] = None,
+        user_id: int | None = None,
         force_redo: bool = False,
-    ) -> Dict[str, Any]:
-        """
-        Enhance a single prospect immediately (synchronous).
+    ) -> dict[str, Any]:
+        """Enhance a single prospect immediately (synchronous).
         This is for real-time UI updates.
         """
         try:
@@ -245,7 +246,9 @@ class SimpleEnhancementQueue:
                         "status": "completed",
                         "enhancements": results,
                         "completed_at": time.time(),
-                        "completed_steps": self._completed_steps.get(prospect_id, ["titles", "values", "naics", "set_asides"])
+                        "completed_steps": self._completed_steps.get(
+                            prospect_id, ["titles", "values", "naics", "set_asides"]
+                        ),
                     }
 
                 # Enhancement completed successfully
@@ -258,13 +261,13 @@ class SimpleEnhancementQueue:
                 }
             else:
                 # No enhancements needed
-                
+
                 # Store result for polling
                 with self._lock:
                     self._recent_results[prospect_id] = {
                         "status": "no_changes",
                         "completed_at": time.time(),
-                        "completed_steps": self._completed_steps.get(prospect_id, [])
+                        "completed_steps": self._completed_steps.get(prospect_id, []),
                     }
 
                 return {
@@ -293,12 +296,10 @@ class SimpleEnhancementQueue:
     def start_bulk_enhancement(
         self,
         enhancement_type: EnhancementType = "all",
-        prospect_ids: Optional[List[str]] = None,
+        prospect_ids: list[str] | None = None,
         skip_existing: bool = True,
-    ) -> Dict[str, Any]:
-        """
-        Start bulk enhancement processing in background thread.
-        """
+    ) -> dict[str, Any]:
+        """Start bulk enhancement processing in background thread."""
         if self._processing:
             return {"status": "error", "message": "Enhancement already in progress"}
 
@@ -323,7 +324,7 @@ class SimpleEnhancementQueue:
                 status=QueueStatus.PROCESSING,
                 enhancement_type=enhancement_type,
                 total=len(prospects),
-                started_at=datetime.now(timezone.utc),
+                started_at=datetime.now(UTC),
             )
 
         self._processing = True
@@ -348,7 +349,7 @@ class SimpleEnhancementQueue:
             "message": f"Started bulk enhancement of {len(prospects)} prospects",
         }
 
-    def stop_processing(self) -> Dict[str, Any]:
+    def stop_processing(self) -> dict[str, Any]:
         """Stop current processing"""
         if not self._processing:
             return {"status": "error", "message": "No processing currently running"}
@@ -361,28 +362,28 @@ class SimpleEnhancementQueue:
 
         with self._lock:
             self._progress.status = QueueStatus.STOPPED
-            self._progress.completed_at = datetime.now(timezone.utc)
+            self._progress.completed_at = datetime.now(UTC)
 
         self._processing = False
 
         return {"status": "stopped", "message": "Enhancement processing stopped"}
 
     # Backward compatibility methods for API
-    def get_queue_status(self) -> Dict[str, Any]:
+    def get_queue_status(self) -> dict[str, Any]:
         """Alias for get_status for backward compatibility"""
         return self.get_status()
 
-    def get_item_status(self, item_id: str) -> Dict[str, Any]:
+    def get_item_status(self, item_id: str) -> dict[str, Any]:
         """Get status of a specific item"""
         with self._lock:
             # Extract prospect_id from item_id (format: individual_prospectId_timestamp)
-            parts = item_id.split('_')
+            parts = item_id.split("_")
             if len(parts) >= 2:
                 # Prospect ID is the second part (it's a UUID string, not an int)
                 prospect_id = parts[1]
             else:
                 prospect_id = None
-            
+
             # First check if we have cached results
             if prospect_id and prospect_id in self._recent_results:
                 result = self._recent_results[prospect_id]
@@ -396,68 +397,78 @@ class SimpleEnhancementQueue:
                         "status": result.get("status", "completed"),
                         "position": self._initial_queue_positions.get(prospect_id, 1),
                         "current_step": None,
-                        "completed_steps": result.get("completed_steps", ["titles", "values", "naics", "set_asides"]),
-                        "error": None
+                        "completed_steps": result.get(
+                            "completed_steps",
+                            ["titles", "values", "naics", "set_asides"],
+                        ),
+                        "error": None,
                     }
-            
+
             # If currently processing, check if it matches this item
-            if self._processing and self._current_prospect_id and self._current_prospect_id == prospect_id:
-                    # Item is currently being processed
-                    # Map enhancement_type to current_step
-                    current_step = None
-                    if self._current_enhancement_type:
-                        if self._current_enhancement_type == "titles":
-                            current_step = "Enhancing title..."
-                        elif self._current_enhancement_type == "values":
-                            current_step = "Parsing contract values..."
-                        elif self._current_enhancement_type == "naics":
-                            current_step = "Classifying NAICS code..."
-                        elif self._current_enhancement_type == "set_asides":
-                            current_step = "Processing set asides..."
-                        else:
-                            current_step = "Processing..."
-                    
-                    return {
-                        "item_id": item_id,
-                        "status": "processing",
-                        "position": self._initial_queue_positions.get(prospect_id, 1),
-                        "current_step": current_step,
-                        "completed_steps": self._completed_steps.get(prospect_id, []),
-                        "error": None
-                    }
-            
+            if (
+                self._processing
+                and self._current_prospect_id
+                and self._current_prospect_id == prospect_id
+            ):
+                # Item is currently being processed
+                # Map enhancement_type to current_step
+                current_step = None
+                if self._current_enhancement_type:
+                    if self._current_enhancement_type == "titles":
+                        current_step = "Enhancing title..."
+                    elif self._current_enhancement_type == "values":
+                        current_step = "Parsing contract values..."
+                    elif self._current_enhancement_type == "naics":
+                        current_step = "Classifying NAICS code..."
+                    elif self._current_enhancement_type == "set_asides":
+                        current_step = "Processing set asides..."
+                    else:
+                        current_step = "Processing..."
+
+                return {
+                    "item_id": item_id,
+                    "status": "processing",
+                    "position": self._initial_queue_positions.get(prospect_id, 1),
+                    "current_step": current_step,
+                    "completed_steps": self._completed_steps.get(prospect_id, []),
+                    "error": None,
+                }
+
             # Check if item failed
-            if hasattr(self._progress, 'errors') and self._progress.errors:
+            if hasattr(self._progress, "errors") and self._progress.errors:
                 for error in self._progress.errors:
-                    if item_id in str(error) or (prospect_id and str(prospect_id) in str(error)):
+                    if item_id in str(error) or (
+                        prospect_id and str(prospect_id) in str(error)
+                    ):
                         return {
                             "item_id": item_id,
                             "status": "failed",
                             "position": None,
                             "current_step": None,
                             "completed_steps": [],
-                            "error": str(error)
+                            "error": str(error),
                         }
-            
+
             # Check if prospect was processed successfully
             if prospect_id:
                 # Query database to check if prospect has been enhanced
                 from app.database.models import Prospect
+
                 prospect = Prospect.query.get(prospect_id)
                 if prospect and prospect.ollama_processed_at:
                     # Clean up cached queue position for completed item
                     if item_id in self._queue_positions:
                         del self._queue_positions[item_id]
-                    
+
                     return {
                         "item_id": item_id,
                         "status": "completed",
                         "position": None,
                         "current_step": None,
                         "completed_steps": ["titles", "values", "naics", "set_asides"],
-                        "error": None
+                        "error": None,
                     }
-            
+
             # Default to queued
             return {
                 "item_id": item_id,
@@ -465,7 +476,7 @@ class SimpleEnhancementQueue:
                 "position": 1,  # Simplified - always position 1 if queued
                 "current_step": None,
                 "completed_steps": [],
-                "error": None
+                "error": None,
             }
 
     def cancel_item(self, item_id: str) -> bool:
@@ -475,16 +486,16 @@ class SimpleEnhancementQueue:
             return True
         return False
 
-    def start_worker(self) -> Dict[str, Any]:
+    def start_worker(self) -> dict[str, Any]:
         """Start worker (no-op for simplified implementation)"""
         return {"status": "ready", "message": "Worker ready"}
 
-    def stop_worker(self) -> Dict[str, Any]:
+    def stop_worker(self) -> dict[str, Any]:
         """Stop worker (alias for stop_processing)"""
         return self.stop_processing()
 
     @property
-    def _queue_items(self) -> Dict[str, MockQueueItem]:
+    def _queue_items(self) -> dict[str, MockQueueItem]:
         """Backward compatibility for queue items access"""
         with self._lock:
             if self._processing and self._current_prospect_id:
@@ -504,7 +515,7 @@ class SimpleEnhancementQueue:
 
     def _get_prospects_needing_enhancement(
         self, enhancement_type: EnhancementType, skip_existing: bool
-    ) -> List[Prospect]:
+    ) -> list[Prospect]:
         """Get prospects that need the specified enhancement type"""
         query = Prospect.query
 
@@ -525,7 +536,7 @@ class SimpleEnhancementQueue:
         return query.limit(10000).all()  # Reasonable limit to prevent memory issues
 
     def _bulk_processing_worker(
-        self, prospects: List[Prospect], enhancement_type: EnhancementType
+        self, prospects: list[Prospect], enhancement_type: EnhancementType
     ):
         """Worker thread for bulk processing"""
         logger.info(f"Bulk processing worker started: {len(prospects)} prospects")
@@ -583,14 +594,14 @@ class SimpleEnhancementQueue:
                         f"Bulk processing stopped: {self._progress.processed}/{self._progress.total} prospects"
                     )
 
-                self._progress.completed_at = datetime.now(timezone.utc)
+                self._progress.completed_at = datetime.now(UTC)
 
         except Exception as e:
             logger.error(f"Error in bulk processing worker: {e}")
             with self._lock:
                 self._progress.status = QueueStatus.FAILED
                 self._progress.errors.append(f"Worker error: {str(e)}")
-                self._progress.completed_at = datetime.now(timezone.utc)
+                self._progress.completed_at = datetime.now(UTC)
         finally:
             self._processing = False
 
@@ -603,14 +614,14 @@ enhancement_queue = SimpleEnhancementQueue()
 def add_individual_enhancement(
     prospect_id: str,
     enhancement_type: EnhancementType = "all",
-    user_id: Optional[int] = None,
+    user_id: int | None = None,
     force_redo: bool = False,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Add individual prospect enhancement (immediate processing)"""
     # Store initial queue position (simplified - always 1 for immediate processing)
     with enhancement_queue._lock:
         enhancement_queue._initial_queue_positions[prospect_id] = 1
-    
+
     result = enhancement_queue.enhance_single_prospect(
         prospect_id, enhancement_type, user_id, force_redo
     )
@@ -629,18 +640,18 @@ def add_individual_enhancement(
 
 
 def add_bulk_enhancement(
-    prospect_ids: List[str], enhancement_type: EnhancementType = "all"
+    prospect_ids: list[str], enhancement_type: EnhancementType = "all"
 ) -> str:
     """Add bulk enhancement (background processing)"""
     enhancement_queue.start_bulk_enhancement(enhancement_type, prospect_ids)
     return f"bulk_{enhancement_type}_{int(time.time())}"
 
 
-def get_queue_status() -> Dict[str, Any]:
+def get_queue_status() -> dict[str, Any]:
     """Get current queue status"""
     return enhancement_queue.get_status()
 
 
-def stop_processing() -> Dict[str, Any]:
+def stop_processing() -> dict[str, Any]:
     """Stop current processing"""
     return enhancement_queue.stop_processing()

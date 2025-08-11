@@ -1,20 +1,18 @@
-"""
-Contract Data Mapping Utilities
+"""Contract Data Mapping Utilities
 
 Replaces ContractMapperService with simple utility functions.
 Handles mapping from various government contract sources to standardized schema.
 """
 
-import re
 import hashlib
-from typing import Dict, List, Optional
-from datetime import datetime, timezone
+import re
+from datetime import UTC, datetime
 
 from app.database.models import Prospect
 from app.utils.logger import logger
 
 
-def generate_prospect_id(data: Dict) -> str:
+def generate_prospect_id(data: dict) -> str:
     """Generate unique ID for prospect based on key fields."""
     key_parts = [
         str(data.get("title", "")),
@@ -26,9 +24,8 @@ def generate_prospect_id(data: Dict) -> str:
     return hashlib.md5(key_string.encode()).hexdigest()
 
 
-def map_universal_fields(record: Dict, source_file: str, source_mapping: Dict) -> Dict:
-    """
-    Map source-specific fields to universal schema.
+def map_universal_fields(record: dict, source_file: str, source_mapping: dict) -> dict:
+    """Map source-specific fields to universal schema.
     Extracts NAICS from source data where available.
     """
     # Extract core fields using source-specific mapping
@@ -69,9 +66,8 @@ def map_universal_fields(record: Dict, source_file: str, source_mapping: Dict) -
     return mapped_data
 
 
-def create_prospect_from_data(mapped_data: Dict, source_id: int) -> Prospect:
+def create_prospect_from_data(mapped_data: dict, source_id: int) -> Prospect:
     """Create a Prospect object from mapped data."""
-
     # Handle extra data (non-core fields)
     extra_data = {}
     core_fields = {
@@ -114,7 +110,7 @@ def create_prospect_from_data(mapped_data: Dict, source_id: int) -> Prospect:
         primary_contact_email=mapped_data.get("primary_contact_email"),
         primary_contact_name=mapped_data.get("primary_contact_name"),
         source_id=source_id,
-        loaded_at=datetime.now(timezone.utc),
+        loaded_at=datetime.now(UTC),
         extra=extra_data if extra_data else None,
     )
 
@@ -122,10 +118,9 @@ def create_prospect_from_data(mapped_data: Dict, source_id: int) -> Prospect:
 
 
 def bulk_map_and_create_prospects(
-    records: List[Dict], source_mapping: Dict, source_id: int, source_file: str
-) -> List[Prospect]:
-    """
-    Bulk process records into prospects.
+    records: list[dict], source_mapping: dict, source_id: int, source_file: str
+) -> list[Prospect]:
+    """Bulk process records into prospects.
     Returns list of Prospect objects ready for database insertion.
     """
     prospects = []
@@ -143,7 +138,7 @@ def bulk_map_and_create_prospects(
     return prospects
 
 
-def extract_naics_from_text(text: str) -> Optional[str]:
+def extract_naics_from_text(text: str) -> str | None:
     """Extract NAICS code from text using regex patterns."""
     if not text:
         return None
@@ -193,9 +188,8 @@ def standardize_agency_name(agency: str) -> str:
     return agency.strip()
 
 
-def validate_mapped_data(mapped_data: Dict) -> List[str]:
-    """
-    Validate mapped data and return list of validation errors.
+def validate_mapped_data(mapped_data: dict) -> list[str]:
+    """Validate mapped data and return list of validation errors.
     Returns empty list if data is valid.
     """
     errors = []

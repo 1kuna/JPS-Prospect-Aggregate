@@ -1,16 +1,17 @@
-"""
-Authentication API endpoints for JPS Prospect Aggregate.
+"""Authentication API endpoints for JPS Prospect Aggregate.
 
 Provides simple email-based authentication without passwords.
 """
 
-from flask import Blueprint, request, jsonify, session
+import datetime
+from functools import wraps
+
+from flask import Blueprint, jsonify, request, session
 from sqlalchemy.exc import IntegrityError
+
 from app.database import db
 from app.database.user_models import User
 from app.utils.logger import logger
-import datetime
-from functools import wraps
 
 auth_bp = Blueprint("auth", __name__, url_prefix="/api/auth")
 
@@ -162,7 +163,7 @@ def signin():
             ), 404
 
         # Update last login
-        user.last_login_at = datetime.datetime.now(datetime.timezone.utc)
+        user.last_login_at = datetime.datetime.now(datetime.UTC)
         db.session.commit()
 
         # Log user in

@@ -1,11 +1,11 @@
-"""
-Maintenance Mode Middleware
+"""Maintenance Mode Middleware
 
 This middleware checks if the application is in maintenance mode and serves
 a maintenance page to all users except for the admin toggle endpoint.
 """
 
-from flask import request, make_response
+from flask import make_response, request
+
 from app.database import db
 from app.database.models import Settings
 
@@ -23,8 +23,7 @@ def get_maintenance_status():
 
 
 def maintenance_middleware(app):
-    """
-    Register maintenance mode middleware with the Flask app.
+    """Register maintenance mode middleware with the Flask app.
 
     This middleware will intercept all requests and serve a maintenance page
     if maintenance mode is enabled, except for the admin toggle endpoint.

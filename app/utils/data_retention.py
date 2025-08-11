@@ -1,22 +1,20 @@
 #!/usr/bin/env python3
-"""
-Data retention utility for managing raw data files.
+"""Data retention utility for managing raw data files.
 
 This script implements a rolling retention policy that keeps only the most recent
 N files per data source, deleting older files to prevent storage bloat.
 """
 
+import argparse
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Tuple
-import argparse
-from app.utils.logger import logger
+
 from app.utils.file_utils import extract_timestamp_from_filename as extract_timestamp
+from app.utils.logger import logger
 
 
-def get_files_by_source(raw_data_path: Path) -> Dict[str, List[Tuple[Path, datetime]]]:
-    """
-    Scan raw data directory and group files by data source.
+def get_files_by_source(raw_data_path: Path) -> dict[str, list[tuple[Path, datetime]]]:
+    """Scan raw data directory and group files by data source.
 
     Args:
         raw_data_path: Path to the raw data directory
@@ -60,12 +58,11 @@ def get_files_by_source(raw_data_path: Path) -> Dict[str, List[Tuple[Path, datet
 
 
 def apply_intelligent_retention_policy(
-    files_by_source: Dict[str, List[Tuple[Path, datetime]]],
+    files_by_source: dict[str, list[tuple[Path, datetime]]],
     retention_count: int = 5,
     dry_run: bool = True,
-) -> Dict[str, int]:
-    """
-    Apply intelligent retention policy: Keep N most recent files PLUS always preserve
+) -> dict[str, int]:
+    """Apply intelligent retention policy: Keep N most recent files PLUS always preserve
     last 2 successfully processed files.
 
     CRITICAL IMPLEMENTATION DETAILS:
@@ -185,12 +182,11 @@ def apply_intelligent_retention_policy(
 
 
 def apply_retention_policy(
-    files_by_source: Dict[str, List[Tuple[Path, datetime]]],
+    files_by_source: dict[str, list[tuple[Path, datetime]]],
     retention_count: int = 5,
     dry_run: bool = True,
-) -> Dict[str, int]:
-    """
-    Legacy retention policy function - now uses intelligent retention.
+) -> dict[str, int]:
+    """Legacy retention policy function - now uses intelligent retention.
 
     Args:
         files_by_source: Dictionary mapping source to files with timestamps
@@ -205,9 +201,8 @@ def apply_retention_policy(
 
 def cleanup_raw_data(
     retention_count: int = 5, raw_data_path: str = None
-) -> Dict[str, int]:
-    """
-    Programmatic interface for data retention cleanup.
+) -> dict[str, int]:
+    """Programmatic interface for data retention cleanup.
 
     Args:
         retention_count: Number of files to keep per source
@@ -286,7 +281,7 @@ def main():
         project_root = script_dir.parent.parent  # Go up two levels from app/utils/
         raw_data_path = project_root / "data" / "raw"
 
-    logger.info(f"Data retention utility starting...")
+    logger.info("Data retention utility starting...")
     logger.info(f"Raw data path: {raw_data_path}")
     logger.info(f"Retention count: {args.retention_count}")
     logger.info(f"Mode: {'DRY RUN' if dry_run else 'EXECUTE'}")

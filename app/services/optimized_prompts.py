@@ -1,6 +1,4 @@
-"""
-Optimized prompts for LLM enhancement operations
-"""
+"""Optimized prompts for LLM enhancement operations"""
 
 NAICS_CLASSIFICATION_PROMPT = """You are a NAICS classification expert. Analyze ALL available procurement information to determine the TOP 3 most appropriate NAICS codes.
 

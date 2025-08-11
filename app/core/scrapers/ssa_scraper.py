@@ -1,18 +1,16 @@
-"""
-SSA scraper using the consolidated architecture.
+"""SSA scraper using the consolidated architecture.
 Preserves all original SSA-specific functionality including Excel link finding and direct downloads.
 """
-import pandas as pd
-from typing import Optional
 
+import pandas as pd
+
+from app.config import active_config
 from app.core.consolidated_scraper_base import ConsolidatedScraperBase
 from app.core.scraper_configs import get_scraper_config
-from app.config import active_config
 
 
 class SsaScraper(ConsolidatedScraperBase):
-    """
-    Consolidated SSA scraper.
+    """Consolidated SSA scraper.
     Preserves all original functionality including Excel link finding and custom transforms.
     """
 
@@ -22,8 +20,7 @@ class SsaScraper(ConsolidatedScraperBase):
         super().__init__(config)
 
     def _custom_ssa_transforms(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Custom SSA transformations preserving the original logic.
+        """Custom SSA transformations preserving the original logic.
         Maps description to title and handles value unit adjustments.
         """
         try:
@@ -37,9 +34,7 @@ class SsaScraper(ConsolidatedScraperBase):
                 )
             else:
                 df["title"] = None
-                self.logger.warning(
-                    "'description' not found to create 'title'."
-                )
+                self.logger.warning("'description' not found to create 'title'.")
 
             # Initialize release_date_final
             df["release_date_final"] = None
@@ -77,7 +72,7 @@ class SsaScraper(ConsolidatedScraperBase):
             if "place_raw" in df.columns:
                 # SSA typically has format like "Baltimore, MD" or just city name
                 df[["place_city", "place_state"]] = df["place_raw"].str.extract(
-                    r'^([^,]+)(?:,\s*([A-Z]{2}))?$', expand=True
+                    r"^([^,]+)(?:,\s*([A-Z]{2}))?$", expand=True
                 )
                 df["place_city"] = df["place_city"].str.strip()
                 df["place_state"] = df["place_state"].str.strip()
@@ -90,8 +85,7 @@ class SsaScraper(ConsolidatedScraperBase):
         return df
 
     def _ssa_create_extras(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Create extras JSON with SSA-specific fields that aren't in core schema.
+        """Create extras JSON with SSA-specific fields that aren't in core schema.
         Captures 9 additional data points for comprehensive data retention.
         """
         try:
@@ -132,9 +126,7 @@ class SsaScraper(ConsolidatedScraperBase):
         return df
 
     async def ssa_setup(self) -> bool:
-        """
-        SSA-specific setup: simple navigation to base URL.
-        """
+        """SSA-specific setup: simple navigation to base URL."""
         if not self.base_url:
             self.logger.error("Base URL not configured.")
             return False
@@ -142,9 +134,8 @@ class SsaScraper(ConsolidatedScraperBase):
         self.logger.info(f"SSA setup: Navigating to {self.base_url}")
         return await self.navigate_to_url(self.base_url)
 
-    async def ssa_extract(self) -> Optional[str]:
-        """
-        SSA-specific extraction: find Excel link and download directly.
+    async def ssa_extract(self) -> str | None:
+        """SSA-specific extraction: find Excel link and download directly.
         Preserves original SSA download behavior.
         """
         self.logger.info("Starting Excel document download process for SSA.")
@@ -167,9 +158,7 @@ class SsaScraper(ConsolidatedScraperBase):
         return await self.download_file_directly(excel_link_href)
 
     def ssa_process(self, file_path: str) -> int:
-        """
-        SSA-specific processing with Excel-specific read options.
-        """
+        """SSA-specific processing with Excel-specific read options."""
         if not file_path:
             # Try to get most recent download
             file_path = self.get_last_downloaded_path()

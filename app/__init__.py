@@ -1,5 +1,4 @@
-"""
-Application Factory Pattern for Flask app.
+"""Application Factory Pattern for Flask app.
 
 This module creates and configures the Flask application.
 """
@@ -7,6 +6,7 @@ This module creates and configures the Flask application.
 from flask import Flask
 from flask_cors import CORS
 from flask_migrate import Migrate
+
 from app.config import active_config  # Import active_config
 from app.database import db  # Import the db instance from database.py
 from app.database.user_db import init_user_db  # Import user database initialization
@@ -77,9 +77,9 @@ def create_app():
         from app.services.enhancement_queue import enhancement_queue  # noqa: F401
         from app.services.llm_service import llm_service  # noqa: F401
         from app.utils.enhancement_cleanup import cleanup_all_in_progress_enhancements
-        from app.utils.scraper_cleanup import cleanup_all_working_scrapers
-        from app.utils.ensure_super_admin import ensure_super_admin_exists
         from app.utils.ensure_data_sources import ensure_all_data_sources_exist
+        from app.utils.ensure_super_admin import ensure_super_admin_exists
+        from app.utils.scraper_cleanup import cleanup_all_working_scrapers
 
         # Check if database tables exist before running cleanup functions
         tables_exist = True
@@ -105,7 +105,9 @@ def create_app():
             try:
                 changes = ensure_all_data_sources_exist()
                 if changes > 0:
-                    logger.info(f"Data sources updated during startup: {changes} changes")
+                    logger.info(
+                        f"Data sources updated during startup: {changes} changes"
+                    )
             except Exception as e:
                 logger.warning(f"Failed to ensure data sources exist: {e}")
             # Clean up any stuck enhancement statuses from previous server runs

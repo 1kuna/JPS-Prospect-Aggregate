@@ -1,10 +1,11 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, jsonify, request
 from sqlalchemy import func
-from app.database import db
-from app.database.models import Prospect, DataSource, ScraperStatus
-from app.exceptions import ValidationError, NotFoundError, DatabaseError
-from app.utils.logger import logger
+
 from app.api.auth import super_admin_required
+from app.database import db
+from app.database.models import DataSource, Prospect, ScraperStatus
+from app.exceptions import DatabaseError, NotFoundError, ValidationError
+from app.utils.logger import logger
 
 data_sources_bp = Blueprint("data_sources", __name__)
 
@@ -64,14 +65,16 @@ def get_data_sources():
                 "name": source.name,
                 "url": source.url,
                 "description": source.description,
-                "last_scraped": source.last_scraped.isoformat() + 'Z'
+                "last_scraped": source.last_scraped.isoformat() + "Z"
                 if source.last_scraped
                 else None,
                 "prospectCount": p_count if p_count is not None else 0,
-                "last_checked": status_rec.last_checked.isoformat() + 'Z'
+                "last_checked": status_rec.last_checked.isoformat() + "Z"
                 if status_rec and status_rec.last_checked
                 else None,
-                "status": status_rec.status if status_rec else ("ready" if source.last_scraped is None else "completed"),
+                "status": status_rec.status
+                if status_rec
+                else ("ready" if source.last_scraped is None else "completed"),
             }
             for source, p_count, status_rec in sources_data
         ]
@@ -102,11 +105,10 @@ def get_data_sources_public():
             .subquery()
         )
 
-        query = (
-            session.query(DataSource, prospect_count_subq.c.prospect_count)
-            .outerjoin(
-                prospect_count_subq, DataSource.id == prospect_count_subq.c.source_id
-            )
+        query = session.query(
+            DataSource, prospect_count_subq.c.prospect_count
+        ).outerjoin(
+            prospect_count_subq, DataSource.id == prospect_count_subq.c.source_id
         )
 
         sources_data = query.all()

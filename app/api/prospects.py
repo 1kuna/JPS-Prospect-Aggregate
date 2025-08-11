@@ -1,14 +1,15 @@
 from flask import Blueprint, jsonify, request
 from sqlalchemy import (
-    desc,
-    asc,
-    or_,
-    cast,
     String,
+    asc,
+    cast,
+    desc,
+    or_,
 )  # Added for sorting and JSON queries
+
 from app.database.crud import paginate_sqlalchemy_query
 from app.database.models import Prospect  # Added db for session access in new route
-from app.exceptions import ValidationError, NotFoundError  # Added NotFoundError
+from app.exceptions import NotFoundError, ValidationError  # Added NotFoundError
 from app.utils.logger import logger
 
 prospects_bp = Blueprint("prospects_api", __name__, url_prefix="/api/prospects")

@@ -1,18 +1,15 @@
-"""
-Simplified file utilities using Python's standard library.
-"""
+"""Simplified file utilities using Python's standard library."""
 
 import re
 import shutil
-from pathlib import Path
 from datetime import datetime
-from typing import List, Optional, Union
+from pathlib import Path
+
 from app.utils.logger import logger
 
 
-def ensure_directory(directory: Union[str, Path]) -> Path:
-    """
-    Ensure that a directory exists, creating it if necessary.
+def ensure_directory(directory: str | Path) -> Path:
+    """Ensure that a directory exists, creating it if necessary.
 
     Args:
         directory: Directory path as string or Path
@@ -25,11 +22,8 @@ def ensure_directory(directory: Union[str, Path]) -> Path:
     return path
 
 
-def find_files(
-    directory: Union[str, Path], pattern: str, min_size: int = 0
-) -> List[Path]:
-    """
-    Find files in a directory matching a pattern with minimum size.
+def find_files(directory: str | Path, pattern: str, min_size: int = 0) -> list[Path]:
+    """Find files in a directory matching a pattern with minimum size.
 
     Args:
         directory: Directory to search in
@@ -51,11 +45,8 @@ def find_files(
     ]
 
 
-def clean_old_files(
-    directory: Union[str, Path], pattern: str, keep_count: int = 0
-) -> int:
-    """
-    Delete old files in a directory, keeping the most recent ones.
+def clean_old_files(directory: str | Path, pattern: str, keep_count: int = 0) -> int:
+    """Delete old files in a directory, keeping the most recent ones.
 
     Args:
         directory: Directory containing files
@@ -94,11 +85,8 @@ def clean_old_files(
     return deleted_count
 
 
-def safe_file_copy(
-    source: Union[str, Path], destination: Union[str, Path]
-) -> Optional[Path]:
-    """
-    Safely copy a file, ensuring the destination directory exists.
+def safe_file_copy(source: str | Path, destination: str | Path) -> Path | None:
+    """Safely copy a file, ensuring the destination directory exists.
 
     Args:
         source: Source file path
@@ -124,9 +112,8 @@ def safe_file_copy(
         return None
 
 
-def extract_timestamp_from_filename(filename: str) -> Optional[datetime]:
-    """
-    Extract timestamp from filename with format: prefix_YYYYMMDD_HHMMSS.ext
+def extract_timestamp_from_filename(filename: str) -> datetime | None:
+    """Extract timestamp from filename with format: prefix_YYYYMMDD_HHMMSS.ext
 
     Args:
         filename: The filename to parse

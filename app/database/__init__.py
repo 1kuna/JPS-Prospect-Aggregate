@@ -1,6 +1,4 @@
-"""
-JPS Prospect Aggregate - Database Package
-"""
+"""JPS Prospect Aggregate - Database Package"""
 
 from flask_sqlalchemy import SQLAlchemy
 
