@@ -184,13 +184,19 @@ export const fetchWithErrorHandling = async <T = unknown>(
     deduplicationKey,
     ...fetchOptions 
   } = options;
+  
+  // Always include credentials for cookie-based authentication
+  const finalFetchOptions: RequestInit = {
+    credentials: 'include' as RequestCredentials,
+    ...fetchOptions
+  };
 
   // Retry options will be handled in executeRequest function
 
   // Apply request interceptors
-  let requestParams = { url, options: fetchOptions };
+  let requestParams = { url, options: finalFetchOptions };
   if (!skipInterceptors) {
-    requestParams = await applyRequestInterceptors(url, fetchOptions);
+    requestParams = await applyRequestInterceptors(url, finalFetchOptions);
   }
 
   // Handle request deduplication
