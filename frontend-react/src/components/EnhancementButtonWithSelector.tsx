@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { ReloadIcon, Cross1Icon, ChevronDownIcon, DotsVerticalIcon } from '@radix-ui/react-icons';
+import { ReloadIcon, Cross1Icon, DotsVerticalIcon } from '@radix-ui/react-icons';
 import {
   DropdownMenu,
   DropdownMenuContent,

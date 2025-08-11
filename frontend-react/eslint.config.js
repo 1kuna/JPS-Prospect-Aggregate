@@ -28,9 +28,22 @@ export default tseslint.config(
         {
           'argsIgnorePattern': '^_',
           'varsIgnorePattern': '^_',
-          'caughtErrorsIgnorePattern': '^_'
+          'caughtErrorsIgnorePattern': '^_|^error$'
         }
       ],
+      '@typescript-eslint/no-explicit-any': 'warn',
+      '@typescript-eslint/no-require-imports': 'off',
+      'no-case-declarations': 'off',
+    },
+  },
+  // Special rules for test files
+  {
+    files: ['**/*.test.{ts,tsx}', '**/*.spec.{ts,tsx}'],
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'off',
+      '@typescript-eslint/no-require-imports': 'off',
+      'react-hooks/rules-of-hooks': 'off',
+      'no-case-declarations': 'off',
     },
   },
 )

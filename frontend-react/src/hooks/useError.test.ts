@@ -70,14 +70,14 @@ describe('useError', () => {
   it('handles errors and updates state', () => {
     const { result } = renderHook(() => useError());
     
-    const testError = new Error('Test error');
+    const inputError = new Error('Test error');
     
     act(() => {
-      result.current.handleError(testError);
+      result.current.handleError(inputError);
     });
 
-    expect(mockHandleError).toHaveBeenCalledWith(testError, undefined);
-    expect(result.current.error).toEqual(testError); // Uses the generated error from beforeEach
+    expect(mockHandleError).toHaveBeenCalledWith(inputError, undefined);
+    expect(result.current.error).toEqual(testError); // The errorService returns testError
     expect(result.current.isError).toBe(true);
   });
 
@@ -418,8 +418,8 @@ describe('useAsyncError', () => {
 
   it('handles async operation errors', async () => {
     const { result } = renderHook(() => useAsyncError());
-    const testError = new Error('Async operation failed');
-    const mockAsyncFn = vi.fn().mockRejectedValue(testError);
+    const inputError = new Error('Async operation failed');
+    const mockAsyncFn = vi.fn().mockRejectedValue(inputError);
     
     let thrownError: Error | undefined;
     
@@ -432,11 +432,11 @@ describe('useAsyncError', () => {
     });
     
     expect(mockAsyncFn).toHaveBeenCalled();
-    expect(mockHandleError).toHaveBeenCalledWith(testError, undefined);
+    expect(mockHandleError).toHaveBeenCalledWith(inputError, undefined);
     expect(result.current.isLoading).toBe(false);
     expect(result.current.data).toBeNull();
-    expect(result.current.error).toEqual(testError);
-    expect(thrownError).toBe(testError);
+    expect(result.current.error).toEqual(testError); // mockHandleError returns testError
+    expect(thrownError).toBe(testError); // The thrown error is also testError
   });
 
   it('sets loading state during execution', async () => {
