@@ -112,3 +112,7 @@ htmlcov/
 
 # Claude Code settings
 .claude/settings.local.json
+
+# Cookie files (from curl testing)
+cookies.txt
+**/cookies.txt
