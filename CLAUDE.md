@@ -341,3 +341,4 @@ For detailed information, see:
 - `docs/DATA_MAPPING_GUIDE.md` - Field mappings
 - `docs/SCRAPER_QUIRKS.md` - Agency-specific issues
 - `README.md` - Project overview
+- We are following a test-driven development (TDD) approach, so do not create mock implementations or artificial stand-ins for functionality. All tests must use real-world, representative input/output pairs that reflect actual usage scenarios, ensuring that the code is validated against realistic conditions rather than simulated ones.
