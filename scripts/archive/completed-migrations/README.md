@@ -30,6 +30,30 @@ This directory contains one-time migration scripts that have been completed and 
 - **Date Archived**: 2025-06-16
 - **Notes**: Used different database access patterns and field names than current implementation
 
+### `standardize_naics_formatting.py`
+- **Purpose**: Standardize NAICS code formatting and separate codes from descriptions
+- **Status**: ✅ COMPLETED - NAICS formatting now handled by scrapers and data processing
+- **Date Archived**: 2025-08-12
+- **Notes**: One-time cleanup to ensure consistent NAICS display format
+
+### `backfill_file_logs.py`
+- **Purpose**: Create FileProcessingLog entries for existing raw data files
+- **Status**: ✅ COMPLETED - File processing logs now created automatically during scraping
+- **Date Archived**: 2025-08-12
+- **Notes**: One-time backfill for files processed before logging was implemented
+
+### `backfill_naics_descriptions.py`
+- **Purpose**: Populate NAICS descriptions for existing records
+- **Status**: ✅ COMPLETED - NAICS descriptions now populated during data ingestion
+- **Date Archived**: 2025-08-12
+- **Notes**: One-time enrichment of historical data with NAICS descriptions
+
+### `add_role_column_to_users.py`
+- **Purpose**: Add role column to users table for role-based access control
+- **Status**: ✅ COMPLETED - Role column now part of standard user model
+- **Date Archived**: 2025-08-12
+- **Notes**: Migration handled cases where users table existed before role support
+
 ## Important Notes
 
 - **Do not delete these scripts** - They serve as documentation of data transformations applied

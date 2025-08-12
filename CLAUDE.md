@@ -10,11 +10,11 @@ python run.py                                 # Backend (port 5001)
 cd frontend-react && npm run dev              # Frontend (port 5173)
 
 # Run scrapers
-python -m scripts.run_scraper --source "DHS"  # Specific scraper
-python scripts/run_all_scrapers.py            # All scrapers
+python -m scripts.scrapers.run_scraper --source "DHS"  # Specific scraper
+python scripts/scrapers/run_all_scrapers.py            # All scrapers
 
 # Database
-python scripts/setup_databases.py             # Initialize
+python scripts/setup/setup_databases.py       # Initialize
 cd migrations && alembic upgrade head         # Migrations
 
 # Testing
@@ -48,7 +48,7 @@ cp .env.example .env
 # Edit .env: Set ENVIRONMENT=development
 
 # 4. Initialize database
-python scripts/setup_databases.py
+python scripts/setup/setup_databases.py
 
 # 5. Frontend setup
 cd frontend-react && npm install
@@ -67,8 +67,8 @@ docker-compose up --build -d
 ```bash
 python run.py                                  # Start backend
 cd frontend-react && npm run dev               # Start frontend
-python -m scripts.run_scraper --source "DHS"   # Run scraper
-python scripts/test_scraper_individual.py --scraper dhs  # Test scraper
+python -m scripts.scrapers.run_scraper --source "DHS"   # Run scraper
+python scripts/scrapers/test_scraper_individual.py --scraper dhs  # Test scraper
 ```
 
 ### Database & Migrations
@@ -92,7 +92,7 @@ flask db current                               # Check current version
 
 #### Common Database Commands
 ```bash
-python scripts/setup_databases.py              # Initial setup
+python scripts/setup/setup_databases.py        # Initial setup
 sqlite3 data/jps_aggregate.db "VACUUM;"        # Optimize database
 flask db stamp head                            # Mark DB as up-to-date (use carefully!)
 ```
@@ -114,10 +114,10 @@ make test-ci                                   # Local CI testing
 
 ### Maintenance
 ```bash
-./scripts/backup.sh                            # Backup DB
+./scripts/database/backup.sh                   # Backup DB
 python app/utils/data_retention.py --execute   # Clean old files
-python scripts/monitor_scrapers.py             # Monitor status
-python scripts/export_decisions_for_llm.py     # Export decisions
+python scripts/scrapers/monitor_scrapers.py    # Monitor status
+python scripts/data_processing/export_decisions_for_llm.py  # Export decisions
 ```
 
 ## Architecture Overview
@@ -170,7 +170,7 @@ class YourAgencyScraper(ConsolidatedScraperBase):
 ```
 
 3. Register in `app/core/scrapers/__init__.py`
-4. Test: `python scripts/test_scraper_individual.py --scraper your_agency`
+4. Test: `python scripts/scrapers/test_scraper_individual.py --scraper your_agency`
 
 ## Environment Variables
 
@@ -207,7 +207,7 @@ lsof -i :11434 && kill -9 <PID>          # Ollama port
 
 ### Database Issues
 ```bash
-rm data/*.db && python scripts/setup_databases.py  # Reset DB
+rm data/*.db && python scripts/setup/setup_databases.py  # Reset DB
 sqlite3 data/jps_aggregate.db "PRAGMA journal_mode=WAL;"  # Fix locks
 ```
 
@@ -305,8 +305,7 @@ alembic upgrade head
 ## User Management
 
 ```bash
-python scripts/create_super_admin.py      # Create admin
-python scripts/promote_to_super_admin.py  # Promote user
+python scripts/operations/manage_users.py  # User management utilities
 ```
 
 Roles:
