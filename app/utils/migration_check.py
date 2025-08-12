@@ -1,5 +1,6 @@
 """Migration check utility to ensure database schema is up to date."""
 
+import os
 import subprocess
 import sys
 from app.utils.logger import logger
@@ -12,12 +13,18 @@ def check_pending_migrations():
         bool: True if migrations are pending, False if up to date
     """
     try:
-        # Run flask db current to get current migration
+        # Set environment to prevent recursive initialization
+        env = os.environ.copy()
+        env["FLASK_APP"] = "run.py"
+        env["FLASK_RUN_FROM_CLI"] = "true"
+        
+        # Run flask db current to get current migration with timeout
         result = subprocess.run(
             [sys.executable, "-m", "flask", "db", "current"],
             capture_output=True,
             text=True,
-            env={"FLASK_APP": "run.py"}
+            env=env,
+            timeout=10  # 10 second timeout to prevent hanging
         )
         
         if result.returncode != 0:
@@ -31,7 +38,8 @@ def check_pending_migrations():
             [sys.executable, "-m", "flask", "db", "heads"],
             capture_output=True,
             text=True,
-            env={"FLASK_APP": "run.py"}
+            env=env,
+            timeout=10  # 10 second timeout to prevent hanging
         )
         
         if result.returncode != 0:
@@ -53,6 +61,9 @@ def check_pending_migrations():
         logger.debug("Database schema is up to date")
         return False
         
+    except subprocess.TimeoutExpired:
+        logger.error("Migration check timed out - possible circular dependency")
+        return False
     except Exception as e:
         logger.error(f"Error checking migrations: {e}")
         return False
@@ -70,11 +81,16 @@ def auto_apply_migrations():
             
         logger.info("Applying pending database migrations...")
         
+        env = os.environ.copy()
+        env["FLASK_APP"] = "run.py"
+        env["FLASK_RUN_FROM_CLI"] = "true"
+        
         result = subprocess.run(
             [sys.executable, "-m", "flask", "db", "upgrade"],
             capture_output=True,
             text=True,
-            env={"FLASK_APP": "run.py"}
+            env=env,
+            timeout=30  # 30 second timeout for upgrades
         )
         
         if result.returncode == 0:
@@ -103,11 +119,16 @@ def ensure_migration_tracking():
             logger.info("Initializing migration tracking...")
             
             # Stamp the database with the current head
+            env = os.environ.copy()
+            env["FLASK_APP"] = "run.py"
+            env["FLASK_RUN_FROM_CLI"] = "true"
+            
             result = subprocess.run(
                 [sys.executable, "-m", "flask", "db", "stamp", "head"],
                 capture_output=True,
                 text=True,
-                env={"FLASK_APP": "run.py"}
+                env=env,
+                timeout=10  # 10 second timeout
             )
             
             if result.returncode == 0:
