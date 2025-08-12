@@ -64,20 +64,23 @@ def create_app():
         # Continue anyway to allow debugging
     
     # Check for pending migrations after database initialization
-    with app.app_context():
-        from app.utils.migration_check import ensure_migration_tracking, check_pending_migrations
-        
-        # Ensure migration tracking is initialized
-        ensure_migration_tracking()
-        
-        # Check for pending migrations
-        if check_pending_migrations():
-            logger.warning("⚠️  Database schema may be out of sync!")
-            logger.warning("⚠️  Run 'flask db upgrade' to apply pending migrations")
+    # Skip this check when running Flask CLI commands to avoid infinite recursion
+    import os
+    if os.environ.get('FLASK_RUN_FROM_CLI') != 'true':
+        with app.app_context():
+            from app.utils.migration_check import ensure_migration_tracking, check_pending_migrations
             
-            # In development, offer to auto-apply
-            if active_config.DEBUG:
-                logger.info("Development mode: Consider running migrations to avoid schema issues")
+            # Ensure migration tracking is initialized
+            ensure_migration_tracking()
+            
+            # Check for pending migrations
+            if check_pending_migrations():
+                logger.warning("⚠️  Database schema may be out of sync!")
+                logger.warning("⚠️  Run 'flask db upgrade' to apply pending migrations")
+                
+                # In development, offer to auto-apply
+                if active_config.DEBUG:
+                    logger.info("Development mode: Consider running migrations to avoid schema issues")
 
     # Register blueprints
     from app.api.main import main_bp
