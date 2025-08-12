@@ -71,13 +71,38 @@ python -m scripts.run_scraper --source "DHS"   # Run scraper
 python scripts/test_scraper_individual.py --scraper dhs  # Test scraper
 ```
 
-### Database
+### Database & Migrations
+
+#### IMPORTANT: Migration Management
+To prevent database schema mismatches, **ALWAYS** follow this workflow when changing models:
+
 ```bash
-python scripts/setup_databases.py              # Setup
-cd migrations && alembic upgrade head          # Migrate
-alembic revision --autogenerate -m "msg"       # New migration
-sqlite3 data/jps_aggregate.db "VACUUM;"        # Optimize
+# 1. After changing any model (models.py):
+flask db migrate -m "Description of changes"   # Generate migration
+
+# 2. Review the generated migration file in migrations/versions/
+# 3. Apply the migration:
+flask db upgrade                               # Apply migration
+
+# 4. If there are issues:
+flask db downgrade                             # Rollback last migration
+flask db history                               # View migration history
+flask db current                               # Check current version
 ```
+
+#### Common Database Commands
+```bash
+python scripts/setup_databases.py              # Initial setup
+sqlite3 data/jps_aggregate.db "VACUUM;"        # Optimize database
+flask db stamp head                            # Mark DB as up-to-date (use carefully!)
+```
+
+#### Troubleshooting Schema Mismatches
+If you encounter "no such column" errors:
+1. Check current migration: `flask db current`
+2. Check pending migrations: `flask db heads`
+3. Apply migrations: `flask db upgrade`
+4. If still broken: `flask db stamp head` (last resort)
 
 ### Testing
 ```bash

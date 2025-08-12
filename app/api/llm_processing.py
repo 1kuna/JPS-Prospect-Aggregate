@@ -468,10 +468,6 @@ def _ensure_extra_is_dict(prospect):
 
 def _process_value_enhancement(prospect, llm_service, force_redo):
     """Process value parsing enhancement for a prospect."""
-    logger.info(f"VALUE_ENHANCEMENT_DEBUG: Starting for prospect {prospect.id}")
-    logger.info(
-        f"VALUE_ENHANCEMENT_DEBUG: force_redo={force_redo}, has_existing_value={bool(prospect.estimated_value_single)}"
-    )
 
     # Values enhancement starting
 
@@ -479,9 +475,6 @@ def _process_value_enhancement(prospect, llm_service, force_redo):
 
     # Check if we should process values
     should_process = force_redo or not prospect.estimated_value_single
-    logger.info(
-        f"VALUE_ENHANCEMENT_DEBUG: should_process={should_process} for prospect {prospect.id}"
-    )
 
     if should_process:
         if prospect.estimated_value_text:
@@ -640,34 +633,21 @@ def _process_naics_enhancement(prospect, llm_service, force_redo):
 
 def _process_title_enhancement(prospect, llm_service, force_redo):
     """Process title enhancement for a prospect."""
-    logger.info(f"TITLE_ENHANCEMENT_DEBUG: Starting for prospect {prospect.id}")
-    logger.info(
-        f"TITLE_ENHANCEMENT_DEBUG: force_redo={force_redo}, has_title={bool(prospect.title)}, has_enhanced_title={bool(prospect.ai_enhanced_title)}"
-    )
 
     # Title enhancement starting
 
     if prospect.title and (force_redo or not prospect.ai_enhanced_title):
-        logger.info(
-            f"TITLE_ENHANCEMENT_DEBUG: Proceeding with LLM enhancement for prospect {prospect.id}"
-        )
 
         try:
-            logger.info(
-                f"TITLE_ENHANCEMENT_DEBUG: Calling LLM service for prospect {prospect.id}"
-            )
             enhanced_title = llm_service.enhance_title_with_llm(
                 prospect.title,
                 prospect.description or "",
                 prospect.agency or "",
                 prospect_id=prospect.id,
             )
-            logger.info(
-                f"TITLE_ENHANCEMENT_DEBUG: LLM response for prospect {prospect.id}: {enhanced_title}"
-            )
         except Exception as e:
             logger.error(
-                f"TITLE_ENHANCEMENT_DEBUG: LLM service error for prospect {prospect.id}: {e}"
+                f"LLM service error for prospect {prospect.id}: {e}"
             )
             # Title enhancement failed - LLM service error
             return False
@@ -701,9 +681,6 @@ def _process_title_enhancement(prospect, llm_service, force_redo):
         else:
             reason = "Already has enhanced title"
 
-        logger.info(
-            f"TITLE_ENHANCEMENT_DEBUG: Skipping enhancement for prospect {prospect.id}, reason: {reason}"
-        )
         # Title enhancement skipped
 
     return False

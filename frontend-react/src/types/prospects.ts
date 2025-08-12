@@ -28,9 +28,6 @@ export interface Prospect {
   set_aside: string | null;
   set_aside_standardized: string | null; // NEW: Standardized set-aside code (e.g., 'SMALL_BUSINESS')
   set_aside_standardized_label: string | null; // NEW: Human-readable set-aside label
-  inferred_set_aside: string | null; // DEPRECATED: Use set_aside_standardized_label instead
-  inferred_naics: string | null; // NEW: AI-inferred NAICS code
-  inferred_naics_description: string | null; // NEW: AI-inferred NAICS description
   primary_contact_email: string | null; // NEW: LLM-extracted email
   primary_contact_name: string | null; // NEW: LLM-extracted name
   loaded_at: string | null; // ISO datetime string

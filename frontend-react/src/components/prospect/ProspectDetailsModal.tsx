@@ -345,17 +345,6 @@ export function ProspectDetailsModal({
                                        status?.currentStep?.toLowerCase().includes('parsing');
                   const isValuesCompleted = status?.progress?.values?.completed;
                   
-                  // Debug logging
-                  console.log('[Value Display Debug]', {
-                    showAIEnhanced,
-                    estimated_value_single: selectedProspect.estimated_value_single,
-                    estimated_value_min: selectedProspect.estimated_value_min,
-                    estimated_value_max: selectedProspect.estimated_value_max,
-                    isValuesActive,
-                    isValuesCompleted,
-                    shouldShow: showAIEnhanced && (selectedProspect.estimated_value_min || selectedProspect.estimated_value_max || selectedProspect.estimated_value_single) && !(isValuesActive && !isValuesCompleted)
-                  });
-                  
                   return showAIEnhanced && (selectedProspect.estimated_value_min || selectedProspect.estimated_value_max || selectedProspect.estimated_value_single) && !(isValuesActive && !isValuesCompleted);
                 })() && (
                   <div className="bg-green-50 p-3 rounded-lg border border-green-200">

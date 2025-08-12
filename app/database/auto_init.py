@@ -9,7 +9,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from sqlalchemy import inspect, text
+from sqlalchemy import inspect
 
 from app.database import db
 from app.utils.logger import logger

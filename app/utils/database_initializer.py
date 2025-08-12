@@ -8,7 +8,6 @@ import threading
 from contextlib import contextmanager
 from datetime import datetime
 
-from app.database import db
 from app.utils.logger import logger
 
 # Global lock for database initialization
