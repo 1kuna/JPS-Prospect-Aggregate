@@ -116,3 +116,7 @@ htmlcov/
 # Cookie files (from curl testing)
 cookies.txt
 **/cookies.txt
+
+# Large data exports
+data/processed/*.csv
+data/processed/*.xlsx
