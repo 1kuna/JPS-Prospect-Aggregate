@@ -91,7 +91,7 @@ python scripts/scrapers/test_scraper_individual.py --scraper dhs  # Test scraper
 
 # Docker management (after deployment)
 docker-compose up -d                            # Start
-docker-compose down                             # Stop
+./launch.sh --stop                              # Stop all services
 docker-compose restart                          # Restart
 docker-compose logs -f web                      # Logs
 
