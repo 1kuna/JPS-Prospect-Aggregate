@@ -300,8 +300,23 @@ function Configure-Environment {
     
     Write-Info "Creating $Mode configuration..."
     
-    # Generate SECRET_KEY
-    $secretKey = -join ((1..64) | ForEach {'{0:x}' -f (Get-Random -Max 16)})
+    # Preserve existing values if available
+    $existingSecret = ""
+    $existingDomain = ""
+    $existingCloudflare = ""
+    
+    if (Test-Path $envPath) {
+        $content = Get-Content $envPath -Raw
+        if ($content -match "SECRET_KEY=(.+)") { $existingSecret = $Matches[1] }
+        if ($content -match "PRODUCTION_DOMAIN=(.+)") { $existingDomain = $Matches[1] }
+        if ($content -match "CLOUDFLARE_TUNNEL_TOKEN=(.+)") { $existingCloudflare = $Matches[1] }
+    }
+    
+    # Generate or preserve SECRET_KEY
+    $secretKey = $existingSecret
+    if ([string]::IsNullOrWhiteSpace($secretKey)) {
+        $secretKey = -join ((1..64) | ForEach {'{0:x}' -f (Get-Random -Max 16)})
+    }
     
     # Base configuration
     $envContent = @"
@@ -346,17 +361,40 @@ WORKERS=1
 TIMEOUT=300
 "@
     } else {
-        # Production mode - need domain
-        $domain = Prompt-User "Enter your production domain (e.g., app.example.com)"
-        if ([string]::IsNullOrWhiteSpace($domain)) {
-            Write-Error "Domain is required for production"
-            return $false
+        # Production mode - handle domain
+        $domain = $existingDomain
+        if (-not [string]::IsNullOrWhiteSpace($existingDomain)) {
+            Write-Info "Current domain: $existingDomain"
+            if (-not (Confirm-Action "Keep existing domain?" "y")) {
+                $domain = Prompt-User "Enter new production domain (e.g., app.example.com)"
+                if ([string]::IsNullOrWhiteSpace($domain)) {
+                    Write-Error "Domain is required for production"
+                    return $false
+                }
+            }
+        } else {
+            $domain = Prompt-User "Enter your production domain (e.g., app.example.com)"
+            if ([string]::IsNullOrWhiteSpace($domain)) {
+                Write-Error "Domain is required for production"
+                return $false
+            }
         }
         
         # Cloudflare tunnel (optional)
-        $cloudflareToken = ""
-        if (Confirm-Action "Configure Cloudflare tunnel?" "n") {
-            $cloudflareToken = Prompt-User "Enter Cloudflare tunnel token"
+        $cloudflareToken = $existingCloudflare
+        if (-not [string]::IsNullOrWhiteSpace($existingCloudflare)) {
+            Write-Info "Cloudflare tunnel is currently configured"
+            if (-not (Confirm-Action "Keep existing Cloudflare token?" "y")) {
+                if (Confirm-Action "Remove Cloudflare tunnel?" "n") {
+                    $cloudflareToken = ""
+                } else {
+                    $cloudflareToken = Prompt-User "Enter new Cloudflare tunnel token"
+                }
+            }
+        } else {
+            if (Confirm-Action "Configure Cloudflare tunnel?" "n") {
+                $cloudflareToken = Prompt-User "Enter Cloudflare tunnel token"
+            }
         }
         
         $envContent += @"
