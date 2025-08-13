@@ -6,6 +6,7 @@ This module creates and configures the Flask application.
 from flask import Flask
 from flask_cors import CORS
 from flask_migrate import Migrate
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from app.config import active_config  # Import active_config
 from app.database import db  # Import the db instance from database.py
@@ -31,12 +32,32 @@ def create_app():
     else:
         logger.warning("Using default SECRET_KEY from config")
     
-    # Session configuration for production
-    # Keep SECURE=False since internal Docker communication is HTTP
-    app.config['SESSION_COOKIE_SECURE'] = False
+    # Session configuration
+    # In production with ProxyFix, we can safely use secure cookies
+    # since ProxyFix will handle the HTTPS detection properly
+    if os.getenv('ENVIRONMENT') == 'production':
+        app.config['SESSION_COOKIE_SECURE'] = True  # Secure cookies in production
+        app.config['PREFERRED_URL_SCHEME'] = 'https'  # Force HTTPS URLs
+    else:
+        app.config['SESSION_COOKIE_SECURE'] = False  # HTTP in development
+    
     app.config['SESSION_COOKIE_HTTPONLY'] = True
     app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
     app.config['SESSION_COOKIE_NAME'] = 'session'
+    
+    # Apply ProxyFix middleware to handle X-Forwarded headers from reverse proxies
+    # This is essential when running behind Cloudflare Tunnel or other reverse proxies
+    # It ensures Flask knows the real protocol (HTTP/HTTPS) and client IP
+    if os.getenv('ENVIRONMENT') == 'production':
+        # In production, trust headers from the reverse proxy
+        app.wsgi_app = ProxyFix(
+            app.wsgi_app,
+            x_for=1,  # Trust X-Forwarded-For for 1 proxy (Cloudflare)
+            x_proto=1,  # Trust X-Forwarded-Proto for HTTPS detection
+            x_host=1,  # Trust X-Forwarded-Host
+            x_prefix=1  # Trust X-Forwarded-Prefix
+        )
+        logger.info("ProxyFix middleware enabled for production environment")
     
     # Initialize extensions
     # Configure CORS with credentials support for authentication
