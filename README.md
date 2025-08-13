@@ -105,10 +105,6 @@ If you prefer manual setup:
 # Quick restart
 ./launch.sh --quick
 
-# Switch environments
-./launch.sh --switch-env development
-./launch.sh --switch-env production
-
 # Interactive menu
 ./launch.sh
 ```
@@ -158,11 +154,13 @@ The project includes automated scripts for easy production deployment using Dock
 ### Quick Start
 
 ```bash
-# 1. Configure production environment
-./setup-production.sh
+# Deploy to production
+./launch.sh --prod
 
-# 2. Deploy the application
-./deploy-production.sh
+# The launcher will:
+# - Ask for your domain (or keep existing)
+# - Optionally configure Cloudflare tunnel
+# - Build and start Docker containers
 ```
 
 ### Prerequisites
@@ -171,24 +169,19 @@ The project includes automated scripts for easy production deployment using Dock
 - A domain name (for HTTPS access)
 - (Optional) Cloudflare account with tunnel configured
 
-### Automated Setup
+### Automated Deployment
 
-The `setup-production.sh` script handles initial configuration:
-- Generates a secure SECRET_KEY automatically
-- Prompts for your production domain
-- Optionally configures Cloudflare tunnel
-- Creates `.env.production` with optimized settings
-- Sets up required directories (data, logs, backups)
+The unified launcher (`./launch.sh --prod`) handles everything:
+1. Generates a secure SECRET_KEY automatically (first time only)
+2. Prompts for your production domain (preserves existing)
+3. Optionally configures Cloudflare tunnel (preserves existing)
+4. Creates/updates `.env` with production settings
+5. Builds Docker images
+6. Starts services (web app, Ollama, optional Cloudflare)
+7. Runs health checks
+8. Displays management commands
 
-### Deployment Process
-
-The `deploy-production.sh` script manages deployment:
-1. Validates configuration (checks SECRET_KEY, domain settings)
-2. Automatically constructs CORS and API URLs from your domain
-3. Builds Docker images
-4. Starts services (web app, Ollama, optional Cloudflare)
-5. Runs health checks
-6. Displays management commands
+**Smart Configuration**: The launcher remembers your domain and Cloudflare settings, asking only if you want to change them on subsequent runs.
 
 ### Production Configuration
 
@@ -230,28 +223,28 @@ docker-compose restart
 docker exec jps-web sqlite3 /app/data/jps_aggregate.db '.backup /app/backups/backup.db'
 
 # Check health
-curl http://localhost:5001/health
+curl http://localhost:5001/api/health
 ```
 
-### Manual Deployment (Without Scripts)
+### Manual Deployment (Without Launcher)
 
 If you prefer manual configuration:
 
-1. Copy and configure environment:
+1. Configure environment:
    ```bash
-   cp .env.example .env.production
-   # Edit .env.production with your settings
+   cp .env.example .env
+   # Edit .env with your settings (set ENVIRONMENT=production)
    ```
 
 2. Build and run with Docker:
    ```bash
-   docker-compose --env-file .env.production build
-   docker-compose --env-file .env.production up -d
+   docker-compose build
+   docker-compose up -d
    ```
 
 3. For Cloudflare tunnel:
    ```bash
-   docker-compose --env-file .env.production --profile cloudflare up -d
+   docker-compose --profile cloudflare up -d
    ```
 
 ### Data Persistence
