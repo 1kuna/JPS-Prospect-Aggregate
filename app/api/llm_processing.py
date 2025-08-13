@@ -99,7 +99,7 @@ def get_llm_status():
         )
 
         last_processed = (
-            last_processed_prospect.ollama_processed_at.isoformat()
+            last_processed_prospect.ollama_processed_at.isoformat() + "Z"
             if last_processed_prospect
             else None
         )
