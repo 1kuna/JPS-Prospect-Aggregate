@@ -707,8 +707,22 @@ configure_env() {
     
     print_info "Creating $mode configuration..."
     
-    # Generate SECRET_KEY
-    local secret_key=$($PYTHON_CMD -c "import secrets; print(secrets.token_hex(32))")
+    # Preserve existing values if available
+    local existing_secret=""
+    local existing_domain=""
+    local existing_cloudflare=""
+    
+    if [ -f ".env" ]; then
+        existing_secret=$(grep "^SECRET_KEY=" .env 2>/dev/null | cut -d'=' -f2)
+        existing_domain=$(grep "^PRODUCTION_DOMAIN=" .env 2>/dev/null | cut -d'=' -f2)
+        existing_cloudflare=$(grep "^CLOUDFLARE_TUNNEL_TOKEN=" .env 2>/dev/null | cut -d'=' -f2)
+    fi
+    
+    # Generate or preserve SECRET_KEY
+    local secret_key="$existing_secret"
+    if [ -z "$secret_key" ]; then
+        secret_key=$($PYTHON_CMD -c "import secrets; print(secrets.token_hex(32))")
+    fi
     
     # Base configuration for both environments
     cat > .env << EOF
@@ -753,17 +767,40 @@ WORKERS=1
 TIMEOUT=300
 EOF
     else
-        # Production mode - need domain
-        local domain=$(prompt_user "Enter your production domain (e.g., app.example.com)" "")
-        if [ -z "$domain" ]; then
-            print_error "Domain is required for production"
-            return 1
+        # Production mode - handle domain
+        local domain="$existing_domain"
+        if [ -n "$existing_domain" ]; then
+            print_info "Current domain: $existing_domain"
+            if ! confirm "Keep existing domain?" "y"; then
+                domain=$(prompt_user "Enter new production domain (e.g., app.example.com)" "")
+                if [ -z "$domain" ]; then
+                    print_error "Domain is required for production"
+                    return 1
+                fi
+            fi
+        else
+            domain=$(prompt_user "Enter your production domain (e.g., app.example.com)" "")
+            if [ -z "$domain" ]; then
+                print_error "Domain is required for production"
+                return 1
+            fi
         fi
         
         # Cloudflare tunnel (optional)
-        local cloudflare_token=""
-        if confirm "Configure Cloudflare tunnel?" "n"; then
-            cloudflare_token=$(prompt_user "Enter Cloudflare tunnel token" "")
+        local cloudflare_token="$existing_cloudflare"
+        if [ -n "$existing_cloudflare" ]; then
+            print_info "Cloudflare tunnel is currently configured"
+            if ! confirm "Keep existing Cloudflare token?" "y"; then
+                if confirm "Remove Cloudflare tunnel?" "n"; then
+                    cloudflare_token=""
+                else
+                    cloudflare_token=$(prompt_user "Enter new Cloudflare tunnel token" "")
+                fi
+            fi
+        else
+            if confirm "Configure Cloudflare tunnel?" "n"; then
+                cloudflare_token=$(prompt_user "Enter Cloudflare tunnel token" "")
+            fi
         fi
         
         cat >> .env << EOF
