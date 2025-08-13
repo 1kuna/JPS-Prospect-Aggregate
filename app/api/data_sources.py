@@ -101,7 +101,7 @@ def get_data_sources_public():
     """Get all data sources (public read-only access for filtering)."""
     session = db.session
     try:
-        # Simpler query for public access - just basic info needed for filtering
+        # Subquery for prospect counts
         prospect_count_subq = (
             session.query(
                 Prospect.source_id, func.count(Prospect.id).label("prospect_count")
@@ -110,10 +110,32 @@ def get_data_sources_public():
             .subquery()
         )
 
-        query = session.query(
-            DataSource, prospect_count_subq.c.prospect_count
-        ).outerjoin(
-            prospect_count_subq, DataSource.id == prospect_count_subq.c.source_id
+        # Subquery for the latest status for each source
+        latest_status_subq = (
+            session.query(
+                ScraperStatus.source_id,
+                func.max(ScraperStatus.last_checked).label("max_last_checked"),
+            )
+            .group_by(ScraperStatus.source_id)
+            .subquery()
+        )
+
+        # Main query - same as admin endpoint but for public access
+        query = (
+            session.query(
+                DataSource, prospect_count_subq.c.prospect_count, ScraperStatus
+            )
+            .outerjoin(
+                prospect_count_subq, DataSource.id == prospect_count_subq.c.source_id
+            )
+            .outerjoin(
+                latest_status_subq, DataSource.id == latest_status_subq.c.source_id
+            )
+            .outerjoin(
+                ScraperStatus,
+                (ScraperStatus.source_id == latest_status_subq.c.source_id)
+                & (ScraperStatus.last_checked == latest_status_subq.c.max_last_checked),
+            )
         )
 
         sources_data = query.all()
@@ -122,9 +144,20 @@ def get_data_sources_public():
             {
                 "id": source.id,
                 "name": source.name,
+                "url": source.url,
+                "description": source.description,
+                "last_scraped": source.last_scraped.isoformat() + "Z"
+                if source.last_scraped
+                else None,
                 "prospectCount": p_count if p_count is not None else 0,
+                "last_checked": status_rec.last_checked.isoformat() + "Z"
+                if status_rec and status_rec.last_checked
+                else None,
+                "status": status_rec.status
+                if status_rec
+                else ("ready" if source.last_scraped is None else "completed"),
             }
-            for source, p_count in sources_data
+            for source, p_count, status_rec in sources_data
         ]
 
         return jsonify({"status": "success", "data": result})
