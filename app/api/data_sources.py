@@ -17,6 +17,10 @@ logger = logger.bind(name="api.data_sources")
 @super_admin_required
 def get_data_sources():
     """Get all data sources."""
+    logger.info("GET /api/data-sources/ called")
+    logger.info(f"User: {request.headers.get('User-Agent', 'Unknown')}")
+    logger.info(f"Origin: {request.headers.get('Origin', 'No origin')}")
+    
     session = db.session
     try:
         # Subquery for prospect counts
@@ -79,6 +83,7 @@ def get_data_sources():
             for source, p_count, status_rec in sources_data
         ]
 
+        logger.info(f"Successfully returning {len(result)} data sources")
         return jsonify({"status": "success", "data": result})
     except Exception as e:
         logger.error(f"Error in get_data_sources: {str(e)}", exc_info=True)

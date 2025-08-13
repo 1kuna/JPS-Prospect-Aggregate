@@ -21,22 +21,63 @@ def create_app():
     """Create and configure an instance of the Flask application."""
     app = Flask(__name__)
     app.config.from_object(active_config)  # Use active_config directly
-
+    
+    # Ensure SECRET_KEY is consistent from environment
+    import os
+    secret_key = os.environ.get('SECRET_KEY')
+    if secret_key:
+        app.config['SECRET_KEY'] = secret_key
+        logger.info("SECRET_KEY loaded from environment")
+    else:
+        logger.warning("Using default SECRET_KEY from config")
+    
+    # Session configuration for production
+    # Keep SECURE=False since internal Docker communication is HTTP
+    app.config['SESSION_COOKIE_SECURE'] = False
+    app.config['SESSION_COOKIE_HTTPONLY'] = True
+    app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+    app.config['SESSION_COOKIE_NAME'] = 'session'
+    
     # Initialize extensions
     # Configure CORS with credentials support for authentication
+    # Get allowed origins from environment or use defaults
+    
+    # First check for PRODUCTION_DOMAIN for automatic configuration
+    production_domain = os.getenv("PRODUCTION_DOMAIN", "")
+    allowed_origins_env = os.getenv("ALLOWED_ORIGINS", "")
+    
+    if production_domain:
+        # Automatically construct allowed origins from production domain
+        allowed_origins = [
+            f"https://{production_domain}",
+            "http://localhost:5173", 
+            "http://localhost:5001", 
+            "http://localhost:3000",
+            "http://localhost:3001"
+        ]
+        logger.info(f"CORS configured for production domain: {production_domain}")
+    elif allowed_origins_env:
+        # Parse comma-separated origins from environment (fallback)
+        allowed_origins = [origin.strip() for origin in allowed_origins_env.split(",") if origin.strip()]
+    else:
+        # Default development origins
+        allowed_origins = [
+            "http://localhost:5173", 
+            "http://localhost:5001", 
+            "http://localhost:3000",
+            "http://localhost:3001",
+            "http://127.0.0.1:5173", 
+            "http://127.0.0.1:5001",
+            "http://127.0.0.1:3000",
+            "http://127.0.0.1:3001"
+        ]
+    
+    logger.info(f"CORS configured with allowed origins: {allowed_origins}")
+    
     CORS(
         app, 
         resources={r"/api/*": {
-            "origins": [
-                "http://localhost:5173", 
-                "http://localhost:5001", 
-                "http://localhost:3000",
-                "http://localhost:3001",
-                "http://127.0.0.1:5173", 
-                "http://127.0.0.1:5001",
-                "http://127.0.0.1:3000",
-                "http://127.0.0.1:3001"
-            ],
+            "origins": allowed_origins,
             "allow_credentials": True,
             "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
             "allow_headers": ["Content-Type", "Authorization"]

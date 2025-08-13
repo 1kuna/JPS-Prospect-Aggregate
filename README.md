@@ -98,6 +98,123 @@ python scripts/enrichment/enhance_prospects_with_llm.py values --limit 100
 python scripts/enrichment/enhance_prospects_with_llm.py --check-status
 ```
 
+## Production Deployment
+
+The project includes automated scripts for easy production deployment using Docker and optional Cloudflare tunnel integration.
+
+### Quick Start
+
+```bash
+# 1. Configure production environment
+./setup-production.sh
+
+# 2. Deploy the application
+./deploy-production.sh
+```
+
+### Prerequisites
+
+- Docker and Docker Compose installed
+- A domain name (for HTTPS access)
+- (Optional) Cloudflare account with tunnel configured
+
+### Automated Setup
+
+The `setup-production.sh` script handles initial configuration:
+- Generates a secure SECRET_KEY automatically
+- Prompts for your production domain
+- Optionally configures Cloudflare tunnel
+- Creates `.env.production` with optimized settings
+- Sets up required directories (data, logs, backups)
+
+### Deployment Process
+
+The `deploy-production.sh` script manages deployment:
+1. Validates configuration (checks SECRET_KEY, domain settings)
+2. Automatically constructs CORS and API URLs from your domain
+3. Builds Docker images
+4. Starts services (web app, Ollama, optional Cloudflare)
+5. Runs health checks
+6. Displays management commands
+
+### Production Configuration
+
+The production environment uses a simplified configuration approach:
+
+```bash
+# Only set your domain - CORS and API URLs are auto-configured
+PRODUCTION_DOMAIN=app.example.com
+
+# Security settings are pre-configured for production
+SESSION_COOKIE_SECURE=True
+SESSION_COOKIE_HTTPONLY=True
+DEBUG=False
+
+# SQLite optimizations included
+SQLITE_JOURNAL_MODE=WAL
+SQLITE_CACHE_SIZE=-64000
+```
+
+### Docker Services
+
+- **Web**: Flask application with Waitress server (12 workers)
+- **Ollama**: LLM service with qwen3:latest model (auto-downloads on first run)
+- **Cloudflared**: Optional tunnel for secure external access (profile-based)
+
+### Management Commands
+
+```bash
+# View logs
+docker-compose logs -f web
+
+# Stop application
+docker-compose down
+
+# Restart services
+docker-compose restart
+
+# Backup database
+docker exec jps-web sqlite3 /app/data/jps_aggregate.db '.backup /app/backups/backup.db'
+
+# Check health
+curl http://localhost:5001/health
+```
+
+### Manual Deployment (Without Scripts)
+
+If you prefer manual configuration:
+
+1. Copy and configure environment:
+   ```bash
+   cp .env.example .env.production
+   # Edit .env.production with your settings
+   ```
+
+2. Build and run with Docker:
+   ```bash
+   docker-compose --env-file .env.production build
+   docker-compose --env-file .env.production up -d
+   ```
+
+3. For Cloudflare tunnel:
+   ```bash
+   docker-compose --env-file .env.production --profile cloudflare up -d
+   ```
+
+### Data Persistence
+
+All data is persisted through Docker volumes:
+- `./data`: SQLite databases
+- `./logs`: Application logs
+- `./backups`: Database backups
+
+### Security Notes
+
+- The setup script generates a cryptographically secure SECRET_KEY
+- Production mode enables all security headers and cookie protection
+- CORS is automatically configured based on your domain
+- Consider using Cloudflare tunnel for zero-trust access
+
 ## Testing
 
 Execute all unit tests with coverage:

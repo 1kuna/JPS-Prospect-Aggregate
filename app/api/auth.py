@@ -20,6 +20,21 @@ auth_bp = Blueprint("auth", __name__, url_prefix="/api/auth")
 # Setup logging
 logger = logger.bind(name="api.auth")
 
+# Add session debugging in production
+import os
+if os.getenv("ENVIRONMENT") == "production":
+    @auth_bp.before_request
+    def log_session_before():
+        """Debug session issues in production."""
+        logger.debug(f"Session before request to {request.endpoint}: {dict(session)}")
+        logger.debug(f"Session cookie: {request.cookies.get('session', 'none')[:50] if request.cookies.get('session') else 'none'}...")
+    
+    @auth_bp.after_request
+    def log_session_after(response):
+        """Debug session issues in production."""
+        logger.debug(f"Session after request to {request.endpoint}: {dict(session)}")
+        return response
+
 
 def login_required(f):
     """Decorator to require login for endpoints."""

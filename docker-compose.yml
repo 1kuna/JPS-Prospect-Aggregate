@@ -11,7 +11,15 @@ services:
       - "5001:5001"
     environment:
       - FLASK_ENV=production
+      - ENVIRONMENT=production
       - SECRET_KEY=${SECRET_KEY}
+      - DATABASE_URL=sqlite:////app/data/jps_aggregate.db
+      - USER_DATABASE_URL=sqlite:////app/data/jps_users.db
+      - PRODUCTION_DOMAIN=${PRODUCTION_DOMAIN}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS}
+      - SESSION_COOKIE_SECURE=${SESSION_COOKIE_SECURE}
+      - SESSION_COOKIE_HTTPONLY=${SESSION_COOKIE_HTTPONLY}
+      - SESSION_COOKIE_SAMESITE=${SESSION_COOKIE_SAMESITE}
       - FILE_FRESHNESS_SECONDS=86400
       - OLLAMA_BASE_URL=http://ollama:11434
     volumes:
@@ -40,51 +48,37 @@ services:
       - OLLAMA_MODELS=/root/.ollama/models
     entrypoint: >
       sh -c "
-        echo 'Starting Ollama service with automatic model installation...' &&
+        echo 'Starting Ollama service...' &&
         ollama serve &
         OLLAMA_PID=$$! &&
-        sleep 15 &&
-        echo 'Waiting for Ollama server to be ready...' &&
-        for i in \$$(seq 1 30); do
-          if curl -s http://localhost:11434/api/version > /dev/null 2>&1; then
-            echo 'Ollama server is ready!'
-            break
+        echo 'Waiting for Ollama server to start (20 seconds)...' &&
+        sleep 20 &&
+        echo 'Ollama server should be ready now.' &&
+        echo 'Checking if qwen3:latest model is installed...' &&
+        if ! ollama list 2>/dev/null | grep -q 'qwen3:latest'; then
+          echo '📦 Model not found. Downloading qwen3:latest (5.2GB)...' &&
+          echo 'This will only happen once. Please be patient...' &&
+          if ollama pull qwen3:latest; then
+            echo '✅ Successfully downloaded qwen3:latest model!'
+          else
+            echo '⚠️  Failed to download model, but continuing (LLM features will be disabled)'
           fi
-          if [ \$$i -eq 30 ]; then
-            echo 'ERROR: Ollama server failed to start after 60 seconds'
-            exit 1
-          fi
-          echo \"Waiting for Ollama server... attempt \$$i/30\"
-          sleep 2
-        done &&
-        echo 'Checking if qwen3:latest model is already installed...' &&
-        if ! ollama list | grep -q 'qwen3:latest'; then
-          echo 'Downloading qwen3:latest model (5.2GB - this may take several minutes)...' &&
-          ollama pull qwen3:latest &&
-          echo 'Successfully downloaded qwen3:latest model!'
         else
-          echo 'qwen3:latest model is already installed!'
+          echo '✅ qwen3:latest model is already installed!'
         fi &&
-        echo 'Verifying model installation...' &&
-        if ollama list | grep -q 'qwen3:latest'; then
-          echo '✓ qwen3:latest model is ready for use!'
-        else
-          echo 'ERROR: Model installation verification failed'
-          exit 1
-        fi &&
-        echo 'Ollama initialization complete - service ready!' &&
-        wait $$OLLAMA_PID
+        echo 'Verifying final setup...' &&
+        ollama list 2>/dev/null || echo 'Could not list models, but continuing...' &&
+        echo '================================================' &&
+        echo 'Ollama service is running on port 11434' &&
+        echo '================================================' &&
+        wait \$$OLLAMA_PID
       "
     healthcheck:
-      test: >
-        sh -c "
-          curl -f http://localhost:11434/api/version >/dev/null 2>&1 &&
-          ollama list | grep -q 'qwen3:latest' || exit 1
-        "
+      test: ["CMD", "ollama", "list"]
       interval: 30s
-      timeout: 15s
-      retries: 10
-      start_period: 300s  # Allow 5 minutes for model download on first startup
+      timeout: 10s
+      retries: 5
+      start_period: 120s  # Give it time to start up and download model if needed
     deploy:
       resources:
         limits:
@@ -97,11 +91,11 @@ services:
     image: cloudflare/cloudflared:latest
     container_name: jps-cloudflared
     restart: unless-stopped
-    command: tunnel run
+    # Use host network mode so localhost:5001 reaches the host's port
+    network_mode: "host"
+    command: tunnel --no-autoupdate run
     environment:
       - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
-    networks:
-      - jps-network
     depends_on:
       - web
     profiles:

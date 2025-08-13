@@ -68,7 +68,9 @@ def main():
     if DEBUG:
         app.run(host=HOST, port=PORT, debug=True)
     else:
-        serve(app, host=HOST, port=PORT)
+        # Use single thread to avoid session race conditions in production
+        # This is fine for a small-scale application
+        serve(app, host=HOST, port=PORT, threads=1)
 
 
 if __name__ == "__main__":

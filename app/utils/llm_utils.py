@@ -79,20 +79,21 @@ def call_ollama(
 
     # 6. Handle Potential Errors
     except requests.exceptions.ConnectionError as e:
-        logger.error(
-            f"Connection Error: Could not connect to Ollama at {OLLAMA_BASE_URL}. Is Ollama running? Error: {e}"
+        logger.warning(
+            f"Ollama service unavailable at {OLLAMA_BASE_URL}. LLM enhancement disabled. Error: {e}"
         )
+        # Return None to indicate service unavailable - calling code should handle gracefully
         return None
     except requests.exceptions.Timeout as e:
-        logger.error(
-            f"Timeout Error: Request to Ollama timed out after {DEFAULT_TIMEOUT} seconds. Error: {e}"
+        logger.warning(
+            f"Ollama request timed out after {DEFAULT_TIMEOUT} seconds. Skipping LLM enhancement. Error: {e}"
         )
         return None
     except (
         requests.exceptions.RequestException
     ) as e:  # Catch other requests errors (like HTTPError)
-        logger.error(
-            f"Request Error: Ollama API request failed. Status: {e.response.status_code if e.response else 'N/A'}. Response: {e.response.text if e.response else 'N/A'}. Error: {e}"
+        logger.warning(
+            f"Ollama API request failed. Status: {e.response.status_code if e.response else 'N/A'}. LLM enhancement skipped. Error: {e}"
         )
         return None
     except json.JSONDecodeError as e:
