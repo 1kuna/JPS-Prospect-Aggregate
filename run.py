@@ -70,6 +70,7 @@ def main():
     else:
         # Use single thread to avoid session race conditions in production
         # This is fine for a small-scale application
+        # ProxyFix is applied to app.wsgi_app internally, so serving app works correctly
         serve(app, host=HOST, port=PORT, threads=1)
 
 

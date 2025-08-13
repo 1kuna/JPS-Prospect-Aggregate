@@ -180,6 +180,9 @@ class ProductionConfig(Config):
     SESSION_COOKIE_HTTPONLY: bool = True
     SESSION_COOKIE_SAMESITE: str = "Lax"
     
+    # Force HTTPS URL generation in production
+    PREFERRED_URL_SCHEME: str = "https"
+    
     def __init__(self):
         """Initialize production config and validate critical settings."""
         super().__init__()
