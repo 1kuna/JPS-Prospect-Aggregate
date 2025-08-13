@@ -138,13 +138,23 @@ print_success "Docker and Docker Compose are installed"
 # Create test environment file
 print_header "Setting up test environment"
 
-cat > "$PROJECT_ROOT/.env.test" << EOF
+cat > "$PROJECT_ROOT/.env" << EOF
+ENVIRONMENT=testing
+SECRET_KEY=test-secret-key-for-ci
+FLASK_APP=run.py
 FLASK_ENV=testing
 TESTING=True
-DATABASE_URL=sqlite:///test_jps_aggregate.db
-USER_DATABASE_URL=sqlite:///test_jps_users.db
-SECRET_KEY=test-secret-key-for-ci
-ENVIRONMENT=testing
+HOST=127.0.0.1
+PORT=5001
+DEBUG=False
+LOG_LEVEL=INFO
+
+# Database paths - leave commented for portability
+# DATABASE_URL=
+# USER_DATABASE_URL=
+
+# Test-specific overrides
+TEST_DATABASE_URL=sqlite:///test_jps_aggregate.db
 EOF
 
 print_success "Test environment file created"
