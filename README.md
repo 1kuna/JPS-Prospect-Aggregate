@@ -213,8 +213,8 @@ SQLITE_CACHE_SIZE=-64000
 # View logs
 docker-compose logs -f web
 
-# Stop application
-docker-compose down
+# Stop everything (handles Cloudflare profile correctly)
+./launch.sh --stop
 
 # Restart services
 docker-compose restart

@@ -909,7 +909,15 @@ show_useful_commands() {
         echo "    $compose_cmd logs --tail=100 web       # View last 100 log lines"
         echo ""
         echo "  Stop & Restart Services:"
-        echo "    $compose_cmd down                      # Stop and remove all containers"
+        echo "    ./launch.sh --stop                     # Stop all services properly"
+        
+        # Check if Cloudflare is enabled and show appropriate manual command
+        if grep -q "CLOUDFLARE_TUNNEL_TOKEN=." .env 2>/dev/null; then
+            echo "    $compose_cmd --profile cloudflare down # Manual stop (includes Cloudflare)"
+        else
+            echo "    $compose_cmd down                      # Manual stop command"
+        fi
+        
         echo "    $compose_cmd stop                      # Stop containers (keep data)"
         echo "    $compose_cmd restart                   # Restart all services"
         echo "    $compose_cmd restart web               # Restart web service only"
@@ -1108,9 +1116,10 @@ start_docker_services() {
         compose_cmd="docker compose"
     fi
     
-    # Stop existing containers
+    # Stop existing containers (including all profiles)
     print_info "Stopping existing containers..."
-    $compose_cmd down 2>/dev/null || true
+    # Always use cloudflare profile when stopping to ensure all containers are removed
+    $compose_cmd --profile cloudflare down 2>/dev/null || true
     
     # Check for Cloudflare tunnel
     local cloudflare_enabled=false
@@ -1128,6 +1137,39 @@ start_docker_services() {
     fi
     
     print_success "Docker services started"
+    return 0
+}
+
+stop_docker_services() {
+    print_info "Stopping Docker services..."
+    
+    local compose_cmd="docker-compose"
+    if ! command_exists docker-compose; then
+        compose_cmd="docker compose"
+    fi
+    
+    # Check for Cloudflare tunnel to use correct profile
+    local cloudflare_enabled=false
+    if grep -q "CLOUDFLARE_TUNNEL_TOKEN=." .env 2>/dev/null; then
+        cloudflare_enabled=true
+    fi
+    
+    # Stop services with appropriate profile
+    if [ "$cloudflare_enabled" = true ]; then
+        print_info "Stopping services with Cloudflare tunnel..."
+        $compose_cmd --profile cloudflare down
+    else
+        print_info "Stopping services..."
+        $compose_cmd down
+    fi
+    
+    # Verify all containers are stopped
+    if docker ps | grep -q "jps-"; then
+        print_warning "Some containers may still be running. Forcing cleanup..."
+        docker ps | grep "jps-" | awk '{print $1}' | xargs -r docker stop 2>/dev/null || true
+    fi
+    
+    print_success "Docker services stopped"
     return 0
 }
 
@@ -1731,6 +1773,7 @@ main() {
             echo "  --version, -v               Show version information"
             echo "  --dev                       Start development mode directly"
             echo "  --prod                      Start production mode directly"
+            echo "  --stop                      Stop Docker production services"
             echo "  --quick                     Quick start with auto-detection"
             echo "  --check                     Check prerequisites only"
             echo ""
@@ -1749,6 +1792,14 @@ main() {
         --prod)
             check_prerequisites || exit 1
             setup_production
+            exit $?
+            ;;
+        --stop)
+            if ! check_docker 2>/dev/null; then
+                print_error "Docker is not running or not installed"
+                exit 1
+            fi
+            stop_docker_services
             exit $?
             ;;
         --quick)
