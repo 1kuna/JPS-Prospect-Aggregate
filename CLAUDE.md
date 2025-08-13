@@ -30,10 +30,9 @@ make test-ci                                  # Full CI suite locally
 # LLM Enhancement
 python scripts/enrichment/enhance_prospects_with_llm.py values --limit 100
 
-# Environment Management
-./launch.sh --switch-env development          # Switch to development
-./launch.sh --switch-env production           # Switch to production
-# The environment is stored in .env ENVIRONMENT variable
+# The environment is automatically configured based on the mode:
+# --dev sets ENVIRONMENT=development
+# --prod sets ENVIRONMENT=production
 ```
 
 ## Setup
@@ -66,14 +65,13 @@ cd frontend-react && npm install
 
 ### Docker Production
 ```bash
-# Automated setup with scripts
-./setup-production.sh     # Configure .env.production
-./deploy-production.sh    # Build and deploy
+# Use the launcher for production
+./launch.sh --prod
 
 # Or manually:
-cp .env.example .env.production
-# Edit .env.production with your settings
-docker-compose --env-file .env.production up --build -d
+cp .env.example .env
+# Edit .env: Set ENVIRONMENT=production and other settings
+docker-compose up --build -d
 ```
 
 ## Essential Commands
@@ -88,20 +86,17 @@ python scripts/scrapers/test_scraper_individual.py --scraper dhs  # Test scraper
 
 ### Production Deployment
 ```bash
-# Initial setup (run once)
-./setup-production.sh                          # Interactive configuration
+# Deploy with launcher
+./launch.sh --prod                              # Handles everything
 
-# Deploy/update application
-./deploy-production.sh                         # Build and deploy
-
-# Docker management
-docker-compose --env-file .env.production up -d         # Start
-docker-compose --env-file .env.production down          # Stop
-docker-compose --env-file .env.production restart       # Restart
-docker-compose --env-file .env.production logs -f web   # Logs
+# Docker management (after deployment)
+docker-compose up -d                            # Start
+docker-compose down                             # Stop
+docker-compose restart                          # Restart
+docker-compose logs -f web                      # Logs
 
 # With Cloudflare tunnel
-docker-compose --env-file .env.production --profile cloudflare up -d
+docker-compose --profile cloudflare up -d
 
 # Database backup
 docker exec jps-web sqlite3 /app/data/jps_aggregate.db '.backup /app/backups/backup.db'
@@ -370,32 +365,27 @@ The project includes automated scripts for simplified production deployment with
 
 ### Quick Deployment
 ```bash
-# First time setup
-./setup-production.sh    # Creates .env.production interactively
-
-# Deploy application
-./deploy-production.sh   # Validates config, builds, and deploys
+# Deploy to production
+./launch.sh --prod
 ```
 
-### What setup-production.sh Does
-1. Generates cryptographically secure SECRET_KEY
-2. Prompts for your production domain
-3. Optionally configures Cloudflare tunnel
-4. Creates optimized .env.production file
+### What the launcher does in production mode:
+1. Generates cryptographically secure SECRET_KEY (first time only)
+2. Prompts for your production domain (or keeps existing)
+3. Optionally configures Cloudflare tunnel (or keeps existing)
+4. Creates/updates `.env` with production settings
 5. Sets up required directories (data, logs, backups)
+6. Builds Docker images
+7. Starts services (web, ollama, optional cloudflare)
+8. Runs health checks
+9. Displays management commands
 
-### What deploy-production.sh Does
-1. Validates .env.production configuration
-2. Dynamically constructs CORS and API URLs from PRODUCTION_DOMAIN
-3. Builds Docker images
-4. Starts services (web, ollama, optional cloudflare)
-5. Runs health checks
-6. Displays management commands
+**Smart prompting**: The launcher preserves your domain and Cloudflare settings between runs, only asking if you want to change them.
 
 ### Key Configuration Pattern
 The production setup uses a simplified configuration where you only need to set `PRODUCTION_DOMAIN`:
 ```bash
-# Set this in .env.production
+# Set this in .env (launcher does this for you)
 PRODUCTION_DOMAIN=app.example.com
 
 # These are auto-configured:
@@ -429,7 +419,7 @@ docker-compose restart web
 docker exec jps-web sqlite3 /app/data/jps_aggregate.db '.backup /app/backups/backup_$(date +%Y%m%d).db'
 
 # Check health
-curl http://localhost:5001/health
+curl http://localhost:5001/api/health
 
 # Run scrapers in production
 docker exec jps-web python -m scripts.scrapers.run_scraper --source "DHS"
@@ -441,8 +431,9 @@ docker exec -it jps-web /bin/bash
 ### Cloudflare Tunnel Setup
 1. Create tunnel in Cloudflare Zero Trust dashboard
 2. Get tunnel token
-3. Add to .env.production: `CLOUDFLARE_TUNNEL_TOKEN=your-token`
-4. Deploy with: `docker-compose --env-file .env.production --profile cloudflare up -d`
+3. Run `./launch.sh --prod` and provide token when prompted
+4. Or manually add to .env: `CLOUDFLARE_TUNNEL_TOKEN=your-token`
+5. Deploy with: `docker-compose --profile cloudflare up -d`
 
 ### Production Security
 - SECRET_KEY: Auto-generated 64-character hex string
