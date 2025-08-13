@@ -24,6 +24,11 @@ make test-ci                                  # Full CI suite locally
 
 # LLM Enhancement
 python scripts/enrichment/enhance_prospects_with_llm.py values --limit 100
+
+# Production Deployment
+./setup-production.sh                         # Configure production
+./deploy-production.sh                        # Deploy with Docker
+docker-compose logs -f web                    # Monitor logs
 ```
 
 ## Setup
@@ -56,9 +61,14 @@ cd frontend-react && npm install
 
 ### Docker Production
 ```bash
-./docker/docker-build.sh  # Automated setup
+# Automated setup with scripts
+./setup-production.sh     # Configure .env.production
+./deploy-production.sh    # Build and deploy
+
 # Or manually:
-docker-compose up --build -d
+cp .env.example .env.production
+# Edit .env.production with your settings
+docker-compose --env-file .env.production up --build -d
 ```
 
 ## Essential Commands
@@ -69,6 +79,27 @@ python run.py                                  # Start backend
 cd frontend-react && npm run dev               # Start frontend
 python -m scripts.scrapers.run_scraper --source "DHS"   # Run scraper
 python scripts/scrapers/test_scraper_individual.py --scraper dhs  # Test scraper
+```
+
+### Production Deployment
+```bash
+# Initial setup (run once)
+./setup-production.sh                          # Interactive configuration
+
+# Deploy/update application
+./deploy-production.sh                         # Build and deploy
+
+# Docker management
+docker-compose --env-file .env.production up -d         # Start
+docker-compose --env-file .env.production down          # Stop
+docker-compose --env-file .env.production restart       # Restart
+docker-compose --env-file .env.production logs -f web   # Logs
+
+# With Cloudflare tunnel
+docker-compose --env-file .env.production --profile cloudflare up -d
+
+# Database backup
+docker exec jps-web sqlite3 /app/data/jps_aggregate.db '.backup /app/backups/backup.db'
 ```
 
 ### Database & Migrations
@@ -185,6 +216,19 @@ Generate SECRET_KEY:
 python -c "import secrets; print(secrets.token_hex(32))"
 ```
 
+### Production-Specific
+```bash
+# Core production setting - other URLs auto-configured from this
+PRODUCTION_DOMAIN=app.example.com  # Your domain (without https://)
+
+# Optional - for Cloudflare tunnel
+CLOUDFLARE_TUNNEL_TOKEN=<your-tunnel-token>
+
+# Auto-configured from PRODUCTION_DOMAIN:
+# ALLOWED_ORIGINS=https://${PRODUCTION_DOMAIN},http://localhost:5173,http://localhost:5001
+# VITE_API_URL=https://${PRODUCTION_DOMAIN}
+```
+
 ### Database
 ```bash
 DATABASE_URL=sqlite:///data/jps_aggregate.db
@@ -194,6 +238,7 @@ USER_DATABASE_URL=sqlite:///data/jps_users.db
 ### LLM
 ```bash
 OLLAMA_BASE_URL=http://localhost:11434  # Local
+OLLAMA_BASE_URL=http://ollama:11434     # Docker
 OLLAMA_MODEL=qwen3:latest
 ```
 
@@ -312,6 +357,94 @@ Roles:
 - **user**: Basic access
 - **admin**: Manage scrapers
 - **super-admin**: Full system access
+
+## Production Deployment Guide
+
+### Overview
+The project includes automated scripts for simplified production deployment with Docker and optional Cloudflare tunnel integration.
+
+### Quick Deployment
+```bash
+# First time setup
+./setup-production.sh    # Creates .env.production interactively
+
+# Deploy application
+./deploy-production.sh   # Validates config, builds, and deploys
+```
+
+### What setup-production.sh Does
+1. Generates cryptographically secure SECRET_KEY
+2. Prompts for your production domain
+3. Optionally configures Cloudflare tunnel
+4. Creates optimized .env.production file
+5. Sets up required directories (data, logs, backups)
+
+### What deploy-production.sh Does
+1. Validates .env.production configuration
+2. Dynamically constructs CORS and API URLs from PRODUCTION_DOMAIN
+3. Builds Docker images
+4. Starts services (web, ollama, optional cloudflare)
+5. Runs health checks
+6. Displays management commands
+
+### Key Configuration Pattern
+The production setup uses a simplified configuration where you only need to set `PRODUCTION_DOMAIN`:
+```bash
+# Set this in .env.production
+PRODUCTION_DOMAIN=app.example.com
+
+# These are auto-configured:
+ALLOWED_ORIGINS=https://app.example.com,http://localhost:5173,http://localhost:5001
+VITE_API_URL=https://app.example.com
+```
+
+### Docker Services
+- **web**: Flask app with Waitress (12 workers), auto-restarts
+- **ollama**: LLM service, auto-downloads qwen3:latest on first run
+- **cloudflared**: Optional Cloudflare tunnel (profile-based activation)
+
+### Data Persistence
+All critical data persists through Docker volumes:
+- `./data`: SQLite databases (main + user auth)
+- `./logs`: Application and scraper logs
+- `./backups`: Database backups
+
+### Production Commands
+```bash
+# View real-time logs
+docker-compose logs -f web
+
+# Stop everything
+docker-compose down
+
+# Restart services
+docker-compose restart web
+
+# Backup database
+docker exec jps-web sqlite3 /app/data/jps_aggregate.db '.backup /app/backups/backup_$(date +%Y%m%d).db'
+
+# Check health
+curl http://localhost:5001/health
+
+# Run scrapers in production
+docker exec jps-web python -m scripts.scrapers.run_scraper --source "DHS"
+
+# Access shell
+docker exec -it jps-web /bin/bash
+```
+
+### Cloudflare Tunnel Setup
+1. Create tunnel in Cloudflare Zero Trust dashboard
+2. Get tunnel token
+3. Add to .env.production: `CLOUDFLARE_TUNNEL_TOKEN=your-token`
+4. Deploy with: `docker-compose --env-file .env.production --profile cloudflare up -d`
+
+### Production Security
+- SECRET_KEY: Auto-generated 64-character hex string
+- Session cookies: Secure, HTTPOnly, SameSite=Lax
+- CORS: Restricted to configured domains
+- Debug mode: Disabled
+- SQLite: WAL mode for better concurrency
 
 ## Performance Tips
 

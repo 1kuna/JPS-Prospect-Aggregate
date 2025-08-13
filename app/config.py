@@ -106,11 +106,12 @@ class Config:
     )  # Keep only 3 log files
 
     # Database configuration
+    # Use absolute paths (4 slashes) for SQLite to avoid path resolution issues
     SQLALCHEMY_DATABASE_URI: str = os.getenv(
-        "DATABASE_URL", f"sqlite:///{DEFAULT_BUSINESS_DB_PATH}"
+        "DATABASE_URL", f"sqlite:///{os.path.abspath(DEFAULT_BUSINESS_DB_PATH)}"
     )
     USER_DATABASE_URI: str = os.getenv(
-        "USER_DATABASE_URL", f"sqlite:///{DEFAULT_USER_DB_PATH}"
+        "USER_DATABASE_URL", f"sqlite:///{os.path.abspath(DEFAULT_USER_DB_PATH)}"
     )
 
     # Scheduler configuration
@@ -173,6 +174,21 @@ class ProductionConfig(Config):
 
     DEBUG: bool = False
     LOG_LEVEL: str = "INFO"
+    
+    # Enforce secure session cookies in production
+    SESSION_COOKIE_SECURE: bool = True
+    SESSION_COOKIE_HTTPONLY: bool = True
+    SESSION_COOKIE_SAMESITE: str = "Lax"
+    
+    def __init__(self):
+        """Initialize production config and validate critical settings."""
+        super().__init__()
+        # Ensure SECRET_KEY is set and not using the default
+        if not os.getenv("SECRET_KEY") or self.SECRET_KEY == "dev-secret-key-change-in-production-4f8a5c6e9b1d3a7f":
+            raise ValueError(
+                "SECRET_KEY must be set in production environment! "
+                "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
+            )
 
 
 class TestingConfig(Config):

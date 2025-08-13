@@ -54,28 +54,35 @@ run_migrations() {
         # SQLite is more forgiving, so we can continue
     fi
     
-    # Verify tables exist
+    # Verify tables exist without creating app instance
     log "Verifying database tables..."
     python3 << 'PYTHON_SCRIPT'
 import sys
+import sqlite3
+import os
+
 try:
-    from app import create_app
-    from app.database import db
-    from sqlalchemy import text
+    # Check if database file exists
+    db_path = '/app/data/jps_aggregate.db'
     
-    app = create_app()
-    with app.app_context():
+    if os.path.exists(db_path):
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
         # Check key tables
         tables = ['prospects', 'data_sources', 'scraper_status']
         for table in tables:
             try:
-                result = db.session.execute(text(f'SELECT COUNT(*) FROM {table}')).fetchone()
-                count = result[0] if result else 0
+                cursor.execute(f'SELECT COUNT(*) FROM {table}')
+                count = cursor.fetchone()[0]
                 print(f'✓ {table} table: {count} records')
             except Exception as e:
                 print(f'✗ {table} table: Not found (will be created on first use)')
         
+        conn.close()
         print('Database verification complete')
+    else:
+        print('Database file does not exist yet (will be created on first use)')
         
 except Exception as e:
     print(f'Database verification error: {e}')
