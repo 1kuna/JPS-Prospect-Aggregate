@@ -1,5 +1,5 @@
 # JPS Prospect Aggregate - Docker Compose Configuration
-# Simplified setup with SQLite database
+# Simplified setup using single .env file
 
 services:
   web:
@@ -9,101 +9,63 @@ services:
     restart: unless-stopped
     ports:
       - "5001:5001"
+    env_file:
+      - .env  # Load all variables from .env
     environment:
-      - FLASK_ENV=production
-      - ENVIRONMENT=production
-      - SECRET_KEY=${SECRET_KEY}
+      # Override database paths for Docker container
       - DATABASE_URL=sqlite:////app/data/jps_aggregate.db
       - USER_DATABASE_URL=sqlite:////app/data/jps_users.db
-      - PRODUCTION_DOMAIN=${PRODUCTION_DOMAIN}
-      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS}
-      - SESSION_COOKIE_SECURE=${SESSION_COOKIE_SECURE}
-      - SESSION_COOKIE_HTTPONLY=${SESSION_COOKIE_HTTPONLY}
-      - SESSION_COOKIE_SAMESITE=${SESSION_COOKIE_SAMESITE}
-      - FILE_FRESHNESS_SECONDS=86400
+      # Ensure Ollama uses Docker network
       - OLLAMA_BASE_URL=http://ollama:11434
     volumes:
-      # Mount data directory for SQLite databases
       - ./data:/app/data
-      # Mount logs directory
       - ./logs:/app/logs
-      # Mount backups directory
       - ./backups:/app/backups
     depends_on:
-      ollama:
-        condition: service_healthy
+      - ollama
     networks:
-      - jps-network
+      - app-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   ollama:
     image: ollama/ollama:latest
     container_name: jps-ollama
     restart: unless-stopped
     volumes:
-      - ollama_data:/root/.ollama
-    ports:
-      - "11434:11434"
-    environment:
-      - OLLAMA_HOST=0.0.0.0
-      - OLLAMA_MODELS=/root/.ollama/models
-    entrypoint: >
-      sh -c "
-        echo 'Starting Ollama service...' &&
-        ollama serve &
-        OLLAMA_PID=$$! &&
-        echo 'Waiting for Ollama server to start (20 seconds)...' &&
-        sleep 20 &&
-        echo 'Ollama server should be ready now.' &&
-        echo 'Checking if qwen3:latest model is installed...' &&
-        if ! ollama list 2>/dev/null | grep -q 'qwen3:latest'; then
-          echo '📦 Model not found. Downloading qwen3:latest (5.2GB)...' &&
-          echo 'This will only happen once. Please be patient...' &&
-          if ollama pull qwen3:latest; then
-            echo '✅ Successfully downloaded qwen3:latest model!'
-          else
-            echo '⚠️  Failed to download model, but continuing (LLM features will be disabled)'
-          fi
-        else
-          echo '✅ qwen3:latest model is already installed!'
-        fi &&
-        echo 'Verifying final setup...' &&
-        ollama list 2>/dev/null || echo 'Could not list models, but continuing...' &&
-        echo '================================================' &&
-        echo 'Ollama service is running on port 11434' &&
-        echo '================================================' &&
-        wait \$$OLLAMA_PID
-      "
-    healthcheck:
-      test: ["CMD", "ollama", "list"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 120s  # Give it time to start up and download model if needed
+      - ollama-data:/root/.ollama
+    networks:
+      - app-network
     deploy:
       resources:
-        limits:
-          memory: 8G
-    networks:
-      - jps-network
+        reservations:
+          memory: 4G
+    environment:
+      - OLLAMA_MODELS=/root/.ollama/models
+    command: serve
 
-  # Cloudflare tunnel (optional - only runs when CLOUDFLARE_TUNNEL_TOKEN is set)
+  # Optional: Cloudflare tunnel for production
+  # Only runs when --profile cloudflare is used
   cloudflared:
     image: cloudflare/cloudflared:latest
     container_name: jps-cloudflared
     restart: unless-stopped
-    # Use host network mode so localhost:5001 reaches the host's port
-    network_mode: "host"
-    command: tunnel --no-autoupdate run
-    environment:
-      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
-    depends_on:
-      - web
     profiles:
       - cloudflare
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    networks:
+      - app-network
+    depends_on:
+      - web
 
 volumes:
-  ollama_data:
+  ollama-data:
+    driver: local
 
 networks:
-  jps-network:
+  app-network:
     driver: bridge

@@ -28,9 +28,40 @@ Additional design notes are located in `docs/`.
 - Helper scripts for running scrapers and LLM enrichment
 - Real-time maintenance mode for emergency site disabling
 
-## Setup
+## Quick Start
 
-1. Activate your conda environment (Python 3.11 recommended):
+### Using the Unified Launcher (Recommended)
+
+The easiest way to get started is using the unified launcher script:
+
+```bash
+# For development mode
+./launch.sh --dev
+
+# For production mode (Docker)
+./launch.sh --prod
+
+# Interactive menu
+./launch.sh
+```
+
+The launcher will:
+- Check all prerequisites (Python, Node.js, Docker, etc.)
+- Set up your environment automatically
+- Start all necessary services
+- Open your browser to the application
+
+**Key Features:**
+- Single `.env` file that works on any system (portable database paths)
+- Automatic environment switching between development and production
+- No need for multiple configuration files or scripts
+- All functionality consolidated into one launcher script
+
+### Manual Setup
+
+If you prefer manual setup:
+
+1. Activate your conda environment (Python 3.11+ required):
    ```bash
    conda activate your_environment_name
    ```
@@ -62,6 +93,28 @@ Additional design notes are located in `docs/`.
 
 ## Running
 
+### Using the Launcher
+
+```bash
+# Development mode (local servers)
+./launch.sh --dev
+
+# Production mode (Docker)
+./launch.sh --prod
+
+# Quick restart
+./launch.sh --quick
+
+# Switch environments
+./launch.sh --switch-env development
+./launch.sh --switch-env production
+
+# Interactive menu
+./launch.sh
+```
+
+### Manual Running
+
 Start the Flask API using Waitress:
 ```bash
 python run.py
@@ -70,7 +123,7 @@ python run.py
 The React application can be launched separately:
 ```bash
 cd frontend-react
-npm run dev  # Includes automatic CSS watching with concurrently
+npm run dev  # Runs on port 3000
 ```
 
 Scrapers are run via helper scripts:

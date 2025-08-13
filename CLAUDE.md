@@ -5,9 +5,14 @@ This file provides guidance to Claude Code when working with this repository.
 ## Quick Start
 
 ```bash
-# Start application
+# Using the unified launcher (RECOMMENDED)
+./launch.sh --dev                              # Start development environment
+./launch.sh --prod                             # Start production (Docker)
+./launch.sh                                    # Interactive menu with options
+
+# Manual commands
 python run.py                                 # Backend (port 5001)
-cd frontend-react && npm run dev              # Frontend (port 5173)
+cd frontend-react && npm run dev              # Frontend (port 3000)
 
 # Run scrapers
 python -m scripts.scrapers.run_scraper --source "DHS"  # Specific scraper
@@ -25,10 +30,10 @@ make test-ci                                  # Full CI suite locally
 # LLM Enhancement
 python scripts/enrichment/enhance_prospects_with_llm.py values --limit 100
 
-# Production Deployment
-./setup-production.sh                         # Configure production
-./deploy-production.sh                        # Deploy with Docker
-docker-compose logs -f web                    # Monitor logs
+# Environment Management
+./launch.sh --switch-env development          # Switch to development
+./launch.sh --switch-env production           # Switch to production
+# The environment is stored in .env ENVIRONMENT variable
 ```
 
 ## Setup
@@ -225,7 +230,7 @@ PRODUCTION_DOMAIN=app.example.com  # Your domain (without https://)
 CLOUDFLARE_TUNNEL_TOKEN=<your-tunnel-token>
 
 # Auto-configured from PRODUCTION_DOMAIN:
-# ALLOWED_ORIGINS=https://${PRODUCTION_DOMAIN},http://localhost:5173,http://localhost:5001
+# ALLOWED_ORIGINS=https://${PRODUCTION_DOMAIN},http://localhost:3000,http://localhost:5001
 # VITE_API_URL=https://${PRODUCTION_DOMAIN}
 ```
 
@@ -394,7 +399,7 @@ The production setup uses a simplified configuration where you only need to set 
 PRODUCTION_DOMAIN=app.example.com
 
 # These are auto-configured:
-ALLOWED_ORIGINS=https://app.example.com,http://localhost:5173,http://localhost:5001
+ALLOWED_ORIGINS=https://app.example.com,http://localhost:3000,http://localhost:5001
 VITE_API_URL=https://app.example.com
 ```
 
