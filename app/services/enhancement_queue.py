@@ -92,6 +92,7 @@ class SimpleEnhancementQueue:
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
         self._lock = threading.Lock()
+        self._app = None  # Store Flask app reference
 
         # Track current enhancement details for API compatibility
         self._current_prospect_id: str | None = None
@@ -107,6 +108,128 @@ class SimpleEnhancementQueue:
         self._initial_queue_positions: dict[
             str, int
         ] = {}  # Track initial queue positions
+        
+        # Add a real queue for individual enhancements
+        self._individual_queue: list[dict[str, Any]] = []
+        self._queue_worker_thread: threading.Thread | None = None
+        self._queue_worker_running = False
+    
+    def set_app(self, app):
+        """Set the Flask app reference for use in background threads"""
+        self._app = app
+        logger.info("Flask app reference set in enhancement queue")
+
+    def _process_queue_worker(self):
+        """Background worker to process queued enhancements"""
+        logger.info("Queue worker started")
+        
+        # Check if app is set
+        if not self._app:
+            logger.error("Flask app not set in enhancement queue - worker cannot start")
+            return
+        
+        while self._queue_worker_running:
+            item_to_process = None
+            with self._lock:
+                # Find next queued item (don't remove it yet)
+                for item in self._individual_queue:
+                    if item['status'] == 'queued':
+                        item['status'] = 'processing'
+                        item_to_process = item
+                        break
+            
+            if not item_to_process:
+                time.sleep(1)
+                continue
+            
+            # Process the item outside the lock, but within app context
+            with self._app.app_context():
+                try:
+                    logger.info(f"Processing queued enhancement for prospect {item_to_process['prospect_id'][:8]}...")
+                    result = self.enhance_single_prospect(
+                        item_to_process['prospect_id'],
+                        item_to_process['enhancement_type'],
+                        item_to_process['user_id'],
+                        item_to_process['force_redo']
+                    )
+                    
+                    # Update item status
+                    with self._lock:
+                        item_to_process['status'] = 'completed' if result.get('status') in ['completed', 'no_changes'] else 'failed'
+                        item_to_process['completed_at'] = time.time()
+                        item_to_process['result'] = result
+                        
+                except Exception as e:
+                    logger.error(f"Error processing queued enhancement: {e}", exc_info=True)
+                    with self._lock:
+                        item_to_process['status'] = 'failed'
+                        item_to_process['error'] = str(e)
+                        item_to_process['completed_at'] = time.time()
+                
+            # Clean up old completed/failed items (older than 5 minutes)
+            with self._lock:
+                current_time = time.time()
+                self._individual_queue = [
+                    item for item in self._individual_queue
+                    if item['status'] in ['queued', 'processing'] or 
+                    (current_time - item.get('completed_at', current_time)) < 300
+                ]
+            
+            time.sleep(0.5)  # Small delay between items
+            
+        logger.info("Queue worker stopped")
+    
+    def start_queue_worker(self):
+        """Start the background queue worker"""
+        with self._lock:
+            if self._queue_worker_running:
+                return
+            
+            self._queue_worker_running = True
+            self._queue_worker_thread = threading.Thread(target=self._process_queue_worker)
+            self._queue_worker_thread.daemon = True
+            self._queue_worker_thread.start()
+            logger.info("Started queue worker thread")
+    
+    def stop_queue_worker(self):
+        """Stop the background queue worker"""
+        with self._lock:
+            self._queue_worker_running = False
+        
+        if self._queue_worker_thread:
+            self._queue_worker_thread.join(timeout=5)
+            self._queue_worker_thread = None
+            logger.info("Stopped queue worker thread")
+            
+    def add_to_queue(self, prospect_id: str, enhancement_type: str, user_id: int, force_redo: bool) -> str:
+        """Add an enhancement to the queue and return immediately"""
+        queue_item_id = f"individual_{prospect_id[:8]}_{int(time.time())}"
+        
+        with self._lock:
+            self._individual_queue.append({
+                'queue_item_id': queue_item_id,
+                'prospect_id': prospect_id,
+                'enhancement_type': enhancement_type,
+                'user_id': user_id,
+                'force_redo': force_redo,
+                'status': 'queued',
+                'created_at': time.time()
+            })
+            
+            # Calculate actual queue position (only count queued items)
+            queue_position = sum(1 for item in self._individual_queue if item['status'] == 'queued')
+            
+            # Store initial queue position
+            self._initial_queue_positions[prospect_id] = queue_position
+            
+            # Initialize completed steps
+            self._completed_steps[prospect_id] = []
+        
+        # Start worker if not running
+        self.start_queue_worker()
+        
+        logger.info(f"Added enhancement to queue: {queue_item_id} at position {queue_position}")
+        return queue_item_id
 
     def get_status(self) -> dict[str, Any]:
         """Get current processing status"""
@@ -378,10 +501,73 @@ class SimpleEnhancementQueue:
     def get_item_status(self, item_id: str) -> dict[str, Any]:
         """Get status of a specific item"""
         with self._lock:
-            # Extract prospect_id from item_id (format: individual_prospectId_timestamp)
+            # First check if item is in the queue
+            for queue_item in self._individual_queue:
+                if queue_item.get('queue_item_id') == item_id:
+                    prospect_id = queue_item['prospect_id']
+                    
+                    if queue_item['status'] == 'queued':
+                        # Calculate queue position
+                        position = 1
+                        for idx, item in enumerate(self._individual_queue):
+                            if item['status'] == 'queued':
+                                if item['queue_item_id'] == item_id:
+                                    break
+                                position += 1
+                        
+                        return {
+                            "item_id": item_id,
+                            "status": "queued",
+                            "position": position,
+                            "current_step": None,
+                            "completed_steps": [],
+                            "error": None,
+                        }
+                    elif queue_item['status'] == 'processing':
+                        # Item is currently being processed
+                        current_step = None
+                        if self._current_enhancement_type:
+                            if self._current_enhancement_type == "titles":
+                                current_step = "Enhancing title..."
+                            elif self._current_enhancement_type == "values":
+                                current_step = "Parsing contract values..."
+                            elif self._current_enhancement_type == "naics":
+                                current_step = "Classifying NAICS code..."
+                            elif self._current_enhancement_type == "set_asides":
+                                current_step = "Processing set asides..."
+                            else:
+                                current_step = "Processing..."
+                        
+                        return {
+                            "item_id": item_id,
+                            "status": "processing",
+                            "position": None,
+                            "current_step": current_step,
+                            "completed_steps": self._completed_steps.get(prospect_id, []),
+                            "error": None,
+                        }
+                    elif queue_item['status'] == 'completed':
+                        return {
+                            "item_id": item_id,
+                            "status": "completed",
+                            "position": None,
+                            "current_step": None,
+                            "completed_steps": self._completed_steps.get(prospect_id, ["titles", "values", "naics", "set_asides"]),
+                            "error": None,
+                        }
+                    elif queue_item['status'] == 'failed':
+                        return {
+                            "item_id": item_id,
+                            "status": "failed",
+                            "position": None,
+                            "current_step": None,
+                            "completed_steps": self._completed_steps.get(prospect_id, []),
+                            "error": queue_item.get('error', 'Unknown error'),
+                        }
+            
+            # Extract prospect_id from item_id for backward compatibility
             parts = item_id.split("_")
             if len(parts) >= 2:
-                # Prospect ID is the second part (it's a UUID string, not an int)
                 prospect_id = parts[1]
             else:
                 prospect_id = None
@@ -458,9 +644,9 @@ class SimpleEnhancementQueue:
 
                 prospect = Prospect.query.get(prospect_id)
                 if prospect and prospect.ollama_processed_at:
-                    # Clean up cached queue position for completed item
-                    if item_id in self._queue_positions:
-                        del self._queue_positions[item_id]
+                    # Clean up cached initial position for completed item
+                    if prospect_id in self._initial_queue_positions:
+                        del self._initial_queue_positions[prospect_id]
 
                     return {
                         "item_id": item_id,
@@ -500,20 +686,36 @@ class SimpleEnhancementQueue:
     def _queue_items(self) -> dict[str, MockQueueItem]:
         """Backward compatibility for queue items access"""
         with self._lock:
+            items = {}
+            # Add all queued items from the individual queue
+            for queue_item in self._individual_queue:
+                if queue_item['status'] in ['queued', 'processing']:
+                    mock_item = MockQueueItem(
+                        prospect_id=queue_item['prospect_id'],
+                        user_id=queue_item.get('user_id', 1),
+                        enhancement_type=queue_item.get('enhancement_type', 'all'),
+                        processing_type='individual',
+                        status=queue_item['status'],
+                        item_id=queue_item['queue_item_id'],
+                    )
+                    items[queue_item['queue_item_id']] = mock_item
+            
+            # Also add current processing item if different
             if self._processing and self._current_prospect_id:
                 # Create mock queue item with expected attributes and consistent ID
                 item_id = f"{self._current_processing_type}_{self._current_prospect_id}_{self._current_user_id or 1}"
-                mock_item = MockQueueItem(
-                    prospect_id=self._current_prospect_id,
-                    user_id=self._current_user_id or 1,
-                    enhancement_type=self._current_enhancement_type or "all",
-                    processing_type=self._current_processing_type,
-                    status="processing" if self._processing else "pending",
-                    item_id=item_id,
-                )
-                return {"current": mock_item}
-            else:
-                return {}
+                if item_id not in items:
+                    mock_item = MockQueueItem(
+                        prospect_id=self._current_prospect_id,
+                        user_id=self._current_user_id or 1,
+                        enhancement_type=self._current_enhancement_type or "all",
+                        processing_type=self._current_processing_type,
+                        status="processing",
+                        item_id=item_id,
+                    )
+                    items[item_id] = mock_item
+            
+            return items
 
     def _get_prospects_needing_enhancement(
         self, enhancement_type: EnhancementType, skip_existing: bool
@@ -619,25 +821,24 @@ def add_individual_enhancement(
     user_id: int | None = None,
     force_redo: bool = False,
 ) -> dict[str, Any]:
-    """Add individual prospect enhancement (immediate processing)"""
-    # Store initial queue position (simplified - always 1 for immediate processing)
-    with enhancement_queue._lock:
-        enhancement_queue._initial_queue_positions[prospect_id] = 1
-
-    result = enhancement_queue.enhance_single_prospect(
-        prospect_id, enhancement_type, user_id, force_redo
+    """Add individual prospect enhancement to queue (asynchronous processing)"""
+    # Add to queue instead of processing immediately
+    queue_item_id = enhancement_queue.add_to_queue(
+        prospect_id, enhancement_type, user_id or 1, force_redo
     )
-
-    queue_item_id = f"individual_{prospect_id}_{int(time.time())}"
+    
+    # Get current queue position
+    with enhancement_queue._lock:
+        queue_position = len(enhancement_queue._individual_queue)
 
     return {
         "queue_item_id": queue_item_id,
         "was_existing": False,  # For individual enhancements, always treat as new
-        "status": result.get("status", "completed"),
-        "message": result.get("message", "Enhancement completed"),
+        "status": "queued",
+        "message": f"Enhancement queued for prospect {prospect_id}",
         "prospect_id": prospect_id,
-        "enhancements": result.get("enhancements", {}),
-        "queue_position": 1,  # Always position 1 for immediate processing
+        "enhancements": {},
+        "queue_position": queue_position,
     }
 
 

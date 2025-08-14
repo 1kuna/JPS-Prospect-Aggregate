@@ -182,6 +182,9 @@ def create_app():
         from app.services.llm_service import llm_service  # noqa: F401
         from app.utils.enhancement_cleanup import cleanup_all_in_progress_enhancements
         from app.utils.scraper_cleanup import cleanup_all_working_scrapers
+        
+        # Set the app reference in the enhancement queue for background threads
+        enhancement_queue.set_app(app)
 
         # Database is already initialized above, so tables should exist
         # Run cleanup functions

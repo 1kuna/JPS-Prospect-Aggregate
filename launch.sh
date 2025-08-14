@@ -986,9 +986,14 @@ start_dev_servers() {
     
     if ! check_port $frontend_port; then
         print_warning "Port $frontend_port is already in use"
-        print_info "You may need to kill the existing process:"
-        print_info "  lsof -ti:$frontend_port | xargs kill -9"
-        # Don't automatically switch ports - let user handle it
+        if confirm "Kill existing process on port $frontend_port?"; then
+            lsof -ti:$frontend_port | xargs kill -9 2>/dev/null || true
+            sleep 1
+            print_success "Port $frontend_port cleared"
+        else
+            print_error "Cannot start frontend with port $frontend_port in use"
+            return 1
+        fi
     fi
     
     # Start backend
