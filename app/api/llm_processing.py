@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from flask import Blueprint, jsonify, request
 from sqlalchemy import func
 
-from app.api.auth import admin_required
+from app.api.auth import admin_required, login_required
 from app.database.models import (
     AIEnrichmentLog,
     LLMOutput,
@@ -806,7 +806,7 @@ def _finalize_enhancement(prospect, llm_service, processed, enhancements, force_
 
 
 @llm_bp.route("/enhance-single", methods=["POST"])
-@admin_required
+@login_required
 def enhance_single_prospect():
     """Enhance a single prospect with all AI enhancements using the priority queue system"""
     try:
@@ -892,6 +892,42 @@ def enhance_single_prospect():
                     }
                 ), 200
 
+        # Determine which steps will be skipped
+        planned_steps = {}
+        enhancement_types_list = enhancement_type.split(',') if enhancement_type else ['all']
+        
+        # Check each enhancement type to see if it will be skipped
+        if 'all' in enhancement_types_list or 'titles' in enhancement_types_list:
+            will_skip = bool(prospect.ai_enhanced_title) and not force_redo
+            planned_steps['titles'] = {
+                'will_process': not will_skip,
+                'reason': 'already_enhanced' if will_skip else None
+            }
+        
+        if 'all' in enhancement_types_list or 'values' in enhancement_types_list:
+            will_skip = (bool(prospect.estimated_value_single) or 
+                        bool(prospect.estimated_value_min) or 
+                        bool(prospect.estimated_value_max)) and not force_redo
+            planned_steps['values'] = {
+                'will_process': not will_skip,
+                'reason': 'already_parsed' if will_skip else None
+            }
+        
+        if 'all' in enhancement_types_list or 'naics' in enhancement_types_list:
+            will_skip = (bool(prospect.naics) and 
+                        prospect.naics_source == 'llm_inferred') and not force_redo
+            planned_steps['naics'] = {
+                'will_process': not will_skip,
+                'reason': 'already_classified' if will_skip else None
+            }
+        
+        if 'all' in enhancement_types_list or 'set_asides' in enhancement_types_list:
+            will_skip = bool(prospect.set_aside_standardized) and not force_redo
+            planned_steps['set_asides'] = {
+                'will_process': not will_skip,
+                'reason': 'already_standardized' if will_skip else None
+            }
+        
         # Add to priority queue (returns dict with queue_item_id and was_existing)
         enhancement_result = add_individual_enhancement(
             prospect_id=prospect_id,
@@ -902,18 +938,11 @@ def enhance_single_prospect():
 
         queue_item_id = enhancement_result["queue_item_id"]
         was_existing = enhancement_result["was_existing"]
+        queue_position = enhancement_result.get("queue_position", 1)
 
         # Get queue status to provide better response information
         queue_status = enhancement_queue.get_queue_status()
         worker_running = queue_status.get("worker_running", False)
-        queue_position = None
-
-        # Find the position of this item in the queue
-        if queue_status.get("pending_items"):
-            for idx, item in enumerate(queue_status["pending_items"]):
-                if item.get("id") == queue_item_id:
-                    queue_position = idx + 1
-                    break
 
         logger.info(
             f"Added individual enhancement for prospect {prospect_id} to queue with ID {queue_item_id} (worker_running={worker_running}, position={queue_position})"
@@ -942,6 +971,7 @@ def enhance_single_prospect():
                 "worker_running": worker_running,
                 "queue_position": queue_position,
                 "queue_size": queue_status.get("queue_size", 0),
+                "planned_steps": planned_steps,  # Include planned steps for frontend
             }
         ), 200
 
@@ -1006,7 +1036,7 @@ def get_queue_status():
 
 
 @llm_bp.route("/queue/item/<item_id>", methods=["GET"])
-@admin_required
+@login_required
 def get_queue_item_status(item_id):
     """Get status of a specific queue item"""
     try:
@@ -1020,7 +1050,7 @@ def get_queue_item_status(item_id):
 
 
 @llm_bp.route("/queue/item/<item_id>/cancel", methods=["POST"])
-@admin_required
+@login_required
 def cancel_queue_item(item_id):
     """Cancel a specific queue item"""
     try:

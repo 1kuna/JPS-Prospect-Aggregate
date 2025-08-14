@@ -55,12 +55,54 @@ export function ProspectEnhancementProvider({ children }: { children: ReactNode 
       const state = getEnhancementState(prospect_id);
       if (!state) return null;
       
-      // Convert completedSteps array to progress object for backward compatibility
+      // Initialize progress object with all possible enhancement types
       const progress: any = {};
+      const allEnhancementTypes = state.enhancementTypes || ['titles', 'values', 'naics', 'set_asides'];
+      
+      // Initialize all enhancement types based on planned steps
+      allEnhancementTypes.forEach(type => {
+        // Check if this step is planned to be skipped
+        if (state.plannedSteps && state.plannedSteps[type]) {
+          const planned = state.plannedSteps[type];
+          if (!planned.will_process) {
+            // This step will be skipped
+            progress[type] = { 
+              completed: false, 
+              skipped: true,
+              skipReason: planned.reason || 'already_enhanced'
+            };
+          } else {
+            // This step will be processed
+            progress[type] = { completed: false, skipped: false };
+          }
+        } else {
+          // No planned steps info, default behavior
+          progress[type] = { completed: false, skipped: false };
+        }
+      });
+      
+      // Mark completed steps
       if (state.completedSteps) {
         state.completedSteps.forEach(step => {
-          progress[step] = { completed: true, skipped: false };
+          if (progress[step] !== undefined) {
+            // If it was already marked as skipped, keep that status
+            // Otherwise mark as completed
+            if (!progress[step].skipped) {
+              progress[step] = { completed: true, skipped: false };
+            }
+          }
         });
+      }
+      
+      // Determine if a step was skipped during processing (runtime skip)
+      // This is inferred when a step is in completedSteps but the currentStep mentions "already"
+      if (state.currentStep?.toLowerCase().includes('already')) {
+        const currentType = allEnhancementTypes.find(type => 
+          state.currentStep?.toLowerCase().includes(type.replace('_', ' '))
+        );
+        if (currentType && progress[currentType]) {
+          progress[currentType].skipped = true;
+        }
       }
       
       return {

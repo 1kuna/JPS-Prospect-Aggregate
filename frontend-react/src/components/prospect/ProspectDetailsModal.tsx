@@ -129,17 +129,20 @@ export function ProspectDetailsModal({
                   const enhancementState = getProspectStatus(selectedProspect?.id || '');
                   if (!enhancementState) return null;
                   
-                  return {
+                  const status = {
                     currentStep: enhancementState.currentStep,
                     progress: enhancementState.progress,
                     enhancementTypes: (enhancementState as any).enhancementTypes
                   };
+                  return status;
                 })()}
                 isVisible={(() => {
                   if (!selectedProspect) return false;
                   const status = getProspectStatus(selectedProspect.id);
                   // Show progress when enhancement started or when queued/processing
-                  return enhancementStarted || (status !== null && status?.status ? ['queued', 'processing'].includes(status.status) : false);
+                  const isActive = status && ['queued', 'processing'].includes(status.status);
+                  const isVisible = enhancementStarted || isActive;
+                  return isVisible;
                 })()}
               />
             </EnhancementErrorBoundary>

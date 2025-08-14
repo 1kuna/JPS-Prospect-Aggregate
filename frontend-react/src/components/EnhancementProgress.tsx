@@ -1,4 +1,4 @@
-import { CheckIcon, ReloadIcon } from '@radix-ui/react-icons';
+import { CheckIcon, ReloadIcon, Cross2Icon } from '@radix-ui/react-icons';
 
 interface ProgressStep {
   key: string;
@@ -6,16 +6,17 @@ interface ProgressStep {
   completed: boolean;
   skipped: boolean;
   active: boolean;
+  skipReason?: string;
 }
 
 interface EnhancementProgressProps {
   status: {
     currentStep?: string;
     progress?: {
-      titles?: { completed: boolean; skipped?: boolean };
-      values?: { completed: boolean; skipped?: boolean };
-      naics?: { completed: boolean; skipped?: boolean };
-      set_asides?: { completed: boolean; skipped?: boolean };
+      titles?: { completed: boolean; skipped?: boolean; skipReason?: string };
+      values?: { completed: boolean; skipped?: boolean; skipReason?: string };
+      naics?: { completed: boolean; skipped?: boolean; skipReason?: string };
+      set_asides?: { completed: boolean; skipped?: boolean; skipReason?: string };
     };
     enhancementTypes?: string[];
   } | null;
@@ -23,7 +24,9 @@ interface EnhancementProgressProps {
 }
 
 export function EnhancementProgress({ status, isVisible }: EnhancementProgressProps) {
-  if (!isVisible || !status) return null;
+  if (!isVisible || !status) {
+    return null;
+  }
   
   const allSteps: ProgressStep[] = [
     {
@@ -31,34 +34,32 @@ export function EnhancementProgress({ status, isVisible }: EnhancementProgressPr
       label: 'Enhance Title',
       completed: status.progress?.titles?.completed || false,
       skipped: status.progress?.titles?.skipped || false,
-      active: status.currentStep?.toLowerCase().includes('enhancing') ||
-              status.currentStep?.toLowerCase().includes('title') || false
+      active: status.currentStep?.toLowerCase() === 'enhancing title...' || false,
+      skipReason: status.progress?.titles?.skipReason
     },
     {
       key: 'values',
       label: 'Parse Contract Values',
       completed: status.progress?.values?.completed || false,
       skipped: status.progress?.values?.skipped || false,
-      active: status.currentStep?.toLowerCase().includes('parsing') || 
-              status.currentStep?.toLowerCase().includes('contract') ||
-              status.currentStep?.toLowerCase().includes('values') || false
+      active: status.currentStep?.toLowerCase() === 'parsing contract values...' || false,
+      skipReason: status.progress?.values?.skipReason
     },
     {
       key: 'naics',
       label: 'Classify NAICS Code',
       completed: status.progress?.naics?.completed || false,
       skipped: status.progress?.naics?.skipped || false,
-      active: status.currentStep?.toLowerCase().includes('classifying') ||
-              status.currentStep?.toLowerCase().includes('naics') || false
+      active: status.currentStep?.toLowerCase() === 'classifying naics code...' || false,
+      skipReason: status.progress?.naics?.skipReason
     },
     {
       key: 'set_asides',
       label: 'Process Set Asides',
       completed: status.progress?.set_asides?.completed || false,
       skipped: status.progress?.set_asides?.skipped || false,
-      active: status.currentStep?.toLowerCase().includes('processing') ||
-              status.currentStep?.toLowerCase().includes('set') ||
-              status.currentStep?.toLowerCase().includes('aside') || false
+      active: status.currentStep?.toLowerCase() === 'processing set asides...' || false,
+      skipReason: status.progress?.set_asides?.skipReason
     }
   ];
   
@@ -77,11 +78,12 @@ export function EnhancementProgress({ status, isVisible }: EnhancementProgressPr
             <div className="flex-shrink-0">
               {step.active ? (
                 <ReloadIcon className="h-4 w-4 text-blue-600 animate-spin" />
-              ) : step.completed ? (
+              ) : step.completed && !step.skipped ? (
                 <CheckIcon className="h-4 w-4 text-green-600" />
               ) : step.skipped ? (
-                <div className="h-4 w-4 bg-gray-200 rounded-full flex items-center justify-center">
-                  <CheckIcon className="h-3 w-3 text-green-600" />
+                // Show different icon based on whether it was planned to be skipped or actually skipped
+                <div className="h-4 w-4 bg-yellow-100 rounded-full flex items-center justify-center" title={step.skipReason}>
+                  <Cross2Icon className="h-3 w-3 text-yellow-700" />
                 </div>
               ) : (
                 <div className="h-4 w-4 border border-gray-300 rounded-full"></div>
@@ -89,12 +91,22 @@ export function EnhancementProgress({ status, isVisible }: EnhancementProgressPr
             </div>
             <span className={`text-sm ${
               step.active ? 'text-blue-700 font-medium' :
-              step.completed ? 'text-green-700' :
-              step.skipped ? 'text-gray-600' :
+              step.completed && !step.skipped ? 'text-green-700' :
+              step.skipped ? 'text-yellow-700' :
               'text-gray-600'
             }`}>
               {step.label}
-              {step.skipped && <span className="ml-1 text-xs text-green-600">(already complete)</span>}
+              {step.skipped && (
+                <span className="ml-1 text-xs text-yellow-600">
+                  (will skip - {
+                    step.skipReason === 'already_enhanced' ? 'already enhanced' :
+                    step.skipReason === 'already_parsed' ? 'already parsed' :
+                    step.skipReason === 'already_classified' ? 'already classified' :
+                    step.skipReason === 'already_standardized' ? 'already standardized' :
+                    'has existing data'
+                  })
+                </span>
+              )}
               {step.active && status.currentStep && (
                 <span className="ml-1 text-xs">- {status.currentStep}</span>
               )}

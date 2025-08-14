@@ -12,6 +12,7 @@ interface EnhancementState {
   enhancementTypes?: string[];
   error?: string;
   queueItemId?: string;
+  plannedSteps?: Record<string, { will_process: boolean; reason?: string | null }>;
 }
 
 interface EnhancementRequest {
@@ -29,6 +30,7 @@ interface QueueResponse {
   was_existing?: boolean;
   worker_running?: boolean;
   message?: string;
+  planned_steps?: Record<string, { will_process: boolean; reason?: string | null }>;
 }
 
 /**
@@ -77,7 +79,8 @@ export function useEnhancementSimple() {
         completedSteps: response.completed_steps || [],
         enhancementTypes: prevState?.enhancementTypes, // Preserve enhancement types
         error: response.error,
-        queueItemId: prevState?.queueItemId // Preserve queue item ID
+        queueItemId: prevState?.queueItemId, // Preserve queue item ID
+        plannedSteps: prevState?.plannedSteps // Preserve planned steps from initial response
       };
 
       // Update state
@@ -184,7 +187,7 @@ export function useEnhancementSimple() {
       const queueItemId = response.queue_item_id;
       console.log(`[Enhancement] Received queue item ID: ${queueItemId}`, response);
 
-      // Update state with actual queue position, size, and queue item ID
+      // Update state with actual queue position, size, queue item ID, and planned steps
       setEnhancementStates(prev => ({
         ...prev,
         [prospect_id]: {
@@ -193,7 +196,8 @@ export function useEnhancementSimple() {
           queuePosition: response.queue_position || response.position || 1,
           queueSize: response.queue_size,
           currentStep: undefined,
-          queueItemId: queueItemId
+          queueItemId: queueItemId,
+          plannedSteps: response.planned_steps // Store planned steps from API
         }
       }));
 
