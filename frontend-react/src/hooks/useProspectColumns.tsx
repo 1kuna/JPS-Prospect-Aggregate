@@ -219,11 +219,6 @@ export function useProspectColumns(showAIEnhanced: boolean) {
             <span className={isAIEnhanced ? 'text-blue-700 font-medium' : ''}>
               {String(value) || 'N/A'}
             </span>
-            {isAIEnhanced && (
-              <span className="ml-2 text-xs px-2 py-0.5 rounded bg-blue-100 text-blue-700">
-                AI
-              </span>
-            )}
           </div>
         );
       },
