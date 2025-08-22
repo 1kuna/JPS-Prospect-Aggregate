@@ -28,8 +28,7 @@ ENV/
 .env.*backup
 
 # Launcher runtime files
-.launcher/*.log
-.launcher/preferences.json
+.launcher/
 
 # Conda Environment
 .conda/
