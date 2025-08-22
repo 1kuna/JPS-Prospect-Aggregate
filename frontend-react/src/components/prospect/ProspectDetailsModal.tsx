@@ -111,8 +111,22 @@ export function ProspectDetailsModal({
         
         {selectedProspect && (
           <div className="space-y-6 mt-6">
-            {/* Enhancement Button - Always show, let button handle its state */}
-            <div className="flex justify-end">
+            {/* Enhancement Status and Button */}
+            <div className="flex items-center justify-between">
+              {/* Enhancement Status - Left side */}
+              {selectedProspect.ollama_processed_at && (
+                <div className="bg-blue-50 border border-blue-200 p-3 rounded-lg">
+                  <div className="flex items-center text-sm text-blue-800">
+                    <div className="w-2 h-2 bg-blue-500 rounded-full mr-2"></div>
+                    {`AI Enhanced on ${formatUserDate(selectedProspect.ollama_processed_at, 'datetime')}`}
+                  </div>
+                </div>
+              )}
+              
+              {/* Spacer when no enhancement status */}
+              {!selectedProspect.ollama_processed_at && <div />}
+              
+              {/* Enhancement Button - Right side */}
               <EnhancementErrorBoundary>
                 <EnhancementButtonWithSelector 
                   prospect={selectedProspect}
@@ -146,16 +160,6 @@ export function ProspectDetailsModal({
                 })()}
               />
             </EnhancementErrorBoundary>
-            
-            {/* Enhancement Status */}
-            {selectedProspect.ollama_processed_at && (
-              <div className="bg-blue-50 border border-blue-200 p-3 rounded-lg">
-                <div className="flex items-center text-sm text-blue-800">
-                  <div className="w-2 h-2 bg-blue-500 rounded-full mr-2"></div>
-                  {`AI Enhanced on ${formatUserDate(selectedProspect.ollama_processed_at, 'datetime')}`}
-                </div>
-              </div>
-            )}
             
             {/* AI Enhancement Toggle */}
             <div className="bg-gray-50 border border-gray-200 p-3 rounded-lg">
@@ -213,7 +217,13 @@ export function ProspectDetailsModal({
                       </span>
                     ) : null;
                   })()}
-                  <p className="mt-1 text-gray-900">{(() => {
+                  <p className={`mt-1 ${(() => {
+                    // Check if title is AI enhanced
+                    const isAIEnhanced = showAIEnhanced && 
+                                       selectedProspect.ai_enhanced_title && 
+                                       selectedProspect.title !== selectedProspect.ai_enhanced_title;
+                    return isAIEnhanced ? 'text-blue-700 font-medium' : 'text-gray-900';
+                  })()}`}>{(() => {
                     // Use AI-enhanced title if toggle is on and available
                     if (showAIEnhanced && selectedProspect.ai_enhanced_title) {
                       return selectedProspect.ai_enhanced_title;
@@ -229,18 +239,6 @@ export function ProspectDetailsModal({
                     }
                     return 'N/A';
                   })()}
-                  {(() => {
-                    const status = getProspectStatus(selectedProspect.id);
-                    const isTitleActive = status?.currentStep?.toLowerCase().includes('title') || 
-                                        status?.currentStep?.toLowerCase().includes('enhancing');
-                    const isTitleCompleted = status?.progress?.titles?.completed;
-                    
-                    return showAIEnhanced && selectedProspect.ai_enhanced_title && selectedProspect.title && !(isTitleActive && !isTitleCompleted);
-                  })() && (
-                    <span className="ml-2 text-xs px-2 py-1 rounded bg-green-100 text-green-700">
-                      AI Enhanced
-                    </span>
-                  )}
                   </p>
                 </div>
                 {selectedProspect.description && (
