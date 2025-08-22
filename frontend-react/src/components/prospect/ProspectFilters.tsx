@@ -19,7 +19,7 @@ interface ProspectFiltersProps {
   onShowAIEnhancedChange: (checked: boolean) => void;
 }
 
-export function ProspectFilters({
+const ProspectFiltersComponent = ({
   filters,
   dataSources,
   onFilterChange,
@@ -28,7 +28,7 @@ export function ProspectFilters({
   hasActiveFilters,
   showAIEnhanced,
   onShowAIEnhancedChange
-}: ProspectFiltersProps) {
+}: ProspectFiltersProps) => {
   return (
     <div className="w-80 flex-shrink-0">
       <Card className="shadow-lg">
@@ -203,3 +203,56 @@ export function ProspectFilters({
     </div>
   );
 }
+
+// Custom comparison function for React.memo
+// Optimize re-renders for the filters component
+const arePropsEqual = (prevProps: ProspectFiltersProps, nextProps: ProspectFiltersProps) => {
+  // Check if filters object has changed
+  if (prevProps.filters !== nextProps.filters) {
+    // Deep compare filter values since they're primitive types
+    const prevKeys = Object.keys(prevProps.filters);
+    const nextKeys = Object.keys(nextProps.filters);
+    
+    if (prevKeys.length !== nextKeys.length) return false;
+    
+    for (const key of prevKeys) {
+      const prevValue = prevProps.filters[key as keyof ProspectFiltersType];
+      const nextValue = nextProps.filters[key as keyof ProspectFiltersType];
+      
+      // Special handling for dataSourceIds array
+      if (key === 'dataSourceIds') {
+        const prevIds = prevValue as number[] | undefined;
+        const nextIds = nextValue as number[] | undefined;
+        
+        if (!prevIds && !nextIds) continue;
+        if (!prevIds || !nextIds) return false;
+        if (prevIds.length !== nextIds.length) return false;
+        if (prevIds.some((id, idx) => id !== nextIds[idx])) return false;
+      } else if (prevValue !== nextValue) {
+        return false;
+      }
+    }
+  }
+  
+  // Check if data sources have changed
+  if (prevProps.dataSources !== nextProps.dataSources) {
+    if (prevProps.dataSources.length !== nextProps.dataSources.length) return false;
+    
+    // Check if data source IDs have changed
+    const prevIds = prevProps.dataSources.map(ds => ds.id).join(',');
+    const nextIds = nextProps.dataSources.map(ds => ds.id).join(',');
+    if (prevIds !== nextIds) return false;
+  }
+  
+  // Check boolean props
+  if (prevProps.hasActiveFilters !== nextProps.hasActiveFilters) return false;
+  if (prevProps.showAIEnhanced !== nextProps.showAIEnhanced) return false;
+  
+  // Callback functions are assumed to be stable (wrapped in useCallback)
+  // If they're not stable, the parent component should be optimized
+  
+  return true; // Props are effectively equal
+};
+
+// Export the memoized component
+export const ProspectFilters = React.memo(ProspectFiltersComponent, arePropsEqual);

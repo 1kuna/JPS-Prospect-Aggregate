@@ -1,3 +1,4 @@
+import React from 'react';
 import {
   Dialog,
   DialogContent,
@@ -37,7 +38,7 @@ interface ProspectDetailsModalProps {
   formatUserDate: (dateString: string | null | undefined, format?: 'date' | 'datetime' | 'time' | 'relative', options?: Partial<Record<string, unknown>>) => string;
 }
 
-export function ProspectDetailsModal({
+const ProspectDetailsModalComponent = ({
   isOpen,
   onOpenChange,
   selectedProspect,
@@ -46,7 +47,7 @@ export function ProspectDetailsModal({
   getProspectStatus,
   _addToQueue,
   formatUserDate
-}: ProspectDetailsModalProps) {
+}: ProspectDetailsModalProps) => {
   const isSuperAdmin = useIsSuperAdmin();
   const [showRawData, setShowRawData] = useState(false);
   const [enhancementStarted, setEnhancementStarted] = useState(false);
@@ -623,3 +624,45 @@ export function ProspectDetailsModal({
     </Dialog>
   );
 }
+
+// Custom comparison function for React.memo
+// The modal component should only re-render when meaningful data changes
+const arePropsEqual = (prevProps: ProspectDetailsModalProps, nextProps: ProspectDetailsModalProps) => {
+  // Always re-render if open state changes
+  if (prevProps.isOpen !== nextProps.isOpen) return false;
+  
+  // Check if selected prospect has changed
+  if (prevProps.selectedProspect?.id !== nextProps.selectedProspect?.id) return false;
+  
+  // If prospect exists, check if key data has changed
+  if (prevProps.selectedProspect && nextProps.selectedProspect) {
+    // Compare important fields that would affect display
+    const prev = prevProps.selectedProspect;
+    const next = nextProps.selectedProspect;
+    
+    // Check if AI processing state has changed
+    if (prev.ollama_processed_at !== next.ollama_processed_at) return false;
+    if (prev.ai_enhanced_title !== next.ai_enhanced_title) return false;
+    if (prev.naics !== next.naics) return false;
+    if (prev.estimated_value_single !== next.estimated_value_single) return false;
+    if (prev.primary_contact_email !== next.primary_contact_email) return false;
+    if (prev.set_aside_standardized !== next.set_aside_standardized) return false;
+    
+    // Check if enhancement status has changed
+    const prevStatus = prevProps.getProspectStatus(prev.id);
+    const nextStatus = nextProps.getProspectStatus(next.id);
+    if (prevStatus?.status !== nextStatus?.status) return false;
+    if (prevStatus?.currentStep !== nextStatus?.currentStep) return false;
+  }
+  
+  // Check if AI enhancement toggle changed
+  if (prevProps.showAIEnhanced !== nextProps.showAIEnhanced) return false;
+  
+  // Callback functions are assumed to be stable
+  // If they're changing frequently, the parent should wrap them in useCallback
+  
+  return true; // Props are effectively equal
+};
+
+// Export the memoized component
+export const ProspectDetailsModal = React.memo(ProspectDetailsModalComponent, arePropsEqual);

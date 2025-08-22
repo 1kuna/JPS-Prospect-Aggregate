@@ -1,3 +1,4 @@
+import React from 'react';
 import { flexRender, Table as ReactTable } from '@tanstack/react-table';
 import {
   Table,
@@ -17,13 +18,13 @@ interface ProspectTableProps {
   onRowClick: (prospect: Prospect) => void;
 }
 
-export function ProspectTable({ 
+const ProspectTableComponent = ({ 
   table, 
   prospects, 
   isLoading, 
   isFetching, 
   onRowClick 
-}: ProspectTableProps) {
+}: ProspectTableProps) => {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -107,3 +108,44 @@ export function ProspectTable({
     </div>
   );
 }
+
+// Custom comparison function for React.memo
+// Only re-render if specific props change meaningfully
+const arePropsEqual = (prevProps: ProspectTableProps, nextProps: ProspectTableProps) => {
+  // Always re-render if loading state changes
+  if (prevProps.isLoading !== nextProps.isLoading) return false;
+  
+  // Check if prospects array has changed (by reference and length)
+  if (prevProps.prospects !== nextProps.prospects) {
+    // If references are different, check if the actual data changed
+    if (prevProps.prospects.length !== nextProps.prospects.length) return false;
+    
+    // For small datasets, do a shallow comparison of IDs
+    if (prevProps.prospects.length < 100) {
+      const prevIds = prevProps.prospects.map(p => p.id).join(',');
+      const nextIds = nextProps.prospects.map(p => p.id).join(',');
+      if (prevIds !== nextIds) return false;
+    } else {
+      // For large datasets, just check reference
+      return false;
+    }
+  }
+  
+  // Check if table instance has changed significantly
+  // The table instance changes frequently, but we only care about data changes
+  const prevRowCount = prevProps.table.getRowModel().rows.length;
+  const nextRowCount = nextProps.table.getRowModel().rows.length;
+  if (prevRowCount !== nextRowCount) return false;
+  
+  // Check if callback functions have changed
+  // Note: This assumes callbacks are stable (wrapped in useCallback in parent)
+  if (prevProps.onRowClick !== nextProps.onRowClick) return false;
+  
+  // isFetching can change frequently but doesn't require full re-render
+  // We handle the opacity change with CSS, so we can skip re-render
+  
+  return true; // Props are effectively equal, skip re-render
+};
+
+// Export the memoized component
+export const ProspectTable = React.memo(ProspectTableComponent, arePropsEqual);
