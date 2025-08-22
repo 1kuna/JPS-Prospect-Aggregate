@@ -649,6 +649,21 @@ setup_frontend() {
         print_success "Frontend packages ready"
     fi
     
+    # Check for required UI utility files
+    if [ ! -f "src/lib/utils.ts" ]; then
+        print_warning "UI utility file missing, creating src/lib/utils.ts..."
+        mkdir -p src/lib
+        cat > src/lib/utils.ts << 'EOF'
+import { type ClassValue, clsx } from "clsx"
+import { twMerge } from "tailwind-merge"
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs))
+}
+EOF
+        print_success "Created src/lib/utils.ts (required for UI components)"
+    fi
+    
     cd ..
     return 0
 }
