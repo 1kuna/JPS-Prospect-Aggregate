@@ -177,6 +177,7 @@ python scripts/data_processing/export_decisions_for_llm.py  # Export decisions
 - TanStack Table (virtualization)
 - TanStack Query (state management)
 - Tailwind CSS + Radix UI
+- **Note**: UI components require `src/lib/utils.ts` for the `cn` utility function (auto-created by launch.sh if missing)
 
 ## Creating a New Scraper
 
