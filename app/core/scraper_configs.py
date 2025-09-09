@@ -474,6 +474,13 @@ DOC_CONFIG = ScraperConfig(
         },
         "default_country": {"column": "place_country_final"}
     },
+    # Map computed final fields into model column names
+    db_column_rename_map={
+        "release_date_final": "release_date",
+        "award_date_final": "award_date",
+        "award_fiscal_year_final": "award_fiscal_year",
+        "place_country_final": "place_country",
+    },
     extras_fields_map={
         "Workspace Number": "workspace_number",
         "Date Created": "date_created",
@@ -645,6 +652,18 @@ DOS_CONFIG = ScraperConfig(
             "out_unit_col": "est_value_unit_final"
         },
         "default_country": {"column": "place_country_final"}
+    },
+    # Map computed final fields into model column names
+    db_column_rename_map={
+        "release_date_final": "release_date",
+        "award_date_final": "award_date",
+        "award_fiscal_year_final": "award_fiscal_year",
+        "estimated_value_final": "estimated_value",
+        "est_value_unit_final": "est_value_unit",
+        "place_city_final": "place_city",
+        "place_state_final": "place_state",
+        "place_country_final": "place_country",
+        "naics_final": "naics",
     },
     extras_fields_map={
         "Organization": "organization",

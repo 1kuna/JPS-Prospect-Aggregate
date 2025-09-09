@@ -70,6 +70,9 @@ def api_route(
     if methods is None:
         methods = ["GET"]
     
+    # Define a logger for this blueprint's routes
+    local_logger = get_logger(f"api.{bp.name}")
+
     def decorator(f: Callable) -> Callable:
         @wraps(f)
         def wrapped(*args, **kwargs):
@@ -87,23 +90,23 @@ def api_route(
             except NotFoundError as e:
                 return error_response(e.status_code, e.message, error_type="not_found")
             except DatabaseError as e:
-                base_logger.error(f"Database error in {f.__name__}: {str(e)}", exc_info=True)
+                local_logger.error(f"Database error in {f.__name__}: {str(e)}", exc_info=True)
                 return error_response(e.status_code, e.message, error_type="database_error")
             except ScraperError as e:
-                base_logger.error(f"Scraper error in {f.__name__}: {str(e)}", exc_info=True)
+                local_logger.error(f"Scraper error in {f.__name__}: {str(e)}", exc_info=True)
                 return error_response(e.status_code, e.message, error_type="scraper_error")
             except AuthenticationError as e:
                 return error_response(e.status_code, e.message, error_type="auth_error")
             except AuthorizationError as e:
                 return error_response(e.status_code, e.message, error_type="authorization_error")
             except AppError as e:
-                base_logger.error(f"Application error in {f.__name__}: {str(e)}", exc_info=True)
+                local_logger.error(f"Application error in {f.__name__}: {str(e)}", exc_info=True)
                 return error_response(e.status_code, e.message, error_type="app_error")
             except SQLAlchemyError as e:
-                base_logger.error(f"SQLAlchemy error in {f.__name__}: {str(e)}", exc_info=True)
+                local_logger.error(f"SQLAlchemy error in {f.__name__}: {str(e)}", exc_info=True)
                 return error_response(500, "Database error", error_type="database_error")
             except Exception as e:
-                base_logger.error(f"Unhandled exception in {f.__name__}: {str(e)}", exc_info=True)
+                local_logger.error(f"Unhandled exception in {f.__name__}: {str(e)}", exc_info=True)
                 return error_response(500, "An unexpected error occurred", error_type="server_error")
         
         # Register the route with the blueprint

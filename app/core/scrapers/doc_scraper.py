@@ -7,7 +7,6 @@ import pandas as pd
 from app.config import active_config
 from app.core.consolidated_scraper_base import ConsolidatedScraperBase
 from app.core.scraper_configs import get_scraper_config
-from app.utils.value_and_date_parsing import fiscal_quarter_to_date
 
 
 class DocScraper(ConsolidatedScraperBase):

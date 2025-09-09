@@ -2498,13 +2498,22 @@ class ConsolidatedScraperBase:
         This preserves additional data that isn't explicitly mapped but may be useful for AI processing.
         """
         try:
-            if not self.config.db_column_rename_map:
-                return df
+            # Determine model columns as the baseline for 'final' columns
+            try:
+                from app.database.models import Prospect
+                model_columns = {column.name for column in Prospect.__table__.columns}
+            except Exception:
+                model_columns = set()
 
-            # Get all columns that should be kept after cleanup
-            final_columns = list(self.config.db_column_rename_map.values())
-            essential_columns = ["id", "source_id", "loaded_at"]
-            columns_to_keep = set(final_columns + essential_columns)
+            # Add any explicitly configured final columns
+            configured_final_columns = set()
+            if self.config.db_column_rename_map:
+                configured_final_columns.update(self.config.db_column_rename_map.values())
+
+            # Essential columns that should always be retained
+            essential_columns = {"id", "source_id", "loaded_at"}
+
+            columns_to_keep = model_columns.union(configured_final_columns).union(essential_columns)
 
             # Find columns that will be dropped (unmapped columns)
             current_columns = set(df.columns)
@@ -2574,7 +2583,7 @@ class ConsolidatedScraperBase:
             # Log statistics about extras collection
             non_empty_extras = (
                 df["extras_json"].apply(lambda x: x is not None and len(x) > 0).sum()
-            )
+            ) if "extras_json" in df.columns else 0
             self.logger.info(
                 f"Created extras_json for {non_empty_extras}/{len(df)} rows"
             )
@@ -2821,14 +2830,12 @@ class ConsolidatedScraperBase:
 
                 # Update processing log with failure
                 if processing_log:
-                    (datetime.now() - start_time).total_seconds()
                     update_processing_log(
                         processing_log, False, error_message=error_msg
                     )
                 raise Exception(f"Failed to read file to DataFrame: {file_path}")
 
-            len(df)
-            list(df.columns) if not df.empty else []
+            # Removed no-op debug expressions
 
             # Apply transformations
             df = self.transform_dataframe(df)
