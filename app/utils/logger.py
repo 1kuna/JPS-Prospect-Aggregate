@@ -1,8 +1,10 @@
 """Centralized logging configuration for the application using Loguru."""
 
+import inspect
 import os
 import sys
 from pathlib import Path
+from typing import Any
 
 from loguru import logger
 
@@ -89,8 +91,25 @@ def cleanup_logs(logs_dir=None, keep_count=3):
     return results
 
 
+def get_logger(name: str | None = None) -> Any:
+    """Get a bound logger with the specified or auto-detected name.
+    
+    Args:
+        name: Logger name. If None, uses the calling module's __name__
+        
+    Returns:
+        Bound logger instance
+    """
+    if name is None:
+        # Auto-detect from calling module
+        frame = inspect.currentframe()
+        if frame and frame.f_back:
+            name = frame.f_back.f_globals.get('__name__', 'unknown')
+    return logger.bind(name=name)
+
+
 # Configure logging
 configure_logging()
 
 # Export the logger
-__all__ = ["logger", "cleanup_logs"]
+__all__ = ["logger", "get_logger", "cleanup_logs"]

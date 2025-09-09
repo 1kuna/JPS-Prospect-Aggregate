@@ -21,7 +21,7 @@ from app.exceptions import (
     ScraperError,
     ValidationError,
 )
-from app.utils.logger import logger as base_logger
+from app.utils.logger import get_logger
 
 
 def create_blueprint(
@@ -41,7 +41,7 @@ def create_blueprint(
     bp = Blueprint(name, __name__, url_prefix=url_prefix, **kwargs)
     
     # Create a bound logger for this API module
-    logger = base_logger.bind(name=f"api.{name}")
+    logger = get_logger(f"api.{name}")
     
     return bp, logger
 

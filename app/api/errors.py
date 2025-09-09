@@ -12,10 +12,10 @@ from app.exceptions import (
     ScraperError,
     ValidationError,
 )
-from app.utils.logger import logger  # Import centralized logger
+from app.utils.logger import get_logger  # Import centralized logger helper
 
 # Create a bound logger for error handlers
-error_logger = logger.bind(name="api.error_handlers")
+error_logger = get_logger("api.error_handlers")
 
 
 def error_response(status_code, message):

@@ -9,12 +9,12 @@ from dataclasses import asdict, dataclass
 from enum import Enum
 from pathlib import Path
 
-from flask import Blueprint, Response, jsonify, request, stream_with_context
+from flask import Response, request, stream_with_context
 
 from app.api.auth import admin_required
-from app.utils.logger import logger
+from app.api.factory import api_route, create_blueprint, error_response, success_response
 
-tools_bp = Blueprint("tools", __name__, url_prefix="/api/tools")
+tools_bp, logger = create_blueprint("tools", "/api/tools")
 
 
 class ScriptCategory(Enum):
@@ -381,111 +381,85 @@ def execute_script_with_streaming(
         output_queue.put(("done", None))
 
 
-@tools_bp.route("/scripts", methods=["GET"])
-@admin_required
+@api_route(tools_bp, "/scripts", methods=["GET"], auth="admin")
 def list_scripts():
     """Get list of available scripts organized by category."""
-    try:
-        # Group scripts by category
-        scripts_by_category = {}
-        for script in SCRIPT_CONFIGS:
-            category = script.category.value
-            if category not in scripts_by_category:
-                scripts_by_category[category] = []
-            scripts_by_category[category].append(script.to_dict())
+    # Group scripts by category
+    scripts_by_category = {}
+    for script in SCRIPT_CONFIGS:
+        category = script.category.value
+        if category not in scripts_by_category:
+            scripts_by_category[category] = []
+        scripts_by_category[category].append(script.to_dict())
 
-        return jsonify(
-            {
-                "status": "success",
-                "data": {
-                    "scripts": scripts_by_category,
-                    "categories": [cat.value for cat in ScriptCategory],
-                },
-            }
-        )
-    except Exception as e:
-        logger.error(f"Error listing scripts: {str(e)}")
-        return jsonify({"status": "error", "message": "Failed to list scripts"}), 500
+    return success_response(
+        data={
+            "scripts": scripts_by_category,
+            "categories": [cat.value for cat in ScriptCategory],
+        }
+    )
 
 
-@tools_bp.route("/scripts/<script_id>", methods=["GET"])
-@admin_required
+@api_route(tools_bp, "/scripts/<script_id>", methods=["GET"], auth="admin")
 def get_script_details(script_id):
     """Get detailed information about a specific script."""
-    try:
-        script = SCRIPTS_BY_ID.get(script_id)
-        if not script:
-            return jsonify({"status": "error", "message": "Script not found"}), 404
+    script = SCRIPTS_BY_ID.get(script_id)
+    if not script:
+        return error_response(404, "Script not found")
 
-        return jsonify({"status": "success", "data": script.to_dict()})
-    except Exception as e:
-        logger.error(f"Error getting script details: {str(e)}")
-        return jsonify(
-            {"status": "error", "message": "Failed to get script details"}
-        ), 500
+    return success_response(data=script.to_dict())
 
 
-@tools_bp.route("/execute/<script_id>", methods=["POST"])
-@admin_required
+@api_route(tools_bp, "/execute/<script_id>", methods=["POST"], auth="admin")
 def execute_script(script_id):
     """Execute a script with provided parameters."""
-    try:
-        script = SCRIPTS_BY_ID.get(script_id)
-        if not script:
-            return jsonify({"status": "error", "message": "Script not found"}), 404
+    script = SCRIPTS_BY_ID.get(script_id)
+    if not script:
+        return error_response(404, "Script not found")
 
-        # Get parameters from request
-        data = request.get_json() or {}
-        parameters = data.get("parameters", {})
+    # Get parameters from request
+    data = request.get_json() or {}
+    parameters = data.get("parameters", {})
 
-        # Generate execution ID
-        import uuid
+    # Generate execution ID
+    import uuid
 
-        execution_id = str(uuid.uuid4())
+    execution_id = str(uuid.uuid4())
 
-        # Initialize tracking
-        with script_lock:
-            running_scripts[execution_id] = {
-                "id": execution_id,
-                "script_id": script_id,
-                "script_name": script.name,
-                "status": "pending",
-                "output": [],
-                "started_at": None,
-                "parameters": parameters,
-            }
+    # Initialize tracking
+    with script_lock:
+        running_scripts[execution_id] = {
+            "id": execution_id,
+            "script_id": script_id,
+            "script_name": script.name,
+            "status": "pending",
+            "output": [],
+            "started_at": None,
+            "parameters": parameters,
+        }
 
-        # Create output queue
-        output_queue = queue.Queue()
+    # Create output queue
+    output_queue = queue.Queue()
 
-        # Start execution thread
-        thread = threading.Thread(
-            target=execute_script_with_streaming,
-            args=(execution_id, script, parameters, output_queue),
-        )
-        thread.daemon = True
-        thread.start()
+    # Start execution thread
+    thread = threading.Thread(
+        target=execute_script_with_streaming,
+        args=(execution_id, script, parameters, output_queue),
+    )
+    thread.daemon = True
+    thread.start()
 
-        # Return execution ID for streaming
-        return jsonify(
-            {
-                "status": "success",
-                "data": {
-                    "execution_id": execution_id,
-                    "message": f"Started execution of {script.name}",
-                },
-            }
-        )
-
-    except Exception as e:
-        logger.error(f"Error executing script: {str(e)}")
-        return jsonify(
-            {"status": "error", "message": f"Failed to execute script: {str(e)}"}
-        ), 500
+    # Return execution ID for streaming
+    return success_response(
+        data={
+            "execution_id": execution_id,
+            "message": f"Started execution of {script.name}",
+        }
+    )
 
 
 @tools_bp.route("/stream/<execution_id>", methods=["GET"])
-@admin_required
+@admin_required  # Keep original decorator for streaming endpoint
 def stream_output(execution_id):
     """Stream script output using server-sent events."""
 
@@ -557,46 +531,29 @@ def stream_output(execution_id):
     )
 
 
-@tools_bp.route("/executions", methods=["GET"])
-@admin_required
+@api_route(tools_bp, "/executions", methods=["GET"], auth="admin")
 def list_executions():
     """List recent script executions."""
-    try:
-        with script_lock:
-            # Get all executions sorted by start time
-            executions = list(running_scripts.values())
-            # Sort by started_at or status
-            executions.sort(key=lambda x: x.get("started_at", ""), reverse=True)
+    with script_lock:
+        # Get all executions sorted by start time
+        executions = list(running_scripts.values())
+        # Sort by started_at or status
+        executions.sort(key=lambda x: x.get("started_at", ""), reverse=True)
 
-            # Limit to recent executions
-            recent_executions = executions[:20]
+        # Limit to recent executions
+        recent_executions = executions[:20]
 
-        return jsonify(
-            {
-                "status": "success",
-                "data": {"executions": recent_executions, "total": len(executions)},
-            }
-        )
-    except Exception as e:
-        logger.error(f"Error listing executions: {str(e)}")
-        return jsonify({"status": "error", "message": "Failed to list executions"}), 500
+    return success_response(
+        data={"executions": recent_executions, "total": len(executions)}
+    )
 
 
-@tools_bp.route("/executions/<execution_id>", methods=["GET"])
-@admin_required
+@api_route(tools_bp, "/executions/<execution_id>", methods=["GET"], auth="admin")
 def get_execution_details(execution_id):
     """Get details of a specific execution."""
-    try:
-        with script_lock:
-            execution = running_scripts.get(execution_id)
-            if not execution:
-                return jsonify(
-                    {"status": "error", "message": "Execution not found"}
-                ), 404
+    with script_lock:
+        execution = running_scripts.get(execution_id)
+        if not execution:
+            return error_response(404, "Execution not found")
 
-        return jsonify({"status": "success", "data": execution})
-    except Exception as e:
-        logger.error(f"Error getting execution details: {str(e)}")
-        return jsonify(
-            {"status": "error", "message": "Failed to get execution details"}
-        ), 500
+    return success_response(data=execution)

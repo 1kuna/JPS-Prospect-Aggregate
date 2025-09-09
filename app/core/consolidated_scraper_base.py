@@ -77,7 +77,7 @@ from app.services.llm_service import LLMService
 from app.utils.file_processing import create_processing_log, update_processing_log
 
 # Application imports
-from app.utils.logger import logger
+from app.utils.logger import get_logger
 
 
 @dataclass
@@ -190,8 +190,8 @@ class ConsolidatedScraperBase:
         self.data_source = None
 
         # Set up logger
-        self.logger = logger.bind(
-            name=f"scraper.{self.source_name.lower().replace(' ', '_')}"
+        self.logger = get_logger(
+            f"scraper.{self.source_name.lower().replace(' ', '_')}"
         )
 
     # ============================================================================

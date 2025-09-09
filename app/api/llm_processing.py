@@ -4,10 +4,10 @@ from datetime import timezone
 UTC = timezone.utc
 from datetime import datetime, timedelta
 
-from flask import Blueprint, jsonify, request
+from flask import request
 from sqlalchemy import func
 
-from app.api.auth import admin_required, login_required
+from app.api.factory import api_route, create_blueprint, error_response, success_response
 from app.database.models import (
     AIEnrichmentLog,
     LLMOutput,
@@ -16,440 +16,384 @@ from app.database.models import (
 )
 from app.services.enhancement_queue import add_individual_enhancement, enhancement_queue
 from app.services.llm_service import llm_service
-from app.utils.logger import logger
 
-llm_bp = Blueprint("llm_api", __name__, url_prefix="/api/llm")
+llm_bp, logger = create_blueprint("llm_api", "/api/llm")
 
 
-@llm_bp.route("/status", methods=["GET"])
-@admin_required
+@api_route(llm_bp, "/status", methods=["GET"], auth="admin")
 def get_llm_status():
     """Get current LLM processing status and statistics"""
-    try:
-        # Get total prospects count
-        total_prospects = db.session.query(func.count(Prospect.id)).scalar()
+    # Get total prospects count
+    total_prospects = db.session.query(func.count(Prospect.id)).scalar()
 
-        # Get processed prospects count - only count those that have been fully processed
-        # This counts prospects with ollama_processed_at timestamp, indicating complete AI processing
-        processed_prospects = (
-            db.session.query(func.count(Prospect.id))
-            .filter(Prospect.ollama_processed_at.isnot(None))
-            .scalar()
-        )
+    # Get processed prospects count - only count those that have been fully processed
+    # This counts prospects with ollama_processed_at timestamp, indicating complete AI processing
+    processed_prospects = (
+        db.session.query(func.count(Prospect.id))
+        .filter(Prospect.ollama_processed_at.isnot(None))
+        .scalar()
+    )
 
-        # Get NAICS coverage statistics
-        naics_original = (
-            db.session.query(func.count(Prospect.id))
-            .filter(Prospect.naics.isnot(None), Prospect.naics_source == "original")
-            .scalar()
-        )
+    # Get NAICS coverage statistics
+    naics_original = (
+        db.session.query(func.count(Prospect.id))
+        .filter(Prospect.naics.isnot(None), Prospect.naics_source == "original")
+        .scalar()
+    )
 
-        naics_llm_inferred = (
-            db.session.query(func.count(Prospect.id))
-            .filter(Prospect.naics.isnot(None), Prospect.naics_source == "llm_inferred")
-            .scalar()
-        )
+    naics_llm_inferred = (
+        db.session.query(func.count(Prospect.id))
+        .filter(Prospect.naics.isnot(None), Prospect.naics_source == "llm_inferred")
+        .scalar()
+    )
 
-        total_with_naics = naics_original + naics_llm_inferred
-        naics_coverage_percentage = (
-            (total_with_naics / total_prospects * 100) if total_prospects > 0 else 0
-        )
+    total_with_naics = naics_original + naics_llm_inferred
+    naics_coverage_percentage = (
+        (total_with_naics / total_prospects * 100) if total_prospects > 0 else 0
+    )
 
-        # Get value parsing statistics
-        value_parsed_count = (
-            db.session.query(func.count(Prospect.id))
-            .filter(Prospect.estimated_value_single.isnot(None))
-            .scalar()
-        )
+    # Get value parsing statistics
+    value_parsed_count = (
+        db.session.query(func.count(Prospect.id))
+        .filter(Prospect.estimated_value_single.isnot(None))
+        .scalar()
+    )
 
-        value_parsing_percentage = (
-            (value_parsed_count / total_prospects * 100) if total_prospects > 0 else 0
-        )
+    value_parsing_percentage = (
+        (value_parsed_count / total_prospects * 100) if total_prospects > 0 else 0
+    )
 
-        # Get title enhancement statistics
-        title_enhanced_count = (
-            db.session.query(func.count(Prospect.id))
-            .filter(Prospect.ai_enhanced_title.isnot(None))
-            .scalar()
-        )
+    # Get title enhancement statistics
+    title_enhanced_count = (
+        db.session.query(func.count(Prospect.id))
+        .filter(Prospect.ai_enhanced_title.isnot(None))
+        .scalar()
+    )
 
-        title_enhancement_percentage = (
-            (title_enhanced_count / total_prospects * 100) if total_prospects > 0 else 0
-        )
+    title_enhancement_percentage = (
+        (title_enhanced_count / total_prospects * 100) if total_prospects > 0 else 0
+    )
 
-        # Get set-aside standardization statistics
-        set_aside_standardized_count = (
-            db.session.query(func.count(Prospect.id))
-            .filter(Prospect.set_aside_standardized.isnot(None))
-            .scalar()
-        )
+    # Get set-aside standardization statistics
+    set_aside_standardized_count = (
+        db.session.query(func.count(Prospect.id))
+        .filter(Prospect.set_aside_standardized.isnot(None))
+        .scalar()
+    )
 
-        set_aside_percentage = (
-            (set_aside_standardized_count / total_prospects * 100)
-            if total_prospects > 0
-            else 0
-        )
+    set_aside_percentage = (
+        (set_aside_standardized_count / total_prospects * 100)
+        if total_prospects > 0
+        else 0
+    )
 
-        # Get last processed timestamp and model version
-        last_processed_prospect = (
-            db.session.query(Prospect)
-            .filter(Prospect.ollama_processed_at.isnot(None))
-            .order_by(Prospect.ollama_processed_at.desc())
-            .first()
-        )
+    # Get last processed timestamp and model version
+    last_processed_prospect = (
+        db.session.query(Prospect)
+        .filter(Prospect.ollama_processed_at.isnot(None))
+        .order_by(Prospect.ollama_processed_at.desc())
+        .first()
+    )
 
-        last_processed = (
-            last_processed_prospect.ollama_processed_at.isoformat() + "Z"
-            if last_processed_prospect
-            else None
-        )
-        model_version = (
-            last_processed_prospect.ollama_model_version
-            if last_processed_prospect
-            else None
-        )
+    last_processed = (
+        last_processed_prospect.ollama_processed_at.isoformat() + "Z"
+        if last_processed_prospect
+        else None
+    )
+    model_version = (
+        last_processed_prospect.ollama_model_version
+        if last_processed_prospect
+        else None
+    )
 
-        response_data = {
-            "total_prospects": total_prospects,
-            "processed_prospects": processed_prospects,
-            "naics_coverage": {
-                "original": naics_original,
-                "llm_inferred": naics_llm_inferred,
-                "total_percentage": round(naics_coverage_percentage, 1),
-            },
-            "value_parsing": {
-                "parsed_count": value_parsed_count,
-                "total_percentage": round(value_parsing_percentage, 1),
-            },
-            "title_enhancement": {
-                "enhanced_count": title_enhanced_count,
-                "total_percentage": round(title_enhancement_percentage, 1),
-            },
-            "set_aside_standardization": {
-                "standardized_count": set_aside_standardized_count,
-                "total_percentage": round(set_aside_percentage, 1),
-            },
-            "last_processed": last_processed,
-            "model_version": model_version,
-        }
+    response_data = {
+        "total_prospects": total_prospects,
+        "processed_prospects": processed_prospects,
+        "naics_coverage": {
+            "original": naics_original,
+            "llm_inferred": naics_llm_inferred,
+            "total_percentage": round(naics_coverage_percentage, 1),
+        },
+        "value_parsing": {
+            "parsed_count": value_parsed_count,
+            "total_percentage": round(value_parsing_percentage, 1),
+        },
+        "title_enhancement": {
+            "enhanced_count": title_enhanced_count,
+            "total_percentage": round(title_enhancement_percentage, 1),
+        },
+        "set_aside_standardization": {
+            "standardized_count": set_aside_standardized_count,
+            "total_percentage": round(set_aside_percentage, 1),
+        },
+        "last_processed": last_processed,
+        "model_version": model_version,
+    }
 
-        logger.info(
-            f"Retrieved LLM status: {processed_prospects}/{total_prospects} fully processed"
-        )
-        return jsonify(response_data), 200
-
-    except Exception as e:
-        logger.error(f"Error getting LLM status: {e}", exc_info=True)
-        return jsonify({"error": "Failed to get LLM status"}), 500
+    logger.info(
+        f"Retrieved LLM status: {processed_prospects}/{total_prospects} fully processed"
+    )
+    return success_response(data=response_data)
 
 
-@llm_bp.route("/enhance", methods=["POST"])
-@admin_required
+@api_route(llm_bp, "/enhance", methods=["POST"], auth="admin")
 def trigger_llm_enhancement():
     """Trigger LLM enhancement for prospects using Ollama and qwen3:8b"""
-    try:
-        data = request.get_json()
-        if not data:
-            return jsonify({"error": "Request body required"}), 400
+    data = request.get_json()
+    if not data:
+        return error_response("Request body required")
 
-        enhancement_type = data.get("enhancement_type", "all")
-        limit = data.get("limit", 10)  # Changed default from 100 to 10
+    enhancement_type = data.get("enhancement_type", "all")
+    limit = data.get("limit", 10)  # Changed default from 100 to 10
 
-        # Validate enhancement type
-        valid_types = ["values", "naics", "naics_code", "naics_description", "titles", "set_asides", "all"]
-        if enhancement_type not in valid_types:
-            return jsonify(
-                {"error": f"Invalid enhancement type. Must be one of: {valid_types}"}
-            ), 400
+    # Validate enhancement type
+    valid_types = ["values", "naics", "naics_code", "naics_description", "titles", "set_asides", "all"]
+    if enhancement_type not in valid_types:
+        return error_response(f"Invalid enhancement type. Must be one of: {valid_types}")
 
-        logger.info(f"Starting LLM enhancement: type={enhancement_type}, limit={limit}")
-        start_time = time.time()
+    logger.info(f"Starting LLM enhancement: type={enhancement_type}, limit={limit}")
+    start_time = time.time()
 
-        # Initialize the LLM service
-        llm_service = ContractLLMService(model_name="qwen3:latest")
+    # Initialize the LLM service
+    from app.services.llm_service import ContractLLMService
+    llm_service = ContractLLMService(model_name="qwen3:latest")
 
-        # Get prospects that need processing
-        prospects_query = Prospect.query.filter(Prospect.ollama_processed_at.is_(None))
-        if limit:
-            prospects_query = prospects_query.limit(limit)
-        prospects = prospects_query.all()
+    # Get prospects that need processing
+    prospects_query = Prospect.query.filter(Prospect.ollama_processed_at.is_(None))
+    if limit:
+        prospects_query = prospects_query.limit(limit)
+    prospects = prospects_query.all()
 
-        if not prospects:
-            return jsonify(
-                {
-                    "message": "No prospects found that need LLM enhancement",
-                    "processed_count": 0,
-                    "duration": 0.0,
-                    "enhancement_type": enhancement_type,
-                }
-            ), 200
-
-        # Run the appropriate enhancement
-        if enhancement_type == "values":
-            processed_count = llm_service.enhance_prospect_values(prospects)
-        elif enhancement_type == "titles":
-            processed_count = llm_service.enhance_prospect_titles(prospects)
-        elif enhancement_type == "naics":
-            processed_count = llm_service.enhance_prospect_naics(prospects)
-        elif enhancement_type == "all":
-            results = llm_service.enhance_all_prospects(limit=limit)
-            processed_count = (
-                results["titles_enhanced"]
-                + results["values_enhanced"]
-                + results["naics_enhanced"]
-            )
-
-        duration = time.time() - start_time
-
-        response_data = {
-            "message": "LLM enhancement completed successfully",
-            "processed_count": processed_count,
-            "duration": round(duration, 1),
-            "enhancement_type": enhancement_type,
-            "total_available": len(prospects),
-        }
-
-        logger.info(
-            f"LLM enhancement completed: processed {processed_count} prospects in {duration:.1f}s"
+    if not prospects:
+        return success_response(
+            message="No prospects found that need LLM enhancement",
+            data={
+                "processed_count": 0,
+                "duration": 0.0,
+                "enhancement_type": enhancement_type,
+            }
         )
-        return jsonify(response_data), 200
 
-    except Exception as e:
-        logger.error(f"Error triggering LLM enhancement: {e}", exc_info=True)
-        return jsonify({"error": f"Failed to trigger LLM enhancement: {str(e)}"}), 500
+    # Run the appropriate enhancement
+    if enhancement_type == "values":
+        processed_count = llm_service.enhance_prospect_values(prospects)
+    elif enhancement_type == "titles":
+        processed_count = llm_service.enhance_prospect_titles(prospects)
+    elif enhancement_type == "naics":
+        processed_count = llm_service.enhance_prospect_naics(prospects)
+    elif enhancement_type == "all":
+        results = llm_service.enhance_all_prospects(limit=limit)
+        processed_count = (
+            results["titles_enhanced"]
+            + results["values_enhanced"]
+            + results["naics_enhanced"]
+        )
+
+    duration = time.time() - start_time
+
+    response_data = {
+        "message": "LLM enhancement completed successfully",
+        "processed_count": processed_count,
+        "duration": round(duration, 1),
+        "enhancement_type": enhancement_type,
+        "total_available": len(prospects),
+    }
+
+    logger.info(
+        f"LLM enhancement completed: processed {processed_count} prospects in {duration:.1f}s"
+    )
+    return success_response(data=response_data)
 
 
-@llm_bp.route("/preview", methods=["POST"])
-@admin_required
+@api_route(llm_bp, "/preview", methods=["POST"], auth="admin")
 def preview_llm_enhancement():
     """Preview LLM enhancement for a single prospect without saving"""
-    try:
-        data = request.get_json()
-        if not data:
-            return jsonify({"error": "Request body required"}), 400
+    data = request.get_json()
+    if not data:
+        return error_response("Request body required")
 
-        prospect_id = data.get("prospect_id")
-        enhancement_types = data.get("enhancement_types", ["values", "naics", "titles"])
+    prospect_id = data.get("prospect_id")
+    enhancement_types = data.get("enhancement_types", ["values", "naics", "titles"])
 
-        if not prospect_id:
-            return jsonify({"error": "prospect_id is required"}), 400
+    if not prospect_id:
+        return error_response("prospect_id is required")
 
-        # Get the prospect
-        prospect = Prospect.query.get(prospect_id)
-        if not prospect:
-            return jsonify({"error": "Prospect not found"}), 404
+    # Get the prospect
+    prospect = Prospect.query.get(prospect_id)
+    if not prospect:
+        return error_response("Prospect not found", status_code=404)
 
-        # Initialize the base LLM service for individual enhancement previews
-        from app.services.llm_service import LLMService
+    # Initialize the base LLM service for individual enhancement previews
+    from app.services.llm_service import LLMService
 
-        llm_service = LLMService(model_name="qwen3:latest")
+    llm_service = LLMService(model_name="qwen3:latest")
 
-        preview_enhancements = {}
-        confidence_scores = {}
+    preview_enhancements = {}
+    confidence_scores = {}
 
-        # Generate actual LLM previews based on requested types
-        if "values" in enhancement_types and prospect.estimated_value_text:
-            parsed_value = llm_service.parse_contract_value_with_llm(
-                prospect.estimated_value_text
-            )
-            if parsed_value["single"] is not None:
-                preview_enhancements.update(
-                    {
-                        "estimated_value_single": float(parsed_value["single"]),
-                        "estimated_value_min": float(parsed_value["min"])
-                        if parsed_value["min"]
-                        else None,
-                        "estimated_value_max": float(parsed_value["max"])
-                        if parsed_value["max"]
-                        else None,
-                    }
-                )
-                confidence_scores["values"] = (
-                    0.85  # Could be enhanced to return actual confidence
-                )
-
-        if "titles" in enhancement_types and prospect.title and prospect.description:
-            enhanced_title = llm_service.enhance_title_with_llm(
-                prospect.title, prospect.description, prospect.agency or ""
-            )
-            if enhanced_title["enhanced_title"]:
-                preview_enhancements.update(
-                    {"ai_enhanced_title": enhanced_title["enhanced_title"]}
-                )
-                confidence_scores["titles"] = enhanced_title.get("confidence", 0.8)
-
-        if (
-            "naics" in enhancement_types
-            and not prospect.naics
-            and prospect.title
-            and prospect.description
-        ):
-            classification = llm_service.classify_naics_with_llm(
-                prospect.title, prospect.description
-            )
-            if classification["code"]:
-                preview_enhancements.update(
-                    {
-                        "naics": classification["code"],
-                        "naics_description": classification["description"],
-                        "naics_source": "llm_inferred",
-                    }
-                )
-                confidence_scores["naics"] = classification.get("confidence", 0.8)
-
-        mock_preview = {
-            "prospect_id": prospect_id,
-            "original_data": {
-                "title": prospect.title,
-                "estimated_value_text": prospect.estimated_value_text,
-                "naics": prospect.naics,
-                "naics_source": prospect.naics_source,
-            },
-            "preview_enhancements": preview_enhancements,
-            "confidence_scores": confidence_scores,
-        }
-
-        logger.info(f"Generated LLM preview for prospect {prospect_id}")
-        return jsonify(mock_preview), 200
-
-    except Exception as e:
-        logger.error(f"Error generating LLM preview: {e}", exc_info=True)
-        return jsonify({"error": f"Failed to generate LLM preview: {str(e)}"}), 500
-
-
-@llm_bp.route("/iterative/start", methods=["POST"])
-@admin_required
-def start_iterative_enhancement():
-    """Start iterative one-by-one LLM enhancement"""
-    try:
-        data = request.get_json()
-        if not data:
-            return jsonify({"error": "Request body required"}), 400
-
-        enhancement_type = data.get("enhancement_type", "all")
-        skip_existing = data.get("skip_existing", True)
-
-        # Validate enhancement type
-        valid_types = ["values", "naics", "naics_code", "naics_description", "titles", "set_asides", "all"]
-        if enhancement_type not in valid_types:
-            return jsonify(
-                {"error": f"Invalid enhancement type. Must be one of: {valid_types}"}
-            ), 400
-
-        # Start enhancement (runs in background thread)
-        result = llm_service.start_enhancement(enhancement_type, skip_existing)
-
-        logger.info(
-            f"Started iterative LLM enhancement: type={enhancement_type}, skip_existing={skip_existing}"
+    # Generate actual LLM previews based on requested types
+    if "values" in enhancement_types and prospect.estimated_value_text:
+        parsed_value = llm_service.parse_contract_value_with_llm(
+            prospect.estimated_value_text
         )
-        return jsonify(result), 200
-
-    except Exception as e:
-        logger.error(f"Error starting iterative enhancement: {e}", exc_info=True)
-        return jsonify(
-            {"error": f"Failed to start iterative enhancement: {str(e)}"}
-        ), 500
-
-
-@llm_bp.route("/iterative/stop", methods=["POST"])
-@admin_required
-def stop_iterative_enhancement():
-    """Stop the current iterative enhancement process"""
-    try:
-        # Stop enhancement
-        result = llm_service.stop_enhancement()
-
-        logger.info("Stopped iterative LLM enhancement")
-        return jsonify(result), 200
-
-    except Exception as e:
-        logger.error(f"Error stopping iterative enhancement: {e}", exc_info=True)
-        return jsonify(
-            {"error": f"Failed to stop iterative enhancement: {str(e)}"}
-        ), 500
-
-
-@llm_bp.route("/iterative/progress", methods=["GET"])
-@admin_required
-def get_iterative_progress():
-    """Get current progress of iterative enhancement"""
-    try:
-        progress = llm_service.get_progress()
-
-        # Calculate percentage if processing
-        if progress["total"] > 0:
-            progress["percentage"] = round(
-                (progress["processed"] / progress["total"]) * 100, 1
-            )
-        else:
-            progress["percentage"] = 0
-
-        return jsonify(progress), 200
-
-    except Exception as e:
-        logger.error(f"Error getting iterative progress: {e}", exc_info=True)
-        return jsonify({"error": "Failed to get progress"}), 500
-
-
-@llm_bp.route("/logs", methods=["GET"])
-@admin_required
-def get_enhancement_logs():
-    """Get recent AI enrichment logs"""
-    try:
-        limit = request.args.get("limit", 20, type=int)
-
-        logs = (
-            AIEnrichmentLog.query.order_by(AIEnrichmentLog.timestamp.desc())
-            .limit(limit)
-            .all()
-        )
-
-        log_data = []
-        for log in logs:
-            log_data.append(
+        if parsed_value["single"] is not None:
+            preview_enhancements.update(
                 {
-                    "id": log.id,
-                    "timestamp": log.timestamp.isoformat(),
-                    "enhancement_type": log.enhancement_type,
-                    "status": log.status,
-                    "processed_count": log.processed_count,
-                    "duration": log.duration,
-                    "message": log.message,
-                    "error": log.error,
+                    "estimated_value_single": float(parsed_value["single"]),
+                    "estimated_value_min": float(parsed_value["min"])
+                    if parsed_value["min"]
+                    else None,
+                    "estimated_value_max": float(parsed_value["max"])
+                    if parsed_value["max"]
+                    else None,
                 }
             )
+            confidence_scores["values"] = (
+                0.85  # Could be enhanced to return actual confidence
+            )
 
-        return jsonify(log_data), 200
+    if "titles" in enhancement_types and prospect.title and prospect.description:
+        enhanced_title = llm_service.enhance_title_with_llm(
+            prospect.title, prospect.description, prospect.agency or ""
+        )
+        if enhanced_title["enhanced_title"]:
+            preview_enhancements.update(
+                {"ai_enhanced_title": enhanced_title["enhanced_title"]}
+            )
+            confidence_scores["titles"] = enhanced_title.get("confidence", 0.8)
 
-    except Exception as e:
-        logger.error(f"Error getting enhancement logs: {e}", exc_info=True)
-        return jsonify({"error": "Failed to get logs"}), 500
+    if (
+        "naics" in enhancement_types
+        and not prospect.naics
+        and prospect.title
+        and prospect.description
+    ):
+        classification = llm_service.classify_naics_with_llm(
+            prospect.title, prospect.description
+        )
+        if classification["code"]:
+            preview_enhancements.update(
+                {
+                    "naics": classification["code"],
+                    "naics_description": classification["description"],
+                    "naics_source": "llm_inferred",
+                }
+            )
+            confidence_scores["naics"] = classification.get("confidence", 0.8)
+
+    mock_preview = {
+        "prospect_id": prospect_id,
+        "original_data": {
+            "title": prospect.title,
+            "estimated_value_text": prospect.estimated_value_text,
+            "naics": prospect.naics,
+            "naics_source": prospect.naics_source,
+        },
+        "preview_enhancements": preview_enhancements,
+        "confidence_scores": confidence_scores,
+    }
+
+    logger.info(f"Generated LLM preview for prospect {prospect_id}")
+    return success_response(data=mock_preview)
 
 
-@llm_bp.route("/outputs", methods=["GET"])
-@admin_required
+@api_route(llm_bp, "/iterative/start", methods=["POST"], auth="admin")
+def start_iterative_enhancement():
+    """Start iterative one-by-one LLM enhancement"""
+    data = request.get_json()
+    if not data:
+        return error_response("Request body required")
+
+    enhancement_type = data.get("enhancement_type", "all")
+    skip_existing = data.get("skip_existing", True)
+
+    # Validate enhancement type
+    valid_types = ["values", "naics", "naics_code", "naics_description", "titles", "set_asides", "all"]
+    if enhancement_type not in valid_types:
+        return error_response(f"Invalid enhancement type. Must be one of: {valid_types}")
+
+    # Start enhancement (runs in background thread)
+    result = llm_service.start_enhancement(enhancement_type, skip_existing)
+
+    logger.info(
+        f"Started iterative LLM enhancement: type={enhancement_type}, skip_existing={skip_existing}"
+    )
+    return success_response(data=result)
+
+
+@api_route(llm_bp, "/iterative/stop", methods=["POST"], auth="admin")
+def stop_iterative_enhancement():
+    """Stop the current iterative enhancement process"""
+    # Stop enhancement
+    result = llm_service.stop_enhancement()
+
+    logger.info("Stopped iterative LLM enhancement")
+    return success_response(data=result)
+
+
+@api_route(llm_bp, "/iterative/progress", methods=["GET"], auth="admin")
+def get_iterative_progress():
+    """Get current progress of iterative enhancement"""
+    progress = llm_service.get_progress()
+
+    # Calculate percentage if processing
+    if progress["total"] > 0:
+        progress["percentage"] = round(
+            (progress["processed"] / progress["total"]) * 100, 1
+        )
+    else:
+        progress["percentage"] = 0
+
+    return success_response(data=progress)
+
+
+@api_route(llm_bp, "/logs", methods=["GET"], auth="admin")
+def get_enhancement_logs():
+    """Get recent AI enrichment logs"""
+    limit = request.args.get("limit", 20, type=int)
+
+    logs = (
+        AIEnrichmentLog.query.order_by(AIEnrichmentLog.timestamp.desc())
+        .limit(limit)
+        .all()
+    )
+
+    log_data = []
+    for log in logs:
+        log_data.append(
+            {
+                "id": log.id,
+                "timestamp": log.timestamp.isoformat(),
+                "enhancement_type": log.enhancement_type,
+                "status": log.status,
+                "processed_count": log.processed_count,
+                "duration": log.duration,
+                "message": log.message,
+                "error": log.error,
+            }
+        )
+
+    return success_response(data=log_data)
+
+
+@api_route(llm_bp, "/outputs", methods=["GET"], auth="admin")
 def get_llm_outputs():
     """Get recent LLM outputs for display"""
-    try:
-        limit = request.args.get("limit", 50, type=int)
-        enhancement_type = request.args.get("enhancement_type", None)
+    limit = request.args.get("limit", 50, type=int)
+    enhancement_type = request.args.get("enhancement_type", None)
 
-        query = LLMOutput.query
+    query = LLMOutput.query
 
-        if enhancement_type and enhancement_type != "all":
-            query = query.filter(LLMOutput.enhancement_type == enhancement_type)
+    if enhancement_type and enhancement_type != "all":
+        query = query.filter(LLMOutput.enhancement_type == enhancement_type)
 
-        outputs = query.order_by(LLMOutput.timestamp.desc()).limit(limit).all()
+    outputs = query.order_by(LLMOutput.timestamp.desc()).limit(limit).all()
 
-        output_data = []
-        for output in outputs:
-            output_data.append(output.to_dict())
+    output_data = []
+    for output in outputs:
+        output_data.append(output.to_dict())
 
-        return jsonify(output_data), 200
-
-    except Exception as e:
-        logger.error(f"Error getting LLM outputs: {e}", exc_info=True)
-        return jsonify({"error": "Failed to get outputs"}), 500
+    return success_response(data=output_data)
 
 
 def _ensure_extra_is_dict(prospect):
@@ -784,365 +728,308 @@ def _finalize_enhancement(prospect, llm_service, processed, enhancements, force_
 
         # Enhancement completed
 
-        return jsonify(
-            {
-                "status": "success",
-                "message": f"Successfully enhanced prospect with: {', '.join(enhancements)}",
+        return success_response(
+            message=f"Successfully enhanced prospect with: {', '.join(enhancements)}",
+            data={
                 "processed": True,
                 "enhancements": enhancements,
             }
-        ), 200
+        )
     else:
         # Enhancement completed - no processing needed
 
-        return jsonify(
-            {
-                "status": "success",
-                "message": "Prospect already fully enhanced or no data to enhance",
+        return success_response(
+            message="Prospect already fully enhanced or no data to enhance",
+            data={
                 "processed": False,
                 "enhancements": [],
             }
-        ), 200
+        )
 
 
-@llm_bp.route("/enhance-single", methods=["POST"])
-@login_required
+@api_route(llm_bp, "/enhance-single", methods=["POST"], auth="login")
 def enhance_single_prospect():
     """Enhance a single prospect with all AI enhancements using the priority queue system"""
-    try:
-        # Parse and validate request
-        data = request.get_json()
-        if not data:
-            return jsonify({"error": "Request body required"}), 400
+    # Parse and validate request
+    data = request.get_json()
+    if not data:
+        return error_response("Request body required")
 
-        prospect_id = data.get("prospect_id")
-        if not prospect_id:
-            return jsonify({"error": "prospect_id is required"}), 400
+    prospect_id = data.get("prospect_id")
+    if not prospect_id:
+        return error_response("prospect_id is required")
 
-        force_redo = data.get("force_redo", False)
-        user_id = data.get("user_id", 1)  # Default to 1 if no user provided
+    force_redo = data.get("force_redo", False)
+    user_id = data.get("user_id", 1)  # Default to 1 if no user provided
 
-        # Handle both enhancement_type (string) and enhancement_types (array)
-        enhancement_types = data.get("enhancement_types", None)
-        if enhancement_types and isinstance(enhancement_types, list):
-            # Convert array to comma-separated string
-            enhancement_type = ",".join(enhancement_types)
-        else:
-            enhancement_type = data.get("enhancement_type", "all")
+    # Handle both enhancement_type (string) and enhancement_types (array)
+    enhancement_types = data.get("enhancement_types", None)
+    if enhancement_types and isinstance(enhancement_types, list):
+        # Convert array to comma-separated string
+        enhancement_type = ",".join(enhancement_types)
+    else:
+        enhancement_type = data.get("enhancement_type", "all")
 
-        # Get the prospect
-        prospect = Prospect.query.get(prospect_id)
-        if not prospect:
-            return jsonify({"error": "Prospect not found"}), 404
+    # Get the prospect
+    prospect = Prospect.query.get(prospect_id)
+    if not prospect:
+        return error_response("Prospect not found", status_code=404)
 
-        # Check if prospect is already being enhanced by another user
-        if prospect.enhancement_status == "in_progress":
-            logger.info(
-                f"Prospect {prospect_id} is in_progress: user_id={user_id}, enhancement_user_id={prospect.enhancement_user_id}"
-            )
-            if prospect.enhancement_user_id != user_id:
-                logger.warning(
-                    f"User conflict for prospect {prospect_id}: requesting user={user_id}, locked by user={prospect.enhancement_user_id}"
-                )
-                return jsonify(
-                    {
-                        "error": "Prospect is currently being enhanced by another user",
-                        "status": "blocked",
-                        "enhancement_status": "in_progress",
-                        "enhancement_user_id": prospect.enhancement_user_id,
-                    }
-                ), 409
-
-        # Also check if prospect is already in the queue with a different user
-        # This prevents race conditions between queue processing and database locking
-        existing_queue_items = [
-            item
-            for item in enhancement_queue._queue_items.values()
-            if (
-                str(item.prospect_id) == str(prospect_id)
-                and item.type.value == "individual"
-                and item.status.value in ["pending", "processing"]
-            )
-        ]
-
-        if existing_queue_items:
-            existing_item = existing_queue_items[0]
-            if existing_item.user_id != user_id:
-                return jsonify(
-                    {
-                        "error": "Prospect is currently being enhanced by another user (queued)",
-                        "status": "blocked",
-                        "enhancement_status": "queued",
-                        "queue_user_id": existing_item.user_id,
-                    }
-                ), 409
-            else:
-                # Same user, return existing queue item
-                logger.info(
-                    f"Returning existing queue item {existing_item.id} for same user {user_id}"
-                )
-                return jsonify(
-                    {
-                        "status": "queued",
-                        "message": f"Enhancement request already queued for prospect {prospect_id}",
-                        "queue_item_id": existing_item.id,
-                        "prospect_id": prospect_id,
-                        "priority": "high",
-                        "was_existing": True,
-                    }
-                ), 200
-
-        # Determine which steps will be skipped
-        planned_steps = {}
-        enhancement_types_list = enhancement_type.split(',') if enhancement_type else ['all']
-        
-        # Check each enhancement type to see if it will be skipped
-        if 'all' in enhancement_types_list or 'titles' in enhancement_types_list:
-            will_skip = bool(prospect.ai_enhanced_title) and not force_redo
-            planned_steps['titles'] = {
-                'will_process': not will_skip,
-                'reason': 'already_enhanced' if will_skip else None
-            }
-        
-        if 'all' in enhancement_types_list or 'values' in enhancement_types_list:
-            will_skip = (bool(prospect.estimated_value_single) or 
-                        bool(prospect.estimated_value_min) or 
-                        bool(prospect.estimated_value_max)) and not force_redo
-            planned_steps['values'] = {
-                'will_process': not will_skip,
-                'reason': 'already_parsed' if will_skip else None
-            }
-        
-        if 'all' in enhancement_types_list or 'naics' in enhancement_types_list:
-            will_skip = (bool(prospect.naics) and 
-                        prospect.naics_source == 'llm_inferred') and not force_redo
-            planned_steps['naics'] = {
-                'will_process': not will_skip,
-                'reason': 'already_classified' if will_skip else None
-            }
-        
-        if 'naics_code' in enhancement_types_list:
-            will_skip = bool(prospect.naics) and not force_redo
-            planned_steps['naics_code'] = {
-                'will_process': not will_skip,
-                'reason': 'already_has_code' if will_skip else None
-            }
-        
-        if 'naics_description' in enhancement_types_list:
-            will_skip = bool(prospect.naics_description) and not force_redo
-            planned_steps['naics_description'] = {
-                'will_process': not will_skip,
-                'reason': 'already_has_description' if will_skip else None
-            }
-        
-        if 'all' in enhancement_types_list or 'set_asides' in enhancement_types_list:
-            will_skip = bool(prospect.set_aside_standardized) and not force_redo
-            planned_steps['set_asides'] = {
-                'will_process': not will_skip,
-                'reason': 'already_standardized' if will_skip else None
-            }
-        
-        # Add to priority queue (returns dict with queue_item_id and was_existing)
-        enhancement_result = add_individual_enhancement(
-            prospect_id=prospect_id,
-            enhancement_type=enhancement_type,
-            user_id=user_id,
-            force_redo=force_redo,
-        )
-
-        queue_item_id = enhancement_result["queue_item_id"]
-        was_existing = enhancement_result["was_existing"]
-        queue_position = enhancement_result.get("queue_position", 1)
-
-        # Get queue status to provide better response information
-        queue_status = enhancement_queue.get_queue_status()
-        worker_running = queue_status.get("worker_running", False)
-
+    # Check if prospect is already being enhanced by another user
+    if prospect.enhancement_status == "in_progress":
         logger.info(
-            f"Added individual enhancement for prospect {prospect_id} to queue with ID {queue_item_id} (worker_running={worker_running}, position={queue_position})"
+            f"Prospect {prospect_id} is in_progress: user_id={user_id}, enhancement_user_id={prospect.enhancement_user_id}"
         )
-
-        # Create appropriate message based on worker status
-        if not worker_running:
-            message = (
-                f"Enhancement queued and worker auto-started for prospect {prospect_id}"
+        if prospect.enhancement_user_id != user_id:
+            logger.warning(
+                f"User conflict for prospect {prospect_id}: requesting user={user_id}, locked by user={prospect.enhancement_user_id}"
             )
-        elif was_existing:
-            message = (
-                f"Enhancement request already in progress for prospect {prospect_id}"
+            return error_response(
+                "Prospect is currently being enhanced by another user",
+                status_code=409,
+                data={
+                    "status": "blocked",
+                    "enhancement_status": "in_progress",
+                    "enhancement_user_id": prospect.enhancement_user_id,
+                }
+            )
+
+    # Also check if prospect is already in the queue with a different user
+    # This prevents race conditions between queue processing and database locking
+    existing_queue_items = [
+        item
+        for item in enhancement_queue._queue_items.values()
+        if (
+            str(item.prospect_id) == str(prospect_id)
+            and item.type.value == "individual"
+            and item.status.value in ["pending", "processing"]
+        )
+    ]
+
+    if existing_queue_items:
+        existing_item = existing_queue_items[0]
+        if existing_item.user_id != user_id:
+            return error_response(
+                "Prospect is currently being enhanced by another user (queued)",
+                status_code=409,
+                data={
+                    "status": "blocked",
+                    "enhancement_status": "queued",
+                    "queue_user_id": existing_item.user_id,
+                }
             )
         else:
-            message = f"Enhancement request queued for prospect {prospect_id}"
+            # Same user, return existing queue item
+            logger.info(
+                f"Returning existing queue item {existing_item.id} for same user {user_id}"
+            )
+            return success_response(
+                message=f"Enhancement request already queued for prospect {prospect_id}",
+                data={
+                    "status": "queued",
+                    "queue_item_id": existing_item.id,
+                    "prospect_id": prospect_id,
+                    "priority": "high",
+                    "was_existing": True,
+                }
+            )
 
-        return jsonify(
-            {
-                "status": "queued",
-                "message": message,
-                "queue_item_id": queue_item_id,
-                "prospect_id": prospect_id,
-                "priority": "high",
-                "was_existing": was_existing,
-                "worker_running": worker_running,
-                "queue_position": queue_position,
-                "queue_size": queue_status.get("queue_size", 0),
-                "planned_steps": planned_steps,  # Include planned steps for frontend
-            }
-        ), 200
+    # Determine which steps will be skipped
+    planned_steps = {}
+    enhancement_types_list = enhancement_type.split(',') if enhancement_type else ['all']
+    
+    # Check each enhancement type to see if it will be skipped
+    if 'all' in enhancement_types_list or 'titles' in enhancement_types_list:
+        will_skip = bool(prospect.ai_enhanced_title) and not force_redo
+        planned_steps['titles'] = {
+            'will_process': not will_skip,
+            'reason': 'already_enhanced' if will_skip else None
+        }
+    
+    if 'all' in enhancement_types_list or 'values' in enhancement_types_list:
+        will_skip = (bool(prospect.estimated_value_single) or 
+                    bool(prospect.estimated_value_min) or 
+                    bool(prospect.estimated_value_max)) and not force_redo
+        planned_steps['values'] = {
+            'will_process': not will_skip,
+            'reason': 'already_parsed' if will_skip else None
+        }
+    
+    if 'all' in enhancement_types_list or 'naics' in enhancement_types_list:
+        will_skip = (bool(prospect.naics) and 
+                    prospect.naics_source == 'llm_inferred') and not force_redo
+        planned_steps['naics'] = {
+            'will_process': not will_skip,
+            'reason': 'already_classified' if will_skip else None
+        }
+    
+    if 'naics_code' in enhancement_types_list:
+        will_skip = bool(prospect.naics) and not force_redo
+        planned_steps['naics_code'] = {
+            'will_process': not will_skip,
+            'reason': 'already_has_code' if will_skip else None
+        }
+    
+    if 'naics_description' in enhancement_types_list:
+        will_skip = bool(prospect.naics_description) and not force_redo
+        planned_steps['naics_description'] = {
+            'will_process': not will_skip,
+            'reason': 'already_has_description' if will_skip else None
+        }
+    
+    if 'all' in enhancement_types_list or 'set_asides' in enhancement_types_list:
+        will_skip = bool(prospect.set_aside_standardized) and not force_redo
+        planned_steps['set_asides'] = {
+            'will_process': not will_skip,
+            'reason': 'already_standardized' if will_skip else None
+        }
+    
+    # Add to priority queue (returns dict with queue_item_id and was_existing)
+    enhancement_result = add_individual_enhancement(
+        prospect_id=prospect_id,
+        enhancement_type=enhancement_type,
+        user_id=user_id,
+        force_redo=force_redo,
+    )
 
-    except Exception as e:
-        logger.error(f"Error queueing single prospect enhancement: {e}", exc_info=True)
-        return jsonify(
-            {"error": f"Failed to queue prospect enhancement: {str(e)}"}
-        ), 500
+    queue_item_id = enhancement_result["queue_item_id"]
+    was_existing = enhancement_result["was_existing"]
+    queue_position = enhancement_result.get("queue_position", 1)
+
+    # Get queue status to provide better response information
+    queue_status = enhancement_queue.get_queue_status()
+    worker_running = queue_status.get("worker_running", False)
+
+    logger.info(
+        f"Added individual enhancement for prospect {prospect_id} to queue with ID {queue_item_id} (worker_running={worker_running}, position={queue_position})"
+    )
+
+    # Create appropriate message based on worker status
+    if not worker_running:
+        message = (
+            f"Enhancement queued and worker auto-started for prospect {prospect_id}"
+        )
+    elif was_existing:
+        message = (
+            f"Enhancement request already in progress for prospect {prospect_id}"
+        )
+    else:
+        message = f"Enhancement request queued for prospect {prospect_id}"
+
+    return success_response(
+        message=message,
+        data={
+            "status": "queued",
+            "queue_item_id": queue_item_id,
+            "prospect_id": prospect_id,
+            "priority": "high",
+            "was_existing": was_existing,
+            "worker_running": worker_running,
+            "queue_position": queue_position,
+            "queue_size": queue_status.get("queue_size", 0),
+            "planned_steps": planned_steps,  # Include planned steps for frontend
+        }
+    )
 
 
-@llm_bp.route("/cleanup-stale-locks", methods=["POST"])
-@admin_required
+@api_route(llm_bp, "/cleanup-stale-locks", methods=["POST"], auth="admin")
 def cleanup_stale_enhancement_locks():
     """Clean up enhancement locks that are older than 10 minutes"""
-    try:
-        # Calculate cutoff time (10 minutes ago)
-        cutoff_time = datetime.now(UTC) - timedelta(minutes=10)
+    # Calculate cutoff time (10 minutes ago)
+    cutoff_time = datetime.now(UTC) - timedelta(minutes=10)
 
-        # Find prospects with stale locks
-        stale_prospects = (
-            db.session.query(Prospect)
-            .filter(
-                Prospect.enhancement_status == "in_progress",
-                Prospect.enhancement_started_at < cutoff_time,
-            )
-            .all()
+    # Find prospects with stale locks
+    stale_prospects = (
+        db.session.query(Prospect)
+        .filter(
+            Prospect.enhancement_status == "in_progress",
+            Prospect.enhancement_started_at < cutoff_time,
         )
+        .all()
+    )
 
-        cleanup_count = 0
-        for prospect in stale_prospects:
-            prospect.enhancement_status = "idle"
-            prospect.enhancement_started_at = None
-            prospect.enhancement_user_id = None
-            cleanup_count += 1
+    cleanup_count = 0
+    for prospect in stale_prospects:
+        prospect.enhancement_status = "idle"
+        prospect.enhancement_started_at = None
+        prospect.enhancement_user_id = None
+        cleanup_count += 1
 
-        db.session.commit()
+    db.session.commit()
 
-        logger.info(f"Cleaned up {cleanup_count} stale enhancement locks")
-        return jsonify(
-            {
-                "message": f"Cleaned up {cleanup_count} stale enhancement locks",
-                "cleanup_count": cleanup_count,
-            }
-        ), 200
-
-    except Exception as e:
-        logger.error(f"Error cleaning up stale locks: {e}", exc_info=True)
-        db.session.rollback()
-        return jsonify({"error": f"Failed to cleanup stale locks: {str(e)}"}), 500
+    logger.info(f"Cleaned up {cleanup_count} stale enhancement locks")
+    return success_response(
+        message=f"Cleaned up {cleanup_count} stale enhancement locks",
+        data={"cleanup_count": cleanup_count}
+    )
 
 
-@llm_bp.route("/queue/status", methods=["GET"])
-@admin_required
+@api_route(llm_bp, "/queue/status", methods=["GET"], auth="admin")
 def get_queue_status():
     """Get current enhancement queue status"""
-    try:
-        status = enhancement_queue.get_queue_status()
-        return jsonify(status), 200
-    except Exception as e:
-        logger.error(f"Error getting queue status: {e}", exc_info=True)
-        return jsonify({"error": f"Failed to get queue status: {str(e)}"}), 500
+    status = enhancement_queue.get_queue_status()
+    return success_response(data=status)
 
 
-@llm_bp.route("/queue/item/<item_id>", methods=["GET"])
-@login_required
+@api_route(llm_bp, "/queue/item/<item_id>", methods=["GET"], auth="login")
 def get_queue_item_status(item_id):
     """Get status of a specific queue item"""
-    try:
-        item_status = enhancement_queue.get_item_status(item_id)
-        if not item_status:
-            return jsonify({"error": "Queue item not found"}), 404
-        return jsonify(item_status), 200
-    except Exception as e:
-        logger.error(f"Error getting queue item status: {e}", exc_info=True)
-        return jsonify({"error": f"Failed to get queue item status: {str(e)}"}), 500
+    item_status = enhancement_queue.get_item_status(item_id)
+    if not item_status:
+        return error_response("Queue item not found", status_code=404)
+    return success_response(data=item_status)
 
 
-@llm_bp.route("/queue/item/<item_id>/cancel", methods=["POST"])
-@login_required
+@api_route(llm_bp, "/queue/item/<item_id>/cancel", methods=["POST"], auth="login")
 def cancel_queue_item(item_id):
     """Cancel a specific queue item"""
-    try:
-        success = enhancement_queue.cancel_item(item_id)
-        if success:
-            return jsonify(
-                {"message": f"Queue item {item_id} cancelled successfully"}
-            ), 200
-        else:
-            return jsonify(
-                {"error": "Cannot cancel item (not found or already processing)"}
-            ), 400
-    except Exception as e:
-        logger.error(f"Error cancelling queue item: {e}", exc_info=True)
-        return jsonify({"error": f"Failed to cancel queue item: {str(e)}"}), 500
+    success = enhancement_queue.cancel_item(item_id)
+    if success:
+        return success_response(message=f"Queue item {item_id} cancelled successfully")
+    else:
+        return error_response(
+            "Cannot cancel item (not found or already processing)",
+            status_code=400
+        )
 
 
-@llm_bp.route("/queue/start-worker", methods=["POST"])
-@admin_required
+@api_route(llm_bp, "/queue/start-worker", methods=["POST"], auth="admin")
 def start_queue_worker():
     """Start the enhancement queue worker"""
-    try:
-        enhancement_queue.start_worker()
-        return jsonify({"message": "Queue worker started successfully"}), 200
-    except Exception as e:
-        logger.error(f"Error starting queue worker: {e}", exc_info=True)
-        return jsonify({"error": f"Failed to start queue worker: {str(e)}"}), 500
+    enhancement_queue.start_worker()
+    return success_response(message="Queue worker started successfully")
 
 
-@llm_bp.route("/queue/stop-worker", methods=["POST"])
-@admin_required
+@api_route(llm_bp, "/queue/stop-worker", methods=["POST"], auth="admin")
 def stop_queue_worker():
     """Stop the enhancement queue worker"""
-    try:
-        enhancement_queue.stop_worker()
-        return jsonify({"message": "Queue worker stopped successfully"}), 200
-    except Exception as e:
-        logger.error(f"Error stopping queue worker: {e}", exc_info=True)
-        return jsonify({"error": f"Failed to stop queue worker: {str(e)}"}), 500
+    enhancement_queue.stop_worker()
+    return success_response(message="Queue worker stopped successfully")
 
 
 # SSE functionality has been removed - using polling instead
 
 
-@llm_bp.route("/enhancement-queue/<queue_item_id>", methods=["DELETE"])
-@admin_required
+@api_route(llm_bp, "/enhancement-queue/<queue_item_id>", methods=["DELETE"], auth="admin")
 def cancel_enhancement(queue_item_id):
     """Cancel a queued enhancement request"""
-    try:
-        # Attempt to cancel the queue item
-        success = enhancement_queue.cancel_item(queue_item_id)
+    # Attempt to cancel the queue item
+    success = enhancement_queue.cancel_item(queue_item_id)
 
-        if success:
-            logger.info(
-                f"Successfully cancelled enhancement queue item: {queue_item_id}"
-            )
-            return jsonify(
-                {
-                    "success": True,
-                    "message": "Enhancement request cancelled successfully",
-                }
-            ), 200
-        else:
-            logger.warning(
-                f"Failed to cancel enhancement queue item: {queue_item_id} (not found or already processing)"
-            )
-            return jsonify(
-                {
-                    "success": False,
-                    "error": "Queue item not found or already processing",
-                }
-            ), 404
-
-    except Exception as e:
-        logger.error(
-            f"Error cancelling enhancement queue item {queue_item_id}: {e}",
-            exc_info=True,
+    if success:
+        logger.info(
+            f"Successfully cancelled enhancement queue item: {queue_item_id}"
         )
-        return jsonify(
-            {"success": False, "error": "Failed to cancel enhancement request"}
-        ), 500
+        return success_response(
+            message="Enhancement request cancelled successfully",
+            data={"success": True}
+        )
+    else:
+        logger.warning(
+            f"Failed to cancel enhancement queue item: {queue_item_id} (not found or already processing)"
+        )
+        return error_response(
+            "Queue item not found or already processing",
+            status_code=404,
+            data={"success": False}
+        )

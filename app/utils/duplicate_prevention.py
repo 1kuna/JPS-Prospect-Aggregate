@@ -13,9 +13,9 @@ from sqlalchemy.orm import Session
 
 from app.config import active_config
 from app.database.models import Prospect
-from app.utils.logger import logger
+from app.utils.logger import get_logger
 
-logger = logger.bind(name="utils.duplicate_prevention")
+logger = get_logger("utils.duplicate_prevention")
 
 
 @dataclass

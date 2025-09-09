@@ -12,10 +12,11 @@ from app.api.factory import (
     create_blueprint,
     error_response,
     paginated_response,
+    success_response,
 )
 from app.database.crud import paginate_sqlalchemy_query
 from app.database.models import Prospect
-from app.exceptions import ValidationError
+from app.exceptions import NotFoundError, ValidationError
 
 prospects_bp, logger = create_blueprint("prospects_api", "/api/prospects")
 
@@ -140,36 +141,17 @@ def get_prospects_route():
     except ValueError as ve_param:
         logger.error(f"ValueError in request arguments: {ve_param}", exc_info=True)
         return error_response(400, "Invalid parameter type. 'page' and 'limit' must be integers.")
-    except Exception as e:
-        logger.error(
-            f"An unexpected error occurred in /api/prospects/: {e}", exc_info=True
-        )
-        return jsonify(
-            {"error": "An unexpected error occurred. Please try again later."}
-        ), 500
 
 
-@prospects_bp.route("/<string:prospect_id>", methods=["GET"])
+@api_route(prospects_bp, "/<string:prospect_id>", methods=["GET"])
 def get_prospect_by_id_route(prospect_id: str):
     # Only log errors and warnings for individual prospect requests
-    try:
-        # session = db.session # Not strictly necessary if using .get() on the Model itself with Flask-SQLAlchemy
-        prospect = Prospect.query.get(prospect_id)  # Use .get() for primary key lookup
+    # session = db.session # Not strictly necessary if using .get() on the Model itself with Flask-SQLAlchemy
+    prospect = Prospect.query.get(prospect_id)  # Use .get() for primary key lookup
 
-        if not prospect:
-            logger.warning(f"Prospect with ID {prospect_id} not found.")
-            raise NotFoundError(f"Prospect with ID {prospect_id} not found.")
+    if not prospect:
+        logger.warning(f"Prospect with ID {prospect_id} not found.")
+        raise NotFoundError(f"Prospect with ID {prospect_id} not found.")
 
-        logger.info(f"Successfully retrieved prospect with ID {prospect_id}.")
-        return jsonify(prospect.to_dict()), 200
-
-    except NotFoundError as nfe:  # Catch specific NotFoundError
-        logger.error(f"NotFoundError in get_prospect_by_id_route: {nfe}", exc_info=True)
-        return jsonify({"error": str(nfe)}), 404
-    except Exception as e:
-        logger.error(
-            f"An unexpected error occurred in /api/prospects/<id>: {e}", exc_info=True
-        )
-        return jsonify(
-            {"error": "An unexpected error occurred. Please try again later."}
-        ), 500
+    logger.info(f"Successfully retrieved prospect with ID {prospect_id}.")
+    return success_response(data=prospect.to_dict())

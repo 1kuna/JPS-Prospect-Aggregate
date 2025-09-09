@@ -9,10 +9,10 @@ from app.core.scrapers.ssa_scraper import SsaScraper
 # from app.database.connection import session_scope # Removed
 from app.database import db  # Added db
 from app.database.models import DataSource, ScraperStatus
-from app.utils.logger import cleanup_logs, logger
+from app.utils.logger import cleanup_logs, get_logger
 
 # Set up logging with the centralized utility
-logger = logger.bind(name="health_check")
+logger = get_logger("health_check")
 
 logger.info("Health check module initialized")
 
