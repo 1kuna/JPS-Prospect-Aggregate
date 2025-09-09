@@ -132,6 +132,21 @@ class Config:
     PRESERVE_AI_DATA_ON_REFRESH: bool = (
         os.getenv("PRESERVE_AI_DATA_ON_REFRESH", "true").lower() == "true"
     )
+    
+    # Fields that should be preserved when AI data exists
+    AI_PRESERVED_FIELDS: set[str] = {
+        "naics",
+        "naics_description",
+        "naics_source",
+        "estimated_value_min",
+        "estimated_value_max",
+        "estimated_value_single",
+        "primary_contact_email",
+        "primary_contact_name",
+        "ai_enhanced_title",
+        "ollama_processed_at",
+        "ollama_model_version",
+    }
     ENABLE_SMART_DUPLICATE_MATCHING: bool = (
         os.getenv("ENABLE_SMART_DUPLICATE_MATCHING", "true").lower() == "true"
     )
