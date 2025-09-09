@@ -73,7 +73,7 @@ export function ProspectTablePagination({
       // Ellipsis after first page
       if (currentPage > 4) {
         pageItems.push(
-          <span key="start-ellipsis" className="text-gray-400 px-2">...</span>
+          <span key="start-ellipsis" className="text-muted-foreground px-2">...</span>
         );
       }
 
@@ -111,7 +111,7 @@ export function ProspectTablePagination({
       // Ellipsis before last page
       if (currentPage < totalPages - 3) {
         pageItems.push(
-          <span key="end-ellipsis" className="text-gray-400 px-2">...</span>
+          <span key="end-ellipsis" className="text-muted-foreground px-2">...</span>
         );
       }
 
@@ -151,7 +151,7 @@ export function ProspectTablePagination({
 
   return (
     <div className="mt-6 flex flex-col sm:flex-row items-center justify-between gap-4">
-      <p className="text-sm font-medium text-gray-700">
+      <p className="text-sm font-medium text-muted-foreground">
         Showing <span className="font-semibold">{((currentPage - 1) * itemsPerPage + 1)}-{Math.min(currentPage * itemsPerPage, total)}</span> of <span className="font-semibold">{total.toLocaleString()}</span> results
       </p>
       <div className="flex items-center gap-2">

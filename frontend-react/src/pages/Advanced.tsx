@@ -31,8 +31,8 @@ export default function Advanced() {
     return (
       <div className="container mx-auto px-4 py-8">
         <div className="text-center">
-          <h1 className="text-2xl font-bold text-red-600 mb-4">Access Denied</h1>
-          <p className="text-gray-600">You need admin privileges to access this page.</p>
+          <h1 className="text-2xl font-bold text-destructive mb-4">Access Denied</h1>
+          <p className="text-muted-foreground">You need admin privileges to access this page.</p>
         </div>
       </div>
     );
@@ -98,8 +98,8 @@ export default function Advanced() {
         if (!isSuperAdmin) {
           return (
             <div className="text-center py-8">
-              <h2 className="text-xl font-bold text-red-600 mb-2">Access Denied</h2>
-              <p className="text-gray-600">Super admin privileges are required to access data sources.</p>
+              <h2 className="text-xl font-bold text-destructive mb-2">Access Denied</h2>
+              <p className="text-muted-foreground">Super admin privileges are required to access data sources.</p>
             </div>
           );
         }
@@ -122,8 +122,8 @@ export default function Advanced() {
         if (firstTab.id === 'data-sources' && !isSuperAdmin) {
           return (
             <div className="text-center py-8">
-              <h2 className="text-xl font-bold text-red-600 mb-2">Access Denied</h2>
-              <p className="text-gray-600">Super admin privileges are required to access data sources.</p>
+              <h2 className="text-xl font-bold text-destructive mb-2">Access Denied</h2>
+              <p className="text-muted-foreground">Super admin privileges are required to access data sources.</p>
             </div>
           );
         }

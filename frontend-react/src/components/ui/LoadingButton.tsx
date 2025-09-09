@@ -13,11 +13,11 @@ export interface LoadingButtonProps
 }
 
 const variantClasses = {
-  primary: 'bg-blue-600 hover:bg-blue-700 text-white border-transparent',
-  secondary: 'bg-gray-600 hover:bg-gray-700 text-white border-transparent',
-  danger: 'bg-red-600 hover:bg-red-700 text-white border-transparent',
-  success: 'bg-green-600 hover:bg-green-700 text-white border-transparent',
-  outline: 'bg-transparent hover:bg-gray-50 text-gray-700 border-gray-300',
+  primary: 'bg-primary hover:bg-primary/80 text-primary-foreground border-transparent',
+  secondary: 'bg-secondary hover:bg-secondary/80 text-secondary-foreground border-transparent',
+  danger: 'bg-danger hover:bg-danger-dark dark:bg-danger dark:hover:bg-danger-dark text-danger-foreground border-transparent',
+  success: 'bg-success hover:bg-success-dark dark:bg-success dark:hover:bg-success-dark text-success-foreground border-transparent',
+  outline: 'bg-transparent hover:bg-accent text-accent-foreground border-border',
 };
 
 const sizeClasses = {
@@ -72,8 +72,7 @@ export const LoadingButton: React.FC<LoadingButtonProps> = ({
   const buttonClasses = [
     'inline-flex items-center justify-center',
     'border rounded-md font-medium',
-    'focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500',
-    'transition-colors duration-200',
+    'focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary',
     variantClasses[variant],
     sizeClasses[size],
     fullWidth ? 'w-full' : '',
@@ -123,8 +122,7 @@ export const LoadingIconButton: React.FC<
   const buttonClasses = [
     'inline-flex items-center justify-center',
     'border rounded-md',
-    'focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500',
-    'transition-colors duration-200',
+    'focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary',
     variantClasses[variant],
     sizeClasses[size],
     'aspect-square', // Make it square for icon buttons

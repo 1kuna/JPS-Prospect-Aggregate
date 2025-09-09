@@ -5,23 +5,23 @@ export function getStatusColor(status: string): string {
   switch (status) {
     case 'completed':
     case 'success':
-      return 'text-green-600';
+      return 'text-success dark:text-success';
     case 'failed':
     case 'error':
-      return 'text-red-600';
+      return 'text-danger dark:text-danger';
     case 'working':
     case 'in_progress':
     case 'processing':
-      return 'text-blue-600';
+      return 'text-primary';
     case 'stopping':
-      return 'text-orange-600';
+      return 'text-warning dark:text-warning';
     case 'pending':
     case 'stopped':
-      return 'text-yellow-600';
+      return 'text-warning dark:text-warning';
     case 'ready':
-      return 'text-gray-500';
+      return 'text-muted-foreground';
     default:
-      return 'text-gray-600';
+      return 'text-muted-foreground';
   }
 }
 

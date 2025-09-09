@@ -156,7 +156,7 @@ def trigger_llm_enhancement():
         limit = data.get("limit", 10)  # Changed default from 100 to 10
 
         # Validate enhancement type
-        valid_types = ["values", "naics", "titles", "set_asides", "all"]
+        valid_types = ["values", "naics", "naics_code", "naics_description", "titles", "set_asides", "all"]
         if enhancement_type not in valid_types:
             return jsonify(
                 {"error": f"Invalid enhancement type. Must be one of: {valid_types}"}
@@ -330,7 +330,7 @@ def start_iterative_enhancement():
         skip_existing = data.get("skip_existing", True)
 
         # Validate enhancement type
-        valid_types = ["values", "naics", "titles", "set_asides", "all"]
+        valid_types = ["values", "naics", "naics_code", "naics_description", "titles", "set_asides", "all"]
         if enhancement_type not in valid_types:
             return jsonify(
                 {"error": f"Invalid enhancement type. Must be one of: {valid_types}"}
@@ -919,6 +919,20 @@ def enhance_single_prospect():
             planned_steps['naics'] = {
                 'will_process': not will_skip,
                 'reason': 'already_classified' if will_skip else None
+            }
+        
+        if 'naics_code' in enhancement_types_list:
+            will_skip = bool(prospect.naics) and not force_redo
+            planned_steps['naics_code'] = {
+                'will_process': not will_skip,
+                'reason': 'already_has_code' if will_skip else None
+            }
+        
+        if 'naics_description' in enhancement_types_list:
+            will_skip = bool(prospect.naics_description) and not force_redo
+            planned_steps['naics_description'] = {
+                'will_process': not will_skip,
+                'reason': 'already_has_description' if will_skip else None
             }
         
         if 'all' in enhancement_types_list or 'set_asides' in enhancement_types_list:

@@ -48,8 +48,12 @@ def check_pending_migrations():
             
         head_revision = result.stdout.strip()
         
-        # Check if current matches head
-        if current_revision != head_revision:
+        # Check if current matches head - strip extra info like (mergepoint)
+        # Get just the revision IDs without additional metadata
+        current_id = current_revision.split()[0] if current_revision else ""
+        head_id = head_revision.split()[0] if head_revision else ""
+        
+        if current_id != head_id:
             logger.warning(
                 f"Database migration pending! Current: {current_revision}, Target: {head_revision}"
             )

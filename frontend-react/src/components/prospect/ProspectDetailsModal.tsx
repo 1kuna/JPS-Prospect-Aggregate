@@ -69,8 +69,8 @@ export function ProspectDetailsModal({
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-2xl font-bold pr-8">
-            <span className={selectedProspect?.ai_enhanced_title ? 'text-blue-700' : ''}>
+          <DialogTitle className="text-2xl font-bold pr-8 text-foreground">
+            <span>
               {(() => {
                 if (!selectedProspect) return 'Prospect Details';
                 // Prioritize AI-enhanced title if available
@@ -115,9 +115,9 @@ export function ProspectDetailsModal({
             <div className="flex items-center justify-between">
               {/* Enhancement Status - Left side */}
               {selectedProspect.ollama_processed_at && (
-                <div className="bg-blue-50 border border-blue-200 p-3 rounded-lg">
-                  <div className="flex items-center text-sm text-blue-800">
-                    <div className="w-2 h-2 bg-blue-500 rounded-full mr-2"></div>
+                <div className="bg-blue-50 dark:bg-primary/10 border border-blue-200 dark:border-primary/20 p-3 rounded-lg">
+                  <div className="flex items-center text-sm text-blue-800 dark:text-primary">
+                    <div className="w-2 h-2 bg-blue-500 dark:bg-primary rounded-full mr-2"></div>
                     {`AI Enhanced on ${formatUserDate(selectedProspect.ollama_processed_at, 'datetime')}`}
                   </div>
                 </div>
@@ -146,7 +146,9 @@ export function ProspectDetailsModal({
                   const status = {
                     currentStep: enhancementState.currentStep,
                     progress: enhancementState.progress,
-                    enhancementTypes: (enhancementState as any).enhancementTypes
+                    enhancementTypes: (enhancementState as any).enhancementTypes,
+                    // Include the plannedSteps from the enhancement state
+                    plannedSteps: (enhancementState as any).plannedSteps
                   };
                   return status;
                 })()}
@@ -162,10 +164,10 @@ export function ProspectDetailsModal({
             </EnhancementErrorBoundary>
             
             {/* AI Enhancement Toggle */}
-            <div className="bg-gray-50 border border-gray-200 p-3 rounded-lg">
+            <div className="bg-muted border border-border p-3 rounded-lg">
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-2">
-                  <Label htmlFor="ai-toggle" className="text-sm font-medium text-gray-700">
+                  <Label htmlFor="ai-toggle" className="text-sm font-medium text-muted-foreground">
                     Show AI-Enhanced Fields
                   </Label>
                   <Switch
@@ -174,14 +176,14 @@ export function ProspectDetailsModal({
                     onCheckedChange={onShowAIEnhancedChange}
                   />
                 </div>
-                <div className="text-xs text-gray-500">
+                <div className="text-xs text-muted-foreground">
                   {showAIEnhanced ? 'Showing AI-enhanced data where available' : 'Showing original data only'}
                 </div>
               </div>
             </div>
 
             {/* Go/No-Go Decision */}
-            <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg">
+            <div className="bg-blue-50 dark:bg-primary/10 border border-blue-200 dark:border-primary/20 p-4 rounded-lg">
               <GoNoGoDecision 
                 prospectId={selectedProspect.id} 
                 prospectTitle={selectedProspect.ai_enhanced_title || selectedProspect.title}
@@ -191,8 +193,8 @@ export function ProspectDetailsModal({
 
             {/* Basic Information */}
             <div>
-              <h3 className="text-lg font-semibold mb-3 text-gray-900">Basic Information</h3>
-              <div className="grid grid-cols-1 gap-4 bg-gray-50 p-4 rounded-lg">
+              <h3 className="text-lg font-semibold mb-3 text-foreground">Basic Information</h3>
+              <div className="grid grid-cols-1 gap-4 bg-muted p-4 rounded-lg">
                 <div className={`${(() => {
                   const status = getProspectStatus(selectedProspect.id);
                   const isTitleActive = status?.currentStep?.toLowerCase().includes('title') || 
@@ -200,9 +202,9 @@ export function ProspectDetailsModal({
                   const isTitleCompleted = status?.progress?.titles?.completed;
                   
                   // Only show animation if actively processing titles and not yet completed
-                  return (isTitleActive && !isTitleCompleted) ? 'animate-pulse bg-blue-50 border border-blue-200 rounded p-2' : '';
+                  return (isTitleActive && !isTitleCompleted) ? 'animate-pulse bg-blue-50 dark:bg-primary/10 border border-blue-200 dark:border-primary/20 rounded p-2' : '';
                 })()}`}>
-                  <span className="font-medium text-gray-700">Title:</span>
+                  <span className="font-medium text-muted-foreground">Title:</span>
                   {(() => {
                     const status = getProspectStatus(selectedProspect.id);
                     const isTitleActive = status?.currentStep?.toLowerCase().includes('title') || 
@@ -211,7 +213,7 @@ export function ProspectDetailsModal({
                     
                     // Only show spinner if actively processing titles and not yet completed
                     return (isTitleActive && !isTitleCompleted) ? (
-                      <span className="ml-2 text-xs px-2 py-1 rounded bg-blue-100 text-blue-700 animate-pulse inline-flex items-center">
+                      <span className="ml-2 text-xs px-2 py-1 rounded bg-blue-100 dark:bg-primary/20 text-blue-700 dark:text-primary animate-pulse inline-flex items-center">
                         <ReloadIcon className="w-3 h-3 mr-1 animate-spin" />
                         Enhancing...
                       </span>
@@ -222,7 +224,7 @@ export function ProspectDetailsModal({
                     const isAIEnhanced = showAIEnhanced && 
                                        selectedProspect.ai_enhanced_title && 
                                        selectedProspect.title !== selectedProspect.ai_enhanced_title;
-                    return isAIEnhanced ? 'text-blue-700 font-medium' : 'text-gray-900';
+                    return isAIEnhanced ? 'text-primary font-medium' : 'text-foreground';
                   })()}`}>{(() => {
                     // Use AI-enhanced title if toggle is on and available
                     if (showAIEnhanced && selectedProspect.ai_enhanced_title) {
@@ -243,14 +245,14 @@ export function ProspectDetailsModal({
                 </div>
                 {selectedProspect.description && (
                   <div>
-                    <span className="font-medium text-gray-700">Description:</span>
-                    <p className="mt-1 text-gray-900 whitespace-pre-wrap">{selectedProspect.description}</p>
+                    <span className="font-medium text-muted-foreground">Description:</span>
+                    <p className="mt-1 text-foreground whitespace-pre-wrap">{selectedProspect.description}</p>
                   </div>
                 )}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <span className="font-medium text-gray-700">Agency:</span>
-                    <p className="mt-1 text-gray-900">{selectedProspect.agency || 'N/A'}</p>
+                    <span className="font-medium text-muted-foreground">Agency:</span>
+                    <p className="mt-1 text-foreground">{selectedProspect.agency || 'N/A'}</p>
                   </div>
                   <div className={`${(() => {
                     const status = getProspectStatus(selectedProspect.id);
@@ -258,9 +260,9 @@ export function ProspectDetailsModal({
                                         status?.currentStep?.toLowerCase().includes('classifying');
                     const isNaicsCompleted = status?.progress?.naics?.completed;
                     
-                    return (isNaicsActive && !isNaicsCompleted) ? 'animate-pulse bg-blue-50 border border-blue-200 rounded p-2' : '';
+                    return (isNaicsActive && !isNaicsCompleted) ? 'animate-pulse bg-primary/10 border border-primary/20 rounded p-2' : '';
                   })()}`}>
-                    <span className="font-medium text-gray-700">NAICS:</span>
+                    <span className="font-medium text-muted-foreground">NAICS:</span>
                     {(() => {
                       const status = getProspectStatus(selectedProspect.id);
                       const isNaicsActive = status?.currentStep?.toLowerCase().includes('naics') || 
@@ -268,13 +270,13 @@ export function ProspectDetailsModal({
                       const isNaicsCompleted = status?.progress?.naics?.completed;
                       
                       return (isNaicsActive && !isNaicsCompleted) ? (
-                        <span className="ml-2 text-xs px-2 py-1 rounded bg-blue-100 text-blue-700 animate-pulse inline-flex items-center">
+                        <span className="ml-2 text-xs px-2 py-1 rounded bg-blue-100 dark:bg-primary/20 text-blue-700 dark:text-primary animate-pulse inline-flex items-center">
                           <ReloadIcon className="w-3 h-3 mr-1 animate-spin" />
                           Classifying...
                         </span>
                       ) : null;
                     })()}
-                    <p className="mt-1 text-gray-900">
+                    <p className="mt-1 text-foreground">
                       {(() => {
                         // Always show NAICS if available
                         return selectedProspect.naics || 'N/A';
@@ -295,13 +297,13 @@ export function ProspectDetailsModal({
                         
                         return isAIEnhanced && !(isNaicsActive && !isNaicsCompleted);
                       })() && (
-                        <span className="ml-2 text-xs px-2 py-1 rounded bg-blue-100 text-blue-700">
+                        <span className="ml-2 text-xs px-2 py-1 rounded bg-primary/20 text-primary">
                           AI Classified
                         </span>
                       )}
                     </p>
                     {selectedProspect.naics_description && (
-                      <p className="mt-1 text-sm text-gray-600">{selectedProspect.naics_description}</p>
+                      <p className="mt-1 text-sm text-muted-foreground">{selectedProspect.naics_description}</p>
                     )}
                   </div>
                 </div>
@@ -310,12 +312,12 @@ export function ProspectDetailsModal({
 
             {/* Financial Information */}
             <div>
-              <h3 className="text-lg font-semibold mb-3 text-gray-900">Financial Information</h3>
-              <div className="grid grid-cols-1 gap-4 bg-gray-50 p-4 rounded-lg">
+              <h3 className="text-lg font-semibold mb-3 text-foreground">Financial Information</h3>
+              <div className="grid grid-cols-1 gap-4 bg-muted p-4 rounded-lg">
                 {/* Original estimated value */}
                 <div>
-                  <span className="font-medium text-gray-700">Original Estimated Value:</span>
-                  <p className="mt-1 text-gray-900">
+                  <span className="font-medium text-muted-foreground">Original Estimated Value:</span>
+                  <p className="mt-1 text-foreground">
                     {selectedProspect.estimated_value_text || selectedProspect.estimated_value || 'N/A'}
                     {selectedProspect.est_value_unit && ` ${selectedProspect.est_value_unit}`}
                   </p>
@@ -329,12 +331,12 @@ export function ProspectDetailsModal({
                   const isValuesCompleted = status?.progress?.values?.completed;
                   
                   return (isValuesActive && !isValuesCompleted) ? (
-                    <div className="bg-blue-50 p-3 rounded-lg border border-blue-200 animate-pulse">
+                    <div className="bg-primary/10 p-3 rounded-lg border border-primary/20 animate-pulse">
                       <div className="flex items-center mb-2">
-                        <span className="font-medium text-blue-800">Parsing Contract Values</span>
-                        <ReloadIcon className="ml-2 w-4 h-4 animate-spin text-blue-600" />
+                        <span className="font-medium text-primary">Parsing Contract Values</span>
+                        <ReloadIcon className="ml-2 w-4 h-4 animate-spin text-primary" />
                       </div>
-                      <p className="text-sm text-blue-600">AI is analyzing the contract value text...</p>
+                      <p className="text-sm text-primary">AI is analyzing the contract value text...</p>
                     </div>
                   ) : null;
                 })()}
@@ -348,16 +350,16 @@ export function ProspectDetailsModal({
                   
                   return showAIEnhanced && (selectedProspect.estimated_value_min || selectedProspect.estimated_value_max || selectedProspect.estimated_value_single) && !(isValuesActive && !isValuesCompleted);
                 })() && (
-                  <div className="bg-green-50 p-3 rounded-lg border border-green-200">
+                  <div className="bg-green-50 dark:bg-emerald-400/10 p-3 rounded-lg border border-green-200 dark:border-emerald-400/20">
                     <div className="flex items-center mb-2">
-                      <span className="font-medium text-green-800">AI-Processed Values</span>
-                      <div className="w-2 h-2 bg-green-500 rounded-full ml-2"></div>
+                      <span className="font-medium text-green-800 dark:text-emerald-300">AI-Processed Values</span>
+                      <div className="w-2 h-2 bg-green-500 dark:bg-emerald-400 rounded-full ml-2"></div>
                     </div>
                     <div className="mt-1 space-y-1">
                       {/* Show range if min/max exist and single is null */}
                       {selectedProspect.estimated_value_min && selectedProspect.estimated_value_max && !selectedProspect.estimated_value_single && (
-                        <p className="text-gray-900">
-                          <span className="text-sm text-gray-600">Range:</span> 
+                        <p className="text-foreground">
+                          <span className="text-sm text-muted-foreground">Range:</span> 
                           {(() => {
                             const min = parseFloat(selectedProspect.estimated_value_min);
                             const max = parseFloat(selectedProspect.estimated_value_max);
@@ -370,8 +372,8 @@ export function ProspectDetailsModal({
                       )}
                       {/* Show single value if it exists */}
                       {selectedProspect.estimated_value_single && (
-                        <p className="text-gray-900">
-                          <span className="text-sm text-gray-600">Value:</span> 
+                        <p className="text-foreground">
+                          <span className="text-sm text-muted-foreground">Value:</span> 
                           {(() => {
                             const single = parseFloat(selectedProspect.estimated_value_single);
                             if (!isNaN(single)) {
@@ -387,12 +389,12 @@ export function ProspectDetailsModal({
                 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <span className="font-medium text-gray-700">Contract Type:</span>
-                    <p className="mt-1 text-gray-900">{selectedProspect.contract_type || 'N/A'}</p>
+                    <span className="font-medium text-muted-foreground">Contract Type:</span>
+                    <p className="mt-1 text-foreground">{selectedProspect.contract_type || 'N/A'}</p>
                   </div>
                   <div>
-                    <span className="font-medium text-gray-700">Set Aside:</span>
-                    <p className="mt-1 text-gray-900">
+                    <span className="font-medium text-muted-foreground">Set Aside:</span>
+                    <p className="mt-1 text-foreground">
                       {(() => {
                         // Show AI-enhanced set-aside if toggle is on and available
                         if (showAIEnhanced && selectedProspect.set_aside_standardized_label && 
@@ -406,15 +408,15 @@ export function ProspectDetailsModal({
                        selectedProspect.set_aside_standardized !== 'NOT_AVAILABLE' &&
                        selectedProspect.set_aside_standardized_label !== selectedProspect.set_aside &&
                        selectedProspect.ollama_processed_at && (
-                        <span className="ml-2 text-xs px-2 py-1 rounded bg-blue-100 text-blue-700">
+                        <span className="ml-2 text-xs px-2 py-1 rounded bg-primary/20 text-primary">
                           AI Enhanced
                         </span>
                       )}
                     </p>
                   </div>
                   <div>
-                    <span className="font-medium text-gray-700">Award Fiscal Year:</span>
-                    <p className="mt-1 text-gray-900">{selectedProspect.award_fiscal_year || 'N/A'}</p>
+                    <span className="font-medium text-muted-foreground">Award Fiscal Year:</span>
+                    <p className="mt-1 text-foreground">{selectedProspect.award_fiscal_year || 'N/A'}</p>
                   </div>
                 </div>
               </div>
@@ -422,19 +424,19 @@ export function ProspectDetailsModal({
 
             {/* Dates */}
             <div>
-              <h3 className="text-lg font-semibold mb-3 text-gray-900">Important Dates</h3>
-              <div className="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-lg">
+              <h3 className="text-lg font-semibold mb-3 text-foreground">Important Dates</h3>
+              <div className="grid grid-cols-2 gap-4 bg-muted p-4 rounded-lg">
                 <div>
-                  <span className="font-medium text-gray-700">Release Date:</span>
-                  <p className="mt-1 text-gray-900">
+                  <span className="font-medium text-muted-foreground">Release Date:</span>
+                  <p className="mt-1 text-foreground">
                     {selectedProspect.release_date 
                       ? formatUserDate(selectedProspect.release_date, 'date')
                       : 'N/A'}
                   </p>
                 </div>
                 <div>
-                  <span className="font-medium text-gray-700">Award Date:</span>
-                  <p className="mt-1 text-gray-900">
+                  <span className="font-medium text-muted-foreground">Award Date:</span>
+                  <p className="mt-1 text-foreground">
                     {selectedProspect.award_date 
                       ? formatUserDate(selectedProspect.award_date, 'date')
                       : 'N/A'}
@@ -458,9 +460,9 @@ export function ProspectDetailsModal({
 
             {/* Location */}
             <div>
-              <h3 className="text-lg font-semibold mb-3 text-gray-900">Location</h3>
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <p className="text-gray-900">
+              <h3 className="text-lg font-semibold mb-3 text-foreground">Location</h3>
+              <div className="bg-muted p-4 rounded-lg">
+                <p className="text-foreground">
                   {[selectedProspect.place_city, selectedProspect.place_state, selectedProspect.place_country]
                     .filter(Boolean)
                     .join(', ') || 'N/A'}
@@ -478,12 +480,12 @@ export function ProspectDetailsModal({
               return (isContactsActive && !isContactsCompleted) ? (
                 <div>
                   <div className="flex items-center mb-3">
-                    <h3 className="text-lg font-semibold text-gray-900">Contact Information</h3>
-                    <ReloadIcon className="ml-2 w-4 h-4 animate-spin text-blue-600" />
+                    <h3 className="text-lg font-semibold text-foreground">Contact Information</h3>
+                    <ReloadIcon className="ml-2 w-4 h-4 animate-spin text-primary" />
                   </div>
-                  <div className="bg-blue-50 p-4 rounded-lg border border-blue-200 animate-pulse">
-                    <p className="text-blue-600 font-medium">Extracting contact information...</p>
-                    <p className="text-sm text-blue-500">AI is analyzing available contact data</p>
+                  <div className="bg-primary/10 p-4 rounded-lg border border-primary/20 animate-pulse">
+                    <p className="text-primary font-medium">Extracting contact information...</p>
+                    <p className="text-sm text-primary">AI is analyzing available contact data</p>
                   </div>
                 </div>
               ) : null;
@@ -500,25 +502,25 @@ export function ProspectDetailsModal({
             })() && (
               <div>
                 <div className="flex items-center mb-3">
-                  <h3 className="text-lg font-semibold text-gray-900">Contact Information</h3>
+                  <h3 className="text-lg font-semibold text-foreground">Contact Information</h3>
                 </div>
-                <div className="grid grid-cols-2 gap-4 p-4 rounded-lg bg-gray-50 border border-gray-200">
+                <div className="grid grid-cols-2 gap-4 p-4 rounded-lg bg-muted border border-border">
                   {selectedProspect.primary_contact_name && (
                     <div>
-                      <span className="font-medium text-gray-700">
+                      <span className="font-medium text-muted-foreground">
                         Primary Contact:
                       </span>
-                      <p className="mt-1 text-gray-900">{selectedProspect.primary_contact_name}</p>
+                      <p className="mt-1 text-foreground">{selectedProspect.primary_contact_name}</p>
                     </div>
                   )}
                   {selectedProspect.primary_contact_email && (
                     <div>
-                      <span className="font-medium text-gray-700">
+                      <span className="font-medium text-muted-foreground">
                         Email:
                       </span>
-                      <p className="mt-1 text-gray-900">
+                      <p className="mt-1 text-foreground">
                         <a href={`mailto:${selectedProspect.primary_contact_email}`} 
-                           className="text-blue-600 hover:text-blue-800 underline">
+                           className="text-primary hover:text-primary/80 underline">
                           {selectedProspect.primary_contact_email}
                         </a>
                       </p>
@@ -530,39 +532,39 @@ export function ProspectDetailsModal({
 
             {/* System Information */}
             <div>
-              <h3 className="text-lg font-semibold mb-3 text-gray-900">System Information</h3>
-              <div className="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-lg">
+              <h3 className="text-lg font-semibold mb-3 text-foreground">System Information</h3>
+              <div className="grid grid-cols-2 gap-4 bg-muted p-4 rounded-lg">
                 <div>
-                  <span className="font-medium text-gray-700">Source:</span>
-                  <p className="mt-1 text-gray-900">{selectedProspect.source_name || 'N/A'}</p>
+                  <span className="font-medium text-muted-foreground">Source:</span>
+                  <p className="mt-1 text-foreground">{selectedProspect.source_name || 'N/A'}</p>
                 </div>
                 <div>
-                  <span className="font-medium text-gray-700">Native ID:</span>
-                  <p className="mt-1 text-gray-900 font-mono text-sm">{selectedProspect.native_id || 'N/A'}</p>
+                  <span className="font-medium text-muted-foreground">Native ID:</span>
+                  <p className="mt-1 text-foreground font-mono text-sm">{selectedProspect.native_id || 'N/A'}</p>
                 </div>
                 <div>
-                  <span className="font-medium text-gray-700">Loaded At:</span>
-                  <p className="mt-1 text-gray-900">
+                  <span className="font-medium text-muted-foreground">Loaded At:</span>
+                  <p className="mt-1 text-foreground">
                     {selectedProspect.loaded_at 
                       ? formatUserDate(selectedProspect.loaded_at)
                       : 'N/A'}
                   </p>
                 </div>
                 <div>
-                  <span className="font-medium text-gray-700">ID:</span>
-                  <p className="mt-1 text-gray-900 font-mono text-sm">{selectedProspect.id}</p>
+                  <span className="font-medium text-muted-foreground">ID:</span>
+                  <p className="mt-1 text-foreground font-mono text-sm">{selectedProspect.id}</p>
                 </div>
                 {selectedProspect.ollama_processed_at && (
                   <>
                     <div>
-                      <span className="font-medium text-gray-700">LLM Processed:</span>
-                      <p className="mt-1 text-gray-900">
+                      <span className="font-medium text-muted-foreground">LLM Processed:</span>
+                      <p className="mt-1 text-foreground">
                         {formatUserDate(selectedProspect.ollama_processed_at)}
                       </p>
                     </div>
                     <div>
-                      <span className="font-medium text-gray-700">LLM Model:</span>
-                      <p className="mt-1 text-gray-900">{selectedProspect.ollama_model_version || 'N/A'}</p>
+                      <span className="font-medium text-muted-foreground">LLM Model:</span>
+                      <p className="mt-1 text-foreground">{selectedProspect.ollama_model_version || 'N/A'}</p>
                     </div>
                   </>
                 )}
@@ -572,9 +574,9 @@ export function ProspectDetailsModal({
             {/* Extra Information */}
             {selectedProspect.extra && (
               <div>
-                <h3 className="text-lg font-semibold mb-3 text-gray-900">Additional Information</h3>
-                <div className="bg-gray-50 p-4 rounded-lg">
-                  <pre className="text-sm text-gray-900 whitespace-pre-wrap font-mono">
+                <h3 className="text-lg font-semibold mb-3 text-foreground">Additional Information</h3>
+                <div className="bg-muted p-4 rounded-lg">
+                  <pre className="text-sm text-foreground whitespace-pre-wrap font-mono">
                     {(() => {
                       try {
                         // If it's a string, try to parse and reformat it
@@ -599,15 +601,15 @@ export function ProspectDetailsModal({
               <div className="mt-6 border-t pt-4">
                 <button 
                   onClick={() => setShowRawData(!showRawData)}
-                  className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 transition-colors"
+                  className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
                 >
                   <ChevronDownIcon className={`w-4 h-4 transition-transform ${showRawData ? 'rotate-180' : ''}`} />
                   {showRawData ? 'Hide' : 'Show'} Raw Data (Debug)
                 </button>
                 {showRawData && (
-                  <div className="mt-3 p-4 bg-gray-50 rounded-lg border border-gray-200">
-                    <div className="text-xs font-medium text-gray-700 mb-2">Complete Raw Prospect Object:</div>
-                    <pre className="text-xs font-mono text-gray-800 overflow-auto max-h-96 whitespace-pre-wrap">
+                  <div className="mt-3 p-4 bg-muted rounded-lg border border-border">
+                    <div className="text-xs font-medium text-muted-foreground mb-2">Complete Raw Prospect Object:</div>
+                    <pre className="text-xs font-mono text-foreground overflow-auto max-h-96 whitespace-pre-wrap">
                       {JSON.stringify(selectedProspect, null, 2)}
                     </pre>
                   </div>

@@ -85,8 +85,8 @@ export const GoNoGoDecision = ({ prospectId, prospectTitle, compact }: GoNoGoDec
   if (isLoadingDecisions) {
     return (
       <div className="flex items-center gap-2">
-        <div className="animate-pulse bg-gray-200 h-6 w-16 rounded"></div>
-        <div className="animate-pulse bg-gray-200 h-6 w-16 rounded"></div>
+        <div className="animate-pulse bg-neutral-light h-6 w-16 rounded"></div>
+        <div className="animate-pulse bg-neutral-light h-6 w-16 rounded"></div>
       </div>
     );
   }
@@ -112,8 +112,8 @@ export const GoNoGoDecision = ({ prospectId, prospectTitle, compact }: GoNoGoDec
             <span 
               className={`px-2 py-1 rounded text-xs font-medium ${
                 existingDecision.decision === 'go' 
-                  ? 'bg-green-100 text-green-800' 
-                  : 'bg-red-100 text-red-800'
+                  ? 'bg-success-light/20 text-success-dark dark:text-success' 
+                  : 'bg-danger-light/20 text-danger-dark dark:text-danger'
               }`}
             >
               {existingDecision.decision === 'go' ? 'GO' : 'NO-GO'}
@@ -131,7 +131,7 @@ export const GoNoGoDecision = ({ prospectId, prospectTitle, compact }: GoNoGoDec
               variant="outline"
               onClick={() => handleDecisionClick('go')}
               disabled={createDecisionMutation.isPending}
-              className="text-green-700 border-green-300 hover:bg-green-50"
+              className="text-success-dark dark:text-success border-success/30 dark:border-success/30 hover:bg-highlight-success dark:hover:bg-highlight-success"
             >
               GO
             </Button>
@@ -140,7 +140,7 @@ export const GoNoGoDecision = ({ prospectId, prospectTitle, compact }: GoNoGoDec
               variant="outline"
               onClick={() => handleDecisionClick('no-go')}
               disabled={createDecisionMutation.isPending}
-              className="text-red-700 border-red-300 hover:bg-red-50"
+              className="text-danger-dark dark:text-danger border-danger/30 dark:border-danger/30 hover:bg-highlight-danger dark:hover:bg-highlight-danger"
             >
               NO-GO
             </Button>
@@ -156,7 +156,7 @@ export const GoNoGoDecision = ({ prospectId, prospectTitle, compact }: GoNoGoDec
             </DialogHeader>
             
             {prospectTitle && (
-              <p className="text-sm text-gray-600 mb-4">
+              <p className="text-sm text-muted-foreground mb-4">
                 <strong>Prospect:</strong> {prospectTitle}
               </p>
             )}
@@ -183,7 +183,7 @@ export const GoNoGoDecision = ({ prospectId, prospectTitle, compact }: GoNoGoDec
               <Button
                 onClick={handleSubmitDecision}
                 disabled={createDecisionMutation.isPending}
-                className={pendingDecision === 'go' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}
+                className={pendingDecision === 'go' ? 'bg-success hover:bg-success-dark dark:bg-success dark:hover:bg-success-dark' : 'bg-danger hover:bg-danger-dark dark:bg-danger dark:hover:bg-danger-dark'}
               >
                 {createDecisionMutation.isPending ? 'Saving...' : `Confirm ${pendingDecision?.toUpperCase()}`}
               </Button>
@@ -201,7 +201,7 @@ export const GoNoGoDecision = ({ prospectId, prospectTitle, compact }: GoNoGoDec
       <h3 className="text-lg font-semibold mb-4">Go/No-Go Decision</h3>
       
       {prospectTitle && (
-        <p className="text-gray-600 mb-4">
+        <p className="text-muted-foreground mb-4">
           <strong>Prospect:</strong> {prospectTitle}
         </p>
       )}
@@ -213,8 +213,8 @@ export const GoNoGoDecision = ({ prospectId, prospectTitle, compact }: GoNoGoDec
             <span 
               className={`px-3 py-1 rounded font-medium ${
                 existingDecision.decision === 'go' 
-                  ? 'bg-green-100 text-green-800' 
-                  : 'bg-red-100 text-red-800'
+                  ? 'bg-success-light/20 text-success-dark dark:text-success' 
+                  : 'bg-danger-light/20 text-danger-dark dark:text-danger'
               }`}
             >
               {existingDecision.decision === 'go' ? 'GO' : 'NO-GO'}
@@ -224,23 +224,23 @@ export const GoNoGoDecision = ({ prospectId, prospectTitle, compact }: GoNoGoDec
           {existingDecision.reason && (
             <div>
               <strong>Reason:</strong>
-              <p className="text-gray-700 mt-1">{existingDecision.reason}</p>
+              <p className="text-muted-foreground mt-1">{existingDecision.reason}</p>
             </div>
           )}
           
-          <div className="text-sm text-gray-500">
+          <div className="text-sm text-muted-foreground">
             Decision made on {new Date(existingDecision.created_at).toLocaleDateString()}
           </div>
           
           <div className="pt-4 border-t">
-            <p className="text-sm text-gray-600 mb-4">Want to change your decision?</p>
+            <p className="text-sm text-muted-foreground mb-4">Want to change your decision?</p>
             <div className="flex gap-2">
               {existingDecision.decision === 'go' ? (
                 <Button
                   variant="outline"
                   onClick={() => handleDecisionClick('no-go')}
                   disabled={createDecisionMutation.isPending}
-                  className="text-red-700 border-red-300 hover:bg-red-50"
+                  className="text-danger-dark dark:text-danger border-danger/30 dark:border-danger/30 hover:bg-highlight-danger dark:hover:bg-highlight-danger"
                 >
                   Change to NO-GO
                 </Button>
@@ -249,7 +249,7 @@ export const GoNoGoDecision = ({ prospectId, prospectTitle, compact }: GoNoGoDec
                   variant="outline"
                   onClick={() => handleDecisionClick('go')}
                   disabled={createDecisionMutation.isPending}
-                  className="text-green-700 border-green-300 hover:bg-green-50"
+                  className="text-success-dark dark:text-success border-success/30 dark:border-success/30 hover:bg-highlight-success dark:hover:bg-highlight-success"
                 >
                   Change to GO
                 </Button>
@@ -258,7 +258,7 @@ export const GoNoGoDecision = ({ prospectId, prospectTitle, compact }: GoNoGoDec
                 variant="outline"
                 onClick={handleUndoDecision}
                 disabled={deleteDecisionMutation.isPending}
-                className="text-gray-700 border-gray-300 hover:bg-gray-50"
+                className="text-muted-foreground border-border hover:bg-muted"
               >
                 {deleteDecisionMutation.isPending ? 'Undoing...' : 'Undo Decision'}
               </Button>
@@ -267,20 +267,20 @@ export const GoNoGoDecision = ({ prospectId, prospectTitle, compact }: GoNoGoDec
         </div>
       ) : (
         <div className="space-y-4">
-          <p className="text-gray-600">What's your decision on this prospect?</p>
+          <p className="text-muted-foreground">What's your decision on this prospect?</p>
           
           <div className="flex gap-4">
             <Button
               onClick={() => handleDecisionClick('go')}
               disabled={createDecisionMutation.isPending}
-              className="bg-green-600 hover:bg-green-700 text-white px-8 py-2"
+              className="bg-success hover:bg-success-dark text-white px-8 py-2"
             >
               GO
             </Button>
             <Button
               onClick={() => handleDecisionClick('no-go')}
               disabled={createDecisionMutation.isPending}
-              className="bg-red-600 hover:bg-red-700 text-white px-8 py-2"
+              className="bg-danger hover:bg-danger-dark text-white px-8 py-2"
             >
               NO-GO
             </Button>
@@ -305,7 +305,7 @@ export const GoNoGoDecision = ({ prospectId, prospectTitle, compact }: GoNoGoDec
               placeholder="Why did you make this decision?"
               className="mt-1"
             />
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="text-xs text-muted-foreground mt-1">
               This will help train our AI to understand company preferences
             </p>
           </div>
@@ -321,7 +321,7 @@ export const GoNoGoDecision = ({ prospectId, prospectTitle, compact }: GoNoGoDec
             <Button
               onClick={handleSubmitDecision}
               disabled={createDecisionMutation.isPending}
-              className={pendingDecision === 'go' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}
+              className={pendingDecision === 'go' ? 'bg-success hover:bg-success-dark' : 'bg-danger hover:bg-danger-dark'}
             >
               {createDecisionMutation.isPending ? 'Saving...' : `Confirm ${pendingDecision?.toUpperCase()}`}
             </Button>

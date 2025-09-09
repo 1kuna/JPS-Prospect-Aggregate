@@ -142,8 +142,8 @@ export function EnhancementButtonWithSelector({
       onClick={handleEnhanceClick}
       disabled={isDisabled}
       className={`
-        ${isActive ? 'bg-gray-600' : isAlreadyEnhanced ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-600 hover:bg-blue-700'} 
-        text-white disabled:bg-gray-600 disabled:opacity-100 min-w-[140px]
+        ${isActive ? 'bg-muted-foreground' : isAlreadyEnhanced ? 'bg-primary hover:bg-primary/80' : 'bg-primary hover:bg-primary/80'} 
+        text-primary-foreground disabled:bg-muted-foreground disabled:opacity-100 min-w-[140px]
       `}
     >
       {getButtonContent()}
@@ -211,13 +211,13 @@ export function EnhancementButtonWithSelector({
         <Button
           variant="ghost"
           size="sm"
-          className="h-9 w-9 p-0 hover:bg-red-100"
+          className="h-9 w-9 p-0 hover:bg-destructive/10"
           onClick={(e) => {
             e.stopPropagation();
             handleCancelClick();
           }}
         >
-          <Cross1Icon className="h-4 w-4 text-red-600" />
+          <Cross1Icon className="h-4 w-4 text-destructive" />
         </Button>
       </div>
     );

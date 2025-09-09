@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect } from 'react';
+import { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Navigation } from './components/layout';
@@ -8,6 +8,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ProspectEnhancementProvider } from './contexts/ProspectEnhancementContext';
 import { TimezoneProvider } from './contexts/TimezoneContext';
 import { ToastProvider } from './contexts/ToastContext';
+import { ThemeProvider } from './contexts/ThemeContext';
 import { useAuth } from './components/AuthProvider';
 
 // Lazy load pages
@@ -43,7 +44,7 @@ function AppWithProviders() {
         <ProspectEnhancementProvider>
           <Router>
             <AuthGuard>
-              <div className="min-h-screen bg-background transition-colors duration-200">
+              <div className="min-h-screen bg-background">
                 <Navigation />
                 <Suspense fallback={<PageSkeleton />}>
                   <Routes>
@@ -67,18 +68,14 @@ function AppWithProviders() {
 
 function App() {
   // App component loaded
-  // Effect to toggle .dark class on <html> based on OS/browser preference
-  useEffect(() => {
-    // Ensure the .dark class is not present if we're forcing light mode
-    document.documentElement.classList.remove('dark');
-  }, []);
-
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
-        <AuthProvider>
-          <AppWithProviders />
-        </AuthProvider>
+        <ThemeProvider>
+          <AuthProvider>
+            <AppWithProviders />
+          </AuthProvider>
+        </ThemeProvider>
       </QueryClientProvider>
     </ErrorBoundary>
   );

@@ -1,0 +1,470 @@
+Type,Code,Raw Value,Count,Description/Issue
+Valid,541519,541519,783,Other Computer Related Services
+Valid,541990,541990,523,"All Other Professional, Scientific and Technical Services"
+Valid,561320,561320,416,Temporary Help Services
+Valid,541611,541611,385,Administrative Management and General Management Consulting Services
+Valid,541512,541512,323,Computer Systems Design Services
+Valid,236220,236220,298,Commercial and Institutional Building Construction
+Valid,334516,334516,269,Analytical Laboratory Instrument Manufacturing
+Valid,518210,518210,247,"Data Processing, Hosting, and Related Services"
+Valid,541690,541690,204,Other Scientific and Technical Consulting Services
+Valid,541330,541330,200,Engineering Services
+Valid,336611,336611,191,Ship Building and Repairing
+Valid,541511,541511,183,Custom Computer Programming Services
+Valid,541715,541715,142,"Research and Development in the Physical, Engineering, and Life Sciences"
+Valid,334111,334111,105,Electronic Computer Manufacturing
+Valid,561990,561990,105,All Other Support Services
+Valid,541370,541370,104,Surveying and Mapping (except Geophysical) Services
+Valid,511210,511210,91,Software Publishers
+Valid,237110,237110,85,Water and Sewer Line and Related Structures Construction
+Valid,334413,334413,84,Semiconductor and Related Device Manufacturing
+Valid,238210,238210,83,Electrical Contractors and Other Wiring Installation Contractors
+Valid,621399,621399,78,Offices of All Other Miscellaneous Health Practitioners
+Valid,561210,561210,77,Facilities Support Services
+Valid,238220,238220,75,"Plumbing, Heating and Air-Conditioning Contractors"
+Valid,561621,561621,71,Security Systems Services (except Locksmiths)
+Valid,621111,621111,67,Offices of Physicians (except Mental Health Specialists)
+Valid,621512,621512,61,Diagnostic Imaging Centers
+Valid,611430,611430,59,Professional and Management Development Training
+Valid,621511,621511,48,Medical Laboratories
+Valid,334519,334519,46,Other Measuring and Controlling Device Manufacturing
+Valid,811310,811310,44,Commercial and Industrial Machinery and Equipment (except Automotive and Electronic) Repair and Maintenance
+Valid,541620,541620,42,Environmental Consulting Services
+Valid,334511,334511,40,Navigational and Guidance Instruments Manufacturing
+Valid,334290,334290,37,Other Communications Equipment Manufacturing
+Valid,541618,541618,35,Other Management Consulting Services
+Valid,334118,334118,33,Computer Terminal and Other Computer Peripheral Equipment Manufacturing
+Valid,561612,561612,33,Security Guard and Patrol Services
+Valid,621999,621999,31,All Other Miscellaneous Ambulatory Health Care Services
+Valid,561720,561720,30,Janitorial Services
+Valid,561110,561110,28,Office Administrative Services
+Valid,238160,238160,25,Roofing Contractors
+Valid,541513,541513,25,Computer Facilities Management Services
+Valid,621420,621420,25,Out-Patient Mental Health and Substance Abuse Centres
+Valid,334220,334220,24,Radio and Television Broadcasting and Wireless Communications Equipment Manufacturing
+Valid,541310,541310,24,Architectural Services
+Valid,334112,334112,23,Computer Storage Device Manufacturing
+Valid,221310,221310,22,Water Supply and Irrigation Systems
+Valid,237990,237990,22,Other Heavy and Civil Engineering Construction
+Valid,337214,337214,22,Office Furniture (except Wood) Manufacturing
+Valid,488190,488190,21,Other Support Activities for Air Transportation
+Valid,541380,541380,21,Testing Laboratories
+Valid,541612,541612,21,Human Resources Consulting Services
+Valid,561499,561499,21,All Other Business Support Services
+Valid,813920,813920,21,Professional Organizations
+Valid,334515,334515,20,Instrument Manufacturing for Measuring and Testing Electricity and Electrical Signals
+Valid,334310,334310,19,Audio and Video Equipment Manufacturing
+Valid,541720,541720,19,Research and Development in the Social Sciences and Humanities
+Valid,621210,621210,19,Offices of Dentists
+Valid,562910,562910,18,Remediation Services
+Valid,621112,621112,18,"Offices of Physicians, Mental Health Specialists"
+Valid,221122,221122,17,Electric Power Distribution
+Valid,238990,238990,17,All Other Specialty Trade Contractors
+Valid,541211,541211,17,Offices of Certified Public Accountants
+Valid,541930,541930,17,Translation and Interpretation Services
+Valid,561920,561920,17,Convention and Trade Show Organizers
+Valid,236210,236210,16,Industrial Building and Structure Construction
+Valid,237130,237130,16,Power and Communication Line and Related Structures Construction
+Valid,334210,334210,15,Telephone Apparatus Manufacturing
+Valid,541810,541810,15,Advertising Agencies
+Valid,541820,541820,15,Public Relations Services
+Valid,561311,561311,15,Employment Placement Agencies
+Valid,561730,561730,15,Landscaping Services
+Valid,325120,325120,14,Industrial Gas Manufacturing
+Valid,334513,334513,14,"Instruments and Related Products Manufacturing for Measuring, Displaying, and Controlling Industrial Process Variables"
+Valid,517410,517410,14,Satellite Telecommunications
+Valid,532420,532420,14,Office Machinery and Equipment Rental and Leasing
+Valid,541110,541110,14,Offices of Lawyers
+Valid,443120,443120,13,Computer and Software Stores
+Valid,621340,621340,13,"Offices of Physical, Occupational, and Speech Therapists and Audiologists"
+Valid,621991,621991,13,Blood and Organ Banks
+Valid,335312,335312,12,Motor and Generator Manufacturing
+Valid,561611,561611,12,Investigation Services
+Valid,562920,562920,12,Material Recovery Facilities
+Valid,812320,812320,12,Dry Cleaning and Laundry Services (except Coin-Operated)
+Valid,221210,221210,11,Natural Gas Distribution
+Valid,336612,336612,11,Boat Building
+Valid,541360,541360,11,Geophysical Surveying and Mapping Services
+Valid,541613,541613,11,Marketing Consulting Services
+Valid,561790,561790,11,Other Services to Buildings and Dwellings
+Valid,611710,611710,11,Educational Support Services
+Valid,332510,332510,10,Hardware Manufacturing
+Valid,541350,541350,10,Building Inspection Services
+Valid,541910,541910,10,Marketing Research and Public Opinion Polling
+Valid,722310,722310,10,Food Service Contractors
+Valid,238390,238390,9,Other Building Finishing Contractors
+Valid,238910,238910,9,Site Preparation Contractors
+Valid,491110,491110,9,Postal Service
+Valid,493110,493110,9,General Warehousing and Storage
+Valid,519130,519130,9,"Internet Publishing and Broadcasting, and Web Search Portals"
+Valid,532490,532490,9,Other Commercial and Industrial Machinery and Equipment Rental and Leasing
+Valid,541430,541430,9,Graphic Design Services
+Valid,621320,621320,9,Offices of Optometrists
+Valid,221320,221320,8,Sewage Treatment Facilities
+Valid,238330,238330,8,Flooring Contractors
+Valid,492110,492110,8,Couriers
+Valid,561421,561421,8,Telephone Answering Services
+Valid,812930,812930,8,Parking Lots and Garages
+Valid,237310,237310,7,"Highway, Street and Bridge Construction"
+Valid,238190,238190,7,"Other Foundation, Structure and Building Exterior Contractors"
+Valid,334517,334517,7,Irradiation Apparatus Manufacturing
+Valid,512110,512110,7,Motion Picture and Video Production
+Valid,532120,532120,7,"Truck, Utility Trailer and RV (Recreational Vehicle) Rental and Leasing"
+Valid,621498,621498,7,All Other Outpatient Care Centers
+Valid,332311,332311,6,Prefabricated Metal Building and Component Manufacturing
+Valid,334419,334419,6,Other Electronic Component Manufacturing
+Valid,488310,488310,6,Port and Harbour Operations
+Valid,812910,812910,6,Pet Care (except Veterinary) Services
+Valid,519190,519190,5,All Other Information Services
+Valid,561710,561710,5,Exterminating and Pest Control Services
+Valid,611699,611699,5,All Other Miscellaneous Schools and Instruction
+Valid,812210,812210,5,Funeral Homes
+Valid,112930,112930,4,Fur-Bearing Animal and Rabbit Production
+Valid,238310,238310,4,Drywall and Insulation Contractors
+Valid,238320,238320,4,Painting and Wall Covering Contractors
+Valid,335311,335311,4,"Power, Distribution and Specialty Transformers Manufacturing"
+Valid,446110,446110,4,Pharmacies and Drug Stores
+Valid,611310,611310,4,Universities
+Valid,611420,611420,4,Computer Training
+Valid,621610,621610,4,Home Health Care Services
+Valid,621910,621910,4,Ambulance Services
+Valid,624190,624190,4,Other Individual and Family Services
+Valid,624230,624230,4,Emergency and Other Relief Services
+Valid,221330,221330,3,Steam and Air-Conditioning Supply
+Valid,238110,238110,3,Poured Concrete Foundation and Structure Contractors
+Valid,321211,321211,3,Hardwood Veneer and Plywood Mills
+Valid,323115,323115,3,Digital Printing
+Valid,336212,336212,3,Truck Trailer Manufacturing
+Valid,484210,484210,3,Used Household and Office Goods Moving
+Valid,488390,488390,3,Other Support Activities for Water Transportation
+Valid,541490,541490,3,Other Specialized Design Services
+Valid,541890,541890,3,Other Services Related to Advertising
+Valid,561330,561330,3,Professional Employer Organizations
+Valid,561410,561410,3,Document Preparation Services
+Valid,561422,561422,3,Telemarketing Bureaus and Other Contact Centers
+Valid,561520,561520,3,Tour Operators
+Valid,611210,611210,3,Community Colleges and C.E.G.E.P.s
+Valid,621310,621310,3,Offices of Chiropractors
+Valid,621330,621330,3,Offices of Mental Health Practitioners (except Physicians)
+Valid,621391,621391,3,Offices of Podiatrists
+Valid,811111,811111,3,General Automotive Repair
+Valid,111110,111110,2,Soybean Farming
+Valid,221112,221112,2,Fossil-Fuel Electric Power Generation
+Valid,221121,221121,2,Electric Bulk Power Transmission and Control
+Valid,237120,237120,2,Oil and Gas Pipeline and Related Structures Construction
+Valid,238120,238120,2,Structural Steel and Precast Concrete Contractors
+Valid,321911,321911,2,Wood Window and Door Manufacturing
+Valid,322211,322211,2,Corrugated and Solid Fibre Box Manufacturing
+Valid,327215,327215,2,Glass Product Manufacturing from Purchased Glass
+Valid,332410,332410,2,Power Boiler and Heat Exchanger Manufacturing
+Valid,332710,332710,2,Machine Shops
+Valid,333120,333120,2,Construction Machinery Manufacturing
+Valid,334512,334512,2,"Automatic Environmental Control Manufacturing for Residential, Commercial, and Appliance Use"
+Valid,336120,336120,2,Heavy-Duty Truck Manufacturing
+Valid,337127,337127,2,Institutional Furniture Manufacturing
+Valid,487210,487210,2,"Scenic and Sightseeing Transportation, Water"
+Valid,488320,488320,2,Marine Cargo Handling
+Valid,493190,493190,2,Other Warehousing and Storage
+Valid,515210,515210,2,Pay and Specialty Television
+Valid,541940,541940,2,Veterinary Services
+Valid,561599,561599,2,All Other Travel Arrangement and Reservation Services
+Valid,611512,611512,2,Flight Training
+Valid,622210,622210,2,Psychiatric and Substance Abuse Hospitals
+Valid,624110,624110,2,Child and Youth Services
+Valid,713990,713990,2,All Other Amusement and Recreation Industries
+Valid,813910,813910,2,Business Associations
+Valid,111130,111130,1,Dry Pea and Bean Farming
+Valid,111411,111411,1,Mushroom Production
+Valid,112310,112310,1,Chicken Egg Production
+Valid,212210,212210,1,Iron Ore Mining
+Valid,221111,221111,1,Hydro-Electric Power Generation
+Valid,237210,237210,1,Land Subdivision
+Valid,238150,238150,1,Glass and Glazing Contractors
+Valid,238170,238170,1,Siding Contractors
+Valid,311111,311111,1,Dog and Cat Food Manufacturing
+Valid,313210,313210,1,Broad-Woven Fabric Mills
+Valid,316110,316110,1,Leather and Hide Tanning and Finishing
+Valid,321991,321991,1,Manufactured (Mobile) Home Manufacturing
+Valid,323114,323114,1,Quick Printing
+Valid,324121,324121,1,Asphalt Paving Mixture and Block Manufacturing
+Valid,325510,325510,1,Paint and Coating Manufacturing
+Valid,325910,325910,1,Printing Ink Manufacturing
+Valid,326111,326111,1,Plastic Bag and Pouch Manufacturing
+Valid,331210,331210,1,Iron and Steel Pipes and Tubes Manufacturing from Purchased Steel
+Valid,331511,331511,1,Iron Foundries
+Valid,332321,332321,1,Metal Window and Door Manufacturing
+Valid,332439,332439,1,Other Metal Container Manufacturing
+Valid,334418,334418,1,Printed Circuit Assembly (Electronic Assembly) Manufacturing
+Valid,336211,336211,1,Motor Vehicle Body Manufacturing
+Valid,337910,337910,1,Mattress Manufacturing
+Valid,441210,441210,1,Recreational Vehicle Dealers
+Valid,444110,444110,1,Home Centres
+Valid,485210,485210,1,Interurban and Rural Bus Transportation
+Valid,485510,485510,1,Charter Bus Industry
+Valid,488119,488119,1,Other Airport Operations
+Valid,488490,488490,1,Other Support Activities for Road Transportation
+Valid,493120,493120,1,Refrigerated Warehousing and Storage
+Valid,511140,511140,1,Directory and Mailing List Publishers
+Valid,512120,512120,1,Motion Picture and Video Distribution
+Valid,531190,531190,1,Lessors of Other Real Estate Property
+Valid,531390,531390,1,Other Activities Related to Real Estate
+Valid,541420,541420,1,Industrial Design Services
+Valid,561431,561431,1,Private Mail Centers
+Valid,561450,561450,1,Credit Bureaus
+Valid,561622,561622,1,Locksmiths
+Valid,611620,611620,1,Athletic Instruction
+Valid,621493,621493,1,Freestanding Ambulatory Surgical and Emergency Centers
+Valid,623110,623110,1,Nursing Care Facilities
+Valid,712130,712130,1,Zoos and Botanical Gardens
+Valid,713910,713910,1,Golf Courses and Country Clubs
+Valid,713940,713940,1,Fitness and Recreational Sports Centres
+Valid,721120,721120,1,Casino Hotels
+Valid,722320,722320,1,Caterers
+Valid,811412,811412,1,Appliance Repair and Maintenance
+Valid,811490,811490,1,Other Personal and Household Goods Repair and Maintenance
+Valid,813930,813930,1,Labour Organizations
+Missing,513210,513210,188,No description in lookup
+Missing,423450,423450,100,No description in lookup
+Missing,339112,339112,91,No description in lookup
+Missing,811210,811210,90,No description in lookup
+Missing,622110,622110,89,No description in lookup
+Missing,423430,423430,67,No description in lookup
+Missing,811219,811219,66,No description in lookup
+Missing,311991,311991,55,No description in lookup
+Missing,339114,339114,54,No description in lookup
+Missing,311999,311999,53,No description in lookup
+Missing,541714,541714,47,No description in lookup
+Missing,336413,336413,37,No description in lookup
+Missing,517810,517810,31,No description in lookup
+Missing,541219,541219,29,No description in lookup
+Missing,921190,921190,29,No description in lookup
+Missing,334510,334510,28,No description in lookup
+Missing,339113,339113,27,No description in lookup
+Missing,519290,519290,26,No description in lookup
+Missing,423490,423490,25,No description in lookup
+Missing,238290,238290,23,No description in lookup
+Missing,562211,562211,22,No description in lookup
+Missing,926150,926150,21,No description in lookup
+Missing,562111,562111,20,No description in lookup
+Missing,339116,339116,19,No description in lookup
+Missing,424120,424120,17,No description in lookup
+Missing,516210,516210,16,No description in lookup
+Missing,517111,517111,16,No description in lookup
+Missing,332999,332999,15,No description in lookup
+Missing,335999,335999,15,No description in lookup
+Missing,336411,336411,13,No description in lookup
+Missing,541614,541614,13,No description in lookup
+Missing,325414,325414,12,No description in lookup
+Missing,325412,325412,11,No description in lookup
+Missing,332994,332994,11,No description in lookup
+Missing,333415,333415,11,No description in lookup
+Missing,562112,562112,11,No description in lookup
+Missing,483112,483112,10,No description in lookup
+Missing,721110,721110,10,No description in lookup
+Missing,812331,812331,9,No description in lookup
+Missing,221118,221118,8,No description in lookup
+Missing,513120,513120,8,No description in lookup
+Missing,517112,517112,8,No description in lookup
+Missing,532411,532411,8,No description in lookup
+Missing,562212,562212,8,No description in lookup
+Missing,922160,922160,8,No description in lookup
+Missing,114119,114119,7,No description in lookup
+Missing,325998,325998,7,No description in lookup
+Missing,333924,333924,7,No description in lookup
+Missing,423710,423710,7,No description in lookup
+Missing,456110,456110,7,No description in lookup
+Missing,811212,811212,7,No description in lookup
+Missing,923120,923120,7,No description in lookup
+Missing,323111,323111,6,No description in lookup
+Missing,325413,325413,6,No description in lookup
+Missing,336320,336320,6,No description in lookup
+Missing,339940,339940,6,No description in lookup
+Missing,517919,517919,6,No description in lookup
+Missing,519210,519210,6,No description in lookup
+Missing,541199,541199,6,No description in lookup
+Missing,325411,325411,5,No description in lookup
+Missing,333242,333242,5,No description in lookup
+Missing,333310,333310,5,No description in lookup
+Missing,333618,333618,5,No description in lookup
+Missing,424920,424920,5,No description in lookup
+Missing,449210,449210,5,No description in lookup
+Missing,517121,517121,5,No description in lookup
+Missing,522320,522320,5,No description in lookup
+Missing,524292,524292,5,No description in lookup
+Missing,562998,562998,5,No description in lookup
+Missing,811211,811211,5,No description in lookup
+Missing,921150,921150,5,No description in lookup
+Missing,236118,236118,4,No description in lookup
+Missing,323117,323117,4,No description in lookup
+Missing,326199,326199,4,No description in lookup
+Missing,333112,333112,4,No description in lookup
+Missing,333248,333248,4,No description in lookup
+Missing,333517,333517,4,No description in lookup
+Missing,333998,333998,4,No description in lookup
+Missing,334614,334614,4,No description in lookup
+Missing,339115,339115,4,No description in lookup
+Missing,441227,441227,4,No description in lookup
+Missing,481211,481211,4,No description in lookup
+Missing,483111,483111,4,No description in lookup
+Missing,561492,561492,4,No description in lookup
+Missing,315990,315990,3,No description in lookup
+Missing,332322,332322,3,No description in lookup
+Missing,333318,333318,3,No description in lookup
+Missing,333923,333923,3,No description in lookup
+Missing,334119,334119,3,No description in lookup
+Missing,334611,334611,3,No description in lookup
+Missing,335313,335313,3,No description in lookup
+Missing,337126,337126,3,No description in lookup
+Missing,337211,337211,3,No description in lookup
+Missing,339993,339993,3,No description in lookup
+Missing,339999,339999,3,No description in lookup
+Missing,423390,423390,3,No description in lookup
+Missing,423420,423420,3,No description in lookup
+Missing,423460,423460,3,No description in lookup
+Missing,423610,423610,3,No description in lookup
+Missing,424210,424210,3,No description in lookup
+Missing,424340,424340,3,No description in lookup
+Missing,513199,513199,3,No description in lookup
+Missing,516120,516120,3,No description in lookup
+Missing,541713,541713,3,No description in lookup
+Missing,623220,623220,3,No description in lookup
+Missing,811213,811213,3,No description in lookup
+Missing,812332,812332,3,No description in lookup
+Missing,923130,923130,3,No description in lookup
+Missing,926120,926120,3,No description in lookup
+Missing,926130,926130,3,No description in lookup
+Missing,236116,236116,2,No description in lookup
+Missing,314120,314120,2,No description in lookup
+Missing,316210,316210,2,No description in lookup
+Missing,325199,325199,2,No description in lookup
+Missing,333515,333515,2,No description in lookup
+Missing,333922,333922,2,No description in lookup
+Missing,333992,333992,2,No description in lookup
+Missing,335122,335122,2,No description in lookup
+Missing,336412,336412,2,No description in lookup
+Missing,339920,339920,2,No description in lookup
+Missing,339950,339950,2,No description in lookup
+Missing,339991,339991,2,No description in lookup
+Missing,423210,423210,2,No description in lookup
+Missing,423410,423410,2,No description in lookup
+Missing,423440,423440,2,No description in lookup
+Missing,423690,423690,2,No description in lookup
+Missing,423730,423730,2,No description in lookup
+Missing,423850,423850,2,No description in lookup
+Missing,444140,444140,2,No description in lookup
+Missing,449110,449110,2,No description in lookup
+Missing,459410,459410,2,No description in lookup
+Missing,483114,483114,2,No description in lookup
+Missing,485991,485991,2,No description in lookup
+Missing,485999,485999,2,No description in lookup
+Missing,488999,488999,2,No description in lookup
+Missing,516110,516110,2,No description in lookup
+Missing,517311,517311,2,No description in lookup
+Missing,517312,517312,2,No description in lookup
+Missing,524298,524298,2,No description in lookup
+Missing,541214,541214,2,No description in lookup
+Missing,541712,541712,2,No description in lookup
+Missing,711510,711510,2,No description in lookup
+Missing,813312,813312,2,No description in lookup
+Missing,925120,925120,2,No description in lookup
+Missing,927110,927110,2,No description in lookup
+Missing,115115,115115,1,No description in lookup
+Missing,221114,221114,1,No description in lookup
+Missing,221115,221115,1,No description in lookup
+Missing,312112,312112,1,No description in lookup
+Missing,313220,313220,1,No description in lookup
+Missing,313310,313310,1,No description in lookup
+Missing,314991,314991,1,No description in lookup
+Missing,315225,315225,1,No description in lookup
+Missing,315999,315999,1,No description in lookup
+Missing,322230,322230,1,No description in lookup
+Missing,323120,323120,1,No description in lookup
+Missing,325612,325612,1,No description in lookup
+Missing,326291,326291,1,No description in lookup
+Missing,326299,326299,1,No description in lookup
+Missing,327212,327212,1,No description in lookup
+Missing,327999,327999,1,No description in lookup
+Missing,331492,331492,1,No description in lookup
+Missing,332111,332111,1,No description in lookup
+Missing,332117,332117,1,No description in lookup
+Missing,332313,332313,1,No description in lookup
+Missing,332618,332618,1,No description in lookup
+Missing,332721,332721,1,No description in lookup
+Missing,332812,332812,1,No description in lookup
+Missing,332911,332911,1,No description in lookup
+Missing,332913,332913,1,No description in lookup
+Missing,332992,332992,1,No description in lookup
+Missing,333241,333241,1,No description in lookup
+Missing,333249,333249,1,No description in lookup
+Missing,333313,333313,1,No description in lookup
+Missing,333412,333412,1,No description in lookup
+Missing,333413,333413,1,No description in lookup
+Missing,333612,333612,1,No description in lookup
+Missing,333613,333613,1,No description in lookup
+Missing,333912,333912,1,No description in lookup
+Missing,333914,333914,1,No description in lookup
+Missing,333921,333921,1,No description in lookup
+Missing,333991,333991,1,No description in lookup
+Missing,333995,333995,1,No description in lookup
+Missing,333996,333996,1,No description in lookup
+Missing,333999,333999,1,No description in lookup
+Missing,335132,335132,1,No description in lookup
+Missing,335139,335139,1,No description in lookup
+Missing,335314,335314,1,No description in lookup
+Missing,335910,335910,1,No description in lookup
+Missing,335921,335921,1,No description in lookup
+Missing,335932,335932,1,No description in lookup
+Missing,336110,336110,1,No description in lookup
+Missing,336214,336214,1,No description in lookup
+Missing,336390,336390,1,No description in lookup
+Missing,336992,336992,1,No description in lookup
+Missing,336999,336999,1,No description in lookup
+Missing,423110,423110,1,No description in lookup
+Missing,423620,423620,1,No description in lookup
+Missing,423740,423740,1,No description in lookup
+Missing,423830,423830,1,No description in lookup
+Missing,423930,423930,1,No description in lookup
+Missing,424350,424350,1,No description in lookup
+Missing,424430,424430,1,No description in lookup
+Missing,424490,424490,1,No description in lookup
+Missing,424710,424710,1,No description in lookup
+Missing,441222,441222,1,No description in lookup
+Missing,441330,441330,1,No description in lookup
+Missing,444180,444180,1,No description in lookup
+Missing,454310,454310,1,No description in lookup
+Missing,455219,455219,1,No description in lookup
+Missing,457210,457210,1,No description in lookup
+Missing,458110,458110,1,No description in lookup
+Missing,481112,481112,1,No description in lookup
+Missing,483113,483113,1,No description in lookup
+Missing,483211,483211,1,No description in lookup
+Missing,484230,484230,1,No description in lookup
+Missing,485111,485111,1,No description in lookup
+Missing,485113,485113,1,No description in lookup
+Missing,488330,488330,1,No description in lookup
+Missing,488510,488510,1,No description in lookup
+Missing,488991,488991,1,No description in lookup
+Missing,512191,512191,1,No description in lookup
+Missing,512199,512199,1,No description in lookup
+Missing,513140,513140,1,No description in lookup
+Missing,515111,515111,1,No description in lookup
+Missing,517122,517122,1,No description in lookup
+Missing,522110,522110,1,No description in lookup
+Missing,524114,524114,1,No description in lookup
+Missing,531312,531312,1,No description in lookup
+Missing,532289,532289,1,No description in lookup
+Missing,562119,562119,1,No description in lookup
+Missing,562219,562219,1,No description in lookup
+Missing,623990,623990,1,No description in lookup
+Missing,711110,711110,1,No description in lookup
+Missing,711310,711310,1,No description in lookup
+Missing,752301,752301,1,No description in lookup
+Missing,811114,811114,1,No description in lookup
+Missing,811118,811118,1,No description in lookup
+Missing,812199,812199,1,No description in lookup
+Missing,922190,922190,1,No description in lookup
+Missing,923110,923110,1,No description in lookup
+Missing,924110,924110,1,No description in lookup
+Missing,926110,926110,1,No description in lookup
+Invalid,,TBD,744,Invalid/Empty
+Invalid,,Q518 - MEDICAL- PHYSICAL MEDICINE/REHABILITATION,1,Length: 3

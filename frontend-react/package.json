@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev:css": "./node_modules/.bin/tailwindcss -i ./src/index.css -o ./src/tailwind-output.css --watch",
-    "dev": "concurrently \"npm:dev:css\" \"vite\"",
+    "dev": "concurrently \"npm:dev:css\" \"vite --port 3001\"",
     "build:css": "./node_modules/.bin/tailwindcss -i ./src/index.css -o ./src/tailwind-output.css --minify",
     "build": "npm run build:css && vite build",
     "lint": "eslint .",

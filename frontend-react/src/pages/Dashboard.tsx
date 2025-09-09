@@ -120,13 +120,13 @@ export default function Dashboard() {
         {/* Prospects List Card - Main content */}
         <div className="flex-grow">
           <Card className="shadow-lg">
-            <CardHeader className="flex flex-row items-center justify-between py-5 px-6 border-b border-gray-200">
-              <CardTitle className="text-2xl font-bold text-black">Prospects List</CardTitle>
+            <CardHeader className="flex flex-row items-center justify-between py-5 px-6 border-b">
+              <CardTitle className="text-2xl font-bold">Prospects List</CardTitle>
               <div className="flex items-center space-x-4">
                 <div className="flex items-center space-x-2">
-                  <span className="text-sm font-medium text-gray-600">Rows per page:</span>
+                  <span className="text-sm font-medium text-muted-foreground">Rows per page:</span>
                   <Select value={itemsPerPage.toString()} onValueChange={(value) => handlePageSizeChange(Number(value))}>
-                    <SelectTrigger className="w-[80px] h-9 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                    <SelectTrigger className="w-[80px] h-9 text-sm focus:ring-2 focus:ring-primary focus:border-primary">
                       <SelectValue placeholder={itemsPerPage} />
                     </SelectTrigger>
                     <SelectContent>

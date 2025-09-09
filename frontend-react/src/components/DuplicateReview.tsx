@@ -224,19 +224,19 @@ export function DuplicateReview() {
   };
 
   const getConfidenceColor = (confidence: number) => {
-    if (confidence >= 0.9) return 'text-red-600 bg-red-50';
-    if (confidence >= 0.8) return 'text-orange-600 bg-orange-50';
-    if (confidence >= 0.7) return 'text-yellow-600 bg-yellow-50';
-    return 'text-gray-600 bg-gray-50';
+    if (confidence >= 0.9) return 'text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/20';
+    if (confidence >= 0.8) return 'text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/20';
+    if (confidence >= 0.7) return 'text-yellow-600 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-950/20';
+    return 'text-muted-foreground bg-muted';
   };
 
   const getMatchTypeColor = (matchType: string) => {
     switch (matchType) {
-      case 'exact': return 'bg-red-100 text-red-800';
-      case 'strong': return 'bg-orange-100 text-orange-800';
-      case 'fuzzy': return 'bg-yellow-100 text-yellow-800';
-      case 'weak': return 'bg-gray-100 text-gray-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'exact': return 'bg-red-100 dark:bg-red-950/50 text-red-800 dark:text-red-400';
+      case 'strong': return 'bg-amber-100 dark:bg-amber-950/50 text-amber-800 dark:text-amber-400';
+      case 'fuzzy': return 'bg-yellow-100 dark:bg-yellow-950/50 text-yellow-800 dark:text-yellow-400';
+      case 'weak': return 'bg-muted text-muted-foreground';
+      default: return 'bg-muted text-muted-foreground';
     }
   };
 
@@ -288,10 +288,10 @@ export function DuplicateReview() {
     // If we have progress data with error status, show error
     if (scanProgress && scanProgress.status === 'error') {
       return (
-        <div className="bg-red-50 border border-red-200 rounded-md p-4 mb-4">
+        <div className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-md p-4 mb-4">
           <div className="flex items-center">
-            <div className="text-red-600 mr-3">❌</div>
-            <span className="text-sm font-medium text-red-800">
+            <div className="text-red-600 dark:text-red-400 mr-3">❌</div>
+            <span className="text-sm font-medium text-red-800 dark:text-red-400">
               Scan Failed: {scanProgress.message || 'An error occurred during duplicate detection'}
             </span>
           </div>
@@ -305,24 +305,24 @@ export function DuplicateReview() {
       const eta = scanProgress.eta;
 
       return (
-        <div className="bg-blue-50 border border-blue-200 rounded-md p-4 mb-4">
+        <div className="bg-primary/10 border border-primary/20 rounded-md p-4 mb-4">
           <div className="flex justify-between items-center mb-2">
-            <span className="text-sm font-medium text-blue-800">
+            <span className="text-sm font-medium text-primary">
               {scanProgress.message}
             </span>
-            <span className="text-xs text-blue-600">
+            <span className="text-xs text-primary/80">
               {scanProgress.current} / {scanProgress.total} ({percentage}%)
             </span>
           </div>
           
-          <div className="w-full bg-blue-200 rounded-full h-2 mb-2">
+          <div className="w-full bg-primary/20 rounded-full h-2 mb-2">
             <div
-              className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+              className="bg-primary h-2 rounded-full transition-all duration-300"
               style={{ width: `${percentage}%` }}
             ></div>
           </div>
           
-          <div className="flex justify-between text-xs text-blue-600">
+          <div className="flex justify-between text-xs text-primary">
             <span>Elapsed: {scanProgress.elapsed_time}s</span>
             {eta && <span>ETA: {eta}s</span>}
           </div>
@@ -340,8 +340,8 @@ export function DuplicateReview() {
           </span>
         </div>
         
-        <div className="w-full bg-blue-200 rounded-full h-2 mt-3">
-          <div className="bg-blue-600 h-2 rounded-full animate-pulse"></div>
+        <div className="w-full bg-primary/20 rounded-full h-2 mt-3">
+          <div className="bg-primary h-2 rounded-full animate-pulse"></div>
         </div>
       </div>
     );
@@ -357,13 +357,13 @@ export function DuplicateReview() {
           <div className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-foreground mb-2">
                   Data Source (Optional)
                 </label>
                 <select
                   value={selectedSourceId || ''}
                   onChange={(e) => setSelectedSourceId(e.target.value ? parseInt(e.target.value) : null)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
                 >
                   <option value="">All Sources</option>
                   {sourcesData?.data.sources.map((source) => (
@@ -375,13 +375,13 @@ export function DuplicateReview() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-foreground mb-2">
                   Min Confidence
                 </label>
                 <select
                   value={minConfidence}
                   onChange={(e) => setMinConfidence(parseFloat(e.target.value))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
                 >
                   <option value={0.6}>60% - Very Loose</option>
                   <option value={0.7}>70% - Loose</option>
@@ -392,13 +392,13 @@ export function DuplicateReview() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-foreground mb-2">
                   Scan Limit
                 </label>
                 <select
                   value={scanLimit === null ? 'all' : scanLimit}
                   onChange={(e) => setScanLimit(e.target.value === 'all' ? null : parseInt(e.target.value))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
                 >
                   <option value="all">All Records (Recommended)</option>
                   <option value={100}>100 Records (Quick Test)</option>
@@ -411,7 +411,7 @@ export function DuplicateReview() {
                 <button
                   onClick={() => detectDuplicates()}
                   disabled={isDetecting}
-                  className="w-full inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 bg-blue-600 text-white shadow-sm hover:bg-blue-700 h-9 px-4 py-2 border border-blue-600"
+                  className="w-full inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground shadow-sm hover:bg-primary/80 h-9 px-4 py-2 border border-primary"
                 >
                   {isDetecting ? (
                     <>
@@ -429,14 +429,14 @@ export function DuplicateReview() {
             {renderProgressBar()}
 
             {detectError && (
-              <div className="bg-red-50 border border-red-200 rounded-md p-4">
-                <p className="text-red-800">Error: {(detectError as Error).message}</p>
+              <div className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-md p-4">
+                <p className="text-red-800 dark:text-red-400">Error: {(detectError as Error).message}</p>
               </div>
             )}
 
             {duplicatesData?.data && (
-              <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
-                <p className="text-blue-800">
+              <div className="bg-primary/10 border border-primary/20 rounded-md p-4">
+                <p className="text-primary">
                   Found {duplicatesData.data.total_found || 0} potential duplicate group(s)
                   {duplicatesData.data.scan_parameters?.source_id && (
                     <> in source {sourcesData?.data?.sources?.find(s => s.id === duplicatesData.data.scan_parameters.source_id)?.name}</>
@@ -476,7 +476,7 @@ export function DuplicateReview() {
                   });
                   setSelectedKeepRecords(newKeepRecords);
                 }}
-                className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 border border-gray-300 bg-white text-gray-700 shadow-sm hover:bg-gray-50 h-8 px-3 py-1"
+                className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 border border-border bg-background text-foreground shadow-sm hover:bg-accent h-8 px-3 py-1"
               >
                 Select All
               </button>
@@ -485,14 +485,14 @@ export function DuplicateReview() {
                   setSelectedGroups(new Set());
                   setSelectedKeepRecords(new Map());
                 }}
-                className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 border border-gray-300 bg-white text-gray-700 shadow-sm hover:bg-gray-50 h-8 px-3 py-1"
+                className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 border border-border bg-background text-foreground shadow-sm hover:bg-accent h-8 px-3 py-1"
               >
                 Clear All
               </button>
               <button
                 onClick={handleMergeSelected}
                 disabled={selectedGroups.size === 0 || mergeDuplicatesMutation.isPending}
-                className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 bg-red-600 text-white shadow-sm hover:bg-red-700 h-8 px-3 py-1 border border-red-600"
+                className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/80 h-8 px-3 py-1 border border-destructive"
               >
                 {mergeDuplicatesMutation.isPending ? (
                   <>
@@ -511,7 +511,7 @@ export function DuplicateReview() {
                 <div
                   key={groupIndex}
                   className={`border rounded-lg p-4 ${
-                    selectedGroups.has(groupIndex) ? 'border-blue-500 bg-blue-50' : 'border-gray-200'
+                    selectedGroups.has(groupIndex) ? 'border-primary bg-primary/10' : 'border-border'
                   }`}
                 >
                   <div className="flex items-center justify-between mb-4">
@@ -539,10 +539,10 @@ export function DuplicateReview() {
                   {/* Original Record */}
                   <div className="mb-4">
                     <div className="flex items-center justify-between mb-2">
-                      <h4 className="font-medium text-green-800 flex items-center">
+                      <h4 className="font-medium text-emerald-800 dark:text-emerald-400 flex items-center">
                         📍 Original Record
                         {group.original.ai_processed && (
-                          <span className="ml-2 px-2 py-1 bg-purple-100 text-purple-800 text-xs rounded-full">
+                          <span className="ml-2 px-2 py-1 bg-violet-100 dark:bg-violet-950/50 text-violet-800 dark:text-violet-400 text-xs rounded-full">
                             AI Enhanced
                           </span>
                         )}
@@ -554,16 +554,16 @@ export function DuplicateReview() {
                             name={`keep-record-${groupIndex}`}
                             checked={selectedKeepRecords.get(groupIndex) === group.original.id}
                             onChange={() => handleKeepRecordSelection(groupIndex, group.original.id)}
-                            className="h-4 w-4 text-green-600"
+                            className="h-4 w-4 text-emerald-600 dark:text-emerald-400"
                           />
-                          <span className="text-sm font-medium text-green-700">Keep this record</span>
+                          <span className="text-sm font-medium text-emerald-700 dark:text-emerald-400">Keep this record</span>
                         </label>
                       )}
                     </div>
                     <div className={`rounded p-3 text-sm border ${
                       selectedGroups.has(groupIndex) && selectedKeepRecords.get(groupIndex) === group.original.id 
-                        ? 'bg-green-100 border-green-300' 
-                        : 'bg-green-50 border-green-200'
+                        ? 'bg-emerald-100 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-700' 
+                        : 'bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800'
                     }`}>
                       <div className="grid grid-cols-2 gap-2">
                         <div><strong>ID:</strong> {group.original.native_id || 'N/A'}</div>
@@ -575,7 +575,7 @@ export function DuplicateReview() {
                         <div><strong>Title:</strong> {group.original.title}</div>
                         <div><strong>Description:</strong> {group.original.description}</div>
                       </div>
-                      <div className="text-xs text-gray-500 mt-2">
+                      <div className="text-xs text-muted-foreground mt-2">
                         Loaded: {formatDate(group.original.loaded_at)}
                       </div>
                     </div>
@@ -583,15 +583,15 @@ export function DuplicateReview() {
 
                   {/* Duplicate Matches */}
                   <div>
-                    <h4 className="font-medium text-red-800 mb-2">
+                    <h4 className="font-medium text-red-800 dark:text-red-400 mb-2">
                       🔄 Potential Duplicates ({group.matches.length})
                     </h4>
                     <div className="space-y-3">
                       {group.matches.map((match: DuplicateMatch, matchIndex: number) => (
                         <div key={matchIndex} className={`rounded p-3 text-sm border ${
                           selectedGroups.has(groupIndex) && selectedKeepRecords.get(groupIndex) === match.id
-                            ? 'bg-blue-100 border-blue-300'
-                            : 'bg-red-50 border-red-200'
+                            ? 'bg-primary/20 border-primary/40'
+                            : 'bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-800'
                         }`}>
                           <div className="flex justify-between items-start mb-2">
                             <div className="flex space-x-2">
@@ -602,7 +602,7 @@ export function DuplicateReview() {
                                 {match.match_type}
                               </span>
                               {match.ai_processed && (
-                                <span className="px-2 py-1 bg-purple-100 text-purple-800 text-xs rounded-full">
+                                <span className="px-2 py-1 bg-violet-100 dark:bg-violet-950/50 text-violet-800 dark:text-violet-400 text-xs rounded-full">
                                   AI Enhanced
                                 </span>
                               )}
@@ -618,9 +618,9 @@ export function DuplicateReview() {
                                     name={`keep-record-${groupIndex}`}
                                     checked={selectedKeepRecords.get(groupIndex) === match.id}
                                     onChange={() => handleKeepRecordSelection(groupIndex, match.id)}
-                                    className="h-4 w-4 text-blue-600"
+                                    className="h-4 w-4 text-primary"
                                   />
-                                  <span className="text-sm font-medium text-blue-700">Keep this record</span>
+                                  <span className="text-sm font-medium text-primary">Keep this record</span>
                                 </label>
                               )}
                             </div>
@@ -635,7 +635,7 @@ export function DuplicateReview() {
                             <div><strong>Title:</strong> {match.title}</div>
                             <div><strong>Description:</strong> {match.description}</div>
                           </div>
-                          <div className="text-xs text-gray-500 mt-2">
+                          <div className="text-xs text-muted-foreground mt-2">
                             Loaded: {formatDate(match.loaded_at)}
                           </div>
                         </div>
@@ -652,10 +652,10 @@ export function DuplicateReview() {
       {duplicatesData && duplicateGroups.length === 0 && (
         <Card>
           <CardContent className="text-center py-8">
-            <div className="text-green-600 text-lg font-medium mb-2">
+            <div className="text-emerald-600 dark:text-emerald-400 text-lg font-medium mb-2">
               ✅ No Duplicates Found!
             </div>
-            <p className="text-gray-600">
+            <p className="text-muted-foreground">
               No potential duplicates were detected with the current confidence threshold.
               Try lowering the confidence level if you suspect there might be duplicates.
             </p>

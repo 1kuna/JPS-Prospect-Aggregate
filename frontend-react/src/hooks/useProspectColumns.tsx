@@ -33,7 +33,7 @@ export function useProspectColumns(showAIEnhanced: boolean) {
         
         return (
           <div className="w-full truncate" title={title}>
-            <span className={isAIEnhanced ? 'text-blue-700 font-medium' : ''}>
+            <span className={isAIEnhanced ? 'text-primary font-medium' : ''}>
               {String(value) || 'No Title'}
             </span>
           </div>
@@ -77,7 +77,7 @@ export function useProspectColumns(showAIEnhanced: boolean) {
         
         return (
           <div className="w-full truncate" title={title}>
-            <span className={isAIEnhanced ? 'text-blue-700 font-medium' : ''}>
+            <span className={isAIEnhanced ? 'text-primary font-medium' : ''}>
               {value}
             </span>
           </div>
@@ -137,10 +137,10 @@ export function useProspectColumns(showAIEnhanced: boolean) {
         const isAIEnhanced = showAIEnhanced && (!!row.estimated_value_single || (!!row.estimated_value_min && !!row.estimated_value_max));
         
         return (
-          <div title={value} className={isAIEnhanced ? 'text-green-700 font-medium' : ''}>
+          <div title={value} className={isAIEnhanced ? 'text-green-700 dark:text-emerald-300 font-medium' : ''}>
             {value}
             {isAIEnhanced && (
-              <div className="w-2 h-2 bg-green-500 rounded-full inline-block ml-2" title="AI Parsed"></div>
+              <div className="w-2 h-2 bg-green-500 dark:bg-emerald-400 rounded-full inline-block ml-2" title="AI Parsed"></div>
             )}
           </div>
         );
@@ -216,7 +216,7 @@ export function useProspectColumns(showAIEnhanced: boolean) {
         
         return (
           <div className="w-full truncate flex items-center" title={String(value) || 'N/A'}>
-            <span className={isAIEnhanced ? 'text-blue-700 font-medium' : ''}>
+            <span className={isAIEnhanced ? 'text-primary font-medium' : ''}>
               {String(value) || 'N/A'}
             </span>
           </div>

@@ -53,13 +53,13 @@ export function DataSourcesTab({
     <div className="space-y-6">
       {/* Active Scrapers Status */}
       {hasActiveScrapers && (
-        <div className="bg-blue-50 border-l-4 border-blue-400 p-4 rounded-md">
+        <div className="bg-primary/10 border-l-4 border-primary p-4 rounded-md">
           <div className="flex items-center">
             <div className="flex-shrink-0">
-              <div className="h-3 w-3 rounded-full bg-blue-400 animate-pulse"></div>
+              <div className="h-3 w-3 rounded-full bg-primary animate-pulse"></div>
             </div>
             <div className="ml-3">
-              <p className="text-sm text-blue-700">
+              <p className="text-sm text-primary">
                 <strong>{activeScrapers.length}</strong> scraper{activeScrapers.length !== 1 ? 's' : ''} currently running: {' '}
                 {activeScrapers.map((s: DataSource) => s.name).join(', ')}
               </p>
@@ -76,7 +76,7 @@ export function DataSourcesTab({
             isLoading={runAllInProgress}
             loadingText="Running All Scrapers..."
             disabled={dataSources.length === 0 || hasActiveScrapers}
-            className="bg-blue-600 hover:bg-blue-700"
+            className="bg-primary hover:bg-primary/80"
           >
             Pull All Sources
           </LoadingButton>

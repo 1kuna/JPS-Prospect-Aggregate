@@ -15,6 +15,8 @@ UTC = timezone.utc
 from datetime import datetime
 from typing import Any, Literal, Optional
 
+from flask import current_app, has_app_context
+from sqlalchemy.orm import scoped_session
 from app.database import db
 from app.database.models import LLMOutput, Prospect
 from app.services.optimized_prompts import (
@@ -30,7 +32,7 @@ from app.utils.llm_utils import call_ollama
 from app.utils.logger import logger
 from app.utils.naics_lookup import get_naics_description, validate_naics_code
 
-EnhancementType = Literal["all", "values", "titles", "naics", "set_asides"]
+EnhancementType = Literal["all", "values", "titles", "naics", "naics_code", "naics_description", "set_asides"]
 
 
 class LLMService:
@@ -50,6 +52,7 @@ class LLMService:
         self.model_name = model_name
         self.batch_size = batch_size
         self.set_aside_standardizer = SetAsideStandardizer()
+        self._app = None  # Flask app reference for context
 
         # For iterative processing
         self._processing = False
@@ -65,7 +68,15 @@ class LLMService:
             "errors": [],
         }
         self._lock = threading.Lock()
-        self._emit_callback: Callable | None = None
+    
+    def set_app(self, app):
+        """Set Flask app reference for database context in threads"""
+        self._app = app
+        logger.info("Flask app reference set in LLM service")
+    
+    def set_emit_callback(self, callback: Callable | None):
+        """Set the emit callback for field updates"""
+        self._emit_callback = callback
 
     # =============================================================================
     # UTILITY FUNCTIONS (from llm_service_utils.py)
@@ -292,11 +303,22 @@ class LLMService:
                 error_message=error_message,
                 processing_time=processing_time,
             )
-            db.session.add(output)
-            db.session.commit()
+            # Check if we have app context
+            if not has_app_context() and self._app:
+                # We're in a worker thread without context, create one
+                with self._app.app_context():
+                    db.session.add(output)
+                    db.session.commit()
+            else:
+                # Normal context or already in app context
+                db.session.add(output)
+                db.session.commit()
         except Exception as e:
             logger.error(f"Failed to log LLM output: {e}")
-            db.session.rollback()
+            try:
+                db.session.rollback()
+            except:
+                pass  # Session might not exist in thread context
 
     def classify_naics_with_llm(
         self,
@@ -992,7 +1014,7 @@ class LLMService:
                 f"LLM Service: Skipping values processing for {prospect.id[:8]}"
             )
 
-        # Process NAICS classification
+        # Process NAICS classification (full - both code and description)
         if "naics" in enhancement_types or "all" in enhancement_types:
             if progress_callback:
                 progress_callback(
@@ -1062,6 +1084,125 @@ class LLMService:
                     {
                         "status": "completed",
                         "field": "naics",
+                        "prospect_id": prospect.id,
+                    }
+                )
+
+        # Process NAICS code only (infer/classify code without description)
+        if "naics_code" in enhancement_types:
+            if progress_callback:
+                progress_callback(
+                    {
+                        "status": "processing",
+                        "field": "naics_code",
+                        "prospect_id": prospect.id,
+                    }
+                )
+
+            if prospect.description and (not prospect.naics or force_redo):
+                # Store original NAICS if it exists and hasn't been stored yet
+                if prospect.naics and "original_naics" not in prospect.extra:
+                    prospect.extra["original_naics"] = prospect.naics
+                    prospect.extra["original_naics_description"] = prospect.naics_description
+                    prospect.extra["original_naics_source"] = prospect.naics_source or "original"
+
+                # First check extra field
+                extra_naics = self.extract_naics_from_extra_field(prospect.extra)
+
+                if extra_naics["found_in_extra"] and extra_naics["code"]:
+                    prospect.naics = extra_naics["code"]
+                    # For code-only mode, we do NOT set the description
+                    prospect.naics_source = "original"
+                    results["naics"] = True
+                else:
+                    # Use LLM classification for code
+                    classification = self.classify_naics_with_llm(
+                        prospect.title,
+                        prospect.description,
+                        prospect_id=prospect.id,
+                        agency=prospect.agency,
+                        contract_type=prospect.contract_type,
+                        set_aside=prospect.set_aside,
+                        estimated_value=prospect.estimated_value_text,
+                    )
+
+                    if classification["code"]:
+                        prospect.naics = classification["code"]
+                        # For code-only mode, we do NOT set the description
+                        prospect.naics_source = "llm_inferred"
+                        results["naics"] = True
+
+            # Emit completion callback
+            if progress_callback:
+                progress_callback(
+                    {
+                        "status": "completed",
+                        "field": "naics_code",
+                        "prospect_id": prospect.id,
+                    }
+                )
+
+        # Process NAICS description only (backfill descriptions for existing codes)
+        if "naics_description" in enhancement_types:
+            if progress_callback:
+                progress_callback(
+                    {
+                        "status": "processing",
+                        "field": "naics_description",
+                        "prospect_id": prospect.id,
+                    }
+                )
+
+            # Only process if there's a NAICS code but no description (or force_redo)
+            if prospect.naics and (not prospect.naics_description or force_redo):
+                start_time = time.time()
+                # Get official description from lookup table
+                official_description = get_naics_description(prospect.naics)
+                processing_time = time.time() - start_time
+                
+                if official_description:
+                    prospect.naics_description = official_description
+                    # Mark that we backfilled the description
+                    if "naics_description_backfill" not in prospect.extra:
+                        prospect.extra["naics_description_backfill"] = {
+                            "backfilled_at": datetime.now(UTC).isoformat(),
+                            "source": "official_lookup",
+                            "code": prospect.naics
+                        }
+                    results["naics"] = True
+                    
+                    # Log to LLMOutput table for visibility
+                    self._log_llm_output(
+                        prospect_id=prospect.id,
+                        enhancement_type="naics_description",
+                        prompt=f"Lookup NAICS description for code: {prospect.naics}",
+                        response=f"Found official description: {official_description}",
+                        parsed_result={"code": prospect.naics, "description": official_description},
+                        success=True,
+                        processing_time=processing_time,
+                    )
+                    
+                    logger.info(f"Backfilled NAICS description for {prospect.id[:8]}: {prospect.naics} -> {official_description}")
+                else:
+                    # Log failed lookup
+                    self._log_llm_output(
+                        prospect_id=prospect.id,
+                        enhancement_type="naics_description",
+                        prompt=f"Lookup NAICS description for code: {prospect.naics}",
+                        response="No description found in lookup table",
+                        parsed_result={"code": prospect.naics, "description": None},
+                        success=False,
+                        error_message=f"No official description found for NAICS code {prospect.naics}",
+                        processing_time=processing_time,
+                    )
+                    logger.warning(f"No official description found for NAICS code {prospect.naics}")
+
+            # Emit completion callback
+            if progress_callback:
+                progress_callback(
+                    {
+                        "status": "completed",
+                        "field": "naics_description",
                         "prospect_id": prospect.id,
                     }
                 )
@@ -1312,6 +1453,15 @@ class LLMService:
                     (Prospect.naics.is_(None))
                     | (Prospect.naics_source != "llm_inferred")
                 )
+            elif enhancement_type == "naics_code":
+                # Only process prospects without NAICS codes
+                query = query.filter(Prospect.naics.is_(None))
+            elif enhancement_type == "naics_description":
+                # Only process prospects WITH codes
+                query = query.filter(Prospect.naics.isnot(None))
+                if skip_existing:
+                    # If skipping existing, only process those WITHOUT descriptions
+                    query = query.filter(Prospect.naics_description.is_(None))
             elif enhancement_type == "titles":
                 query = query.filter(Prospect.ai_enhanced_title.is_(None))
             elif enhancement_type == "set_asides":
@@ -1324,7 +1474,29 @@ class LLMService:
         self, prospects: list[Prospect], enhancement_type: EnhancementType
     ):
         """Worker thread for iterative processing."""
+        # Use app context for database operations
+        if self._app:
+            with self._app.app_context():
+                self._process_with_context(prospects, enhancement_type)
+        else:
+            logger.error("No Flask app context available for worker thread")
+            with self._lock:
+                self._progress["status"] = "failed"
+                self._progress["errors"].append({
+                    "error": "No Flask app context available",
+                    "timestamp": datetime.now(UTC).isoformat(),
+                })
+            self._processing = False
+    
+    def _process_with_context(self, prospects: list[Prospect], enhancement_type: EnhancementType):
+        """Process prospects within Flask app context"""
+        # Import db for thread use
+        from app.database import db as thread_db
+        
         try:
+            error_count = 0
+            MAX_STORED_ERRORS = 10  # Only keep last 10 errors to prevent memory issues
+            
             for i, prospect in enumerate(prospects):
                 if self._stop_event.is_set():
                     break
@@ -1333,18 +1505,28 @@ class LLMService:
                     self._progress["current_prospect"] = prospect.id
 
                 try:
+                    # Re-query the prospect in this thread's session
+                    prospect = thread_db.session.get(Prospect, prospect.id)
+                    if not prospect:
+                        logger.error(f"Prospect {prospect.id} not found in database")
+                        continue
+                        
                     results = self.enhance_single_prospect(prospect, enhancement_type)
 
                     if any(results.values()):
-                        db.session.commit()
+                        thread_db.session.commit()
                         self.emit_field_update(prospect.id, enhancement_type, results)
 
                     with self._lock:
                         self._progress["processed"] = i + 1
 
                 except Exception as e:
+                    error_count += 1
                     logger.error(f"Error processing prospect {prospect.id}: {e}")
                     with self._lock:
+                        # Keep only the last MAX_STORED_ERRORS errors
+                        if len(self._progress["errors"]) >= MAX_STORED_ERRORS:
+                            self._progress["errors"].pop(0)
                         self._progress["errors"].append(
                             {
                                 "prospect_id": prospect.id,
@@ -1352,9 +1534,15 @@ class LLMService:
                                 "timestamp": datetime.now(UTC).isoformat(),
                             }
                         )
+                        # Add error count to progress
+                        self._progress["error_count"] = error_count
 
-                # Small delay to prevent overwhelming the system
-                time.sleep(0.1)
+                # Adjust delay based on enhancement type
+                # Description-only is very fast (just lookups), so minimal delay
+                if enhancement_type == "naics_description":
+                    time.sleep(0.01)  # 10ms delay for description lookups
+                else:
+                    time.sleep(0.1)  # 100ms delay for LLM operations
 
             # Mark as completed
             with self._lock:
@@ -1374,6 +1562,11 @@ class LLMService:
                     }
                 )
         finally:
+            # Clean up the database session
+            try:
+                thread_db.session.remove()
+            except:
+                pass  # Session might not exist
             self._processing = False
 
 

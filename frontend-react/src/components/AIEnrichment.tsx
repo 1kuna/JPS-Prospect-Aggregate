@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -8,12 +8,13 @@ import { useEnhancementQueueService } from '@/hooks/api/useEnhancementQueueServi
 import { getStatusColor } from '@/utils/statusUtils';
 import { PlayIcon, StopIcon, ChevronDownIcon, ChevronRightIcon } from '@radix-ui/react-icons';
 
-type EnhancementType = 'all' | 'values' | 'naics' | 'titles' | 'set_asides';
+type EnhancementType = 'all' | 'values' | 'naics' | 'naics_code' | 'naics_description' | 'titles' | 'set_asides';
 
 export function AIEnrichment() {
   const [enhancementType, setEnhancementType] = useState<EnhancementType>('all');
   const [skipExisting, setSkipExisting] = useState<'skip' | 'fill'>('skip');
   const [expandedOutputs, setExpandedOutputs] = useState<Set<number>>(new Set());
+  const [isLocalProcessing, setIsLocalProcessing] = useState(false);
   
   const { formatLastProcessed, formatUserDate } = useTimezoneDate();
   
@@ -28,12 +29,22 @@ export function AIEnrichment() {
     isStartingIterative,
     isStoppingIterative
   } = useEnhancementQueueService({
-    llmOutputsType: enhancementType
+    llmOutputsType: enhancementType as any  // Cast to any to handle all enhancement types including naics_description
   });
 
-  const isProcessing = progress?.status === 'processing' || progress?.status === 'stopping';
+  // Sync local processing state with server state
+  useEffect(() => {
+    if (progress?.status === 'idle' || progress?.status === 'completed' || progress?.status === 'failed') {
+      setIsLocalProcessing(false);
+    } else if (progress?.status === 'processing' || progress?.status === 'stopping') {
+      setIsLocalProcessing(true);
+    }
+  }, [progress?.status]);
+
+  const isProcessing = isLocalProcessing || progress?.status === 'processing' || progress?.status === 'stopping';
 
   const handleStart = () => {
+    setIsLocalProcessing(true);
     startIterative({ 
       enhancement_type: enhancementType,
       skip_existing: skipExisting === 'skip'
@@ -41,6 +52,7 @@ export function AIEnrichment() {
   };
 
   const handleStop = () => {
+    setIsLocalProcessing(false);
     stopIterative();
   };
 
@@ -69,7 +81,7 @@ export function AIEnrichment() {
             <CardTitle className="flex items-center">
               AI Enrichment Status
               {status?.total_prospects && (
-                <div className="ml-auto text-sm font-normal text-gray-600">
+                <div className="ml-auto text-sm font-normal text-muted-foreground">
                   {status.processed_prospects.toLocaleString()} of {status.total_prospects.toLocaleString()} processed
                 </div>
               )}
@@ -78,13 +90,13 @@ export function AIEnrichment() {
           <CardContent>
             {isLoadingStatus ? (
               <div className="flex items-center justify-center h-32">
-                <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-600"></div>
+                <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-primary"></div>
               </div>
             ) : status ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 {/* NAICS Coverage */}
-                <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-                  <h4 className="font-semibold text-blue-800 mb-2">NAICS Classification</h4>
+                <div className="bg-primary/10 dark:bg-primary/10 p-4 rounded-lg border border-primary/20 dark:border-primary/20">
+                  <h4 className="font-semibold text-primary dark:text-primary mb-2">NAICS Classification</h4>
                   <div className="space-y-1 text-sm">
                     <div className="flex justify-between">
                       <span>Original:</span>
@@ -92,9 +104,9 @@ export function AIEnrichment() {
                     </div>
                     <div className="flex justify-between">
                       <span>AI Classified:</span>
-                      <span className="font-medium text-blue-700">{status.naics_coverage.llm_inferred.toLocaleString()}</span>
+                      <span className="font-medium text-primary dark:text-primary">{status.naics_coverage.llm_inferred.toLocaleString()}</span>
                     </div>
-                    <div className="flex justify-between border-t border-blue-300 pt-1 font-medium">
+                    <div className="flex justify-between border-t border-primary/30 dark:border-primary/20 pt-1 font-medium">
                       <span>Coverage:</span>
                       <span>{status.naics_coverage.total_percentage.toFixed(1)}%</span>
                     </div>
@@ -102,14 +114,14 @@ export function AIEnrichment() {
                 </div>
 
                 {/* Value Parsing */}
-                <div className="bg-green-50 p-4 rounded-lg border border-green-200">
-                  <h4 className="font-semibold text-green-800 mb-2">Value Parsing</h4>
+                <div className="bg-success-light/10 dark:bg-success/10 p-4 rounded-lg border border-success/20 dark:border-success/20">
+                  <h4 className="font-semibold text-success-dark dark:text-success mb-2">Value Parsing</h4>
                   <div className="space-y-1 text-sm">
                     <div className="flex justify-between">
                       <span>Parsed Values:</span>
-                      <span className="font-medium text-green-700">{status.value_parsing.parsed_count.toLocaleString()}</span>
+                      <span className="font-medium text-success-dark dark:text-success">{status.value_parsing.parsed_count.toLocaleString()}</span>
                     </div>
-                    <div className="flex justify-between border-t border-green-300 pt-1 font-medium">
+                    <div className="flex justify-between border-t border-emerald-500/30 dark:border-emerald-400/20 pt-1 font-medium">
                       <span>Coverage:</span>
                       <span>{status.value_parsing.total_percentage.toFixed(1)}%</span>
                     </div>
@@ -117,14 +129,14 @@ export function AIEnrichment() {
                 </div>
 
                 {/* Set-Aside Standardization */}
-                <div className="bg-orange-50 p-4 rounded-lg border border-orange-200">
-                  <h4 className="font-semibold text-orange-800 mb-2">Set-Aside Standardization</h4>
+                <div className="bg-warning-light/10 dark:bg-warning/10 p-4 rounded-lg border border-warning/20 dark:border-warning/20">
+                  <h4 className="font-semibold text-warning-dark dark:text-warning mb-2">Set-Aside Standardization</h4>
                   <div className="space-y-1 text-sm">
                     <div className="flex justify-between">
                       <span>Standardized Set-Asides:</span>
-                      <span className="font-medium text-orange-700">{status.set_aside_standardization.standardized_count.toLocaleString()}</span>
+                      <span className="font-medium text-warning-dark dark:text-warning">{status.set_aside_standardization.standardized_count.toLocaleString()}</span>
                     </div>
-                    <div className="flex justify-between border-t border-orange-300 pt-1 font-medium">
+                    <div className="flex justify-between border-t border-amber-500/30 dark:border-amber-400/20 pt-1 font-medium">
                       <span>Coverage:</span>
                       <span>{status.set_aside_standardization.total_percentage.toFixed(1)}%</span>
                     </div>
@@ -132,14 +144,14 @@ export function AIEnrichment() {
                 </div>
 
                 {/* Title Enhancement */}
-                <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
-                  <h4 className="font-semibold text-purple-800 mb-2">Title Enhancement</h4>
+                <div className="bg-violet-500/10 dark:bg-violet-400/10 p-4 rounded-lg border border-violet-500/20 dark:border-violet-400/20">
+                  <h4 className="font-semibold text-violet-700 dark:text-violet-300 mb-2">Title Enhancement</h4>
                   <div className="space-y-1 text-sm">
                     <div className="flex justify-between">
                       <span>Enhanced Titles:</span>
-                      <span className="font-medium text-purple-700">{status.title_enhancement?.enhanced_count?.toLocaleString() || '0'}</span>
+                      <span className="font-medium text-violet-700 dark:text-violet-300">{status.title_enhancement?.enhanced_count?.toLocaleString() || '0'}</span>
                     </div>
-                    <div className="flex justify-between border-t border-purple-300 pt-1 font-medium">
+                    <div className="flex justify-between border-t border-violet-500/30 dark:border-violet-400/20 pt-1 font-medium">
                       <span>Coverage:</span>
                       <span>{status.title_enhancement?.total_percentage?.toFixed(1) || '0.0'}%</span>
                     </div>
@@ -147,11 +159,11 @@ export function AIEnrichment() {
                 </div>
               </div>
             ) : (
-              <div className="text-red-600">Failed to load AI enrichment status</div>
+              <div className="text-danger">Failed to load AI enrichment status</div>
             )}
 
             {status?.last_processed && (
-              <div className="mt-4 text-sm text-gray-600 border-t pt-4">
+              <div className="mt-4 text-sm text-muted-foreground border-t pt-4">
                 <div className="flex justify-between">
                   <span>Last processed:</span>
                   <span>{formatLastProcessed(status.last_processed)}</span>
@@ -187,7 +199,9 @@ export function AIEnrichment() {
                   <SelectContent>
                     <SelectItem value="all">All Enhancements</SelectItem>
                     <SelectItem value="values">Value Parsing</SelectItem>
-                    <SelectItem value="naics">NAICS Classification</SelectItem>
+                    <SelectItem value="naics">NAICS (both values)</SelectItem>
+                    <SelectItem value="naics_code">NAICS (code only)</SelectItem>
+                    <SelectItem value="naics_description">NAICS (description only)</SelectItem>
                     <SelectItem value="titles">Title Enhancement</SelectItem>
                     <SelectItem value="set_asides">Set-Aside Standardization</SelectItem>
                   </SelectContent>
@@ -206,7 +220,7 @@ export function AIEnrichment() {
                       checked={skipExisting === 'skip'}
                       onChange={(e) => setSkipExisting(e.target.value as 'skip' | 'fill')}
                       disabled={isProcessing}
-                      className="h-4 w-4 text-blue-600"
+                      className="h-4 w-4 text-primary"
                     />
                     <span className="text-sm font-normal cursor-pointer">
                       Skip existing AI data
@@ -220,7 +234,7 @@ export function AIEnrichment() {
                       checked={skipExisting === 'fill'}
                       onChange={(e) => setSkipExisting(e.target.value as 'skip' | 'fill')}
                       disabled={isProcessing}
-                      className="h-4 w-4 text-blue-600"
+                      className="h-4 w-4 text-primary"
                     />
                     <span className="text-sm font-normal cursor-pointer">
                       Replace existing AI data
@@ -234,8 +248,7 @@ export function AIEnrichment() {
                   <Button
                     onClick={handleStart}
                     disabled={isStartingIterative}
-                    className="w-full bg-green-600 hover:bg-green-700 text-white"
-                  >
+                    className="w-full bg-success hover:bg-success-dark dark:bg-success dark:hover:bg-success-dark text-white">
                     <PlayIcon className="mr-2 h-4 w-4 text-white" />
                     Start Enhancement
                   </Button>
@@ -244,8 +257,7 @@ export function AIEnrichment() {
                     onClick={handleStop}
                     disabled={isStoppingIterative || progress?.status === 'stopping'}
                     variant="destructive"
-                    className="w-full bg-red-600 hover:bg-red-700 text-white disabled:bg-gray-400 disabled:text-gray-200"
-                  >
+                    className="w-full bg-destructive hover:bg-destructive/90 dark:bg-destructive dark:hover:bg-destructive/90 text-destructive-foreground disabled:bg-muted dark:disabled:bg-muted disabled:text-muted-foreground">
                     <StopIcon className="mr-2 h-4 w-4 text-white" />
                     {progress?.status === 'stopping' ? 'Stopping...' : 'Stop Enhancement'}
                   </Button>
@@ -261,13 +273,13 @@ export function AIEnrichment() {
                       <span className={`font-medium ${getStatusColor(progress.status)}`}>
                         Status: {progress.status.charAt(0).toUpperCase() + progress.status.slice(1)}
                       </span>
-                      <span className="text-gray-600">
+                      <span className="text-muted-foreground">
                         {progress.processed.toLocaleString()} / {progress.total.toLocaleString()}
                       </span>
                     </div>
-                    <div className="w-full bg-gray-200 rounded-full h-3">
+                    <div className="w-full bg-secondary dark:bg-secondary rounded-full h-3">
                       <div 
-                        className="bg-blue-600 h-3 rounded-full transition-all duration-500"
+                        className="bg-primary dark:bg-primary h-3 rounded-full transition-all duration-500"
                         style={{ width: `${progress.percentage}%` }}
                       />
                     </div>
@@ -278,20 +290,23 @@ export function AIEnrichment() {
 
                   {/* Current Processing Info */}
                   {progress.current_prospect && progress.status === 'processing' && (
-                    <div className="bg-blue-50 border border-blue-200 p-3 rounded-lg">
+                    <div className="bg-primary/10 dark:bg-primary/10 border border-primary/20 dark:border-primary/20 p-3 rounded-lg">
                       <div className="text-sm">
-                        <span className="font-medium text-blue-800">Currently processing: </span>
-                        <span className="text-blue-700">{progress.current_prospect.title}</span>
+                        <span className="font-medium text-primary dark:text-primary">Currently processing: </span>
+                        <span className="text-primary/80 dark:text-primary/80">{progress.current_prospect.title}</span>
                       </div>
                     </div>
                   )}
 
                   {/* Errors */}
-                  {progress?.errors && progress.errors.length > 0 && (
-                    <div className="bg-red-50 border border-red-200 p-3 rounded-lg">
-                      <div className="text-sm text-red-800">
+                  {(progress?.error_count > 0 || (progress?.errors && progress.errors.length > 0)) && (
+                    <div className="bg-destructive/10 border border-destructive/20 p-3 rounded-lg">
+                      <div className="text-sm text-destructive">
                         <span className="font-medium">Errors encountered: </span>
-                        {progress?.errors?.length || 0} prospect(s) failed
+                        {progress?.error_count || progress?.errors?.length || 0} prospect(s) failed
+                        {progress?.errors && progress.errors.length > 0 && (
+                          <span className="text-xs ml-2">(showing last {progress.errors.length})</span>
+                        )}
                       </div>
                     </div>
                   )}
@@ -300,25 +315,25 @@ export function AIEnrichment() {
 
               {/* Error Messages */}
               {progress?.error_message && (
-                <div className="text-red-600 text-sm">
+                <div className="text-destructive text-sm">
                   Error: {progress.error_message}
                 </div>
               )}
 
               {/* Success Messages */}
               {progress?.status === 'completed' && (
-                <div className="bg-green-50 border border-green-200 p-3 rounded-lg">
-                  <div className="text-green-800 font-medium">Enhancement completed successfully!</div>
-                  <div className="text-green-700 text-sm mt-1">
+                <div className="bg-success-light/10 border border-success/20 p-3 rounded-lg">
+                  <div className="text-success-dark dark:text-success font-medium">Enhancement completed successfully!</div>
+                  <div className="text-success dark:text-success text-sm mt-1">
                     Processed all {progress.processed} available records
                   </div>
                 </div>
               )}
 
               {progress?.status === 'stopped' && (
-                <div className="bg-yellow-50 border border-yellow-200 p-3 rounded-lg">
-                  <div className="text-yellow-800 font-medium">Enhancement stopped</div>
-                  <div className="text-yellow-700 text-sm mt-1">
+                <div className="bg-warning-light/10 border border-warning/20 p-3 rounded-lg">
+                  <div className="text-warning-dark dark:text-warning font-medium">Enhancement stopped</div>
+                  <div className="text-warning dark:text-warning text-sm mt-1">
                     Processed {progress.processed} records before stopping
                   </div>
                 </div>
@@ -336,14 +351,14 @@ export function AIEnrichment() {
         <CardContent>
             {isLoadingOutputs ? (
               <div className="flex items-center justify-center h-32">
-                <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-600"></div>
+                <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-primary"></div>
               </div>
             ) : llmOutputs && llmOutputs.length > 0 ? (
               <div className="space-y-3 max-h-[700px] overflow-y-auto">
                 {llmOutputs.map((output) => {
                   const isExpanded = expandedOutputs.has(output.id);
                   return (
-                    <div key={output.id} className={`border rounded-lg p-3 ${output.success ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+                    <div key={output.id} className={`border rounded-lg p-3 ${output.success ? 'bg-success-light/5 border-success/20 dark:bg-success/5 dark:border-success/20' : 'bg-destructive/5 border-destructive/20 dark:bg-destructive/5 dark:border-destructive/20'}`}>
                       {/* Header with basic info */}
                       <div className="flex justify-between items-start">
                         <div className="flex-1">
@@ -358,13 +373,13 @@ export function AIEnrichment() {
                             </Button>
                             <div className="text-sm">
                               <span className="font-medium">{output.prospect_title || 'Unknown Prospect'}</span>
-                              <span className="text-gray-500 ml-2">({output.enhancement_type})</span>
+                              <span className="text-muted-foreground ml-2">({output.enhancement_type})</span>
                             </div>
                           </div>
                           
                           {/* Quick summary of result when collapsed */}
                           {!isExpanded && output.parsed_result && (
-                            <div className="ml-6 mt-1 text-xs text-gray-600">
+                            <div className="ml-6 mt-1 text-xs text-muted-foreground">
                               {output.enhancement_type === 'naics' && 'code' in output.parsed_result && (
                                 <span>NAICS: {String(output.parsed_result.code)} - {'description' in output.parsed_result ? String(output.parsed_result.description) : ''}</span>
                               )}
@@ -382,9 +397,9 @@ export function AIEnrichment() {
                         </div>
                         <div className="flex items-center gap-2">
                           {output.processing_time && (
-                            <span className="text-xs text-gray-500">{output.processing_time.toFixed(2)}s</span>
+                            <span className="text-xs text-muted-foreground">{output.processing_time.toFixed(2)}s</span>
                           )}
-                          <span className="text-xs text-gray-500">{formatUserDate(output.timestamp, 'datetime')}</span>
+                          <span className="text-xs text-muted-foreground">{formatUserDate(output.timestamp, 'datetime')}</span>
                         </div>
                       </div>
                       
@@ -394,7 +409,7 @@ export function AIEnrichment() {
                           {/* LLM Response */}
                           <div className="text-sm">
                             <span className="font-medium">Response:</span>
-                            <pre className="mt-1 p-2 bg-white rounded border text-xs overflow-x-auto max-h-32 overflow-y-auto">
+                            <pre className="mt-1 p-2 bg-card rounded border text-xs overflow-x-auto max-h-32 overflow-y-auto">
                               {output.response}
                             </pre>
                           </div>
@@ -403,7 +418,7 @@ export function AIEnrichment() {
                           {output.parsed_result && (
                             <div className="text-sm">
                               <span className="font-medium">Parsed Result:</span>
-                              <pre className="mt-1 p-2 bg-white rounded border text-xs overflow-x-auto">
+                              <pre className="mt-1 p-2 bg-card rounded border text-xs overflow-x-auto">
                                 {JSON.stringify(output.parsed_result, null, 2)}
                               </pre>
                             </div>
@@ -411,7 +426,7 @@ export function AIEnrichment() {
                           
                           {/* Error Message */}
                           {output.error_message && (
-                            <div className="text-sm text-red-600">
+                            <div className="text-sm text-destructive">
                               <span className="font-medium">Error:</span> {output.error_message}
                             </div>
                           )}
@@ -422,7 +437,7 @@ export function AIEnrichment() {
                 })}
               </div>
             ) : (
-              <div className="text-center py-8 text-gray-500">
+              <div className="text-center py-8 text-muted-foreground">
                 No LLM outputs yet. Start an enhancement to see outputs here.
               </div>
             )}

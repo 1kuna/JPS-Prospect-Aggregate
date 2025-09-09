@@ -59,7 +59,7 @@ export function DataSourceTable({
             return (
               <TableRow key={source.id}>
                 <TableCell className="font-medium">{source.name}</TableCell>
-                <TableCell className="text-sm text-gray-600">{source.description}</TableCell>
+                <TableCell className="text-sm text-muted-foreground">{source.description}</TableCell>
                 <TableCell>
                   <span className={`font-medium ${getStatusColor(source.status)}`}>
                     {(() => {
@@ -75,7 +75,7 @@ export function DataSourceTable({
                       return statusText;
                     })()}
                     {isScraperWorking && (
-                      <span className="ml-2 inline-flex h-2 w-2 rounded-full bg-blue-400 animate-pulse"></span>
+                      <span className="ml-2 inline-flex h-2 w-2 rounded-full bg-primary animate-pulse"></span>
                     )}
                   </span>
                 </TableCell>
@@ -91,7 +91,7 @@ export function DataSourceTable({
                       isLoading={isLoading}
                       loadingText={buttonText}
                       disabled={isDisabled}
-                      className="bg-green-600 hover:bg-green-700 disabled:bg-gray-400"
+                      className="bg-success hover:bg-success-dark dark:bg-success dark:hover:bg-success-dark disabled:bg-muted"
                     >
                       {buttonText}
                     </LoadingButton>
@@ -100,7 +100,7 @@ export function DataSourceTable({
                       size="sm"
                       onClick={() => onClearData(source.id, source.name)}
                       disabled={clearDataMutation.isPending && clearDataMutation.variables === source.id}
-                      className="border-orange-500 text-orange-600 hover:bg-orange-50"
+                      className="border-warning dark:border-warning text-warning dark:text-warning hover:bg-highlight-warning dark:hover:bg-highlight-warning"
                     >
                       {clearDataMutation.isPending && clearDataMutation.variables === source.id ? 'Clearing...' : 'Clear Data'}
                     </Button>

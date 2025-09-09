@@ -45,6 +45,47 @@ export default {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        success: {
+          DEFAULT: "hsl(var(--success))",
+          light: "hsl(var(--success-light))",
+          dark: "hsl(var(--success-dark))",
+          foreground: "hsl(var(--success-foreground))",
+        },
+        warning: {
+          DEFAULT: "hsl(var(--warning))",
+          light: "hsl(var(--warning-light))",
+          dark: "hsl(var(--warning-dark))",
+          foreground: "hsl(var(--warning-foreground))",
+        },
+        info: {
+          DEFAULT: "hsl(var(--info))",
+          light: "hsl(var(--info-light))",
+          dark: "hsl(var(--info-dark))",
+          foreground: "hsl(var(--info-foreground))",
+        },
+        danger: {
+          DEFAULT: "hsl(var(--danger))",
+          light: "hsl(var(--danger-light))",
+          dark: "hsl(var(--danger-dark))",
+          foreground: "hsl(var(--danger-foreground))",
+        },
+        surface: {
+          DEFAULT: "hsl(var(--surface))",
+          elevated: "hsl(var(--surface-elevated))",
+          muted: "hsl(var(--surface-muted))",
+        },
+        neutral: {
+          DEFAULT: "hsl(var(--neutral))",
+          light: "hsl(var(--neutral-light))",
+          dark: "hsl(var(--neutral-dark))",
+        },
+        highlight: {
+          primary: "hsl(var(--highlight-primary))",
+          success: "hsl(var(--highlight-success))",
+          warning: "hsl(var(--highlight-warning))",
+          info: "hsl(var(--highlight-info))",
+          danger: "hsl(var(--highlight-danger))",
+        },
       },
       borderRadius: {
         lg: "var(--radius)",

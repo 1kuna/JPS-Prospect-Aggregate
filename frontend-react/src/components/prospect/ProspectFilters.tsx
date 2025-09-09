@@ -34,7 +34,7 @@ export function ProspectFilters({
       <Card className="shadow-lg">
         <CardHeader className="pb-4">
           <div className="flex items-center justify-between">
-            <CardTitle className="text-lg font-semibold text-black">Filters</CardTitle>
+            <CardTitle className="text-lg font-semibold">Filters</CardTitle>
             {hasActiveFilters && (
               <Button 
                 variant="outline" 
@@ -50,7 +50,7 @@ export function ProspectFilters({
         <CardContent className="space-y-4">
           {/* Keywords Filter */}
           <div className="space-y-2">
-            <Label htmlFor="keywords" className="text-sm font-medium text-gray-700">
+            <Label htmlFor="keywords" className="text-sm font-medium">
               Keywords
             </Label>
             <Input
@@ -64,7 +64,7 @@ export function ProspectFilters({
           
           {/* NAICS Code Filter */}
           <div className="space-y-2">
-            <Label htmlFor="naics" className="text-sm font-medium text-gray-700">
+            <Label htmlFor="naics" className="text-sm font-medium">
               NAICS Code
             </Label>
             <Input
@@ -78,26 +78,26 @@ export function ProspectFilters({
           
           {/* Data Source Filter */}
           <div className="space-y-2">
-            <Label className="text-sm font-medium text-gray-700">
+            <Label className="text-sm font-medium">
               Data Source
             </Label>
             <div className="max-h-48 overflow-y-auto border rounded-md p-3 space-y-2">
               {dataSources.map((source: DataSource) => (
                 <label 
                   key={source.id} 
-                  className="flex items-center space-x-2 cursor-pointer hover:bg-gray-50 p-1 rounded"
+                  className="flex items-center space-x-2 cursor-pointer hover:bg-muted/50 p-1 rounded transition-colors"
                 >
                   <input
                     type="checkbox"
                     checked={filters.dataSourceIds?.includes(source.id) || false}
                     onChange={() => onDataSourceToggle(source.id)}
-                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    className="rounded border-input text-primary focus:ring-primary"
                   />
-                  <span className="text-sm text-gray-700">{source.name}</span>
+                  <span className="text-sm">{source.name}</span>
                 </label>
               ))}
               {dataSources.length === 0 && (
-                <div className="text-sm text-gray-500 text-center py-2">
+                <div className="text-sm text-muted-foreground text-center py-2">
                   No data sources available
                 </div>
               )}
@@ -106,7 +106,7 @@ export function ProspectFilters({
           
           {/* AI Enrichment Filter */}
           <div className="space-y-2">
-            <Label htmlFor="ai-enrichment" className="text-sm font-medium text-gray-700">
+            <Label htmlFor="ai-enrichment" className="text-sm font-medium">
               AI Enrichment
             </Label>
             <Select 
@@ -125,9 +125,9 @@ export function ProspectFilters({
           </div>
           
           {/* Show AI Enhancements Toggle */}
-          <div className="space-y-2 pt-2 border-t border-gray-200">
+          <div className="space-y-2 pt-2 border-t">
             <div className="flex items-center justify-between">
-              <Label htmlFor="show-ai-table" className="text-sm font-medium text-gray-700">
+              <Label htmlFor="show-ai-table" className="text-sm font-medium">
                 Show AI Enhancements
               </Label>
               <Switch
@@ -136,33 +136,33 @@ export function ProspectFilters({
                 onCheckedChange={onShowAIEnhancedChange}
               />
             </div>
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-muted-foreground">
               {showAIEnhanced ? 'Showing AI-enhanced data in table' : 'Showing original data only'}
             </p>
           </div>
           
           {/* Filter Summary */}
           {hasActiveFilters && (
-            <div className="pt-2 border-t border-gray-200">
-              <p className="text-xs text-gray-600 mb-2">Active filters:</p>
+            <div className="pt-2 border-t">
+              <p className="text-xs text-muted-foreground mb-2">Active filters:</p>
               <div className="space-y-1">
                 {filters.keywords && (
-                  <div className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded flex justify-between items-center">
+                  <div className="text-xs bg-primary/10 text-primary px-2 py-1 rounded flex justify-between items-center">
                     <span>Keywords: {filters.keywords}</span>
                     <button 
                       onClick={() => onFilterChange('keywords', '')}
-                      className="ml-1 text-blue-500 hover:text-blue-700"
+                      className="ml-1 text-primary hover:text-primary/80 transition-colors"
                     >
                       ×
                     </button>
                   </div>
                 )}
                 {filters.naics && (
-                  <div className="text-xs bg-green-50 text-green-700 px-2 py-1 rounded flex justify-between items-center">
+                  <div className="text-xs bg-green-500/10 text-green-600 dark:bg-emerald-400/10 dark:text-emerald-300 px-2 py-1 rounded flex justify-between items-center">
                     <span>NAICS: {filters.naics}</span>
                     <button 
                       onClick={() => onFilterChange('naics', '')}
-                      className="ml-1 text-green-500 hover:text-green-700"
+                      className="ml-1 text-green-600 dark:text-emerald-300 hover:opacity-80 transition-opacity"
                     >
                       ×
                     </button>
@@ -172,11 +172,11 @@ export function ProspectFilters({
                   filters.dataSourceIds.map((sourceId: number) => {
                     const source = dataSources.find((s: DataSource) => s.id === sourceId);
                     return (
-                      <div key={sourceId} className="text-xs bg-orange-50 text-orange-700 px-2 py-1 rounded flex justify-between items-center">
+                      <div key={sourceId} className="text-xs bg-orange-500/10 text-orange-600 dark:bg-amber-400/10 dark:text-amber-300 px-2 py-1 rounded flex justify-between items-center">
                         <span>Source: {source ? source.name : sourceId}</span>
                         <button 
                           onClick={() => onDataSourceToggle(sourceId)}
-                          className="ml-1 text-orange-500 hover:text-orange-700"
+                          className="ml-1 text-orange-600 dark:text-amber-300 hover:opacity-80 transition-opacity"
                         >
                           ×
                         </button>
@@ -185,7 +185,7 @@ export function ProspectFilters({
                   })
                 )}
                 {filters.ai_enrichment && filters.ai_enrichment !== 'all' && (
-                  <div className="text-xs bg-indigo-50 text-indigo-700 px-2 py-1 rounded flex justify-between items-center">
+                  <div className="text-xs bg-indigo-500/10 text-indigo-600 dark:bg-violet-400/10 dark:text-violet-300 px-2 py-1 rounded flex justify-between items-center">
                     <span>AI: {filters.ai_enrichment === 'enhanced' ? 'Enhanced Only' : 'Original Only'}</span>
                     <button 
                       onClick={() => onFilterChange('ai_enrichment', 'all')}

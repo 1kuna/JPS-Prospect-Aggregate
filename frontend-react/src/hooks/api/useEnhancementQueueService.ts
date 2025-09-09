@@ -60,6 +60,7 @@ export interface IterativeProgress {
     error?: string;
     timestamp: string;
   }>;
+  error_count?: number;  // Total count of errors (when errors array is limited)
   error_message?: string;
 }
 
@@ -117,7 +118,7 @@ const queryKeys = {
  */
 export function useEnhancementQueueService(options?: {
   llmOutputsLimit?: number;
-  llmOutputsType?: 'all' | 'values' | 'naics' | 'titles' | 'set_asides';
+  llmOutputsType?: 'all' | 'values' | 'naics' | 'naics_code' | 'naics_description' | 'titles' | 'set_asides';
 }) {
   const queryClient = useQueryClient();
   const { llmOutputsLimit = 50, llmOutputsType = 'all' } = options || {};
@@ -247,7 +248,7 @@ export function useEnhancementQueueService(options?: {
   // Start iterative enhancement
   const startIterative = useMutation({
     mutationFn: async (params: {
-      enhancement_type: 'all' | 'values' | 'naics' | 'titles' | 'set_asides';
+      enhancement_type: 'all' | 'values' | 'naics' | 'naics_code' | 'naics_description' | 'titles' | 'set_asides';
       skip_existing?: boolean;
     }) => {
       return await post('/api/llm/iterative/start', params);

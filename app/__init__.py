@@ -185,6 +185,8 @@ def create_app():
         
         # Set the app reference in the enhancement queue for background threads
         enhancement_queue.set_app(app)
+        # Set the app reference in the LLM service for background threads
+        llm_service.set_app(app)
 
         # Database is already initialized above, so tables should exist
         # Run cleanup functions

@@ -287,8 +287,8 @@ class SimpleEnhancementQueue:
                         self._current_enhancement_type = "titles"
                     elif field in ["value", "values"]:
                         self._current_enhancement_type = "values"
-                    elif field == "naics":
-                        self._current_enhancement_type = "naics"
+                    elif field in ["naics", "naics_code", "naics_description"]:
+                        self._current_enhancement_type = field
                     elif field in ["set_aside", "set_asides"]:
                         self._current_enhancement_type = "set_asides"
 
@@ -300,8 +300,8 @@ class SimpleEnhancementQueue:
                             normalized_field = "titles"
                         elif field in ["value", "values"]:
                             normalized_field = "values"
-                        elif field == "naics":
-                            normalized_field = "naics"
+                        elif field in ["naics", "naics_code", "naics_description"]:
+                            normalized_field = field
                         elif field in ["set_aside", "set_asides"]:
                             normalized_field = "set_asides"
 
@@ -533,6 +533,10 @@ class SimpleEnhancementQueue:
                                 current_step = "Parsing contract values..."
                             elif self._current_enhancement_type == "naics":
                                 current_step = "Classifying NAICS code..."
+                            elif self._current_enhancement_type == "naics_code":
+                                current_step = "Classifying NAICS code only..."
+                            elif self._current_enhancement_type == "naics_description":
+                                current_step = "Adding NAICS descriptions..."
                             elif self._current_enhancement_type == "set_asides":
                                 current_step = "Processing set asides..."
                             else:
@@ -608,6 +612,10 @@ class SimpleEnhancementQueue:
                         current_step = "Parsing contract values..."
                     elif self._current_enhancement_type == "naics":
                         current_step = "Classifying NAICS code..."
+                    elif self._current_enhancement_type == "naics_code":
+                        current_step = "Classifying NAICS code only..."
+                    elif self._current_enhancement_type == "naics_description":
+                        current_step = "Adding NAICS descriptions..."
                     elif self._current_enhancement_type == "set_asides":
                         current_step = "Processing set asides..."
                     else:
@@ -730,6 +738,13 @@ class SimpleEnhancementQueue:
                 query = query.filter(
                     (Prospect.naics.is_(None))
                     | (Prospect.naics_source != "llm_inferred")
+                )
+            elif enhancement_type == "naics_code":
+                query = query.filter(Prospect.naics.is_(None))
+            elif enhancement_type == "naics_description":
+                query = query.filter(
+                    (Prospect.naics.isnot(None))
+                    & (Prospect.naics_description.is_(None))
                 )
             elif enhancement_type == "titles":
                 query = query.filter(Prospect.ai_enhanced_title.is_(None))

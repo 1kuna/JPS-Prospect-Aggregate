@@ -251,40 +251,40 @@ export function DatabaseManagement() {
           {status && (
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <h4 className="font-medium text-gray-900">Total Prospects</h4>
-                <p className="text-2xl font-bold text-blue-600">{status.prospect_count.toLocaleString()}</p>
-                <p className="text-xs text-gray-500">
+                <h4 className="font-medium text-foreground">Total Prospects</h4>
+                <p className="text-2xl font-bold text-primary">{status.prospect_count.toLocaleString()}</p>
+                <p className="text-xs text-muted-foreground">
                   {status.prospects_with_source.toLocaleString()} with source, {status.prospects_without_source.toLocaleString()} orphaned
                 </p>
               </div>
               <div>
-                <h4 className="font-medium text-gray-900">Prospect Types</h4>
+                <h4 className="font-medium text-foreground">Prospect Types</h4>
                 <div className="space-y-1">
                   <p className="text-sm">
-                    <span className="font-semibold text-green-600">{status.original_count.toLocaleString()}</span>
-                    <span className="text-gray-600"> original</span>
+                    <span className="font-semibold text-emerald-600">{status.original_count.toLocaleString()}</span>
+                    <span className="text-muted-foreground"> original</span>
                   </p>
                   <p className="text-sm">
-                    <span className="font-semibold text-purple-600">{status.ai_enriched_count.toLocaleString()}</span>
-                    <span className="text-gray-600"> AI enriched</span>
+                    <span className="font-semibold text-violet-600">{status.ai_enriched_count.toLocaleString()}</span>
+                    <span className="text-muted-foreground"> AI enriched</span>
                   </p>
                 </div>
               </div>
               <div>
-                <h4 className="font-medium text-gray-900">Data Sources</h4>
-                <p className="text-2xl font-bold text-green-600">{status.data_source_count}</p>
+                <h4 className="font-medium text-foreground">Data Sources</h4>
+                <p className="text-2xl font-bold text-emerald-600">{status.data_source_count}</p>
               </div>
               <div>
-                <h4 className="font-medium text-gray-900">Status Records</h4>
-                <p className="text-2xl font-bold text-purple-600">{status.status_record_count.toLocaleString()}</p>
+                <h4 className="font-medium text-foreground">Status Records</h4>
+                <p className="text-2xl font-bold text-violet-600">{status.status_record_count.toLocaleString()}</p>
               </div>
               <div>
-                <h4 className="font-medium text-gray-900">Database Size</h4>
-                <p className="text-2xl font-bold text-orange-600">{formatFileSize(status.database_size_bytes)}</p>
+                <h4 className="font-medium text-foreground">Database Size</h4>
+                <p className="text-2xl font-bold text-amber-600">{formatFileSize(status.database_size_bytes)}</p>
               </div>
               <div>
-                <h4 className="font-medium text-gray-900">Last Updated</h4>
-                <p className="text-sm text-gray-600">{formatDate(status.timestamp)}</p>
+                <h4 className="font-medium text-foreground">Last Updated</h4>
+                <p className="text-sm text-muted-foreground">{formatDate(status.timestamp)}</p>
               </div>
             </div>
           )}
@@ -304,13 +304,13 @@ export function DatabaseManagement() {
           <div className="space-y-6">
             {/* Clear AI Entries */}
             <div>
-              <h4 className="font-medium text-gray-900 mb-2">Clear AI Entries Only</h4>
-              <p className="text-sm text-gray-600 mb-3">
+              <h4 className="font-medium text-foreground mb-2">Clear AI Entries Only</h4>
+              <p className="text-sm text-muted-foreground mb-3">
                 Remove all AI-enriched prospects, enrichment logs, and LLM outputs. Original scraped data will remain.
               </p>
               <LoadingButton
                 variant="primary"
-                className="bg-purple-600 hover:bg-purple-700"
+                className="bg-violet-600 hover:bg-violet-700 dark:bg-violet-600 dark:hover:bg-violet-700 text-white"
                 isLoading={clearAIMutation.isPending}
                 loadingText="Clearing AI Entries..."
                 onClick={async () => {
@@ -337,13 +337,13 @@ export function DatabaseManagement() {
 
             {/* Clear Original Entries */}
             <div>
-              <h4 className="font-medium text-gray-900 mb-2">Clear Original Entries Only</h4>
-              <p className="text-sm text-gray-600 mb-3">
+              <h4 className="font-medium text-foreground mb-2">Clear Original Entries Only</h4>
+              <p className="text-sm text-muted-foreground mb-3">
                 Remove all non-AI-enriched (original scraped) prospects. AI-enriched data will remain.
               </p>
               <LoadingButton
                 variant="primary"
-                className="bg-orange-600 hover:bg-orange-700"
+                className="bg-amber-600 hover:bg-amber-700 dark:bg-amber-600 dark:hover:bg-amber-700 text-white"
                 isLoading={clearOriginalMutation.isPending}
                 loadingText="Clearing Original Entries..."
                 onClick={async () => {
@@ -368,8 +368,8 @@ export function DatabaseManagement() {
 
             {/* Clear All */}
             <div>
-              <h4 className="font-medium text-gray-900 mb-2">Clear All Database</h4>
-              <p className="text-sm text-gray-600 mb-3">
+              <h4 className="font-medium text-foreground mb-2">Clear All Database</h4>
+              <p className="text-sm text-muted-foreground mb-3">
                 This will permanently delete ALL prospects and scraper status records from the database. 
                 Data sources will remain but their last_scraped timestamps will be reset.
               </p>
@@ -413,8 +413,8 @@ export function DatabaseManagement() {
             <div className="space-y-6">
               {/* AI Preservation Section */}
               <div>
-                <h4 className="font-medium text-gray-900 mb-2">Preserve AI-Enhanced Data During Refreshes</h4>
-                <p className="text-sm text-gray-600 mb-4">
+                <h4 className="font-medium text-foreground mb-2">Preserve AI-Enhanced Data During Refreshes</h4>
+                <p className="text-sm text-muted-foreground mb-4">
                   {aiConfigData?.data?.description || 'Controls whether AI-enhanced fields are preserved when data sources are refreshed.'}
                 </p>
                 <div className="flex items-center space-x-4">
@@ -423,8 +423,8 @@ export function DatabaseManagement() {
                       Current Setting: 
                       <span className={`ml-2 px-2 py-1 rounded-full text-xs font-semibold ${
                         aiConfigData?.data?.preserve_ai_data_on_refresh 
-                          ? 'bg-green-100 text-green-800' 
-                          : 'bg-red-100 text-red-800'
+                          ? 'bg-emerald-100 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-400' 
+                          : 'bg-red-100 dark:bg-red-950/50 text-red-800 dark:text-red-400'
                       }`}>
                         {aiConfigData?.data?.preserve_ai_data_on_refresh ? 'ENABLED' : 'DISABLED'}
                       </span>
@@ -433,17 +433,17 @@ export function DatabaseManagement() {
                 </div>
                 <div className="flex space-x-2 mt-4">
                   <button 
-                    className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 bg-green-600 text-white shadow-xs hover:bg-green-700 h-9 px-4 py-2"
+                    className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 bg-emerald-600 text-white shadow-xs hover:bg-emerald-700 dark:bg-emerald-600 dark:hover:bg-emerald-700 h-9 px-4 py-2"
                     disabled={updateAIConfigMutation.isPending || aiConfigData?.data?.preserve_ai_data_on_refresh}
                     onClick={() => updateAIConfigMutation.mutate({ preserve_ai_data_on_refresh: true })}
                   >
                     {updateAIConfigMutation.isPending ? (
-                      <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white mr-2"></div>
+                      <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-current mr-2"></div>
                     ) : null}
                     Enable Protection
                   </button>
                   <button 
-                    className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 bg-orange-600 text-white shadow-xs hover:bg-orange-700 h-9 px-4 py-2"
+                    className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 bg-amber-600 text-white shadow-xs hover:bg-amber-700 dark:bg-amber-600 dark:hover:bg-amber-700 h-9 px-4 py-2"
                     disabled={updateAIConfigMutation.isPending || !aiConfigData?.data?.preserve_ai_data_on_refresh}
                     onClick={async () => {
                       const confirmed = await confirm({
@@ -467,7 +467,7 @@ export function DatabaseManagement() {
                     }}
                   >
                     {updateAIConfigMutation.isPending ? (
-                      <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white mr-2"></div>
+                      <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-current mr-2"></div>
                     ) : null}
                     Disable Protection
                   </button>
@@ -476,8 +476,8 @@ export function DatabaseManagement() {
 
               {/* Smart Duplicate Matching Section */}
               <div className="border-t pt-6">
-                <h4 className="font-medium text-gray-900 mb-2">Smart Duplicate Prevention</h4>
-                <p className="text-sm text-gray-600 mb-4">
+                <h4 className="font-medium text-foreground mb-2">Smart Duplicate Prevention</h4>
+                <p className="text-sm text-muted-foreground mb-4">
                   Advanced matching prevents duplicates when titles or descriptions change by using fuzzy matching on multiple fields (native_id, NAICS, location, content similarity).
                 </p>
                 <div className="flex items-center space-x-4">
@@ -486,8 +486,8 @@ export function DatabaseManagement() {
                       Current Setting: 
                       <span className={`ml-2 px-2 py-1 rounded-full text-xs font-semibold ${
                         aiConfigData?.data?.enable_smart_duplicate_matching 
-                          ? 'bg-blue-100 text-blue-800' 
-                          : 'bg-gray-100 text-gray-800'
+                          ? 'bg-primary/10 text-primary' 
+                          : 'bg-muted text-muted-foreground'
                       }`}>
                         {aiConfigData?.data?.enable_smart_duplicate_matching ? 'ENABLED' : 'DISABLED'}
                       </span>
@@ -496,17 +496,17 @@ export function DatabaseManagement() {
                 </div>
                 <div className="flex space-x-2 mt-4">
                   <button 
-                    className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 bg-blue-600 text-white shadow-xs hover:bg-blue-700 h-9 px-4 py-2"
+                    className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground shadow-xs hover:bg-primary/80 h-9 px-4 py-2"
                     disabled={updateAIConfigMutation.isPending || aiConfigData?.data?.enable_smart_duplicate_matching}
                     onClick={() => updateAIConfigMutation.mutate({ enable_smart_duplicate_matching: true })}
                   >
                     {updateAIConfigMutation.isPending ? (
-                      <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white mr-2"></div>
+                      <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-current mr-2"></div>
                     ) : null}
                     Enable Smart Matching
                   </button>
                   <button 
-                    className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 bg-gray-600 text-white shadow-xs hover:bg-gray-700 h-9 px-4 py-2"
+                    className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 bg-secondary text-secondary-foreground shadow-xs hover:bg-secondary/80 h-9 px-4 py-2"
                     disabled={updateAIConfigMutation.isPending || !aiConfigData?.data?.enable_smart_duplicate_matching}
                     onClick={async () => {
                       const confirmed = await confirm({
@@ -526,7 +526,7 @@ export function DatabaseManagement() {
                     }}
                   >
                     {updateAIConfigMutation.isPending ? (
-                      <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white mr-2"></div>
+                      <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-current mr-2"></div>
                     ) : null}
                     Disable Smart Matching
                   </button>

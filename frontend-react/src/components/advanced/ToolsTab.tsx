@@ -28,7 +28,7 @@ export function ToolsTab() {
   const renderScriptCard = (script: Script) => (
     <Card
       key={script.id}
-      className="cursor-pointer hover:shadow-lg transition-shadow"
+      className="cursor-pointer hover:shadow-lg"
       onClick={() => setSelectedScript(script)}
     >
       <CardHeader>
@@ -63,7 +63,7 @@ export function ToolsTab() {
 
   const renderCategory = (category: string, categoryScripts: Script[]) => (
     <div key={category} className="space-y-4">
-      <h3 className="text-lg font-semibold text-gray-900">{category}</h3>
+      <h3 className="text-lg font-semibold text-foreground">{category}</h3>
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {categoryScripts.map(renderScriptCard)}
       </div>
@@ -90,7 +90,7 @@ export function ToolsTab() {
       {/* Empty State */}
       {(!scripts || Object.keys(scripts).length === 0) && (
         <div className="text-center py-12">
-          <p className="text-gray-500">No scripts available</p>
+          <p className="text-muted-foreground">No scripts available</p>
         </div>
       )}
     </div>

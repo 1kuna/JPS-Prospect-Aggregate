@@ -24,28 +24,104 @@
     --input: 214.3 31.8% 91.4%;
     --ring: 221.2 83.2% 53.3%;
     --radius: 0.5rem;
+    
+    /* Semantic colors for consistent theming */
+    --success: 158 64% 52%;          /* emerald-600 */
+    --success-light: 158 76% 90%;    /* emerald-100 */
+    --success-dark: 158 84% 39%;     /* emerald-700 */
+    --success-foreground: 0 0% 100%;
+    
+    --warning: 38 92% 50%;           /* amber-600 */
+    --warning-light: 48 96% 89%;     /* amber-100 */
+    --warning-dark: 32 95% 44%;      /* amber-700 */
+    --warning-foreground: 0 0% 100%;
+    
+    --info: 258 90% 66%;             /* violet-600 */
+    --info-light: 255 92% 91%;       /* violet-100 */
+    --info-dark: 263 70% 50%;        /* violet-700 */
+    --info-foreground: 0 0% 100%;
+    
+    --danger: 347 77% 50%;           /* rose-600 */
+    --danger-light: 356 100% 95%;    /* rose-100 */
+    --danger-dark: 350 80% 42%;      /* rose-700 */
+    --danger-foreground: 0 0% 100%;
+    
+    /* Surface colors for backgrounds */
+    --surface: 0 0% 98%;             /* gray-50 */
+    --surface-elevated: 0 0% 100%;   /* white */
+    --surface-muted: 210 40% 96%;    /* gray-100 */
+    
+    /* Neutral colors for less important elements */
+    --neutral: 215 20% 65%;          /* gray-500 */
+    --neutral-light: 220 14% 96%;    /* gray-100 */
+    --neutral-dark: 215 28% 17%;     /* gray-800 */
+    
+    /* Highlight colors for badges and tags */
+    --highlight-primary: 214 100% 95%;   /* blue-50 */
+    --highlight-success: 151 81% 96%;    /* green-50 */
+    --highlight-warning: 48 100% 96%;    /* amber-50 */
+    --highlight-info: 251 91% 95%;       /* purple-50 */
+    --highlight-danger: 351 100% 96%;    /* orange-50 */
   }
  
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 84% 4.9%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 224.3 76.3% 94.1%;
+    --background: 220 15% 10%;
+    --foreground: 210 10% 90%;
+    --card: 220 14% 14%;
+    --card-foreground: 210 10% 90%;
+    --popover: 220 14% 14%;
+    --popover-foreground: 210 10% 90%;
+    --primary: 210 85% 65%;
+    --primary-foreground: 220 15% 10%;
+    --secondary: 220 12% 18%;
+    --secondary-foreground: 210 10% 90%;
+    --muted: 220 12% 20%;
+    --muted-foreground: 210 8% 65%;
+    --accent: 220 12% 22%;
+    --accent-foreground: 210 10% 90%;
+    --destructive: 0 40% 55%;
+    --destructive-foreground: 210 10% 90%;
+    --border: 220 10% 28%;
+    --input: 220 10% 28%;
+    --ring: 210 45% 70%;
+    
+    /* Semantic colors for dark mode */
+    --success: 158 64% 52%;          /* emerald-600 in dark mode */
+    --success-light: 158 84% 20%;    /* emerald-900/50 */
+    --success-dark: 158 84% 39%;     /* emerald-700 */
+    --success-foreground: 0 0% 100%;
+    
+    --warning: 38 92% 50%;           /* amber-600 in dark mode */
+    --warning-light: 32 95% 20%;     /* amber-900/50 */
+    --warning-dark: 32 95% 44%;      /* amber-700 */
+    --warning-foreground: 0 0% 100%;
+    
+    --info: 258 90% 66%;             /* violet-600 in dark mode */
+    --info-light: 263 70% 20%;       /* violet-900/50 */
+    --info-dark: 263 70% 50%;        /* violet-700 */
+    --info-foreground: 0 0% 100%;
+    
+    --danger: 347 77% 50%;           /* rose-600 in dark mode */
+    --danger-light: 350 80% 20%;     /* rose-900/50 */
+    --danger-dark: 350 80% 42%;      /* rose-700 */
+    --danger-foreground: 0 0% 100%;
+    
+    /* Surface colors for dark mode backgrounds */
+    --surface: 220 14% 14%;          /* gray-900 */
+    --surface-elevated: 220 12% 18%; /* gray-850 */
+    --surface-muted: 220 10% 12%;    /* gray-950 */
+    
+    /* Neutral colors for dark mode */
+    --neutral: 210 8% 65%;           /* gray-400 */
+    --neutral-light: 220 10% 28%;    /* gray-700 */
+    --neutral-dark: 210 10% 90%;     /* gray-100 */
+    
+    /* Highlight colors for dark mode badges/tags */
+    --highlight-primary: 214 85% 20%;    /* blue-900/30 */
+    --highlight-success: 151 64% 20%;    /* green-900/30 */
+    --highlight-warning: 32 95% 20%;     /* amber-900/30 */
+    --highlight-info: 263 70% 20%;       /* purple-900/30 */
+    --highlight-danger: 25 95% 20%;      /* orange-900/30 */
   }
 }
  
@@ -59,6 +135,22 @@
 }
 
 @layer utilities {
+  /* Synchronized theme transition */
+  .theme-transitioning * {
+    transition-property: background-color, border-color, color, fill, stroke, box-shadow;
+    transition-duration: 200ms !important;
+    transition-timing-function: ease-in-out !important;
+  }
+  
+  /* Dark mode enhancements for colored elements */
+  .dark .badge-outline {
+    @apply ring-1 ring-inset ring-gray-400/20;
+  }
+  
+  .dark .colored-badge {
+    @apply ring-1 ring-inset ring-gray-400/30;
+  }
+  
   /* Custom animation for real-time updates */
   @keyframes highlightUpdate {
     0% {

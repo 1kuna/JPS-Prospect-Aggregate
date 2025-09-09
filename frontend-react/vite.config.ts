@@ -27,7 +27,7 @@ const viteConfig = defineConfig({
     postcss: './postcss.config.js'
   },
   server: {
-    port: 3000,
+    port: 3001,
     proxy: process.env.NODE_ENV === 'development' ? {
       '/api': {
         target: 'http://localhost:5001',
