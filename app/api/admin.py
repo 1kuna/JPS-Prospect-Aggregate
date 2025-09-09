@@ -4,10 +4,15 @@ import datetime
 from datetime import timezone
 UTC = timezone.utc
 
-from flask import Blueprint, jsonify, request, session
+from flask import request, session
 from sqlalchemy import case, desc, func
 
-from app.api.auth import admin_required, super_admin_required
+from app.api.factory import (
+    api_route,
+    create_blueprint,
+    error_response,
+    success_response,
+)
 from app.database import db
 from app.database.models import GoNoGoDecision, Prospect, Settings
 from app.database.user_models import User
@@ -16,7 +21,6 @@ from app.utils.enhancement_cleanup import (
     cleanup_stuck_enhancements,
     get_enhancement_statistics,
 )
-from app.utils.logger import logger
 from app.utils.scraper_cleanup import (
     cleanup_all_working_scrapers,
     cleanup_stuck_scrapers,
@@ -29,11 +33,10 @@ from app.utils.user_utils import (
     update_user_role,
 )
 
-admin_bp = Blueprint("admin", __name__, url_prefix="/api/admin")
+admin_bp, logger = create_blueprint("admin", "/api/admin")
 
 
-@admin_bp.route("/maintenance", methods=["GET", "POST"])
-@admin_required
+@api_route(admin_bp, "/maintenance", methods=["GET", "POST"], auth="admin")
 def toggle_maintenance():
     """GET: Get current maintenance mode status
     POST: Toggle maintenance mode on/off
@@ -54,12 +57,11 @@ def toggle_maintenance():
             else:
                 is_enabled = False
 
-            return jsonify(
-                {
+            return success_response(
+                data={
                     "maintenance_mode": is_enabled,
-                    "message": "Maintenance mode is currently "
-                    + ("enabled" if is_enabled else "disabled"),
-                }
+                },
+                message=f"Maintenance mode is currently {'enabled' if is_enabled else 'disabled'}",
             )
 
         elif request.method == "POST":
@@ -68,12 +70,10 @@ def toggle_maintenance():
             enabled = data.get("enabled", None)
 
             if enabled is None:
-                return jsonify({"error": "Missing 'enabled' parameter"}), 400
+                return error_response(400, "Missing 'enabled' parameter")
 
             if not isinstance(enabled, bool):
-                return jsonify(
-                    {"error": "'enabled' parameter must be true or false"}
-                ), 400
+                return error_response(400, "'enabled' parameter must be true or false")
 
             # Get or create the maintenance_mode setting
             setting = (
@@ -94,34 +94,34 @@ def toggle_maintenance():
             status_message = "enabled" if enabled else "disabled"
             logger.info(f"Maintenance mode {status_message} via admin API")
 
-            return jsonify(
-                {
+            return success_response(
+                data={
                     "success": True,
                     "maintenance_mode": enabled,
-                    "message": f"Maintenance mode has been {status_message}",
-                }
+                },
+                message=f"Maintenance mode has been {status_message}",
             )
 
     except Exception as e:
         db.session.rollback()
         logger.error(f"Error managing maintenance mode: {str(e)}")
-        return jsonify({"error": "Internal server error"}), 500
+        return error_response(500, "Internal server error")
 
 
-@admin_bp.route("/settings", methods=["GET"])
-@admin_required
+@api_route(admin_bp, "/settings", methods=["GET"], auth="admin")
 def get_all_settings():
     """Get all system settings."""
     try:
         settings = db.session.query(Settings).all()
-        return jsonify({"settings": [setting.to_dict() for setting in settings]})
+        return success_response(
+            data={"settings": [setting.to_dict() for setting in settings]}
+        )
     except Exception as e:
         logger.error(f"Error fetching settings: {str(e)}")
-        return jsonify({"error": "Internal server error"}), 500
+        return error_response(500, "Internal server error")
 
 
-@admin_bp.route("/health", methods=["GET"])
-@admin_required
+@api_route(admin_bp, "/health", methods=["GET"], auth="admin")
 def admin_health():
     """Health check endpoint that works even in maintenance mode."""
     try:
@@ -132,8 +132,8 @@ def admin_health():
         setting = db.session.query(Settings).filter_by(key="maintenance_mode").first()
         maintenance_enabled = setting.value.lower() == "true" if setting else False
 
-        return jsonify(
-            {
+        return success_response(
+            data={
                 "status": "healthy",
                 "database": "connected",
                 "maintenance_mode": maintenance_enabled,
@@ -142,11 +142,10 @@ def admin_health():
         )
     except Exception as e:
         logger.error(f"Admin health check failed: {str(e)}")
-        return jsonify({"status": "unhealthy", "error": str(e)}), 500
+        return error_response(500, str(e), status="unhealthy")
 
 
-@admin_bp.route("/enhancement-cleanup", methods=["POST"])
-@admin_required
+@api_route(admin_bp, "/enhancement-cleanup", methods=["POST"], auth="admin")
 def cleanup_enhancements():
     """Clean up stuck enhancement requests.
 
@@ -162,7 +161,7 @@ def cleanup_enhancements():
         max_age_hours = data.get("max_age_hours", 1)
 
         if cleanup_type not in ["stuck", "all"]:
-            return jsonify({"error": "cleanup type must be 'stuck' or 'all'"}), 400
+            return error_response(400, "cleanup type must be 'stuck' or 'all'")
 
         if cleanup_type == "all":
             count = cleanup_all_in_progress_enhancements()
@@ -173,29 +172,32 @@ def cleanup_enhancements():
 
         logger.info(f"Enhancement cleanup completed: {message}")
 
-        return jsonify(
-            {"success": True, "count": count, "message": message, "type": cleanup_type}
+        return success_response(
+            data={
+                "success": True,
+                "count": count,
+                "type": cleanup_type,
+            },
+            message=message,
         )
 
     except Exception as e:
         logger.error(f"Error during enhancement cleanup: {str(e)}")
-        return jsonify({"error": f"Cleanup failed: {str(e)}"}), 500
+        return error_response(500, f"Cleanup failed: {str(e)}")
 
 
-@admin_bp.route("/enhancement-stats", methods=["GET"])
-@admin_required
+@api_route(admin_bp, "/enhancement-stats", methods=["GET"], auth="admin")
 def enhancement_statistics():
     """Get statistics about current enhancement statuses."""
     try:
         stats = get_enhancement_statistics()
-        return jsonify({"success": True, "statistics": stats})
+        return success_response(data={"success": True, "statistics": stats})
     except Exception as e:
         logger.error(f"Error getting enhancement statistics: {str(e)}")
-        return jsonify({"error": f"Failed to get statistics: {str(e)}"}), 500
+        return error_response(500, f"Failed to get statistics: {str(e)}")
 
 
-@admin_bp.route("/scraper-cleanup", methods=["POST"])
-@admin_required
+@api_route(admin_bp, "/scraper-cleanup", methods=["POST"], auth="admin")
 def cleanup_scrapers():
     """Clean up stuck scraper processes.
 
@@ -211,7 +213,7 @@ def cleanup_scrapers():
         max_age_hours = data.get("max_age_hours", 2)
 
         if cleanup_type not in ["stuck", "all"]:
-            return jsonify({"error": "cleanup type must be 'stuck' or 'all'"}), 400
+            return error_response(400, "cleanup type must be 'stuck' or 'all'")
 
         if cleanup_type == "all":
             count = cleanup_all_working_scrapers()
@@ -224,32 +226,35 @@ def cleanup_scrapers():
 
         logger.info(f"Scraper cleanup completed: {message}")
 
-        return jsonify(
-            {"success": True, "count": count, "message": message, "type": cleanup_type}
+        return success_response(
+            data={
+                "success": True,
+                "count": count,
+                "type": cleanup_type,
+            },
+            message=message,
         )
 
     except Exception as e:
         logger.error(f"Error during scraper cleanup: {str(e)}")
-        return jsonify({"error": f"Cleanup failed: {str(e)}"}), 500
+        return error_response(500, f"Cleanup failed: {str(e)}")
 
 
-@admin_bp.route("/scraper-stats", methods=["GET"])
-@admin_required
+@api_route(admin_bp, "/scraper-stats", methods=["GET"], auth="admin")
 def scraper_statistics():
     """Get statistics about current scraper statuses."""
     try:
         stats = get_scraper_statistics()
-        return jsonify({"success": True, "statistics": stats})
+        return success_response(data={"success": True, "statistics": stats})
     except Exception as e:
         logger.error(f"Error getting scraper statistics: {str(e)}")
-        return jsonify({"error": f"Failed to get statistics: {str(e)}"}), 500
+        return error_response(500, f"Failed to get statistics: {str(e)}")
 
 
 # === ADMIN-ONLY DECISION MANAGEMENT ENDPOINTS ===
 
 
-@admin_bp.route("/decisions/all", methods=["GET"])
-@admin_required
+@api_route(admin_bp, "/decisions/all", methods=["GET"], auth="admin")
 def get_all_decisions():
     """Get all decisions from all users with pagination and filtering."""
     try:
@@ -293,29 +298,25 @@ def get_all_decisions():
             )
             decision_data.append(decision_dict)
 
-        return jsonify(
-            {
-                "status": "success",
-                "data": {
-                    "decisions": decision_data,
-                    "pagination": {
-                        "page": page,
-                        "per_page": per_page,
-                        "total": total,
-                        "pages": (total + per_page - 1) // per_page,
-                    },
-                    "filters": {"decision": decision_filter, "user_id": user_id_filter},
+        return success_response(
+            data={
+                "decisions": decision_data,
+                "pagination": {
+                    "page": page,
+                    "per_page": per_page,
+                    "total": total,
+                    "pages": (total + per_page - 1) // per_page,
                 },
+                "filters": {"decision": decision_filter, "user_id": user_id_filter},
             }
         )
 
     except Exception as e:
         logger.error(f"Error getting all decisions: {str(e)}", exc_info=True)
-        return jsonify({"status": "error", "message": "Failed to get decisions"}), 500
+        return error_response(500, "Failed to get decisions")
 
 
-@admin_bp.route("/decisions/stats", methods=["GET"])
-@admin_required
+@api_route(admin_bp, "/decisions/stats", methods=["GET"], auth="admin")
 def get_admin_decision_stats():
     """Get system-wide decision statistics for admin view."""
     try:
@@ -382,33 +383,27 @@ def get_admin_decision_stats():
         # Sort by total decisions descending
         user_statistics.sort(key=lambda x: x["total_decisions"], reverse=True)
 
-        return jsonify(
-            {
-                "status": "success",
-                "data": {
-                    "overall": {
-                        "total_decisions": total_decisions,
-                        "go_decisions": total_go,
-                        "nogo_decisions": total_nogo,
-                        "recent_decisions_30d": recent_decisions,
-                        "go_percentage": round((total_go / total_decisions) * 100, 1)
-                        if total_decisions > 0
-                        else 0,
-                    },
-                    "by_user": user_statistics,
+        return success_response(
+            data={
+                "overall": {
+                    "total_decisions": total_decisions,
+                    "go_decisions": total_go,
+                    "nogo_decisions": total_nogo,
+                    "recent_decisions_30d": recent_decisions,
+                    "go_percentage": round((total_go / total_decisions) * 100, 1)
+                    if total_decisions > 0
+                    else 0,
                 },
+                "by_user": user_statistics,
             }
         )
 
     except Exception as e:
         logger.error(f"Error getting admin decision stats: {str(e)}", exc_info=True)
-        return jsonify(
-            {"status": "error", "message": "Failed to get decision statistics"}
-        ), 500
+        return error_response(500, "Failed to get decision statistics")
 
 
-@admin_bp.route("/decisions/export", methods=["GET"])
-@admin_required
+@api_route(admin_bp, "/decisions/export", methods=["GET"], auth="admin")
 def export_all_decisions():
     """Export all decisions to CSV format for admin analysis."""
     try:
@@ -534,26 +529,20 @@ def export_all_decisions():
                 }
             )
 
-        return jsonify(
-            {
-                "status": "success",
-                "data": {
-                    "decisions": csv_data,
-                    "total_count": len(csv_data),
-                    "export_timestamp": datetime.datetime.now(UTC).isoformat(),
-                },
+        return success_response(
+            data={
+                "decisions": csv_data,
+                "total_count": len(csv_data),
+                "export_timestamp": datetime.datetime.now(UTC).isoformat(),
             }
         )
 
     except Exception as e:
         logger.error(f"Error exporting decisions: {str(e)}", exc_info=True)
-        return jsonify(
-            {"status": "error", "message": "Failed to export decisions"}
-        ), 500
+        return error_response(500, "Failed to export decisions")
 
 
-@admin_bp.route("/users", methods=["GET"])
-@admin_required
+@api_route(admin_bp, "/users", methods=["GET"], auth="admin")
 def get_all_users():
     """Get all users with their decision activity."""
     try:
@@ -606,66 +595,54 @@ def get_all_users():
                 }
             user_data.append(user_dict)
 
-        return jsonify(
-            {
-                "status": "success",
-                "data": {
-                    "users": user_data,
-                    "pagination": {
-                        "page": page,
-                        "per_page": per_page,
-                        "total": total,
-                        "pages": (total + per_page - 1) // per_page,
-                    },
+        return success_response(
+            data={
+                "users": user_data,
+                "pagination": {
+                    "page": page,
+                    "per_page": per_page,
+                    "total": total,
+                    "pages": (total + per_page - 1) // per_page,
                 },
             }
         )
 
     except Exception as e:
         logger.error(f"Error getting all users: {str(e)}", exc_info=True)
-        return jsonify({"status": "error", "message": "Failed to get users"}), 500
+        return error_response(500, "Failed to get users")
 
 
-@admin_bp.route("/users/<int:user_id>/role", methods=["PUT"])
-@super_admin_required
+@api_route(admin_bp, "/users/<int:user_id>/role", methods=["PUT"], auth="super_admin")
 def update_user_role_endpoint(user_id):
     """Update a user's role (promote/demote admin)."""
     try:
         data = request.get_json()
         if not data:
-            return jsonify(
-                {"status": "error", "message": "Request body is required"}
-            ), 400
+            return error_response(400, "Request body is required")
 
         new_role = data.get("role", "").strip().lower()
         if new_role not in ["user", "admin"]:
-            return jsonify(
-                {"status": "error", "message": 'Role must be either "user" or "admin"'}
-            ), 400
+            return error_response(400, 'Role must be either "user" or "admin"')
 
         # Get the target user to check their current role
         target_user = get_user_by_id(user_id)
         if not target_user:
-            return jsonify({"status": "error", "message": "User not found"}), 404
+            return error_response(404, "User not found")
 
         # Don't allow demoting super_admin users
         if target_user.role == "super_admin":
-            return jsonify(
-                {"status": "error", "message": "Cannot modify super admin users"}
-            ), 403
+            return error_response(403, "Cannot modify super admin users")
 
         # Don't allow users to demote themselves
         current_user_id = session.get("user_id")
         if current_user_id == user_id and new_role == "user":
-            return jsonify(
-                {"status": "error", "message": "You cannot demote yourself from admin"}
-            ), 400
+            return error_response(400, "You cannot demote yourself from admin")
 
         # Update the user role
         success = update_user_role(user_id, new_role)
 
         if not success:
-            return jsonify({"status": "error", "message": "User not found"}), 404
+            return error_response(404, "User not found")
 
         # If the current user's role was updated, update their session
         if current_user_id == user_id:
@@ -676,16 +653,11 @@ def update_user_role_endpoint(user_id):
             f"User {user_id} role updated to {new_role} by admin {current_user_id}"
         )
 
-        return jsonify(
-            {
-                "status": "success",
-                "message": f"User role updated to {new_role} successfully",
-            }
+        return success_response(
+            message=f"User role updated to {new_role} successfully"
         )
 
     except Exception as e:
         logger.error(f"Error updating user role: {str(e)}", exc_info=True)
         db.session.rollback()
-        return jsonify(
-            {"status": "error", "message": "Failed to update user role"}
-        ), 500
+        return error_response(500, "Failed to update user role")

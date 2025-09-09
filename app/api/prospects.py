@@ -1,21 +1,26 @@
-from flask import Blueprint, jsonify, request
+from flask import request
 from sqlalchemy import (
     String,
     asc,
     cast,
     desc,
     or_,
-)  # Added for sorting and JSON queries
+)
 
+from app.api.factory import (
+    api_route,
+    create_blueprint,
+    error_response,
+    paginated_response,
+)
 from app.database.crud import paginate_sqlalchemy_query
-from app.database.models import Prospect  # Added db for session access in new route
-from app.exceptions import NotFoundError, ValidationError  # Added NotFoundError
-from app.utils.logger import logger
+from app.database.models import Prospect
+from app.exceptions import ValidationError
 
-prospects_bp = Blueprint("prospects_api", __name__, url_prefix="/api/prospects")
+prospects_bp, logger = create_blueprint("prospects_api", "/api/prospects")
 
 
-@prospects_bp.route("", methods=["GET"])
+@api_route(prospects_bp, "", methods=["GET"])
 def get_prospects_route():
     # Only log errors and warnings, not successful requests to reduce noise
     try:
@@ -24,7 +29,7 @@ def get_prospects_route():
 
         if page <= 0:
             logger.error(f"Invalid page number: {page}. Must be > 0.")
-            return jsonify({"error": "Page number must be positive"}), 400
+            return error_response(400, "Page number must be positive")
 
         sort_by = request.args.get("sort_by", "id", type=str)
         sort_order = request.args.get("sort_order", "desc", type=str)
@@ -120,32 +125,21 @@ def get_prospects_route():
         # Convert prospect items to dictionaries
         prospect_items_dict = [prospect.to_dict() for prospect in results["items"]]
 
-        # New JSON response structure
-        response_data = {
-            "prospects": prospect_items_dict,  # Renamed from "data"
-            "pagination": {  # Full pagination details nested
-                "page": results["page"],
-                "per_page": results["per_page"],
-                "total_items": results["total_items"],
-                "total_pages": results["total_pages"],
-                "has_next": results["has_next"],
-                "has_prev": results["has_prev"],
-            },
-        }
-
-        # Success - no logging needed for normal operations
-        return jsonify(response_data), 200
+        # Use paginated_response helper
+        return paginated_response(
+            items=prospect_items_dict,
+            page=results["page"],
+            per_page=results["per_page"],
+            total_items=results["total_items"],
+            total_pages=results["total_pages"],
+            prospects=prospect_items_dict  # Keep "prospects" key for backward compat
+        )
 
     except ValidationError as ve:
-        logger.error(f"Validation error in pagination parameters: {ve}", exc_info=True)
-        return jsonify({"error": str(ve)}), 400
-    except (
-        ValueError
-    ) as ve_param:  # For Flask's type conversion errors in request.args.get
+        raise ve  # Let api_route decorator handle it
+    except ValueError as ve_param:
         logger.error(f"ValueError in request arguments: {ve_param}", exc_info=True)
-        return jsonify(
-            {"error": "Invalid parameter type. 'page' and 'limit' must be integers."}
-        ), 400
+        return error_response(400, "Invalid parameter type. 'page' and 'limit' must be integers.")
     except Exception as e:
         logger.error(
             f"An unexpected error occurred in /api/prospects/: {e}", exc_info=True

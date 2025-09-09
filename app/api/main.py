@@ -2,28 +2,30 @@ from datetime import timezone
 UTC = timezone.utc
 from datetime import date, datetime
 
-from flask import Blueprint, jsonify
+from flask import request
 from sqlalchemy import desc, func
 
+from app.api.factory import (
+    api_route,
+    create_blueprint,
+    error_response,
+    success_response,
+)
 from app.database import db
 from app.database.models import (
     DataSource,
     Prospect,
     ScraperStatus,
-)  # Added ScraperStatus
-from app.utils.logger import logger
+)
 
-main_bp = Blueprint("main", __name__)
-
-# Set up logging using the centralized utility
-logger = logger.bind(name="api.main")
+main_bp, logger = create_blueprint("main")
 
 
-@main_bp.route("/", methods=["GET"])
+@api_route(main_bp, "/", methods=["GET"])
 def api_info():
     """API information endpoint."""
-    return jsonify(
-        {
+    return success_response(
+        data={
             "name": "JPS Prospect Aggregate API",
             "version": "1.0.0",
             "description": "API for managing government procurement prospects",
@@ -38,7 +40,7 @@ def api_info():
     )
 
 
-@main_bp.route("/health", methods=["GET"])
+@api_route(main_bp, "/health", methods=["GET"])
 def health_check():
     """API health check endpoint."""
     try:
@@ -46,8 +48,8 @@ def health_check():
         # Simple database query to check connection
         session.query(DataSource).first()
 
-        return jsonify(
-            {
+        return success_response(
+            data={
                 "status": "healthy",
                 "timestamp": datetime.now(UTC).isoformat() + "Z",
                 "database": "connected",
@@ -56,17 +58,17 @@ def health_check():
     except Exception as e:
         logger.error(f"Health check failed: {str(e)}")
         # No rollback needed for a read operation that failed
-        return jsonify(
-            {
-                "status": "unhealthy",
-                "timestamp": datetime.now(UTC).isoformat() + "Z",
-                "database": "disconnected",  # More specific status
-                "error": str(e),
-            }
-        ), 500
+        return error_response(
+            500,
+            "Health check failed",
+            status="unhealthy",
+            timestamp=datetime.now(UTC).isoformat() + "Z",
+            database="disconnected",
+            error=str(e),
+        )
 
 
-@main_bp.route("/dashboard", methods=["GET"])
+@api_route(main_bp, "/dashboard", methods=["GET"])
 def get_dashboard():
     """Get dashboard summary information."""
     session = db.session
@@ -114,50 +116,44 @@ def get_dashboard():
             .all()
         )
 
-        return jsonify(
-            {
-                "status": "success",
-                "data": {
-                    "total_proposals": total_prospects,
-                    "latest_successful_scrape": latest_successful_scrape.isoformat()
-                    + "Z"
-                    if latest_successful_scrape
-                    else None,
-                    "top_agencies": [
-                        {"agency": agency, "count": count}
-                        for agency, count in top_agencies
-                    ],
-                    "upcoming_proposals": [
-                        {
-                            "id": p.id,
-                            "title": p.title,
-                            "agency": p.agency,
-                            "proposal_date": p.release_date.isoformat() + "Z"
-                            if p.release_date
-                            else None,
-                        }
-                        for p in upcoming_prospects_data
-                    ],
-                    "recent_scraper_activity": [
-                        {
-                            "data_source_name": name,
-                            "status": status,
-                            "last_checked": last_checked.isoformat() + "Z"
-                            if last_checked
-                            else None,
-                            "details": details,
-                        }
-                        for name, status, last_checked, details in recent_scraper_activity
-                    ],
-                },
+        return success_response(
+            data={
+                "total_proposals": total_prospects,
+                "latest_successful_scrape": latest_successful_scrape.isoformat()
+                + "Z"
+                if latest_successful_scrape
+                else None,
+                "top_agencies": [
+                    {"agency": agency, "count": count}
+                    for agency, count in top_agencies
+                ],
+                "upcoming_proposals": [
+                    {
+                        "id": p.id,
+                        "title": p.title,
+                        "agency": p.agency,
+                        "proposal_date": p.release_date.isoformat() + "Z"
+                        if p.release_date
+                        else None,
+                    }
+                    for p in upcoming_prospects_data
+                ],
+                "recent_scraper_activity": [
+                    {
+                        "data_source_name": name,
+                        "status": status,
+                        "last_checked": last_checked.isoformat() + "Z"
+                        if last_checked
+                        else None,
+                        "details": details,
+                    }
+                    for name, status, last_checked, details in recent_scraper_activity
+                ],
             }
         )
     except Exception as e:
         logger.error(f"Error in get_dashboard: {str(e)}", exc_info=True)
-        # db.session.rollback() # Removed
-        return jsonify(
-            {"status": "error", "message": "An unexpected error occurred"}
-        ), 500
+        return error_response(500, "An unexpected error occurred")
 
 
 def _execute_database_clear_operation(operation_name: str, clear_function):
@@ -172,40 +168,40 @@ def _execute_database_clear_operation(operation_name: str, clear_function):
 
         logger.info(result["log_message"])
 
-        return jsonify(
-            {
-                "status": "success",
-                "message": result["response_message"],
+        return success_response(
+            data={
                 "timestamp": datetime.now(UTC).isoformat() + "Z",
-            }
+            },
+            message=result["response_message"],
         )
 
     except Exception as e:
         logger.error(f"Error in {operation_name.lower()}: {str(e)}", exc_info=True)
         db.session.rollback()
-        return jsonify(
-            {
-                "status": "error",
-                "message": f"Failed to {operation_name.lower()}: {str(e)}",
-            }
-        ), 500
+        return error_response(500, f"Failed to {operation_name.lower()}: {str(e)}")
 
 
-@main_bp.route("/database/clear", methods=["POST"])
-@main_bp.route("/database/clear/<clear_type>", methods=["POST"])
-def clear_database(clear_type="all"):
+@api_route(main_bp, "/database/clear", methods=["POST"])
+def clear_database_all():
+    """Clear all data from the database."""
+    return _clear_database_typed("all")
+
+@api_route(main_bp, "/database/clear/<clear_type>", methods=["POST"])
+def clear_database(clear_type):
     """Clear data from the database based on type.
 
     Args:
         clear_type: Type of data to clear ('all', 'ai', 'original')
     """
+    return _clear_database_typed(clear_type)
+
+def _clear_database_typed(clear_type):
+    """Internal function to handle database clearing."""
     if clear_type not in ["all", "ai", "original"]:
-        return jsonify(
-            {
-                "status": "error",
-                "message": f"Invalid clear type: {clear_type}. Must be 'all', 'ai', or 'original'",
-            }
-        ), 400
+        return error_response(
+            400,
+            f"Invalid clear type: {clear_type}. Must be 'all', 'ai', or 'original'",
+        )
 
     def _clear_all_data():
         # Delete all prospects first (due to foreign key constraints)
@@ -304,7 +300,7 @@ def clear_database(clear_type="all"):
     )
 
 
-@main_bp.route("/database/status", methods=["GET"])
+@api_route(main_bp, "/database/status", methods=["GET"])
 def database_status():
     """Get database status and statistics."""
     try:
@@ -349,62 +345,50 @@ def database_status():
             # If any error occurs, silently continue with db_size = None
             pass
 
-        return jsonify(
-            {
-                "status": "success",
-                "data": {
-                    "prospect_count": prospect_count,
-                    "prospects_with_source": prospects_with_source,
-                    "prospects_without_source": prospects_without_source,
-                    "ai_enriched_count": ai_enriched_count,
-                    "original_count": original_count,
-                    "data_source_count": data_source_count,
-                    "status_record_count": status_count,
-                    "database_size_bytes": db_size,
-                    "timestamp": datetime.now(UTC).isoformat(),
-                },
+        return success_response(
+            data={
+                "prospect_count": prospect_count,
+                "prospects_with_source": prospects_with_source,
+                "prospects_without_source": prospects_without_source,
+                "ai_enriched_count": ai_enriched_count,
+                "original_count": original_count,
+                "data_source_count": data_source_count,
+                "status_record_count": status_count,
+                "database_size_bytes": db_size,
+                "timestamp": datetime.now(UTC).isoformat(),
             }
         )
 
     except Exception as e:
         logger.error(f"Error getting database status: {str(e)}", exc_info=True)
-        return jsonify(
-            {"status": "error", "message": f"Failed to get database status: {str(e)}"}
-        ), 500
+        return error_response(500, f"Failed to get database status: {str(e)}")
 
 
-@main_bp.route("/config/ai-preservation", methods=["GET"])
+@api_route(main_bp, "/config/ai-preservation", methods=["GET"])
 def get_ai_preservation_config():
     """Get AI data preservation configuration."""
     from app.config import active_config
 
-    return jsonify(
-        {
-            "status": "success",
-            "data": {
-                "preserve_ai_data_on_refresh": active_config.PRESERVE_AI_DATA_ON_REFRESH,
-                "enable_smart_duplicate_matching": active_config.ENABLE_SMART_DUPLICATE_MATCHING,
-                "description": "When enabled, AI-enhanced fields (NAICS, contact info, parsed values) are preserved during data source refreshes",
-            },
+    return success_response(
+        data={
+            "preserve_ai_data_on_refresh": active_config.PRESERVE_AI_DATA_ON_REFRESH,
+            "enable_smart_duplicate_matching": active_config.ENABLE_SMART_DUPLICATE_MATCHING,
+            "description": "When enabled, AI-enhanced fields (NAICS, contact info, parsed values) are preserved during data source refreshes",
         }
     )
 
 
-@main_bp.route("/config/ai-preservation", methods=["POST"])
+@api_route(main_bp, "/config/ai-preservation", methods=["POST"])
 def set_ai_preservation_config():
     """Set AI data preservation configuration."""
     try:
         import os
 
-        from flask import request
-
         from app.config import active_config
 
         data = request.get_json()
         if not data:
-            return jsonify(
-                {"status": "error", "message": "Request body is required"}
-            ), 400
+            return error_response(400, "Request body is required")
 
         updated_fields = []
 
@@ -431,29 +415,21 @@ def set_ai_preservation_config():
             logger.info(f"Smart duplicate matching setting updated to: {new_value}")
 
         if not updated_fields:
-            return jsonify(
-                {
-                    "status": "error",
-                    "message": "At least one configuration field is required",
-                }
-            ), 400
+            return error_response(
+                400, "At least one configuration field is required"
+            )
 
-        return jsonify(
-            {
-                "status": "success",
-                "data": {
-                    "preserve_ai_data_on_refresh": active_config.PRESERVE_AI_DATA_ON_REFRESH,
-                    "enable_smart_duplicate_matching": active_config.ENABLE_SMART_DUPLICATE_MATCHING,
-                    "message": f'Configuration updated: {", ".join(updated_fields)}',
-                },
-            }
+        return success_response(
+            data={
+                "preserve_ai_data_on_refresh": active_config.PRESERVE_AI_DATA_ON_REFRESH,
+                "enable_smart_duplicate_matching": active_config.ENABLE_SMART_DUPLICATE_MATCHING,
+            },
+            message=f'Configuration updated: {", ".join(updated_fields)}',
         )
 
     except Exception as e:
         logger.error(f"Error updating AI preservation config: {str(e)}", exc_info=True)
-        return jsonify(
-            {"status": "error", "message": f"Failed to update configuration: {str(e)}"}
-        ), 500
+        return error_response(500, f"Failed to update configuration: {str(e)}")
 
 
 def _setup_progress_tracking():
@@ -666,13 +642,11 @@ def _process_prospects_for_duplicates(prospects_to_process, scan_id, min_confide
     return potential_duplicates
 
 
-@main_bp.route("/duplicates/detect", methods=["POST"])
+@api_route(main_bp, "/duplicates/detect", methods=["POST"])
 def detect_duplicates():
     """Detect potential duplicate prospects in the database."""
     try:
         import time
-
-        from flask import request
 
         # Parse request parameters
         data = request.get_json() or {}
@@ -719,20 +693,17 @@ def detect_duplicates():
         )
 
         # Return the scan results
-        return jsonify(
-            {
-                "status": "success",
-                "data": {
-                    "potential_duplicates": potential_duplicates,
-                    "total_found": len(potential_duplicates),
-                    "scan_parameters": {
-                        "source_id": source_id,
-                        "min_confidence": min_confidence,
-                        "limit": limit,
-                    },
-                    "scan_id": scan_id,
-                    "processing_time": processing_time,
+        return success_response(
+            data={
+                "potential_duplicates": potential_duplicates,
+                "total_found": len(potential_duplicates),
+                "scan_parameters": {
+                    "source_id": source_id,
+                    "min_confidence": min_confidence,
+                    "limit": limit,
                 },
+                "scan_id": scan_id,
+                "processing_time": processing_time,
             }
         )
 
@@ -748,23 +719,21 @@ def detect_duplicates():
             )
 
         logger.error(f"Error detecting duplicates: {str(e)}", exc_info=True)
-        return jsonify(
-            {"status": "error", "message": f"Failed to detect duplicates: {str(e)}"}
-        ), 500
+        return error_response(500, f"Failed to detect duplicates: {str(e)}")
 
 
-@main_bp.route("/duplicates/progress/<scan_id>", methods=["GET"])
+@api_route(main_bp, "/duplicates/progress/<scan_id>", methods=["GET"])
 def get_duplicate_scan_progress(scan_id):
     """Get progress of a duplicate detection scan."""
     try:
         import time
 
         if not hasattr(detect_duplicates, "progress_store"):
-            return jsonify({"status": "error", "message": "No active scans found"}), 404
+            return error_response(404, "No active scans found")
 
         progress = detect_duplicates.progress_store.get(scan_id)
         if not progress:
-            return jsonify({"status": "error", "message": "Scan not found"}), 404
+            return error_response(404, "Scan not found")
 
         # Calculate percentage
         percentage = 0
@@ -781,56 +750,44 @@ def get_duplicate_scan_progress(scan_id):
             remaining_items = progress["total"] - progress["current"]
             eta = remaining_items / rate if rate > 0 else None
 
-        return jsonify(
-            {
-                "status": "success",
-                "data": {
-                    "scan_id": scan_id,
-                    "status": progress["status"],
-                    "current": progress["current"],
-                    "total": progress["total"],
-                    "percentage": round(percentage, 1),
-                    "message": progress["message"],
-                    "elapsed_time": round(elapsed_time, 1),
-                    "eta": round(eta, 1) if eta else None,
-                },
+        return success_response(
+            data={
+                "scan_id": scan_id,
+                "status": progress["status"],
+                "current": progress["current"],
+                "total": progress["total"],
+                "percentage": round(percentage, 1),
+                "message": progress["message"],
+                "elapsed_time": round(elapsed_time, 1),
+                "eta": round(eta, 1) if eta else None,
             }
         )
 
     except Exception as e:
         logger.error(f"Error getting scan progress: {str(e)}", exc_info=True)
-        return jsonify(
-            {"status": "error", "message": f"Failed to get scan progress: {str(e)}"}
-        ), 500
+        return error_response(500, f"Failed to get scan progress: {str(e)}")
 
 
-@main_bp.route("/duplicates/merge", methods=["POST"])
+@api_route(main_bp, "/duplicates/merge", methods=["POST"])
 def merge_duplicates():
     """Merge duplicate prospects, preserving AI data from the best record."""
     try:
-        from flask import request
         from sqlalchemy.orm.attributes import flag_modified
 
         data = request.get_json()
         if not data or "keep_id" not in data or "remove_ids" not in data:
-            return jsonify(
-                {"status": "error", "message": "keep_id and remove_ids are required"}
-            ), 400
+            return error_response(400, "keep_id and remove_ids are required")
 
         keep_id = data["keep_id"]
         remove_ids = data["remove_ids"]
 
         if not isinstance(remove_ids, list) or not remove_ids:
-            return jsonify(
-                {"status": "error", "message": "remove_ids must be a non-empty list"}
-            ), 400
+            return error_response(400, "remove_ids must be a non-empty list")
 
         # Get the record to keep
         keep_record = db.session.query(Prospect).filter_by(id=keep_id).first()
         if not keep_record:
-            return jsonify(
-                {"status": "error", "message": f"Record with id {keep_id} not found"}
-            ), 404
+            return error_response(404, f"Record with id {keep_id} not found")
 
         # Get records to remove
         remove_records = (
@@ -838,9 +795,7 @@ def merge_duplicates():
         )
 
         if len(remove_records) != len(remove_ids):
-            return jsonify(
-                {"status": "error", "message": "Some records to remove were not found"}
-            ), 404
+            return error_response(404, "Some records to remove were not found")
 
         # Merge strategy: preserve AI data if any record has it
         ai_enhanced_records = [r for r in remove_records if r.ollama_processed_at]
@@ -909,27 +864,22 @@ def merge_duplicates():
 
         logger.info(f"Merged duplicates: kept {keep_id}, removed {remove_ids}")
 
-        return jsonify(
-            {
-                "status": "success",
-                "data": {
-                    "kept_id": keep_id,
-                    "removed_ids": remove_ids,
-                    "ai_data_preserved": bool(ai_enhanced_records),
-                    "message": f"Successfully merged {len(remove_ids)} duplicate(s) into record {keep_id}",
-                },
-            }
+        return success_response(
+            data={
+                "kept_id": keep_id,
+                "removed_ids": remove_ids,
+                "ai_data_preserved": bool(ai_enhanced_records),
+            },
+            message=f"Successfully merged {len(remove_ids)} duplicate(s) into record {keep_id}",
         )
 
     except Exception as e:
         logger.error(f"Error merging duplicates: {str(e)}", exc_info=True)
         db.session.rollback()
-        return jsonify(
-            {"status": "error", "message": f"Failed to merge duplicates: {str(e)}"}
-        ), 500
+        return error_response(500, f"Failed to merge duplicates: {str(e)}")
 
 
-@main_bp.route("/duplicates/sources", methods=["GET"])
+@api_route(main_bp, "/duplicates/sources", methods=["GET"])
 def get_data_sources_for_duplicates():
     """Get list of data sources for duplicate detection filtering."""
     try:
@@ -948,23 +898,15 @@ def get_data_sources_for_duplicates():
             .all()
         )
 
-        return jsonify(
-            {
-                "status": "success",
-                "data": {
-                    "sources": [
-                        {"id": source_id, "name": name, "prospect_count": count or 0}
-                        for source_id, name, count in sources_with_counts
-                    ]
-                },
+        return success_response(
+            data={
+                "sources": [
+                    {"id": source_id, "name": name, "prospect_count": count or 0}
+                    for source_id, name, count in sources_with_counts
+                ]
             }
         )
 
     except Exception as e:
         logger.error(f"Error getting data sources: {str(e)}", exc_info=True)
-        return jsonify(
-            {"status": "error", "message": f"Failed to get data sources: {str(e)}"}
-        ), 500
-
-
-# Add main/general routes here
+        return error_response(500, f"Failed to get data sources: {str(e)}")
