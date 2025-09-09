@@ -138,58 +138,6 @@ class DOJForecastScraper(ConsolidatedScraperBase):
 
         return df
 
-    def _doj_create_extras(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Create extras JSON with DOJ-specific fields that aren't in core schema.
-        Captures 21 additional data points for comprehensive data retention.
-        """
-        try:
-            # Define DOJ-specific extras fields mapping (using original CSV column names)
-            extras_fields = {
-                "Fiscal Year": "fiscal_year",
-                "OBD": "organizational_business_division",
-                "Contracting Office": "contracting_office",
-                "DOJ Small Business POC - Name": "small_business_poc_name",
-                "DOJ Small Business POC - Email Address": "small_business_poc_email",
-                "DOJ Requirement POC - Name": "requirement_poc_name",
-                "DOJ Requirement POC - Email Address": "requirement_poc_email",
-                "Category": "category",
-                "Subcategory": "subcategory",
-                "Award Type": "award_type",
-                "Product Service Code": "product_service_code",
-                "Competition Approach": "competition_approach",
-                "Contracting Solution": "contracting_solution",
-                "Contract Availability": "contract_availability",
-                "Length of Contract": "length_of_contract",
-                "Request for Information (RFI) Planned": "rfi_planned",
-                "Acquisition History": "acquisition_history",
-                "Incumbent Contractor": "incumbent_contractor",
-                "Incumbent Contractor PIID": "incumbent_contractor_piid",
-                "Solicitation Link": "solicitation_link",
-                "Other Information": "other_information",
-            }
-
-            # Create extras JSON column
-            extras_data = []
-            for _, row in df.iterrows():
-                extras = {}
-                for df_col, extra_key in extras_fields.items():
-                    if df_col in df.columns:
-                        value = row[df_col]
-                        if pd.notna(value) and value != "":
-                            extras[extra_key] = str(value)
-                extras_data.append(extras if extras else {})
-
-            # Add the extras JSON column (as dict, not JSON string)
-            df["extras_json"] = extras_data
-
-            self.logger.debug(
-                f"Created DOJ extras JSON for {len(extras_data)} rows with {len(extras_fields)} potential fields"
-            )
-
-        except Exception as e:
-            self.logger.warning(f"Error in _doj_create_extras: {e}")
-
-        return df
 
     async def doj_setup(self) -> bool:
         """DOJ-specific setup: navigate to URL and wait for DOM to load."""
@@ -228,38 +176,10 @@ class DOJForecastScraper(ConsolidatedScraperBase):
             selector=self.config.export_button_selector
         )
 
-    def doj_process(self, file_path: str) -> int:
-        """DOJ-specific processing with Excel-specific read options."""
-        if not file_path:
-            # Try to get most recent download
-            file_path = self.get_last_downloaded_path()
-            if not file_path:
-                self.logger.error("No file available for processing")
-                return 0
-
-        self.logger.info(f"Starting DOJ processing for file: {file_path}")
-
-        # Read Excel file with specific options (header at row 12)
-        df = self.read_file_to_dataframe(file_path)
-        if df is None or df.empty:
-            self.logger.info("DataFrame is empty after reading. Nothing to process.")
-            return 0
-
-        # Apply transformations
-        df = self.transform_dataframe(df)
-        if df.empty:
-            self.logger.info(
-                "DataFrame is empty after transformations. Nothing to load."
-            )
-            return 0
-
-        # Load to database
-        return self.prepare_and_load_data(df)
-
     async def scrape(self) -> int:
         """Execute the complete DOJ scraping workflow."""
         return await self.scrape_with_structure(
             setup_method=self.doj_setup,
             extract_method=self.doj_extract,
-            process_method=self.doj_process,
+            # Uses standard_process by default
         )

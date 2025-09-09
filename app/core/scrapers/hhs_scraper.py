@@ -60,40 +60,6 @@ class HHSForecastScraper(ConsolidatedScraperBase):
 
         return df
 
-    def _hhs_create_extras(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Create extras JSON with HHS-specific fields that aren't in core schema.
-        Captures 3 additional data points for comprehensive data retention.
-        """
-        try:
-            # Define HHS-specific extras fields mapping (using original CSV column names)
-            extras_fields = {
-                "Program POC Office": "program_poc_office",
-                "Incumbent Contractor (if applicable)": "incumbent_contractor",
-                "Existing Contract number (if applicable)": "existing_contract_number",
-            }
-
-            # Create extras JSON column
-            extras_data = []
-            for _, row in df.iterrows():
-                extras = {}
-                for df_col, extra_key in extras_fields.items():
-                    if df_col in df.columns:
-                        value = row[df_col]
-                        if pd.notna(value) and value != "":
-                            extras[extra_key] = str(value)
-                extras_data.append(extras if extras else {})
-
-            # Add the extras JSON column (as dict, not JSON string)
-            df["extras_json"] = extras_data
-
-            self.logger.debug(
-                f"Created HHS extras JSON for {len(extras_data)} rows with {len(extras_fields)} potential fields"
-            )
-
-        except Exception as e:
-            self.logger.warning(f"Error in _hhs_create_extras: {e}")
-
-        return df
 
     async def hhs_setup(self) -> bool:
         """HHS-specific setup: navigate and click 'View All' button.
@@ -175,38 +141,10 @@ class HHSForecastScraper(ConsolidatedScraperBase):
             wait_after_click=self.config.default_wait_after_download_ms,
         )
 
-    def hhs_process(self, file_path: str) -> int:
-        """HHS-specific processing."""
-        if not file_path:
-            # Try to get most recent download
-            file_path = self.get_last_downloaded_path()
-            if not file_path:
-                self.logger.error("No file available for processing")
-                return 0
-
-        self.logger.info(f"Starting HHS processing for file: {file_path}")
-
-        # Read file
-        df = self.read_file_to_dataframe(file_path)
-        if df is None or df.empty:
-            self.logger.info("DataFrame is empty after reading. Nothing to process.")
-            return 0
-
-        # Apply transformations
-        df = self.transform_dataframe(df)
-        if df.empty:
-            self.logger.info(
-                "DataFrame is empty after transformations. Nothing to load."
-            )
-            return 0
-
-        # Load to database
-        return self.prepare_and_load_data(df)
-
     async def scrape(self) -> int:
         """Execute the complete HHS scraping workflow."""
         return await self.scrape_with_structure(
             setup_method=self.hhs_setup,
             extract_method=self.hhs_extract,
-            process_method=self.hhs_process,
+            # Uses standard_process by default
         )

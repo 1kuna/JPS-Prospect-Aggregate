@@ -147,48 +147,6 @@ class DOSForecastScraper(ConsolidatedScraperBase):
 
         return df
 
-    def _dos_create_extras(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Create extras JSON with DOS-specific fields that aren't in core schema.
-        Captures 11 additional data points for comprehensive data retention.
-        """
-        try:
-            # Define DOS-specific extras fields mapping (using original CSV column names)
-            extras_fields = {
-                "New Requirement?": "new_requirement",
-                "Length of Performance": "length_of_performance",
-                "Facility Security Clearance": "facility_security_clearance",
-                "Past Competition": "past_competition",
-                "Past Set-Aside": "past_set_aside",
-                "Incumbent Contractor": "incumbent_contractor",
-                "Contract Vehicle": "contract_vehicle",
-                "Program Funding Agency": "program_funding_agency",
-                "Acquisition Phase": "acquisition_phase",
-                "Extent Competed": "extent_competed",
-                "Modified": "modified",
-            }
-
-            # Create extras JSON column
-            extras_data = []
-            for _, row in df.iterrows():
-                extras = {}
-                for df_col, extra_key in extras_fields.items():
-                    if df_col in df.columns:
-                        value = row[df_col]
-                        if pd.notna(value) and value != "":
-                            extras[extra_key] = str(value)
-                extras_data.append(extras if extras else {})
-
-            # Add the extras JSON column (as dict, not JSON string)
-            df["extras_json"] = extras_data
-
-            self.logger.debug(
-                f"Created DOS extras JSON for {len(extras_data)} rows with {len(extras_fields)} potential fields"
-            )
-
-        except Exception as e:
-            self.logger.warning(f"Error in _dos_create_extras: {e}")
-
-        return df
 
     async def dos_setup(self) -> bool:
         """DOS-specific setup: minimal setup for direct download.
@@ -211,38 +169,10 @@ class DOSForecastScraper(ConsolidatedScraperBase):
         # Download directly from the configured URL
         return await self.download_file_directly(self.config.direct_download_url)
 
-    def dos_process(self, file_path: str) -> int:
-        """DOS-specific processing with Excel-specific read options."""
-        if not file_path:
-            # Try to get most recent download
-            file_path = self.get_last_downloaded_path()
-            if not file_path:
-                self.logger.error("No file available for processing")
-                return 0
-
-        self.logger.info(f"Starting DOS processing for file: {file_path}")
-
-        # Read Excel file with specific options
-        df = self.read_file_to_dataframe(file_path)
-        if df is None or df.empty:
-            self.logger.info("DataFrame is empty after reading. Nothing to process.")
-            return 0
-
-        # Apply transformations
-        df = self.transform_dataframe(df)
-        if df.empty:
-            self.logger.info(
-                "DataFrame is empty after transformations. Nothing to load."
-            )
-            return 0
-
-        # Load to database
-        return self.prepare_and_load_data(df)
-
     async def scrape(self) -> int:
         """Execute the complete DOS scraping workflow."""
         return await self.scrape_with_structure(
             setup_method=self.dos_setup,
             extract_method=self.dos_extract,
-            process_method=self.dos_process,
+            # Uses standard_process by default
         )

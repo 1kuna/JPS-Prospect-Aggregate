@@ -109,45 +109,6 @@ class TreasuryScraper(ConsolidatedScraperBase):
 
         return df
 
-    def _treasury_create_extras(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Create extras JSON with Treasury-specific fields that aren't in core schema.
-        Captures additional data points for comprehensive data retention.
-        """
-        try:
-            # Define Treasury-specific extras fields mapping (using original CSV column names)
-            extras_fields = {
-                "PSC": "product_service_code",  # Product Service Code classification
-                "Type of Requirement": "requirement_type",
-                "Specific Id": "native_id_primary",
-                "ShopCart/req": "native_id_fallback1",
-                "Contract Number": "native_id_fallback2",
-                "Place of Performance": "place_raw",
-                "Projected Award FY_Qtr": "award_qtr_raw",
-                "Project Period of Performance Start": "release_date_raw",
-            }
-
-            # Create extras JSON column
-            extras_data = []
-            for _, row in df.iterrows():
-                extras = {}
-                for df_col, extra_key in extras_fields.items():
-                    if df_col in df.columns:
-                        value = row[df_col]
-                        if pd.notna(value) and value != "":
-                            extras[extra_key] = str(value)
-                extras_data.append(extras if extras else {})
-
-            # Add the extras JSON column (as dict, not JSON string)
-            df["extras_json"] = extras_data
-
-            self.logger.debug(
-                f"Created Treasury extras JSON for {len(extras_data)} rows with {len(extras_fields)} potential fields"
-            )
-
-        except Exception as e:
-            self.logger.warning(f"Error in _treasury_create_extras: {e}")
-
-        return df
 
     def _is_html_content(self, file_path: str) -> bool:
         """Check if file contains HTML content even with .xls extension."""
@@ -162,6 +123,11 @@ class TreasuryScraper(ConsolidatedScraperBase):
         """Treasury-specific file reading that handles HTML content in .xls files."""
         if not file_path or not os.path.exists(file_path):
             self.logger.error(f"File does not exist: {file_path}")
+            return None
+
+        # Verify we have an XLS file (moved from treasury_process)
+        if not file_path.lower().endswith((".xls", ".xlsx")):
+            self.logger.error(f"Expected XLS file, got: {file_path}")
             return None
 
         self.logger.info(f"Reading Treasury file: {file_path}")
@@ -271,53 +237,10 @@ class TreasuryScraper(ConsolidatedScraperBase):
             timeout=60000,
         )
 
-    def treasury_process(self, file_path: str) -> int:
-        """Treasury-specific processing for XLS files only."""
-        if not file_path:
-            # Try to get most recent download
-            file_path = self.get_last_downloaded_path()
-            if not file_path:
-                self.logger.error("No XLS file available for processing")
-                return 0
-
-        # Verify we have an XLS file
-        if not file_path.lower().endswith((".xls", ".xlsx")):
-            self.logger.error(f"Expected XLS file, got: {file_path}")
-            return 0
-
-        self.logger.info(f"Starting Treasury processing for XLS file: {file_path}")
-
-        # Read XLS file
-        df = self.read_file_to_dataframe(file_path)
-        if df is None or df.empty:
-            self.logger.info(
-                "DataFrame is empty after reading XLS. Nothing to process."
-            )
-            return 0
-
-        # Initial cleanup
-        df = df.dropna(how="all")
-        if df.empty:
-            self.logger.info(
-                "DataFrame is empty after initial dropna. Nothing to process."
-            )
-            return 0
-
-        # Apply transformations
-        df = self.transform_dataframe(df)
-        if df.empty:
-            self.logger.info(
-                "DataFrame is empty after transformations. Nothing to load."
-            )
-            return 0
-
-        # Load to database
-        return self.prepare_and_load_data(df)
-
     async def scrape(self) -> int:
         """Execute the complete Treasury scraping workflow."""
         return await self.scrape_with_structure(
             setup_method=self.treasury_setup,
             extract_method=self.treasury_extract,
-            process_method=self.treasury_process,
+            # Uses standard_process by default
         )

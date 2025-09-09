@@ -146,6 +146,7 @@ class ScraperConfig:
     fields_for_id_hash: list[str] = field(default_factory=list)
     required_fields_for_load: list[str] | None = None
     dropna_how_all: bool = True
+    extras_fields_map: dict[str, str] | None = None  # Maps source columns to extras keys
 
     # Special retry configuration (for DOT-style scrapers)
     # Some agencies (like DOT) have multiple download endpoints that may fail intermittently.
@@ -1737,6 +1738,10 @@ class ConsolidatedScraperBase:
                 self.logger.warning(
                     f"Custom transformation function {func_name} not found"
                 )
+        
+        # 2a. Apply extras mapping from config (replaces per-scraper _create_extras methods)
+        if self.config.extras_fields_map:
+            df = self._apply_extras_mapping(df)
 
         # 3. Apply raw column renaming
         if self.config.raw_column_rename_map:
@@ -2174,6 +2179,66 @@ class ConsolidatedScraperBase:
             self.logger.error(f"Error generating ID hash: {e}")
             df["id"] = df.index.astype(str)  # Fallback
 
+        return df
+
+    def _apply_extras_mapping(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Apply configured extras field mapping to create extras_json column.
+        This replaces per-scraper _create_extras methods with a generic implementation.
+        """
+        if not self.config.extras_fields_map:
+            return df
+            
+        try:
+            self.logger.debug(f"Applying extras mapping with {len(self.config.extras_fields_map)} fields")
+            
+            # Vectorized approach for better performance
+            def create_extras_row(row):
+                extras = {}
+                for source_col, extras_key in self.config.extras_fields_map.items():
+                    if source_col in df.columns:
+                        value = row.get(source_col)
+                        # Only include non-null, non-empty values
+                        if pd.notna(value) and value != "":
+                            extras[extras_key] = str(value)
+                return extras if extras else None
+            
+            # Apply the mapping to create extras_json
+            new_extras = df.apply(create_extras_row, axis=1)
+            
+            # Merge with existing extras_json if present
+            if "extras_json" in df.columns:
+                self.logger.debug("Merging with existing extras_json")
+                
+                def merge_extras(row):
+                    existing = row.get("extras_json")
+                    new = new_extras.loc[row.name] if row.name in new_extras.index else None
+                    
+                    # Handle existing extras that might be a JSON string
+                    if isinstance(existing, str):
+                        try:
+                            existing = json.loads(existing) if existing and existing != "{}" else {}
+                        except (json.JSONDecodeError, TypeError):
+                            existing = {}
+                    elif not isinstance(existing, dict):
+                        existing = {}
+                    
+                    # Merge new with existing
+                    if new:
+                        merged = {**existing, **new}
+                        return merged if merged else None
+                    return existing if existing else None
+                
+                df["extras_json"] = df.apply(merge_extras, axis=1)
+            else:
+                df["extras_json"] = new_extras
+            
+            # Log statistics
+            non_empty_extras = df["extras_json"].notna().sum() if "extras_json" in df.columns else 0
+            self.logger.debug(f"Applied extras mapping: {non_empty_extras}/{len(df)} rows have extras data")
+            
+        except Exception as e:
+            self.logger.warning(f"Error in _apply_extras_mapping: {e}")
+            
         return df
 
     def _collect_unmapped_columns_to_extras(self, df: pd.DataFrame) -> pd.DataFrame:

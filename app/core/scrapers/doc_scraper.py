@@ -95,53 +95,6 @@ class DocScraper(ConsolidatedScraperBase):
 
         return df
 
-    def _doc_create_extras(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Create extras JSON with DOC-specific fields that aren't in core schema.
-        Captures 15 additional data points for comprehensive data retention.
-        """
-        try:
-            # Define DOC-specific extras fields mapping (using original CSV column names)
-            extras_fields = {
-                "Workspace Number": "workspace_number",
-                "Date Created": "date_created",
-                "Office": "office",
-                "Organization Unit": "organization_unit",
-                "Months": "months",
-                "Years": "years",
-                "Anticipated Set Aside And Type": "anticipated_set_aside_and_type",  # Now storing competition info
-                "Competition Strategy": "competition_strategy",  # Original competition strategy
-                "New Requirement Or Recompete": "new_requirement_or_recompete",
-                "Incumbent Contractor Name": "incumbent_contractor_name",
-                "Awarded Contract Order Number": "awarded_contract_order_number",
-                "Point Of Contact Name": "point_of_contact_name",
-                "Point Of Contact Email": "point_of_contact_email",
-                "Does This Acquisition Contain Information Technology": "contains_information_technology",
-                "Date Created or Modified": "date_created_or_modified",
-                "Awarded?": "awarded",
-            }
-
-            # Create extras JSON column
-            extras_data = []
-            for _, row in df.iterrows():
-                extras = {}
-                for df_col, extra_key in extras_fields.items():
-                    if df_col in df.columns:
-                        value = row[df_col]
-                        if pd.notna(value) and value != "":
-                            extras[extra_key] = str(value)
-                extras_data.append(extras if extras else {})
-
-            # Add the extras JSON column (as dict, not JSON string)
-            df["extras_json"] = extras_data
-
-            self.logger.debug(
-                f"Created DOC extras JSON for {len(extras_data)} rows with {len(extras_fields)} potential fields"
-            )
-
-        except Exception as e:
-            self.logger.warning(f"Error in _doc_create_extras: {e}")
-
-        return df
 
     async def doc_setup(self) -> bool:
         """DOC-specific setup: simple navigation to base URL."""
@@ -203,38 +156,10 @@ class DocScraper(ConsolidatedScraperBase):
             selector=link_selector, timeout=self.config.download_timeout_ms
         )
 
-    def doc_process(self, file_path: str) -> int:
-        """DOC-specific processing with Excel-specific read options."""
-        if not file_path:
-            # Try to get most recent download
-            file_path = self.get_last_downloaded_path()
-            if not file_path:
-                self.logger.error("No file available for processing")
-                return 0
-
-        self.logger.info(f"Starting DOC processing for file: {file_path}")
-
-        # Read Excel file with specific options (header at row 2)
-        df = self.read_file_to_dataframe(file_path)
-        if df is None or df.empty:
-            self.logger.info("DataFrame is empty after reading. Nothing to process.")
-            return 0
-
-        # Apply transformations
-        df = self.transform_dataframe(df)
-        if df.empty:
-            self.logger.info(
-                "DataFrame is empty after transformations. Nothing to load."
-            )
-            return 0
-
-        # Load to database
-        return self.prepare_and_load_data(df)
-
     async def scrape(self) -> int:
         """Execute the complete DOC scraping workflow."""
         return await self.scrape_with_structure(
             setup_method=self.doc_setup,
             extract_method=self.doc_extract,
-            process_method=self.doc_process,
+            # Uses standard_process by default
         )

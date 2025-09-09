@@ -52,56 +52,6 @@ class DotScraper(ConsolidatedScraperBase):
 
         return df
 
-    def _dot_create_extras(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Create extras JSON with DOT-specific fields that aren't in core schema.
-        Captures 19 additional data points for comprehensive data retention.
-        """
-        try:
-            # Define DOT-specific extras fields mapping (using original CSV column names)
-            extras_fields = {
-                "Agency": "agency_detail",
-                "FY": "fiscal_year",
-                "Procurement Category": "procurement_category",
-                "Incumbent/Contract Number": "incumbent_contract_number",
-                "Updates": "updates",
-                "Contact Name": "contact_name",
-                "Contact Email": "contact_email",
-                "Contact Phone": "contact_phone",
-                "Is this a follow-on to a current 8(a) contract?": "followon_8a_contract",
-                "Is this funded through the American Recovery and Reinvestment Act?": "arra_funded",
-                "Contract Awarded": "contract_awarded",
-                "Expected Period of Performance - Start": "performance_start_date",
-                "Expected Period of Performance - End": "performance_end_date",
-                "Personnel Clearance Requirements": "clearance_requirements",
-                "Date Modified": "date_modified",
-                "Incumbent Contractor": "incumbent_contractor",
-                "Action/Award Type": "action_award_type",
-                "Anticipated Award Date": "anticipated_award_date",
-                "Bipartisan Infrastructure Law (BIL) Opportunity": "bil_opportunity",
-            }
-
-            # Create extras JSON column
-            extras_data = []
-            for _, row in df.iterrows():
-                extras = {}
-                for df_col, extra_key in extras_fields.items():
-                    if df_col in df.columns:
-                        value = row[df_col]
-                        if pd.notna(value) and value != "":
-                            extras[extra_key] = str(value)
-                extras_data.append(extras if extras else {})
-
-            # Add the extras JSON column (as dict, not JSON string)
-            df["extras_json"] = extras_data
-
-            self.logger.debug(
-                f"Created DOT extras JSON for {len(extras_data)} rows with {len(extras_fields)} potential fields"
-            )
-
-        except Exception as e:
-            self.logger.warning(f"Error in _dot_create_extras: {e}")
-
-        return df
 
     async def dot_setup(self) -> bool:
         """DOT-specific setup with complex retry logic and Apply button click.
@@ -647,38 +597,10 @@ class DotScraper(ConsolidatedScraperBase):
             self.logger.error(f"DOT CSV download failed: {e}")
             return None
 
-    def dot_process(self, file_path: str) -> int:
-        """DOT-specific processing."""
-        if not file_path:
-            # Try to get most recent download
-            file_path = self.get_last_downloaded_path()
-            if not file_path:
-                self.logger.error("No file available for processing")
-                return 0
-
-        self.logger.info(f"Starting DOT processing for file: {file_path}")
-
-        # Read file
-        df = self.read_file_to_dataframe(file_path)
-        if df is None or df.empty:
-            self.logger.info("DataFrame is empty after reading. Nothing to process.")
-            return 0
-
-        # Apply transformations
-        df = self.transform_dataframe(df)
-        if df.empty:
-            self.logger.info(
-                "DataFrame is empty after transformations. Nothing to load."
-            )
-            return 0
-
-        # Load to database
-        return self.prepare_and_load_data(df)
-
     async def scrape(self) -> int:
         """Execute the complete DOT scraping workflow."""
         return await self.scrape_with_structure(
             setup_method=self.dot_setup,
             extract_method=self.dot_extract,
-            process_method=self.dot_process,
+            # Uses standard_process by default
         )
