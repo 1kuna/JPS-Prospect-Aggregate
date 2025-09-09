@@ -53,10 +53,7 @@ class TreasuryScraper(ConsolidatedScraperBase):
                     "No primary or fallback native ID column found. 'native_id' set to None."
                 )
 
-            # Add row_index for unique ID generation (Treasury data may have duplicates)
-            df.reset_index(drop=True, inplace=True)
-            df["row_index"] = df.index
-            self.logger.debug("Added 'row_index' to DataFrame.")
+            # Row index is now added via transform_params
 
             # Treasury data doesn't have a clear title field
             # Use "Type of Requirement" as title if available
@@ -83,26 +80,10 @@ class TreasuryScraper(ConsolidatedScraperBase):
             # Note: Treasury has no email addresses in the data
             # Bureau contact name will go to extras via _treasury_create_extras
 
-            # Parse place_raw or 'Place of Performance' to extract city and state
-            if "place_raw" in df.columns:
-                # Treasury typically has format like "Washington, DC" or just city name
-                df[["place_city", "place_state"]] = df["place_raw"].str.extract(
-                    r"^([^,]+)(?:,\s*([A-Z]{2}))?$", expand=True
-                )
-                df["place_city"] = df["place_city"].str.strip()
-                df["place_state"] = df["place_state"].str.strip()
-                df["place_country"] = "USA"  # Default for Treasury data
-                self.logger.debug("Parsed place_raw into city, state, and country.")
-            elif "Place of Performance" in df.columns:
-                df[["place_city", "place_state"]] = df[
-                    "Place of Performance"
-                ].str.extract(r"^([^,]+)(?:,\s*([A-Z]{2}))?$", expand=True)
-                df["place_city"] = df["place_city"].str.strip()
-                df["place_state"] = df["place_state"].str.strip()
-                df["place_country"] = "USA"
-                self.logger.debug(
-                    "Parsed 'Place of Performance' into city, state, and country."
-                )
+            # Place parsing and country default now handled via transform_params
+            # Handle alternate column name for place if needed
+            if "Place of Performance" in df.columns and "place_raw" not in df.columns:
+                df["place_raw"] = df["Place of Performance"]
 
         except Exception as e:
             self.logger.warning(f"Error in _custom_treasury_transforms: {e}")

@@ -26,34 +26,15 @@ class HHSForecastScraper(ConsolidatedScraperBase):
         try:
             self.logger.info("Applying custom HHS transformations...")
 
-            # Add row_index for unique ID generation (HHS data noted to have duplicates)
-            df.reset_index(drop=True, inplace=True)
-            df["row_index"] = df.index
-            self.logger.debug("Added 'row_index'.")
+            # Row index is now added via transform_params
 
             # Create native_id from title and row_index
             df["native_id"] = "HHS-" + df["row_index"].astype(str).str.zfill(5)
             self.logger.debug("Created native_id from row_index.")
 
-            # Combine POC names if they exist (using original column names before renaming)
-            first_name_col = "Program Office POC First Name"
-            last_name_col = "Program Office POC Last Name"
-            if first_name_col in df.columns and last_name_col in df.columns:
-                df["primary_contact_name"] = (
-                    df[first_name_col].fillna("") + " " + df[last_name_col].fillna("")
-                )
-                df["primary_contact_name"] = df["primary_contact_name"].str.strip()
-                # Clean up empty combinations (just spaces)
-                df["primary_contact_name"] = df["primary_contact_name"].replace(
-                    "", None
-                )
-                self.logger.debug(
-                    "Combined POC first and last names from original columns."
-                )
+            # Name combining now handled via transform_params
 
-            # Set default place_country since it's not in the CSV
-            df["place_country"] = "USA"
-            self.logger.debug("Set 'place_country' to 'USA' (default).")
+            # Default country now handled via transform_params
 
         except Exception as e:
             self.logger.warning(f"Error in _custom_hhs_transforms: {e}")

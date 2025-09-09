@@ -24,26 +24,9 @@ class DHSForecastScraper(ConsolidatedScraperBase):
         and consolidate set-aside and small business program fields.
         """
         try:
-            # Default place_country to 'USA' since DHS data doesn't include country
-            if "place_country" not in df.columns:
-                df["place_country"] = "USA"
-                self.logger.debug(
-                    "Initialized 'place_country' to 'USA' as DHS data doesn't include country."
-                )
+            # Default country now handled via transform_params
 
-            # Combine contact first and last names into primary_contact_name
-            first_name_col = "primary_contact_first_name"
-            last_name_col = "primary_contact_last_name"
-            if first_name_col in df.columns and last_name_col in df.columns:
-                df["primary_contact_name"] = (
-                    df[first_name_col].fillna("") + " " + df[last_name_col].fillna("")
-                )
-                df["primary_contact_name"] = df["primary_contact_name"].str.strip()
-                # Clean up empty combinations (just spaces)
-                df["primary_contact_name"] = df["primary_contact_name"].replace(
-                    "", None
-                )
-                self.logger.debug("Combined DHS primary contact first and last names.")
+            # Name combining now handled via transform_params
 
             # Consolidate set_aside and small_business_program fields
             if "set_aside" in df.columns and "small_business_program" in df.columns:

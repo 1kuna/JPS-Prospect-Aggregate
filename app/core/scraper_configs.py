@@ -122,6 +122,14 @@ DHS_CONFIG = ScraperConfig(
         },
     ],
     custom_transform_functions=["_custom_dhs_transforms"],
+    transform_params={
+        "combine_names": {
+            "first_col": "primary_contact_first_name",
+            "last_col": "primary_contact_last_name",
+            "out_col": "primary_contact_name"
+        },
+        "default_country": True
+    },
     extras_fields_map={
         "Contract Number": "contract_number",
         "Contractor": "contractor",
@@ -181,6 +189,15 @@ DOT_CONFIG = ScraperConfig(
         "Contact Name": "primary_contact_name",
     },
     custom_transform_functions=["_custom_dot_transforms"],
+    transform_params={
+        "parse_place": {
+            "source_col": "place_raw",
+            "city_col": "place_city",
+            "state_col": "place_state",
+            "country_col": "place_country"
+        },
+        "default_country": True
+    },
     extras_fields_map={
         "Publication Status": "publication_status",
         "Assigned To": "assigned_to",
@@ -248,6 +265,16 @@ TREASURY_CONFIG = ScraperConfig(
     custom_transform_functions=[
         "_custom_treasury_transforms",
     ],
+    transform_params={
+        "add_row_index": True,
+        "parse_place": {
+            "source_col": "place_raw",
+            "city_col": "place_city",
+            "state_col": "place_state",
+            "country_col": "place_country"
+        },
+        "default_country": True
+    },
     extras_fields_map={
         "PSC": "product_service_code",  # Product Service Code classification
         "Type of Requirement": "requirement_type",
@@ -318,6 +345,15 @@ HHS_CONFIG = ScraperConfig(
         },
     ],
     custom_transform_functions=["_custom_hhs_transforms"],
+    transform_params={
+        "add_row_index": True,
+        "combine_names": {
+            "first_col": "Program Office POC First Name",
+            "last_col": "Program Office POC Last Name",
+            "out_col": "primary_contact_name"
+        },
+        "default_country": True
+    },
     extras_fields_map={
         "Program POC Office": "program_poc_office",
         "Incumbent Contractor (if applicable)": "incumbent_contractor",
@@ -374,6 +410,15 @@ SSA_CONFIG = ScraperConfig(
         },
     ],
     custom_transform_functions=["_custom_ssa_transforms"],
+    transform_params={
+        "parse_place": {
+            "source_col": "place_raw",
+            "city_col": "place_city",
+            "state_col": "place_state",
+            "country_col": "place_country"
+        },
+        "default_country": True
+    },
     extras_fields_map={
         "REQUIREMENT TYPE": "requirement_type",
         "EST COST PER FY": "est_cost_per_fy",
@@ -420,6 +465,15 @@ DOC_CONFIG = ScraperConfig(
         "Point Of Contact Name": "primary_contact_name",
     },
     custom_transform_functions=["_custom_doc_transforms"],
+    transform_params={
+        "derive_date_from_fyq": {
+            "year_col": "Estimated Solicitation Fiscal Year",
+            "quarter_col": "Estimated Solicitation Fiscal Quarter",
+            "out_date_col": "release_date_final",
+            "out_fy_col": None
+        },
+        "default_country": {"column": "place_country_final"}
+    },
     extras_fields_map={
         "Workspace Number": "workspace_number",
         "Date Created": "date_created",
@@ -492,6 +546,16 @@ DOJ_CONFIG = ScraperConfig(
         },
     ],
     custom_transform_functions=["_custom_doj_transforms"],
+    transform_params={
+        "derive_award_date_priority": {
+            "date_col": "award_date_raw",
+            "qtr_col": "award_date_raw",
+            "fy_col": None,
+            "out_date_col": "award_date_final",
+            "out_fy_col": "award_fiscal_year_final"
+        },
+        "default_country": True
+    },
     extras_fields_map={
         "Fiscal Year": "fiscal_year",
         "OBD": "organizational_business_division",
@@ -565,6 +629,23 @@ DOS_CONFIG = ScraperConfig(
         },
     ],
     custom_transform_functions=["_custom_dos_transforms"],
+    transform_params={
+        "add_row_index": True,
+        "derive_award_date_priority": {
+            "date_col": "award_date_raw",
+            "qtr_col": "award_qtr_raw",
+            "fy_col": "award_fiscal_year_raw",
+            "out_date_col": "award_date_final",
+            "out_fy_col": "award_fiscal_year_final"
+        },
+        "parse_value_priority": {
+            "primary_col": "estimated_value_raw1",
+            "secondary_col": "estimated_value_raw2",
+            "out_value_col": "estimated_value_final",
+            "out_unit_col": "est_value_unit_final"
+        },
+        "default_country": {"column": "place_country_final"}
+    },
     extras_fields_map={
         "Organization": "organization",
         "Category": "category",

@@ -27,90 +27,11 @@ class DOSForecastScraper(ConsolidatedScraperBase):
         try:
             self.logger.info("Applying custom DOS transformations...")
 
-            # Add row_index first for unique ID generation
-            df.reset_index(drop=True, inplace=True)
-            df["row_index"] = df.index
-            self.logger.debug("Added 'row_index'.")
+            # Row index is now added via transform_params
 
-            # Date Parsing (Award Date/Year with priority)
-            df["award_date_final"] = None
-            df["award_fiscal_year_final"] = pd.NA
+            # Award date priority logic now handled via transform_params
 
-            if "award_fiscal_year_raw" in df.columns:
-                df["award_fiscal_year_final"] = pd.to_numeric(
-                    df["award_fiscal_year_raw"], errors="coerce"
-                )
-
-            if "award_date_raw" in df.columns:
-                parsed_direct_award_date = pd.to_datetime(
-                    df["award_date_raw"], errors="coerce"
-                )
-                # Fill award_date if it's still None (it is)
-                df["award_date_final"] = df["award_date_final"].fillna(
-                    parsed_direct_award_date.dt.date
-                )
-
-                # Fill fiscal year from this date if fiscal year is still NA
-                needs_fy_from_date_mask = (
-                    df["award_fiscal_year_final"].isna()
-                    & parsed_direct_award_date.notna()
-                )
-                if needs_fy_from_date_mask.any():
-                    df.loc[needs_fy_from_date_mask, "award_fiscal_year_final"] = (
-                        parsed_direct_award_date[needs_fy_from_date_mask].dt.year
-                    )
-
-            if "award_qtr_raw" in df.columns:
-                # Only parse quarter if both date and fiscal year are still missing
-                needs_qtr_parse_mask = (
-                    df["award_date_final"].isna()
-                    & df["award_fiscal_year_final"].isna()
-                    & df["award_qtr_raw"].notna()
-                )
-                if needs_qtr_parse_mask.any():
-                    parsed_qtr_info = df.loc[
-                        needs_qtr_parse_mask, "award_qtr_raw"
-                    ].apply(
-                        lambda x: fiscal_quarter_to_date(x)
-                        if pd.notna(x)
-                        else (None, None)
-                    )
-                    df.loc[needs_qtr_parse_mask, "award_date_final"] = (
-                        parsed_qtr_info.apply(lambda x: x[0].date() if x[0] else None)
-                    )
-                    df.loc[needs_qtr_parse_mask, "award_fiscal_year_final"] = (
-                        parsed_qtr_info.apply(lambda x: x[1])
-                    )
-
-            if "award_fiscal_year_final" in df.columns:  # Ensure Int64 type
-                df["award_fiscal_year_final"] = df["award_fiscal_year_final"].astype(
-                    "Int64"
-                )
-            self.logger.debug(
-                "Processed award date and fiscal year columns with priority logic."
-            )
-
-            # Estimated Value Parsing (Priority: raw1 then raw2)
-            df["estimated_value_final"] = pd.NA
-            df["est_value_unit_final"] = pd.NA
-            if (
-                "estimated_value_raw1" in df.columns
-                and df["estimated_value_raw1"].notna().any()
-            ):
-                parsed_vals = df["estimated_value_raw1"].apply(
-                    lambda x: parse_value_range(x) if pd.notna(x) else (None, None)
-                )
-                df["estimated_value_final"] = parsed_vals.apply(lambda x: x[0])
-                df["est_value_unit_final"] = parsed_vals.apply(lambda x: x[1])
-            elif (
-                "estimated_value_raw2" in df.columns
-            ):  # Fallback to raw2 if raw1 was empty/not present
-                # Assuming raw2 is numeric or simple string convertible to numeric, not a range
-                df["estimated_value_final"] = pd.to_numeric(
-                    df["estimated_value_raw2"], errors="coerce"
-                )
-                # est_value_unit_final remains NA if only raw2 is used and it's just a number
-            self.logger.debug("Processed estimated value columns with priority logic.")
+            # Value parsing with priority now handled via transform_params
 
             # Solicitation Date (Release Date)
             if "release_date_raw" in df.columns:
@@ -125,22 +46,14 @@ class DOSForecastScraper(ConsolidatedScraperBase):
             df["naics_final"] = pd.NA
             self.logger.debug("Initialized 'naics_final' to NA.")
 
-            # Initialize Place columns if missing after raw rename, default country USA
-            df["place_city_final"] = (
-                df["place_city_raw"] if "place_city_raw" in df.columns else None
-            )
-            df["place_state_final"] = (
-                df["place_state_raw"] if "place_state_raw" in df.columns else None
-            )
-            df["place_country_final"] = (
-                df["place_country_raw"] if "place_country_raw" in df.columns else "USA"
-            )
-            df.loc[df["place_country_final"].isna(), "place_country_final"] = (
-                "USA"  # Default NA to USA
-            )
-            self.logger.debug(
-                "Processed place columns, defaulting country to USA if needed."
-            )
+            # Place country default now handled via transform_params
+            # Handle place columns that need renaming from raw
+            if "place_city_raw" in df.columns:
+                df["place_city_final"] = df["place_city_raw"]
+            if "place_state_raw" in df.columns:
+                df["place_state_final"] = df["place_state_raw"]
+            if "place_country_raw" in df.columns:
+                df["place_country_final"] = df["place_country_raw"]
 
         except Exception as e:
             self.logger.warning(f"Error in _custom_dos_transforms: {e}")

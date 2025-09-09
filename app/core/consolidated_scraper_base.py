@@ -147,6 +147,7 @@ class ScraperConfig:
     required_fields_for_load: list[str] | None = None
     dropna_how_all: bool = True
     extras_fields_map: dict[str, str] | None = None  # Maps source columns to extras keys
+    transform_params: dict[str, Any] | None = None  # Parameters for common transform helpers
 
     # Special retry configuration (for DOT-style scrapers)
     # Some agencies (like DOT) have multiple download endpoints that may fail intermittently.
@@ -1723,7 +1724,52 @@ class ConsolidatedScraperBase:
                     f"Dropped {initial_rows - len(df)} completely empty rows"
                 )
 
-        # 2. Apply custom transformation functions first
+        # 2. Apply parameterized transforms from config
+        if self.config.transform_params:
+            self.logger.debug("Applying parameterized transforms")
+            
+            # Add row index
+            if self.config.transform_params.get("add_row_index"):
+                df = self._add_row_index(df)
+            
+            # Default country
+            country_params = self.config.transform_params.get("default_country")
+            if country_params:
+                if isinstance(country_params, dict):
+                    df = self._default_country(df, **country_params)
+                else:
+                    df = self._default_country(df)
+            
+            # Derive date from FY/Q
+            date_fyq_params = self.config.transform_params.get("derive_date_from_fyq")
+            if date_fyq_params:
+                df = self._derive_date_from_fyq(df, **date_fyq_params)
+            
+            # Parse place location
+            place_params = self.config.transform_params.get("parse_place")
+            if place_params:
+                df = self._parse_place_location(df, **place_params)
+            
+            # Combine name fields (can have multiple)
+            name_combines = self.config.transform_params.get("combine_names")
+            if name_combines:
+                if isinstance(name_combines, list):
+                    for name_config in name_combines:
+                        df = self._combine_name_fields(df, **name_config)
+                else:
+                    df = self._combine_name_fields(df, **name_combines)
+            
+            # Parse value with priority
+            value_params = self.config.transform_params.get("parse_value_priority")
+            if value_params:
+                df = self._parse_value_with_priority(df, **value_params)
+            
+            # Derive award date with priority
+            award_params = self.config.transform_params.get("derive_award_date_priority")
+            if award_params:
+                df = self._derive_award_date_with_priority(df, **award_params)
+        
+        # 3. Apply custom transformation functions
         for func_name in self.config.custom_transform_functions:
             if hasattr(self, func_name):
                 self.logger.debug(f"Applying custom transformation: {func_name}")
@@ -1739,45 +1785,45 @@ class ConsolidatedScraperBase:
                     f"Custom transformation function {func_name} not found"
                 )
         
-        # 2a. Apply extras mapping from config (replaces per-scraper _create_extras methods)
+        # 3a. Apply extras mapping from config (replaces per-scraper _create_extras methods)
         if self.config.extras_fields_map:
             df = self._apply_extras_mapping(df)
 
-        # 3. Apply raw column renaming
+        # 4. Apply raw column renaming
         if self.config.raw_column_rename_map:
             df = self._apply_column_renaming(df, self.config.raw_column_rename_map)
 
-        # 4. Process date columns
+        # 5. Process date columns
         if self.config.date_column_configs:
             df = self._process_date_columns(df, self.config.date_column_configs)
 
-        # 5. Process value columns
+        # 6. Process value columns
         if self.config.value_column_configs:
             df = self._process_value_columns(df, self.config.value_column_configs)
 
-        # 6. Process place columns
+        # 7. Process place columns
         if self.config.place_column_configs:
             df = self._process_place_columns(df, self.config.place_column_configs)
 
-        # 7. Process fiscal year columns
+        # 8. Process fiscal year columns
         if self.config.fiscal_year_configs:
             df = self._process_fiscal_year_columns(df, self.config.fiscal_year_configs)
 
-        # 8. Process NAICS columns to standardize formatting
+        # 9. Process NAICS columns to standardize formatting
         df = self._process_naics_columns(df)
 
-        # 9. Collect unmapped columns into extras_json before db column renaming
+        # 10. Collect unmapped columns into extras_json before db column renaming
         df = self._collect_unmapped_columns_to_extras(df)
 
-        # 10. Apply database column renaming (this will rename extras_json to extra)
+        # 11. Apply database column renaming (this will rename extras_json to extra)
         if self.config.db_column_rename_map:
             df = self._apply_column_renaming(df, self.config.db_column_rename_map)
 
-        # 11. Generate ID hash
+        # 12. Generate ID hash
         if self.config.fields_for_id_hash:
             df = self._generate_id_hash(df, self.config.fields_for_id_hash)
 
-        # 12. Clean up - keep only columns that are in the db_column_rename_map values (final columns)
+        # 13. Clean up - keep only columns that are in the db_column_rename_map values (final columns)
         # Only filter columns if db_column_rename_map is provided, otherwise keep all columns
         if self.config.db_column_rename_map:
             final_columns = list(self.config.db_column_rename_map.values())
@@ -2239,6 +2285,212 @@ class ConsolidatedScraperBase:
         except Exception as e:
             self.logger.warning(f"Error in _apply_extras_mapping: {e}")
             
+        return df
+
+    # Transform helper methods for common patterns
+    def _add_row_index(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Add row_index column for unique ID generation.
+        Used by Treasury, SSA, HHS scrapers.
+        """
+        df.reset_index(drop=True, inplace=True)
+        df["row_index"] = df.index
+        self.logger.debug("Added 'row_index' column")
+        return df
+    
+    def _default_country(self, df: pd.DataFrame, column: str = "place_country", default: str = "USA") -> pd.DataFrame:
+        """Set default country value if column doesn't exist or has NaN values.
+        Used by all scrapers to default to USA.
+        """
+        if column not in df.columns:
+            df[column] = default
+            self.logger.debug(f"Initialized '{column}' to '{default}'")
+        else:
+            df[column] = df[column].fillna(default)
+            self.logger.debug(f"Filled NaN values in '{column}' with '{default}'")
+        return df
+    
+    def _derive_date_from_fyq(
+        self, 
+        df: pd.DataFrame, 
+        year_col: str, 
+        quarter_col: str, 
+        out_date_col: str,
+        out_fy_col: str | None = None
+    ) -> pd.DataFrame:
+        """Derive date from fiscal year and quarter columns.
+        Used by DOC, DOJ, DOS scrapers.
+        """
+        from app.utils.value_and_date_parsing import fiscal_quarter_to_date
+        
+        if year_col in df.columns and quarter_col in df.columns:
+            # Format quarter column correctly for fiscal_quarter_to_date
+            df["_fyq_temp"] = (
+                df[year_col].astype(str).fillna("") + " " +
+                df[quarter_col].astype(str).apply(
+                    lambda x: f'Q{x.split(".")[0]}' if pd.notna(x) and x else ""
+                )
+            )
+            
+            parsed_info = df["_fyq_temp"].apply(
+                lambda x: fiscal_quarter_to_date(x.strip()) 
+                if pd.notna(x) and x.strip() else (None, None)
+            )
+            
+            df[out_date_col] = parsed_info.apply(
+                lambda x: x[0].date() if x[0] else None
+            )
+            
+            if out_fy_col:
+                df[out_fy_col] = parsed_info.apply(lambda x: x[1])
+                df[out_fy_col] = df[out_fy_col].astype("Int64")
+            
+            df.drop("_fyq_temp", axis=1, inplace=True, errors="ignore")
+            self.logger.debug(f"Derived '{out_date_col}' from fiscal year and quarter")
+        else:
+            df[out_date_col] = None
+            if out_fy_col:
+                df[out_fy_col] = pd.NA
+            self.logger.warning(
+                f"Could not derive '{out_date_col}'; columns '{year_col}' or '{quarter_col}' missing"
+            )
+        
+        return df
+    
+    def _parse_place_location(
+        self, 
+        df: pd.DataFrame, 
+        source_col: str,
+        city_col: str = "place_city",
+        state_col: str = "place_state", 
+        country_col: str = "place_country"
+    ) -> pd.DataFrame:
+        """Parse location string into city, state, country components.
+        Used by Treasury, SSA, DOT, DOS scrapers.
+        Pattern: "City, ST" -> city="City", state="ST", country="USA"
+        """
+        if source_col in df.columns:
+            # Extract city and state using standard pattern
+            df[[city_col, state_col]] = df[source_col].str.extract(
+                r"^([^,]+)(?:,\s*([A-Z]{2}))?$", expand=True
+            )
+            df[city_col] = df[city_col].str.strip()
+            df[state_col] = df[state_col].str.strip()
+            
+            if country_col:
+                df[country_col] = "USA"  # Default for US government data
+            
+            self.logger.debug(f"Parsed '{source_col}' into city, state, and country")
+        else:
+            self.logger.warning(f"Source column '{source_col}' not found for place parsing")
+        
+        return df
+    
+    def _combine_name_fields(
+        self,
+        df: pd.DataFrame,
+        first_col: str,
+        last_col: str,
+        out_col: str
+    ) -> pd.DataFrame:
+        """Combine first and last name fields into full name.
+        Used by HHS and DHS scrapers.
+        """
+        if first_col in df.columns and last_col in df.columns:
+            df[out_col] = (
+                df[first_col].fillna("") + " " + df[last_col].fillna("")
+            )
+            df[out_col] = df[out_col].str.strip()
+            # Clean up empty combinations
+            df[out_col] = df[out_col].replace("", None)
+            self.logger.debug(f"Combined '{first_col}' and '{last_col}' into '{out_col}'")
+        else:
+            self.logger.warning(
+                f"Could not combine names; columns '{first_col}' or '{last_col}' missing"
+            )
+        
+        return df
+    
+    def _parse_value_with_priority(
+        self,
+        df: pd.DataFrame,
+        primary_col: str,
+        secondary_col: str | None,
+        out_value_col: str,
+        out_unit_col: str
+    ) -> pd.DataFrame:
+        """Parse estimated value with priority (primary then secondary column).
+        Used by DOS scraper.
+        """
+        from app.utils.value_and_date_parsing import parse_value_range
+        
+        df[out_value_col] = pd.NA
+        df[out_unit_col] = pd.NA
+        
+        if primary_col in df.columns and df[primary_col].notna().any():
+            parsed_vals = df[primary_col].apply(
+                lambda x: parse_value_range(x) if pd.notna(x) else (None, None)
+            )
+            df[out_value_col] = parsed_vals.apply(lambda x: x[0])
+            df[out_unit_col] = parsed_vals.apply(lambda x: x[1])
+            self.logger.debug(f"Parsed values from primary column '{primary_col}'")
+        elif secondary_col and secondary_col in df.columns:
+            # Fallback to secondary column (assuming numeric)
+            df[out_value_col] = pd.to_numeric(df[secondary_col], errors="coerce")
+            self.logger.debug(f"Used secondary column '{secondary_col}' for values")
+        
+        return df
+    
+    def _derive_award_date_with_priority(
+        self,
+        df: pd.DataFrame,
+        date_col: str,
+        qtr_col: str | None,
+        fy_col: str | None,
+        out_date_col: str,
+        out_fy_col: str
+    ) -> pd.DataFrame:
+        """Derive award date with priority: direct date → quarter → fiscal year.
+        Used by DOJ and DOS scrapers.
+        """
+        from app.utils.value_and_date_parsing import fiscal_quarter_to_date
+        
+        df[out_date_col] = None
+        df[out_fy_col] = pd.NA
+        
+        # First try fiscal year column if provided
+        if fy_col and fy_col in df.columns:
+            df[out_fy_col] = pd.to_numeric(df[fy_col], errors="coerce")
+        
+        # Try direct date parsing
+        if date_col in df.columns:
+            parsed_date = pd.to_datetime(df[date_col], errors="coerce")
+            df[out_date_col] = df[out_date_col].fillna(parsed_date.dt.date)
+            
+            # Fill fiscal year from date if still NA
+            needs_fy_mask = df[out_fy_col].isna() & parsed_date.notna()
+            if needs_fy_mask.any():
+                df.loc[needs_fy_mask, out_fy_col] = parsed_date[needs_fy_mask].dt.year
+        
+        # Try quarter parsing for remaining nulls
+        if qtr_col and qtr_col in df.columns:
+            needs_qtr_mask = (
+                df[out_date_col].isna() & 
+                df[out_fy_col].isna() & 
+                df[qtr_col].notna()
+            )
+            if needs_qtr_mask.any():
+                parsed_qtr = df.loc[needs_qtr_mask, qtr_col].apply(
+                    lambda x: fiscal_quarter_to_date(x) if pd.notna(x) else (None, None)
+                )
+                df.loc[needs_qtr_mask, out_date_col] = parsed_qtr.apply(
+                    lambda x: x[0].date() if x[0] else None
+                )
+                df.loc[needs_qtr_mask, out_fy_col] = parsed_qtr.apply(lambda x: x[1])
+        
+        # Ensure Int64 type for fiscal year
+        df[out_fy_col] = df[out_fy_col].astype("Int64")
+        
+        self.logger.debug(f"Processed award date and fiscal year with priority logic")
         return df
 
     def _collect_unmapped_columns_to_extras(self, df: pd.DataFrame) -> pd.DataFrame:

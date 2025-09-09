@@ -27,42 +27,7 @@ class DocScraper(ConsolidatedScraperBase):
         try:
             self.logger.info("Applying custom DOC transformations...")
 
-            # Derive Solicitation Date (release_date_final) from FY/Quarter
-            # Use original Excel column names (before renaming)
-            if (
-                "Estimated Solicitation Fiscal Year" in df.columns
-                and "Estimated Solicitation Fiscal Quarter" in df.columns
-            ):
-                # Format quarter column correctly for fiscal_quarter_to_date
-                df["solicitation_qtr_fmt"] = (
-                    df["Estimated Solicitation Fiscal Quarter"]
-                    .astype(str)
-                    .apply(
-                        lambda x: f'Q{x.split(".")[0]}' if pd.notna(x) and x else None
-                    )
-                )
-                df["solicitation_fyq_combined"] = (
-                    df["Estimated Solicitation Fiscal Year"].astype(str).fillna("")
-                    + " "
-                    + df["solicitation_qtr_fmt"].fillna("")
-                )
-
-                parsed_sol_date_info = df["solicitation_fyq_combined"].apply(
-                    lambda x: fiscal_quarter_to_date(x.strip())
-                    if pd.notna(x) and x.strip()
-                    else (None, None)
-                )
-                df["release_date_final"] = parsed_sol_date_info.apply(
-                    lambda x: x[0].date() if x[0] else None
-                )
-                self.logger.debug(
-                    "Derived 'release_date_final' from fiscal year and quarter."
-                )
-            else:
-                df["release_date_final"] = None
-                self.logger.warning(
-                    "Could not derive 'release_date_final'; 'Estimated Solicitation Fiscal Year' or 'Estimated Solicitation Fiscal Quarter' missing."
-                )
+            # Date derivation from FY/Q now handled via transform_params
 
             # Initialize award dates as None (DOC source doesn't provide them)
             df["award_date_final"] = None
@@ -73,17 +38,7 @@ class DocScraper(ConsolidatedScraperBase):
                 "Initialized 'award_date_final' and 'award_fiscal_year_final' to None/NA."
             )
 
-            # Default place_country_final to 'USA' if not present or NaN
-            # Use original Excel column name (before renaming)
-            if "Place Of Performance Country" in df.columns:
-                df["place_country_final"] = df["Place Of Performance Country"].fillna(
-                    "USA"
-                )
-            else:
-                df["place_country_final"] = "USA"
-            self.logger.debug(
-                "Processed 'place_country_final', defaulting to USA if needed."
-            )
+            # Default country now handled via transform_params
 
             # Ensure agency is present (DOC sometimes treats Organization as agency)
             if "agency" not in df.columns and "Organization" in df.columns:
