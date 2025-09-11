@@ -10,8 +10,6 @@ Following production-level testing principles:
 """
 
 import json
-import random
-import string
 from datetime import timezone
 UTC = timezone.utc
 from datetime import datetime, timedelta
@@ -22,6 +20,13 @@ from app import create_app
 from app.database import db
 from app.database.models import DataSource, GoNoGoDecision, Prospect
 from app.database.user_models import User
+from tests.factories import (
+    ProspectFactory,
+    DataSourceFactory,
+    UserFactory,
+    DecisionFactory,
+    reset_counters,
+)
 
 
 class TestDecisionsAPI:
@@ -52,75 +57,72 @@ class TestDecisionsAPI:
 
     @pytest.fixture(autouse=True)
     def setup_database(self, app, client):
-        """Set up test database with dynamically generated data."""
+        """Set up test database with deterministic data."""
         with app.app_context():
             db.create_all()
+            reset_counters()  # Reset for each test class
 
-            # Create data sources with realistic attributes
-            num_sources = random.randint(1, 3)
+            # Create data sources deterministically
+            num_sources = 3
             data_sources = []
-
             for i in range(num_sources):
-                source = DataSource(
-                    name=f'Agency {random.choice(["Alpha", "Beta", "Gamma"])} {i}',
-                    url=f"https://agency{i}.gov",
-                    last_scraped=datetime.now(UTC)
-                    - timedelta(days=random.randint(0, 7)),
-                )
+                source_data = DataSourceFactory.create()
+                source = DataSource(**source_data)
                 db.session.add(source)
                 data_sources.append(source)
 
             db.session.flush()
 
-            # Create test users with various roles
-            num_users = random.randint(3, 6)
+            # Create test users deterministically
+            num_users = 5
             test_users = []
-            roles = ["user", "admin", "user", "user", "admin", "user"]
-
             for i in range(num_users):
+                user_data = UserFactory.create()
                 user = User(
-                    first_name=f"User {random.choice(string.ascii_uppercase)}{i}",
-                    email=f"user{i}@test{random.randint(1,100)}.com",
-                    role=roles[i % len(roles)],
+                    first_name=user_data["first_name"],
+                    email=user_data["email"],
+                    role=user_data["role"],
                 )
+                user.id = user_data["id"]  # Set deterministic ID
                 db.session.add(user)
                 test_users.append(user)
 
             db.session.flush()
 
-            # Create prospects with varying attributes
-            num_prospects = random.randint(5, 10)
+            # Create prospects deterministically
+            num_prospects = 8
             test_prospects = []
-
             for i in range(num_prospects):
+                prospect_data = ProspectFactory.create()
+                # Use actual source IDs
+                prospect_data["source_id"] = data_sources[i % len(data_sources)].id
+                prospect_data["agency"] = data_sources[i % len(data_sources)].name
+                
                 prospect = Prospect(
-                    id=f"PROSPECT-{random.randint(1000, 9999)}-{i}",
-                    title=f'{random.choice(["Software", "Hardware", "Consulting", "Research"])} Contract {i}',
-                    description=f"Description for contract {i} with various requirements",
-                    agency=random.choice(data_sources).name,
-                    naics=random.choice(["541511", "541512", "541519", "517311", None]),
-                    estimated_value_text=f"${random.randint(10, 500) * 1000:,}"
-                    if random.random() > 0.3
-                    else "TBD",
-                    source_id=random.choice(data_sources).id,
-                    loaded_at=datetime.now(UTC)
-                    - timedelta(hours=random.randint(0, 72)),
+                    id=prospect_data["id"],
+                    title=prospect_data["title"],
+                    description=prospect_data["description"],
+                    agency=prospect_data["agency"],
+                    naics=prospect_data["naics"],
+                    estimated_value_text=prospect_data["estimated_value_text"],
+                    source_id=prospect_data["source_id"],
+                    loaded_at=prospect_data["loaded_at"],
                 )
                 db.session.add(prospect)
                 test_prospects.append(prospect)
 
             db.session.flush()
 
-            # Create some existing decisions randomly
-            num_decisions = random.randint(0, min(num_prospects, num_users))
+            # Create some existing decisions deterministically
+            num_decisions = 3  # Fixed number
             existing_decisions = []
-
             for i in range(num_decisions):
+                decision_data = DecisionFactory.create()
                 decision = GoNoGoDecision(
                     prospect_id=test_prospects[i].id,
-                    user_id=random.choice(test_users).id,
-                    decision=random.choice(["go", "no-go"]),
-                    reason=f'Reason {i}: {random.choice(["Good fit", "Not aligned", "High competition", "Strategic opportunity"])}',
+                    user_id=test_users[i % len(test_users)].id,
+                    decision=decision_data["decision"],
+                    reason=decision_data["reason"],
                 )
                 db.session.add(decision)
                 existing_decisions.append(decision)
@@ -141,10 +143,10 @@ class TestDecisionsAPI:
 
     def test_create_decision_behavior(self, client):
         """Test that decision creation behaves correctly."""
-        # Select a prospect that may or may not have a decision
-        prospect = random.choice(self.test_prospects)
-        decision_type = random.choice(["go", "no-go"])
-        reason_text = f"Test reason {random.randint(1, 100)}"
+        # Select a prospect deterministically
+        prospect = self.test_prospects[0]  # First prospect
+        decision_type = "go"  # Fixed decision type
+        reason_text = "Test reason for decision"
 
         decision_data = {
             "prospect_id": prospect.id,
@@ -184,7 +186,7 @@ class TestDecisionsAPI:
         invalid_requests = [
             {"decision": "go", "reason": "Missing prospect_id"},
             {
-                "prospect_id": random.choice(self.test_prospects).id,
+                "prospect_id": self.test_prospects[1].id,  # Use second prospect
                 "reason": "Missing decision",
             },
             {
@@ -193,7 +195,7 @@ class TestDecisionsAPI:
                 "reason": "Invalid prospect",
             },
             {
-                "prospect_id": random.choice(self.test_prospects).id,
+                "prospect_id": self.test_prospects[2].id,  # Use third prospect
                 "decision": "maybe",
                 "reason": "Invalid decision type",
             },
@@ -209,7 +211,7 @@ class TestDecisionsAPI:
             )
 
             # Should fail validation
-            assert response.status_code in [400, 404]
+            assert response.status_code == 400 or response.status_code == 404
             data = response.get_json()
             assert "message" in data or "error" in data
 
@@ -217,11 +219,11 @@ class TestDecisionsAPI:
         """Test retrieving decisions for a specific prospect."""
         # Test with a prospect that has decisions
         if self.test_decisions:
-            decision = random.choice(self.test_decisions)
+            decision = self.test_decisions[0]  # Use first decision
             prospect_id = decision.prospect_id
 
             response = self._auth_request(
-                client, "get", f"/api/decisions/{prospect_id}"
+                client, "get", f"/api/decisions/prospect/{prospect_id}"
             )
 
             assert response.status_code == 200
@@ -237,8 +239,8 @@ class TestDecisionsAPI:
                 assert dec["prospect_id"] == prospect_id
 
         # Test with a prospect that might not have decisions
-        prospect = random.choice(self.test_prospects)
-        response = self._auth_request(client, "get", f"/api/decisions/{prospect.id}")
+        prospect = self.test_prospects[-1]  # Use last prospect
+        response = self._auth_request(client, "get", f"/api/decisions/prospect/{prospect.id}")
 
         assert response.status_code == 200
         data = response.get_json()
@@ -250,7 +252,7 @@ class TestDecisionsAPI:
     def test_get_user_decisions(self, client):
         """Test retrieving current user's decisions."""
         # Create a decision for the test user
-        prospect = random.choice(self.test_prospects)
+        prospect = self.test_prospects[3]  # Use fourth prospect
         decision_data = {
             "prospect_id": prospect.id,
             "decision": "go",
@@ -268,7 +270,7 @@ class TestDecisionsAPI:
         assert create_response.status_code == 200
 
         # Get user's decisions
-        response = self._auth_request(client, "get", "/api/decisions/my")
+        response = self._auth_request(client, "get", "/api/decisions/user")
 
         assert response.status_code == 200
         data = response.get_json()
@@ -283,7 +285,7 @@ class TestDecisionsAPI:
     def test_update_existing_decision(self, client):
         """Test updating an existing decision."""
         # Create initial decision
-        prospect = random.choice(self.test_prospects)
+        prospect = self.test_prospects[4]  # Use fifth prospect
         initial_data = {
             "prospect_id": prospect.id,
             "decision": "go",
@@ -323,9 +325,9 @@ class TestDecisionsAPI:
         assert data["data"]["decision"]["prospect_id"] == prospect.id
 
     def test_delete_decision_behavior(self, client):
-        """Test decision deletion behavior."""
+        """Test decision deletion behavior with ownership checks."""
         # Create a decision to delete
-        prospect = random.choice(self.test_prospects)
+        prospect = self.test_prospects[5]  # Use sixth prospect
         decision_data = {
             "prospect_id": prospect.id,
             "decision": "go",
@@ -343,7 +345,10 @@ class TestDecisionsAPI:
         assert create_response.status_code == 200
         decision_id = create_response.get_json()["data"]["decision"]["id"]
 
-        # Delete the decision
+        # Test that decision_id is an integer (per API spec)
+        assert isinstance(decision_id, int), "Decision ID should be an integer"
+
+        # Delete the decision (owner should be able to delete)
         delete_response = self._auth_request(
             client, "delete", f"/api/decisions/{decision_id}"
         )
@@ -354,7 +359,7 @@ class TestDecisionsAPI:
 
         # Verify deletion by trying to get decisions for that prospect
         get_response = self._auth_request(
-            client, "get", f"/api/decisions/{prospect.id}"
+            client, "get", f"/api/decisions/prospect/{prospect.id}"
         )
 
         assert get_response.status_code == 200
@@ -364,9 +369,44 @@ class TestDecisionsAPI:
         decision_ids = [d["id"] for d in decisions]
         assert decision_id not in decision_ids
 
+    def test_delete_decision_ownership_check(self, client):
+        """Test that users can only delete their own decisions."""
+        # Create a decision as user 1
+        prospect = self.test_prospects[6]  # Use seventh prospect
+        decision_data = {
+            "prospect_id": prospect.id,
+            "decision": "go",
+            "reason": "User 1 decision",
+        }
+
+        create_response = self._auth_request(
+            client,
+            "post",
+            "/api/decisions/",
+            user_id=self.test_users[0].id if self.test_users else None,
+            data=json.dumps(decision_data),
+            content_type="application/json",
+        )
+
+        assert create_response.status_code == 200
+        decision_id = create_response.get_json()["data"]["decision"]["id"]
+
+        # Try to delete as a different user (should fail)
+        if len(self.test_users) > 1:
+            delete_response = self._auth_request(
+                client,
+                "delete",
+                f"/api/decisions/{decision_id}",
+                user_id=self.test_users[1].id,
+            )
+
+            assert delete_response.status_code == 403
+            data = delete_response.get_json()
+            assert "can only delete your own" in data.get("message", "").lower()
+
     def test_delete_nonexistent_decision(self, client):
         """Test deleting a decision that doesn't exist."""
-        fake_id = random.randint(100000, 999999)
+        fake_id = 999999  # Fixed large ID that won't exist
 
         response = self._auth_request(client, "delete", f"/api/decisions/{fake_id}")
 
@@ -377,7 +417,7 @@ class TestDecisionsAPI:
     def test_authentication_required(self, client):
         """Test that authentication is required for decision endpoints."""
         # Test without authentication
-        response = client.get("/api/decisions/my")
+        response = client.get("/api/decisions/user")
 
         assert response.status_code == 401
         data = response.get_json()
@@ -385,7 +425,7 @@ class TestDecisionsAPI:
 
     def test_decision_reason_variations(self, client):
         """Test decision creation with various reason formats."""
-        prospect = random.choice(self.test_prospects)
+        prospect = self.test_prospects[7]  # Use eighth prospect
 
         # Test with different reason lengths and formats
         test_reasons = [
@@ -401,7 +441,7 @@ class TestDecisionsAPI:
         for reason in test_reasons:
             decision_data = {
                 "prospect_id": prospect.id,
-                "decision": random.choice(["go", "no-go"]),
+                "decision": "go" if i % 2 == 0 else "no-go",  # Alternate deterministically
                 "reason": reason if reason is not None else "",
             }
 
@@ -414,7 +454,7 @@ class TestDecisionsAPI:
             )
 
             # Should handle all reason formats
-            assert response.status_code in [200, 400]
+            assert response.status_code == 200 or response.status_code == 400
 
             if response.status_code == 200:
                 data = response.get_json()
@@ -436,13 +476,13 @@ class TestDecisionsAPI:
 
     def test_concurrent_decision_updates(self, client):
         """Test handling of concurrent decision updates."""
-        prospect = random.choice(self.test_prospects)
+        prospect = self.test_prospects[0]  # Use first prospect
 
         # Simulate multiple users updating the same prospect
         for i, user in enumerate(self.test_users[: min(3, len(self.test_users))]):
             decision_data = {
                 "prospect_id": prospect.id,
-                "decision": random.choice(["go", "no-go"]),
+                "decision": "go" if i % 2 == 0 else "no-go",  # Alternate
                 "reason": f"User {i} decision",
             }
 
@@ -536,11 +576,11 @@ class TestDecisionsAPI:
             )
 
             # Should not crash, should return error for invalid prospect
-            assert response.status_code in [400, 404]
+            assert response.status_code == 400 or response.status_code == 404
 
         # Test XSS in reason field
         xss_reason = '<script>alert("xss")</script>'
-        valid_prospect = random.choice(self.test_prospects)
+        valid_prospect = self.test_prospects[1]  # Use second prospect
 
         xss_data = {
             "prospect_id": valid_prospect.id,
@@ -564,7 +604,7 @@ class TestDecisionsAPI:
 
     def test_content_type_handling(self, client):
         """Test that API handles content types correctly."""
-        prospect = random.choice(self.test_prospects)
+        prospect = self.test_prospects[2]  # Use third prospect
 
         decision_data = {
             "prospect_id": prospect.id,
@@ -593,7 +633,7 @@ class TestDecisionsAPI:
     @pytest.mark.parametrize("decision_type", ["go", "no-go"])
     def test_decision_types(self, client, decision_type):
         """Test both decision types work correctly."""
-        prospect = random.choice(self.test_prospects)
+        prospect = self.test_prospects[3]  # Use fourth prospect
 
         decision_data = {
             "prospect_id": prospect.id,
@@ -612,3 +652,150 @@ class TestDecisionsAPI:
         assert response.status_code == 200
         data = response.get_json()
         assert data["data"]["decision"]["decision"] == decision_type
+
+    def test_user_decisions_pagination(self, client):
+        """Test pagination on GET /api/decisions/user endpoint."""
+        # Create multiple decisions for pagination testing
+        for i in range(5):
+            prospect = self.test_prospects[i % len(self.test_prospects)]
+            decision_data = {
+                "prospect_id": prospect.id,
+                "decision": "go" if i % 2 == 0 else "no-go",
+                "reason": f"Pagination test decision {i}",
+            }
+            self._auth_request(
+                client,
+                "post",
+                "/api/decisions/",
+                data=json.dumps(decision_data),
+                content_type="application/json",
+            )
+
+        # Test default pagination
+        response = self._auth_request(client, "get", "/api/decisions/user")
+        assert response.status_code == 200
+        data = response.get_json()
+        assert "pagination" in data["data"]
+        assert "page" in data["data"]["pagination"]
+        assert "per_page" in data["data"]["pagination"]
+        assert "total" in data["data"]["pagination"]
+        assert "pages" in data["data"]["pagination"]
+
+        # Test specific page and limit
+        response = self._auth_request(client, "get", "/api/decisions/user?page=1&per_page=2")
+        assert response.status_code == 200
+        data = response.get_json()
+        assert len(data["data"]["decisions"]) <= 2
+        assert data["data"]["pagination"]["page"] == 1
+        assert data["data"]["pagination"]["per_page"] == 2
+
+        # Test page 2
+        response = self._auth_request(client, "get", "/api/decisions/user?page=2&per_page=2")
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["data"]["pagination"]["page"] == 2
+
+        # Test filtering by decision type
+        response = self._auth_request(client, "get", "/api/decisions/user?decision=go")
+        assert response.status_code == 200
+        data = response.get_json()
+        # All returned decisions should be "go"
+        for decision in data["data"]["decisions"]:
+            assert decision["decision"] == "go"
+
+        # Test filtering by no-go
+        response = self._auth_request(client, "get", "/api/decisions/user?decision=no-go")
+        assert response.status_code == 200
+        data = response.get_json()
+        # All returned decisions should be "no-go"
+        for decision in data["data"]["decisions"]:
+            assert decision["decision"] == "no-go"
+
+    def test_decision_authorization_checks(self, client):
+        """Test that authorization is properly enforced for decisions."""
+        # Create a decision as user 1
+        prospect = self.test_prospects[0]
+        decision_data = {
+            "prospect_id": prospect.id,
+            "decision": "go",
+            "reason": "User 1's decision",
+        }
+        
+        response = self._auth_request(
+            client,
+            "post",
+            "/api/decisions/",
+            user_id=self.test_users[0].id,
+            data=json.dumps(decision_data),
+            content_type="application/json",
+        )
+        assert response.status_code == 200
+        decision_id = response.get_json()["data"]["decision"]["id"]
+
+        # Try to delete as a different user (should fail with 403)
+        response = self._auth_request(
+            client,
+            "delete",
+            f"/api/decisions/{decision_id}",
+            user_id=self.test_users[1].id,
+        )
+        assert response.status_code == 403
+        data = response.get_json()
+        assert "only delete your own" in data.get("message", "").lower()
+
+        # Verify user 1 can still delete their own decision
+        response = self._auth_request(
+            client,
+            "delete",
+            f"/api/decisions/{decision_id}",
+            user_id=self.test_users[0].id,
+        )
+        assert response.status_code == 200
+
+    def test_get_user_decisions_only_returns_own(self, client):
+        """Test that /api/decisions/user only returns the current user's decisions."""
+        # Create decisions for different users
+        for i in range(3):
+            prospect = self.test_prospects[i]
+            user = self.test_users[i]
+            decision_data = {
+                "prospect_id": prospect.id,
+                "decision": "go",
+                "reason": f"User {user.id} decision",
+            }
+            self._auth_request(
+                client,
+                "post",
+                "/api/decisions/",
+                user_id=user.id,
+                data=json.dumps(decision_data),
+                content_type="application/json",
+            )
+
+        # Get decisions for user 0
+        response = self._auth_request(
+            client,
+            "get",
+            "/api/decisions/user",
+            user_id=self.test_users[0].id,
+        )
+        assert response.status_code == 200
+        data = response.get_json()
+        
+        # All decisions should belong to user 0
+        for decision in data["data"]["decisions"]:
+            assert decision["user_id"] == self.test_users[0].id
+
+        # Get decisions for user 1
+        response = self._auth_request(
+            client,
+            "get",
+            "/api/decisions/user",
+            user_id=self.test_users[1].id,
+        )
+        assert response.status_code == 200
+        data = response.get_json()
+        
+        # All decisions should belong to user 1
+        for decision in data["data"]["decisions"]:
+            assert decision["user_id"] == self.test_users[1].id

@@ -15,6 +15,13 @@ import { ToastContextProvider } from '@/contexts/ToastContext';
 import { ProspectEnhancementProvider } from '@/contexts/ProspectEnhancementContext';
 import { TimezoneProvider } from '@/contexts/TimezoneContext';
 
+// Deterministic counter for stable test data
+let testCounter = 0;
+
+beforeEach(() => {
+  testCounter = 0;  // Reset counter for each test
+});
+
 // Mock API utils
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
@@ -35,37 +42,37 @@ vi.mock('@/hooks/api/useEnhancementSimple', () => ({
   })
 }));
 
-// Helper function to generate dynamic prospect data for integration tests
+// Helper function to generate deterministic prospect data for integration tests
 const generateWorkflowProspect = () => {
   const agencies = ['Department of Defense', 'Health and Human Services', 'Department of Commerce', 'Department of Energy'];
   const naicsCodes = ['541511', '541512', '518210', '541519'];
   const statuses = ['idle', 'processing', 'completed', 'error'];
   const setAsides = ['Small Business', '8(a)', 'WOSB', 'HubZone', null];
   
-  const randomId = Math.random().toString(36).substr(2, 9);
-  const baseValue = Math.floor(Math.random() * 500000) + 50000;
-  const hasAiEnhancement = Math.random() > 0.5;
+  const idx = testCounter++;
+  const baseValue = (idx + 1) * 10000;
+  const hasAiEnhancement = idx % 2 === 0;
   
   return {
-    id: randomId,
-    title: `Contract ${Math.floor(Math.random() * 1000)} - ${hasAiEnhancement ? 'Enhanced' : 'Original'}`,
-    description: `Contract description for ${randomId}`,
-    agency: agencies[Math.floor(Math.random() * agencies.length)],
-    posted_date: new Date(Date.now() - Math.random() * 60 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-    response_date: new Date(Date.now() + Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    id: `PROSPECT-${idx.toString().padStart(4, '0')}`,
+    title: `Contract ${idx} - ${hasAiEnhancement ? 'Enhanced' : 'Original'}`,
+    description: `Contract description for prospect ${idx}`,
+    agency: agencies[idx % agencies.length],
+    posted_date: new Date(Date.now() - idx * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    response_date: new Date(Date.now() + (30 - idx) * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
     loaded_at: new Date().toISOString(),
     estimated_value: baseValue,
     estimated_value_text: `$${baseValue.toLocaleString()}`,
-    naics_code: naicsCodes[Math.floor(Math.random() * naicsCodes.length)],
-    source_file: `source_${Math.floor(Math.random() * 100)}.json`,
-    source_data_id: Math.floor(Math.random() * 1000) + 1,
-    enhancement_status: statuses[Math.floor(Math.random() * statuses.length)],
-    duplicate_group_id: Math.random() > 0.8 ? Math.floor(Math.random() * 100) : null,
-    set_aside_status: setAsides[Math.floor(Math.random() * setAsides.length)],
-    contact_email: `contact${Math.floor(Math.random() * 100)}@${agencies[Math.floor(Math.random() * agencies.length)].toLowerCase().replace(/\s+/g, '')}.gov`,
-    contact_name: `Contact ${Math.floor(Math.random() * 100)}`,
-    ai_enhanced_title: hasAiEnhancement ? `Enhanced: ${Math.floor(Math.random() * 1000)}` : null,
-    ai_enhanced_description: hasAiEnhancement ? `AI-enhanced description ${Math.floor(Math.random() * 100)}` : null,
+    naics: naicsCodes[idx % naicsCodes.length],  // Changed from naics_code
+    source_file: `source_${idx}.json`,
+    source_id: (idx % 3) + 1,  // Changed from source_data_id
+    enhancement_status: statuses[idx % statuses.length],
+    duplicate_group_id: idx % 5 === 0 ? Math.floor(idx / 5) : null,
+    set_aside_status: setAsides[idx % setAsides.length],
+    contact_email: `contact${idx}@${agencies[idx % agencies.length].toLowerCase().replace(/\s+/g, '')}.gov`,
+    contact_name: `Contact ${idx}`,
+    title_enhanced: hasAiEnhancement ? `Enhanced Title ${idx}` : null,  // Changed from ai_enhanced_title
+    description_enhanced: hasAiEnhancement ? `Enhanced description ${idx}` : null,  // Changed from ai_enhanced_description
     parsed_contract_value: hasAiEnhancement ? baseValue : null,
     ollama_processed_at: hasAiEnhancement ? new Date().toISOString() : null
   };
@@ -73,8 +80,8 @@ const generateWorkflowProspect = () => {
 
 const generatePaginatedWorkflowResponse = (prospectCount: number = 2) => {
   const prospects = Array.from({ length: prospectCount }, () => generateWorkflowProspect());
-  const totalItems = Math.floor(Math.random() * 50) + prospectCount;
-  const perPage = Math.floor(Math.random() * 15) + 5;
+  const totalItems = prospectCount + 10;  // Deterministic total
+  const perPage = 10;  // Fixed page size
   
   return {
     prospects,
@@ -228,7 +235,7 @@ describe('Prospect Workflow Integration Tests', () => {
 
     // Test NAICS code filter - use dynamic NAICS from test data
     const naicsInput = screen.getByPlaceholderText(/naics code/i);
-    const testNaics = testProspects[0].naics_code;
+    const testNaics = testProspects[0].naics;  // Changed from naics_code
     await user.type(naicsInput, testNaics);
     
     expect(naicsInput).toHaveValue(testNaics);
@@ -454,16 +461,16 @@ describe('Prospect Workflow Integration Tests', () => {
         loaded_at: '2024-01-17T10:00:00Z',
         estimated_value: 125000,
         estimated_value_text: '$125,000',
-        naics_code: '541511',
+        naics: '541511',  // Changed from naics_code
         source_file: 'doe_2024_01_17.json',
-        source_data_id: 3,
+        source_id: 3,  // Changed from source_data_id
         enhancement_status: 'idle',
         duplicate_group_id: null,
         set_aside_status: null,
         contact_email: null,
         contact_name: null,
-        ai_enhanced_title: null,
-        ai_enhanced_description: null,
+        title_enhanced: null,  // Changed from ai_enhanced_title
+        description_enhanced: null,  // Changed from ai_enhanced_description
         parsed_contract_value: null,
         ollama_processed_at: null
       }

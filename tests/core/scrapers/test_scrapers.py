@@ -9,7 +9,6 @@ Following production-level testing principles:
 """
 
 import os
-import random
 import tempfile
 from typing import Any
 from unittest.mock import AsyncMock, patch
@@ -45,16 +44,16 @@ class TestConsolidatedScrapers:
             return db_session.execute(stmt).scalars().all()
         return []
 
-    def generate_random_opportunity_data(
+    def generate_deterministic_opportunity_data(
         self, scraper_type: str, num_rows: int = None
     ) -> list[dict[str, Any]]:
-        """Generate random test data for a specific scraper type."""
+        """Generate deterministic test data for a specific scraper type."""
         if num_rows is None:
-            num_rows = random.randint(1, 5)
+            num_rows = 3  # Fixed number instead of random
 
         data = []
 
-        # Common random data pools
+        # Deterministic data pools
         agencies = ["Agency A", "Agency B", "Agency C", "Agency D", "Agency E"]
         cities = [
             "Washington",
@@ -85,7 +84,7 @@ class TestConsolidatedScrapers:
             "541330",
         ]
 
-        def random_title():
+        def get_title(index):
             types = [
                 "Software",
                 "Hardware",
@@ -94,141 +93,127 @@ class TestConsolidatedScrapers:
                 "Research",
                 "Development",
             ]
-            return f"{random.choice(types)} Contract {random.randint(1000, 9999)}"
+            return f"{types[index % len(types)]} Contract {1000 + index}"
 
-        def random_description():
-            words = [
-                "implementation",
-                "support",
-                "development",
-                "maintenance",
-                "analysis",
-                "integration",
-                "deployment",
-                "assessment",
-                "evaluation",
-                "modernization",
+        def get_description(index):
+            word_sets = [
+                "implementation support development",
+                "maintenance analysis integration",
+                "deployment assessment evaluation",
+                "modernization implementation support",
+                "development maintenance analysis",
             ]
-            return " ".join(random.sample(words, random.randint(3, 6)))
+            return word_sets[index % len(word_sets)]
 
-        def random_date(start_year=2024, end_year=2026):
-            year = random.randint(start_year, end_year)
-            month = random.randint(1, 12)
-            day = random.randint(1, 28)
+        def get_date(index, start_year=2024, offset_days=0):
+            # Generate deterministic dates based on index
+            year = start_year + (index // 12)
+            month = (index % 12) + 1
+            day = ((index * 7) % 28) + 1
             return f"{year}-{month:02d}-{day:02d}"
 
-        def random_value_range():
-            min_val = random.randint(1, 10) * 100000
-            max_val = min_val + random.randint(5, 50) * 100000
+        def get_value_range(index):
+            min_val = (index + 1) * 100000
+            max_val = min_val + (index + 5) * 100000
             return f"${min_val:,} - ${max_val:,}"
 
         for i in range(num_rows):
             if scraper_type == "acquisition_gateway":
                 data.append(
                     {
-                        "Listing ID": f"AG-{random.randint(10000, 99999)}",
-                        "Title": random_title(),
-                        "Body": random_description(),
-                        "NAICS Code": random.choice(naics_codes),
-                        "Estimated Contract Value": random_value_range(),
-                        "Estimated Solicitation Date": random_date(),
-                        "Ultimate Completion Date": random_date(2025, 2027),
-                        "Estimated Award FY": str(random.randint(2024, 2026)),
-                        "Agency": random.choice(agencies),
-                        "Place of Performance City": random.choice(cities),
-                        "Place of Performance State": random.choice(states),
+                        "Listing ID": f"AG-{10000 + i}",
+                        "Title": get_title(i),
+                        "Body": get_description(i),
+                        "NAICS Code": naics_codes[i % len(naics_codes)],
+                        "Estimated Contract Value": get_value_range(i),
+                        "Estimated Solicitation Date": get_date(i),
+                        "Ultimate Completion Date": get_date(i, 2025),
+                        "Estimated Award FY": str(2024 + (i % 3)),
+                        "Agency": agencies[i % len(agencies)],
+                        "Place of Performance City": cities[i % len(cities)],
+                        "Place of Performance State": states[i % len(states)],
                         "Place of Performance Country": "USA",
-                        "Contract Type": random.choice(contract_types),
-                        "Set Aside Type": random.choice(set_asides),
+                        "Contract Type": contract_types[i % len(contract_types)],
+                        "Set Aside Type": set_asides[i % len(set_asides)],
                     }
                 )
 
             elif scraper_type == "dhs":
+                components = ["CISA", "CBP", "TSA", "FEMA", "USCIS", "ICE"]
                 data.append(
                     {
-                        "APFS Number": f"DHS-{random.randint(10000, 99999)}",
-                        "Title": random_title(),
-                        "Description": random_description(),
-                        "NAICS": random.choice(naics_codes),
-                        "Component": random.choice(
-                            ["CISA", "CBP", "TSA", "FEMA", "USCIS", "ICE"]
-                        ),
-                        "Place of Performance City": random.choice(cities),
-                        "Place of Performance State": random.choice(states),
-                        "Dollar Range": random_value_range(),
-                        "Contract Type": random.choice(contract_types),
-                        "Small Business Set-Aside": random.choice(set_asides),
-                        "Award Quarter": f"FY{random.randint(24, 26)} Q{random.randint(1, 4)}",
+                        "APFS Number": f"DHS-{10000 + i}",
+                        "Title": get_title(i),
+                        "Description": get_description(i),
+                        "NAICS": naics_codes[i % len(naics_codes)],
+                        "Component": components[i % len(components)],
+                        "Place of Performance City": cities[i % len(cities)],
+                        "Place of Performance State": states[i % len(states)],
+                        "Dollar Range": get_value_range(i),
+                        "Contract Type": contract_types[i % len(contract_types)],
+                        "Small Business Set-Aside": set_asides[i % len(set_asides)],
+                        "Award Quarter": f"FY{24 + (i % 3)} Q{(i % 4) + 1}",
                     }
                 )
 
             elif scraper_type == "treasury":
+                bureaus = ["IRS", "OCC", "BEP", "Mint", "FINCEN"]
                 data.append(
                     {
-                        "Specific Id": f"TREAS-{random.randint(10000, 99999)}",
-                        "PSC": random_title(),
-                        "Bureau": random.choice(
-                            ["IRS", "OCC", "BEP", "Mint", "FINCEN"]
-                        ),
-                        "NAICS": random.choice(naics_codes),
-                        "Contract Type": random.choice(contract_types),
-                        "Type of Small Business Set-aside": random.choice(set_asides),
-                        "Projected Award FY_Qtr": f"FY{random.randint(24, 26)} Q{random.randint(1, 4)}",
-                        "Estimated Total Contract Value": random_value_range(),
-                        "Place of Performance": f"{random.choice(cities)}, {random.choice(states)}",
+                        "Specific Id": f"TREAS-{10000 + i}",
+                        "PSC": get_title(i),
+                        "Bureau": bureaus[i % len(bureaus)],
+                        "NAICS": naics_codes[i % len(naics_codes)],
+                        "Contract Type": contract_types[i % len(contract_types)],
+                        "Type of Small Business Set-aside": set_asides[i % len(set_asides)],
+                        "Projected Award FY_Qtr": f"FY{24 + (i % 3)} Q{(i % 4) + 1}",
+                        "Estimated Total Contract Value": get_value_range(i),
+                        "Place of Performance": f"{cities[i % len(cities)]}, {states[i % len(states)]}",
                     }
                 )
 
             elif scraper_type == "dot":
+                offices = ["FAA", "FHWA", "FTA", "NHTSA", "FRA"]
+                competition_types = ["Full and Open", "Small Business", "Sole Source"]
+                action_types = ["New Contract", "Recompete", "Option"]
+                vehicles = ["GSA MAS", "CIO-SP3", "SEWP", "Direct"]
                 data.append(
                     {
-                        "Sequence Number": f"DOT-{random.randint(10000, 99999)}",
-                        "Procurement Office": random.choice(
-                            ["FAA", "FHWA", "FTA", "NHTSA", "FRA"]
-                        ),
-                        "Project Title": random_title(),
-                        "Description": random_description(),
-                        "Estimated Value": random_value_range(),
-                        "NAICS": random.choice(naics_codes),
-                        "Competition Type": random.choice(
-                            ["Full and Open", "Small Business", "Sole Source"]
-                        ),
-                        "RFP Quarter": f"FY{random.randint(24, 26)} Q{random.randint(1, 4)}",
-                        "Anticipated Award Date": random_date(),
-                        "Place of Performance": f"{random.choice(cities)}, {random.choice(states)}",
-                        "Action/Award Type": random.choice(
-                            ["New Contract", "Recompete", "Option"]
-                        ),
-                        "Contract Vehicle": random.choice(
-                            ["GSA MAS", "CIO-SP3", "SEWP", "Direct"]
-                        ),
+                        "Sequence Number": f"DOT-{10000 + i}",
+                        "Procurement Office": offices[i % len(offices)],
+                        "Project Title": get_title(i),
+                        "Description": get_description(i),
+                        "Estimated Value": get_value_range(i),
+                        "NAICS": naics_codes[i % len(naics_codes)],
+                        "Competition Type": competition_types[i % len(competition_types)],
+                        "RFP Quarter": f"FY{24 + (i % 3)} Q{(i % 4) + 1}",
+                        "Anticipated Award Date": get_date(i),
+                        "Place of Performance": f"{cities[i % len(cities)]}, {states[i % len(states)]}",
+                        "Action/Award Type": action_types[i % len(action_types)],
+                        "Contract Vehicle": vehicles[i % len(vehicles)],
                     }
                 )
 
             elif scraper_type == "hhs":
-                first_name = random.choice(
-                    ["John", "Jane", "Bob", "Alice", "Tom", "Sarah"]
-                )
-                last_name = random.choice(
-                    ["Smith", "Johnson", "Williams", "Brown", "Davis"]
-                )
+                first_names = ["John", "Jane", "Bob", "Alice", "Tom", "Sarah"]
+                last_names = ["Smith", "Johnson", "Williams", "Brown", "Davis"]
+                divisions = ["CDC", "FDA", "NIH", "CMS", "HRSA"]
+                vehicles = ["GSA MAS", "CIO-SP3", "SEWP", "Direct"]
+                first_name = first_names[i % len(first_names)]
+                last_name = last_names[i % len(last_names)]
                 data.append(
                     {
-                        "Procurement Number": f"HHS-{random.randint(10000, 99999)}",
-                        "Operating Division": random.choice(
-                            ["CDC", "FDA", "NIH", "CMS", "HRSA"]
-                        ),
-                        "Title": random_title(),
-                        "Description": random_description(),
-                        "Primary NAICS": random.choice(naics_codes),
-                        "Contract Vehicle": random.choice(
-                            ["GSA MAS", "CIO-SP3", "SEWP", "Direct"]
-                        ),
-                        "Contract Type": random.choice(contract_types),
-                        "Total Contract Range": random_value_range(),
-                        "Target Award Month/Year (Award by)": random_date(),
-                        "Target Solicitation Month/Year": random_date(),
-                        "Anticipated Acquisition Strategy": random.choice(set_asides),
+                        "Procurement Number": f"HHS-{10000 + i}",
+                        "Operating Division": divisions[i % len(divisions)],
+                        "Title": get_title(i),
+                        "Description": get_description(i),
+                        "Primary NAICS": naics_codes[i % len(naics_codes)],
+                        "Contract Vehicle": vehicles[i % len(vehicles)],
+                        "Contract Type": contract_types[i % len(contract_types)],
+                        "Total Contract Range": get_value_range(i),
+                        "Target Award Month/Year (Award by)": get_date(i),
+                        "Target Solicitation Month/Year": get_date(i, 2024, -30),
+                        "Anticipated Acquisition Strategy": set_asides[i % len(set_asides)],
                         "Program Office POC First Name": first_name,
                         "Program Office POC Last Name": last_name,
                         "Program Office POC Email": f"{first_name.lower()}.{last_name.lower()}@hhs.gov",
@@ -236,82 +221,75 @@ class TestConsolidatedScrapers:
                 )
 
             elif scraper_type == "ssa":
+                site_types = ["Regional", "Field", "HQ", "Data Center"]
                 data.append(
                     {
-                        "APP #": f"SSA-{random.randint(10000, 99999)}",
-                        "SITE Type": random.choice(
-                            ["Regional", "Field", "HQ", "Data Center"]
-                        ),
-                        "DESCRIPTION": random_title() + " - " + random_description(),
-                        "NAICS": random.choice(naics_codes),
-                        "CONTRACT TYPE": random.choice(contract_types),
-                        "SET ASIDE": random.choice(set_asides),
-                        "ESTIMATED VALUE": random_value_range(),
-                        "AWARD FISCAL YEAR": str(random.randint(2024, 2026)),
-                        "PLACE OF PERFORMANCE": f"{random.choice(cities)}, {random.choice(states)}",
+                        "APP #": f"SSA-{10000 + i}",
+                        "SITE Type": site_types[i % len(site_types)],
+                        "DESCRIPTION": get_title(i) + " - " + get_description(i),
+                        "NAICS": naics_codes[i % len(naics_codes)],
+                        "CONTRACT TYPE": contract_types[i % len(contract_types)],
+                        "SET ASIDE": set_asides[i % len(set_asides)],
+                        "ESTIMATED VALUE": get_value_range(i),
+                        "AWARD FISCAL YEAR": str(2024 + (i % 3)),
+                        "PLACE OF PERFORMANCE": f"{cities[i % len(cities)]}, {states[i % len(states)]}",
                     }
                 )
 
             elif scraper_type == "doc":
+                organizations = ["NOAA", "NIST", "Census", "USPTO", "ITA"]
+                award_types = ["New Contract", "Recompete"]
+                competition_strategies = ["Full and Open", "Small Business"]
+                contract_vehicles = ["GSA MAS", "Direct"]
                 data.append(
                     {
-                        "Forecast ID": f"DOC-{random.randint(10000, 99999)}",
-                        "Organization": random.choice(
-                            ["NOAA", "NIST", "Census", "USPTO", "ITA"]
-                        ),
-                        "Title": random_title(),
-                        "Description": random_description(),
-                        "Naics Code": random.choice(naics_codes),
-                        "Place Of Performance City": random.choice(cities),
-                        "Place Of Performance State": random.choice(states),
+                        "Forecast ID": f"DOC-{10000 + i}",
+                        "Organization": organizations[i % len(organizations)],
+                        "Title": get_title(i),
+                        "Description": get_description(i),
+                        "Naics Code": naics_codes[i % len(naics_codes)],
+                        "Place Of Performance City": cities[i % len(cities)],
+                        "Place Of Performance State": states[i % len(states)],
                         "Place Of Performance Country": "USA",
-                        "Estimated Value Range": random_value_range(),
-                        "Estimated Solicitation Fiscal Year": str(
-                            random.randint(2024, 2026)
-                        ),
-                        "Estimated Solicitation Fiscal Quarter": f"Q{random.randint(1, 4)}",
-                        "Anticipated Set Aside And Type": random.choice(set_asides),
-                        "Anticipated Action Award Type": random.choice(
-                            ["New Contract", "Recompete"]
-                        ),
-                        "Competition Strategy": random.choice(
-                            ["Full and Open", "Small Business"]
-                        ),
-                        "Anticipated Contract Vehicle": random.choice(
-                            ["GSA MAS", "Direct"]
-                        ),
+                        "Estimated Value Range": get_value_range(i),
+                        "Estimated Solicitation Fiscal Year": str(2024 + (i % 3)),
+                        "Estimated Solicitation Fiscal Quarter": f"Q{(i % 4) + 1}",
+                        "Anticipated Set Aside And Type": set_asides[i % len(set_asides)],
+                        "Anticipated Action Award Type": award_types[i % len(award_types)],
+                        "Competition Strategy": competition_strategies[i % len(competition_strategies)],
+                        "Anticipated Contract Vehicle": contract_vehicles[i % len(contract_vehicles)],
                     }
                 )
 
             elif scraper_type == "doj":
+                bureaus = ["FBI", "DEA", "ATF", "USMS", "BOP"]
                 data.append(
                     {
-                        "Action Tracking Number": f"DOJ-{random.randint(10000, 99999)}",
-                        "Bureau": random.choice(["FBI", "DEA", "ATF", "USMS", "BOP"]),
-                        "Contract Name": random_title(),
-                        "Description of Requirement": random_description(),
-                        "Contract Type (Pricing)": random.choice(contract_types),
-                        "NAICS Code": random.choice(naics_codes),
-                        "Small Business Approach": random.choice(set_asides),
-                        "Estimated Total Contract Value (Range)": random_value_range(),
-                        "Target Solicitation Date": random_date(),
-                        "Target Award Date": random_date(),
-                        "Place of Performance": f"{random.choice(cities)}, {random.choice(states)}",
+                        "Action Tracking Number": f"DOJ-{10000 + i}",
+                        "Bureau": bureaus[i % len(bureaus)],
+                        "Contract Name": get_title(i),
+                        "Description of Requirement": get_description(i),
+                        "Contract Type (Pricing)": contract_types[i % len(contract_types)],
+                        "NAICS Code": naics_codes[i % len(naics_codes)],
+                        "Small Business Approach": set_asides[i % len(set_asides)],
+                        "Estimated Total Contract Value (Range)": get_value_range(i),
+                        "Target Solicitation Date": get_date(i),
+                        "Target Award Date": get_date(i, 2024, 60),
+                        "Place of Performance": f"{cities[i % len(cities)]}, {states[i % len(states)]}",
                         "Country": "USA",
                     }
                 )
 
             elif scraper_type == "dos":
+                office_symbols = ["INR", "CA", "ECA", "DRL", "PM"]
                 data.append(
                     {
-                        "Contract Number": f"DOS-{random.randint(10000, 99999)}",
-                        "Office Symbol": random.choice(
-                            ["INR", "CA", "ECA", "DRL", "PM"]
-                        ),
-                        "Requirement Title": random_title(),
-                        "Requirement Description": random_description(),
-                        "Estimated Value": random_value_range(),
-                        "Dollar Value": str(random.randint(100000, 10000000)),
+                        "Contract Number": f"DOS-{10000 + i}",
+                        "Office Symbol": office_symbols[i % len(office_symbols)],
+                        "Requirement Title": get_title(i),
+                        "Requirement Description": get_description(i),
+                        "Estimated Value": get_value_range(i),
+                        "Dollar Value": str(100000 * (i + 1)),
                         "Place of Performance Country": "USA",
                         "Place of Performance City": random.choice(cities),
                         "Place of Performance State": random.choice(states),
@@ -400,7 +378,7 @@ class TestConsolidatedScrapers:
     ):
         """Test Acquisition Gateway consolidated scraper with dynamic data."""
         # Generate random test data
-        test_data = self.generate_random_opportunity_data("acquisition_gateway")
+        test_data = self.generate_deterministic_opportunity_data("acquisition_gateway")
         test_file = self.create_test_file(test_data)
 
         try:
@@ -423,7 +401,11 @@ class TestConsolidatedScrapers:
                 # Can't check exact count due to duplicate prevention
                 # Just verify the scraper ran and processed data
                 if result > 0:
-                    assert len(prospects) >= 0
+                    assert len(prospects) > 0, "Should have at least one prospect after successful scrape"
+                    # Verify prospects have required fields
+                    for prospect in prospects:
+                        assert prospect.id, "Prospect should have an ID"
+                        assert prospect.source_id, "Prospect should have a source_id"
 
         finally:
             if os.path.exists(test_file):
@@ -434,7 +416,7 @@ class TestConsolidatedScrapers:
         self, mock_browser_setup, mock_navigation, mock_interactions, db_session
     ):
         """Test DHS consolidated scraper with dynamic data."""
-        test_data = self.generate_random_opportunity_data("dhs")
+        test_data = self.generate_deterministic_opportunity_data("dhs")
         test_file = self.create_test_file(test_data)
 
         try:
@@ -464,7 +446,7 @@ class TestConsolidatedScrapers:
         self, mock_browser_setup, mock_navigation, mock_interactions, db_session
     ):
         """Test Treasury consolidated scraper with dynamic data."""
-        test_data = self.generate_random_opportunity_data("treasury")
+        test_data = self.generate_deterministic_opportunity_data("treasury")
         test_file = self.create_test_file(test_data, "html")
 
         try:
@@ -492,7 +474,7 @@ class TestConsolidatedScrapers:
         self, mock_browser_setup, mock_navigation, mock_interactions, db_session
     ):
         """Test DOT consolidated scraper with dynamic data."""
-        test_data = self.generate_random_opportunity_data("dot")
+        test_data = self.generate_deterministic_opportunity_data("dot")
         test_file = self.create_test_file(test_data)
 
         try:
@@ -520,7 +502,7 @@ class TestConsolidatedScrapers:
         self, mock_browser_setup, mock_navigation, mock_interactions, db_session
     ):
         """Test HHS consolidated scraper with dynamic data."""
-        test_data = self.generate_random_opportunity_data("hhs")
+        test_data = self.generate_deterministic_opportunity_data("hhs")
         test_file = self.create_test_file(test_data)
 
         try:
@@ -556,7 +538,7 @@ class TestConsolidatedScrapers:
         self, mock_browser_setup, mock_navigation, mock_interactions, db_session
     ):
         """Test SSA consolidated scraper with dynamic data."""
-        test_data = self.generate_random_opportunity_data("ssa")
+        test_data = self.generate_deterministic_opportunity_data("ssa")
         test_file = self.create_test_file(test_data, "xlsx")
 
         try:
@@ -591,7 +573,7 @@ class TestConsolidatedScrapers:
         self, mock_browser_setup, mock_navigation, mock_interactions, db_session
     ):
         """Test DOC consolidated scraper with dynamic data."""
-        test_data = self.generate_random_opportunity_data("doc")
+        test_data = self.generate_deterministic_opportunity_data("doc")
         test_file = self.create_test_file(test_data, "xlsx")
 
         try:
@@ -626,7 +608,7 @@ class TestConsolidatedScrapers:
         self, mock_browser_setup, mock_navigation, mock_interactions, db_session
     ):
         """Test DOJ consolidated scraper with dynamic data."""
-        test_data = self.generate_random_opportunity_data("doj")
+        test_data = self.generate_deterministic_opportunity_data("doj")
         test_file = self.create_test_file(test_data, "xlsx")
 
         try:
@@ -654,7 +636,7 @@ class TestConsolidatedScrapers:
         self, mock_browser_setup, mock_navigation, mock_interactions, db_session
     ):
         """Test DOS consolidated scraper with dynamic data."""
-        test_data = self.generate_random_opportunity_data("dos")
+        test_data = self.generate_deterministic_opportunity_data("dos")
         test_file = self.create_test_file(test_data, "xlsx")
 
         try:

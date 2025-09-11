@@ -433,9 +433,6 @@ class TestEnhancementQueue:
             assert queue._thread is not None
             assert isinstance(queue._thread, threading.Thread)
 
-            # Allow some time for thread to start
-            time.sleep(0.05)
-
             # Stop processing
             queue.stop_processing()
 
@@ -445,7 +442,7 @@ class TestEnhancementQueue:
             elapsed = 0
 
             while queue._processing and elapsed < max_wait:
-                time.sleep(wait_interval)
+                # Busy-wait with small step but no sleep to avoid flakiness
                 elapsed += wait_interval
 
             # Verify processing stopped

@@ -363,10 +363,11 @@ class TestLLMProcessingAPI:
         if success:
             assert response.status_code == 200
             data = response.get_json()
+            # Standardized envelope contains a message on success
             assert "message" in data
         else:
-            # Implementation may return 200 with error message or different status
-            assert response.status_code in [200, 400, 404]
+            # Should return a client error for unsuccessful cancellation
+            assert response.status_code == 400
 
     def test_start_queue_worker(self, client):
         """Test starting the queue processing worker."""
@@ -404,7 +405,7 @@ class TestLLMProcessingAPI:
         for endpoint in endpoints:
             response = client.get(endpoint)
             # Should either redirect to login or return 401
-            assert response.status_code in [401, 302]
+            assert response.status_code == 401 or response.status_code == 302
 
     def test_api_response_format(self, client):
         """Test that all API responses are valid JSON."""
@@ -437,7 +438,7 @@ class TestLLMProcessingAPI:
             response = self._auth_request(client, "get", "/api/llm/queue/status")
 
         # Should handle error gracefully
-        assert response.status_code in [500, 503]
+        assert response.status_code == 500 or response.status_code == 503
         data = response.get_json()
         assert "error" in data or "message" in data
 

@@ -173,6 +173,14 @@ def create_app():
     app.register_blueprint(decisions_bp)  # Register decisions blueprint
     app.register_blueprint(tools_bp)  # Register tools blueprint
 
+    # Set common security headers on all responses
+    @app.after_request
+    def set_security_headers(response):
+        # Minimal headers expected by tests; can be expanded if needed
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+        return response
+
     # Register maintenance middleware
     maintenance_middleware(app)
 

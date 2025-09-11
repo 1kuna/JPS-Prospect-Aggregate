@@ -276,7 +276,7 @@ describe('useMyDecisions', () => {
 
     expect(mockBuildQueryString).toHaveBeenCalledWith({ page: 1, per_page: 50 });
     expect(mockGet).toHaveBeenCalledWith(
-      '/api/decisions/my?page=1&per_page=50',
+      '/api/decisions/user?page=1&per_page=50',
       { credentials: 'include' }
     );
     expect(result.current.data).toEqual(mockResponse);
@@ -300,7 +300,7 @@ describe('useMyDecisions', () => {
 
     expect(mockBuildQueryString).toHaveBeenCalledWith({ page: 2, per_page: 25 });
     expect(mockGet).toHaveBeenCalledWith(
-      '/api/decisions/my?page=2&per_page=25',
+      '/api/decisions/user?page=2&per_page=25',
       { credentials: 'include' }
     );
   });

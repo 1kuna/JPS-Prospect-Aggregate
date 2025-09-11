@@ -164,7 +164,9 @@ class TestProspectsAPI:
         response = client.get("/api/prospects")
 
         assert response.status_code == 200
-        data = response.get_json()
+        outer = response.get_json()
+        assert outer["status"] == "success"
+        data = outer["data"]
 
         # Verify response structure
         assert "prospects" in data
@@ -188,13 +190,13 @@ class TestProspectsAPI:
         # Get total count first
         response = client.get("/api/prospects?limit=1")
         assert response.status_code == 200
-        total_items = response.get_json()["pagination"]["total_items"]
+        total_items = response.get_json()["data"]["pagination"]["total_items"]
 
         # Test that limit actually limits results
         limit = min(5, total_items)
         response = client.get(f"/api/prospects?limit={limit}")
         assert response.status_code == 200
-        data = response.get_json()
+        data = response.get_json()["data"]
 
         assert len(data["prospects"]) <= limit
         assert data["pagination"]["total_items"] == total_items
@@ -207,7 +209,7 @@ class TestProspectsAPI:
         while has_next:
             response = client.get(f"/api/prospects?page={page}&limit={limit}")
             assert response.status_code == 200
-            data = response.get_json()
+            data = response.get_json()["data"]
 
             # Collect IDs to verify no duplicates across pages
             for prospect in data["prospects"]:
@@ -229,14 +231,14 @@ class TestProspectsAPI:
         # First, get a prospect to search for
         response = client.get("/api/prospects?limit=1")
         assert response.status_code == 200
-        sample_prospect = response.get_json()["prospects"][0]
+        sample_prospect = response.get_json()["data"]["prospects"][0]
 
         # Search by part of title
         if sample_prospect.get("title"):
             search_term = sample_prospect["title"].split()[0]
             response = client.get(f"/api/prospects?search={search_term}")
             assert response.status_code == 200
-            data = response.get_json()
+            data = response.get_json()["data"]
 
             # Verify all returned prospects contain search term
             for prospect in data["prospects"]:
@@ -254,7 +256,7 @@ class TestProspectsAPI:
         random_string = "".join(random.choices(string.ascii_letters, k=20))
         response = client.get(f"/api/prospects?search={random_string}")
         assert response.status_code == 200
-        data = response.get_json()
+        data = response.get_json()["data"]
         assert len(data["prospects"]) == 0
 
     def test_naics_filter_behavior(self, client):
@@ -262,7 +264,7 @@ class TestProspectsAPI:
         # Get all prospects to find available NAICS codes
         response = client.get("/api/prospects?limit=100")
         assert response.status_code == 200
-        all_prospects = response.get_json()["prospects"]
+        all_prospects = response.get_json()["data"]["prospects"]
 
         # Find a NAICS code that exists
         naics_codes = [p["naics"] for p in all_prospects if p.get("naics")]
@@ -273,7 +275,7 @@ class TestProspectsAPI:
             # Filter by this NAICS code
             response = client.get(f"/api/prospects?naics={test_naics}")
             assert response.status_code == 200
-            data = response.get_json()
+            data = response.get_json()["data"]
 
             # Verify all returned prospects have this NAICS code
             for prospect in data["prospects"]:
@@ -287,12 +289,12 @@ class TestProspectsAPI:
         # Get a sample agency
         response = client.get("/api/prospects?limit=1")
         assert response.status_code == 200
-        sample_agency = response.get_json()["prospects"][0]["agency"]
+        sample_agency = response.get_json()["data"]["prospects"][0]["agency"]
 
         # Filter by this agency
         response = client.get(f"/api/prospects?agency={sample_agency}")
         assert response.status_code == 200
-        data = response.get_json()
+        data = response.get_json()["data"]
 
         # Verify all returned prospects have this agency
         for prospect in data["prospects"]:
@@ -306,7 +308,7 @@ class TestProspectsAPI:
         # Get enhanced prospects
         response = client.get("/api/prospects?ai_enrichment=enhanced")
         assert response.status_code == 200
-        enhanced_data = response.get_json()
+        enhanced_data = response.get_json()["data"]
 
         # Verify all enhanced prospects have processing timestamp
         for prospect in enhanced_data["prospects"]:
@@ -315,7 +317,7 @@ class TestProspectsAPI:
         # Get non-enhanced prospects
         response = client.get("/api/prospects?ai_enrichment=original")
         assert response.status_code == 200
-        original_data = response.get_json()
+        original_data = response.get_json()["data"]
 
         # Verify all non-enhanced prospects don't have processing timestamp
         for prospect in original_data["prospects"]:
@@ -324,7 +326,7 @@ class TestProspectsAPI:
         # Get all prospects to verify partitioning
         response = client.get("/api/prospects?limit=100")
         assert response.status_code == 200
-        all_data = response.get_json()
+        all_data = response.get_json()["data"]
 
         # Total of enhanced + original should equal all (or be close if pagination limits apply)
         total_filtered = len(enhanced_data["prospects"]) + len(
@@ -342,7 +344,7 @@ class TestProspectsAPI:
         # Test ascending sort
         response = client.get("/api/prospects?sort_by=title&sort_order=asc&limit=10")
         assert response.status_code == 200
-        data_asc = response.get_json()
+        data_asc = response.get_json()["data"]
 
         if len(data_asc["prospects"]) > 1:
             titles_asc = [p["title"] for p in data_asc["prospects"] if p.get("title")]
@@ -353,7 +355,7 @@ class TestProspectsAPI:
         # Test descending sort
         response = client.get("/api/prospects?sort_by=title&sort_order=desc&limit=10")
         assert response.status_code == 200
-        data_desc = response.get_json()
+        data_desc = response.get_json()["data"]
 
         if len(data_desc["prospects"]) > 1:
             titles_desc = [p["title"] for p in data_desc["prospects"] if p.get("title")]
@@ -366,7 +368,7 @@ class TestProspectsAPI:
         # Get initial data to find valid filter combinations
         response = client.get("/api/prospects?limit=20")
         assert response.status_code == 200
-        prospects = response.get_json()["prospects"]
+        prospects = response.get_json()["data"]["prospects"]
 
         # Find a prospect with multiple filterable attributes
         test_prospect = None
@@ -383,7 +385,7 @@ class TestProspectsAPI:
                 f'&ai_enrichment=enhanced'
             )
             assert response.status_code == 200
-            data = response.get_json()
+            data = response.get_json()["data"]
 
             # Verify all returned prospects match all filters
             for prospect in data["prospects"]:
@@ -399,38 +401,42 @@ class TestProspectsAPI:
         # Test invalid page number
         response = client.get("/api/prospects?page=0")
         assert response.status_code == 400
-        assert "error" in response.get_json()
+        err = response.get_json()
+        assert err["status"] == "error"
+        assert "message" in err
 
         response = client.get("/api/prospects?page=-5")
         assert response.status_code == 400
 
         # Test invalid limit
         response = client.get("/api/prospects?limit=0")
-        assert response.status_code in [200, 400]  # May use default or error
+        assert response.status_code == 400
 
         # Test excessive limit
         response = client.get("/api/prospects?limit=10000")
         assert response.status_code == 400
-        data = response.get_json()
-        assert "error" in data
-        assert "100" in data["error"]  # Should mention max limit
+        err = response.get_json()
+        assert err["status"] == "error"
+        assert "100" in err["message"]  # Should mention max limit
 
         # Test invalid sort order
         response = client.get("/api/prospects?sort_order=invalid")
-        # Should either ignore or return error, not crash
-        assert response.status_code in [200, 400]
+        # Invalid sort_order falls back to ascending
+        assert response.status_code == 200
 
     def test_get_prospect_by_id(self, client):
         """Test retrieving individual prospect by ID."""
         # First get a valid prospect ID
         response = client.get("/api/prospects?limit=1")
         assert response.status_code == 200
-        prospect_id = response.get_json()["prospects"][0]["id"]
+        prospect_id = response.get_json()["data"]["prospects"][0]["id"]
 
         # Retrieve specific prospect
         response = client.get(f"/api/prospects/{prospect_id}")
         assert response.status_code == 200
-        data = response.get_json()
+        outer = response.get_json()
+        assert outer["status"] == "success"
+        data = outer["data"]
 
         # Verify correct prospect returned
         assert data["id"] == prospect_id
@@ -446,7 +452,8 @@ class TestProspectsAPI:
         )
         response = client.get(f"/api/prospects/{fake_id}")
         assert response.status_code == 404
-        assert "error" in response.get_json()
+        err = response.get_json()
+        assert err["status"] == "error"
 
     def test_api_performance_acceptable(self, client):
         """Test that API responds within acceptable time limits."""
@@ -463,7 +470,7 @@ class TestProspectsAPI:
             response = client.get(endpoint)
             response_time = time.time() - start_time
 
-            assert response.status_code in [200, 400, 404]
+            assert response.status_code == 200
             # Response should be under 2 seconds for in-memory database
             assert response_time < 2.0, f"Endpoint {endpoint} took {response_time:.2f}s"
 
@@ -471,7 +478,7 @@ class TestProspectsAPI:
         """Test that API responses maintain data integrity."""
         response = client.get("/api/prospects?limit=10")
         assert response.status_code == 200
-        data = response.get_json()
+        data = response.get_json()["data"]
 
         for prospect in data["prospects"]:
             # Required fields should not be None
@@ -525,7 +532,7 @@ class TestProspectsAPI:
             response = client.get(f"/api/prospects?search={attempt}")
             # Should not crash, should return valid response
             assert response.status_code == 200
-            data = response.get_json()
+            data = response.get_json()["data"]
             assert "prospects" in data
 
         # Test XSS prevention
@@ -562,7 +569,8 @@ class TestProspectsAPI:
         response = client.get(f"/api/prospects?limit={limit}&page={page}")
 
         # Should handle any valid combination
-        assert response.status_code in [200, 400]
+        # Invalid page should return 400 error
+        assert response.status_code == 400
 
         if response.status_code == 200:
             data = response.get_json()
@@ -574,7 +582,7 @@ class TestProspectsAPI:
         # Get prospects to find source IDs
         response = client.get("/api/prospects?limit=10")
         assert response.status_code == 200
-        prospects = response.get_json()["prospects"]
+        prospects = response.get_json()["data"]["prospects"]
 
         # Collect unique source IDs
         source_ids = list(set(p["source_id"] for p in prospects if p.get("source_id")))
@@ -585,7 +593,7 @@ class TestProspectsAPI:
             # Filter by source ID
             response = client.get(f"/api/prospects?source_ids={test_source_id}")
             assert response.status_code == 200
-            data = response.get_json()
+            data = response.get_json()["data"]
 
             # Verify all returned prospects have this source ID
             for prospect in data["prospects"]:
@@ -593,11 +601,176 @@ class TestProspectsAPI:
 
             # Test multiple source IDs if available
             if len(source_ids) > 1:
-                source_ids_str = ",".join(str(sid) for sid in source_ids[:2])
-                response = client.get(f"/api/prospects?source_ids={source_ids_str}")
+                multiple_ids = ",".join(str(id) for id in source_ids[:2])
+                response = client.get(f"/api/prospects?source_ids={multiple_ids}")
                 assert response.status_code == 200
-                data = response.get_json()
-
-                # Verify all prospects are from one of the specified sources
+                data = response.get_json()["data"]
+                
                 for prospect in data["prospects"]:
                     assert prospect["source_id"] in source_ids[:2]
+    
+    def test_invalid_source_ids_handling(self, client):
+        """Test that invalid source_ids are handled gracefully."""
+        # Test with non-integer source_ids
+        response = client.get("/api/prospects?source_ids=abc,xyz")
+        # Should log warning and ignore invalid IDs, not crash
+        assert response.status_code == 200
+        data = response.get_json()
+        assert "data" in data
+        # Results may be empty if no valid IDs
+        assert "prospects" in data["data"]
+    
+    def test_sort_by_fallback(self, client):
+        """Test that invalid sort_by falls back to 'id'."""
+        # Test with invalid sort field
+        response = client.get("/api/prospects?sort_by=invalid_field")
+        assert response.status_code == 200
+        data = response.get_json()["data"]
+        
+        # Should still return results (fallback to id sorting)
+        assert "prospects" in data
+        
+        # Verify results are sorted by id (default fallback)
+        if len(data["prospects"]) > 1:
+            ids = [p["id"] for p in data["prospects"]]
+            # Check if sorted (allowing for desc order too)
+            is_asc = all(ids[i] <= ids[i+1] for i in range(len(ids)-1))
+            is_desc = all(ids[i] >= ids[i+1] for i in range(len(ids)-1))
+            assert is_asc or is_desc, "Results should be sorted by id"
+    
+    def test_max_limit_policy(self, client):
+        """Test maximum limit enforcement."""
+        # Test with very large limit
+        response = client.get("/api/prospects?limit=10000")
+        assert response.status_code == 200
+        data = response.get_json()["data"]
+        
+        # Should be clamped to max allowed (typically 100)
+        assert len(data["prospects"]) <= 100
+        assert data["pagination"]["per_page"] <= 100
+    
+    def test_combined_filter_interactions(self, client):
+        """Test multiple filters combined."""
+        # Get sample data first
+        response = client.get("/api/prospects?limit=50")
+        assert response.status_code == 200
+        all_prospects = response.get_json()["data"]["prospects"]
+        
+        # Find common attributes to filter by
+        if all_prospects:
+            sample = all_prospects[0]
+            
+            # Test combining search + NAICS
+            if sample.get("naics") and sample.get("title"):
+                search_term = sample["title"].split()[0]
+                naics = sample["naics"]
+                
+                response = client.get(f"/api/prospects?search={search_term}&naics={naics}")
+                assert response.status_code == 200
+                data = response.get_json()["data"]
+                
+                # Results should match both filters
+                for prospect in data["prospects"]:
+                    assert naics == prospect.get("naics")
+                    # Search term should be in title, description, or agency
+                    found = (
+                        search_term.lower() in (prospect.get("title", "") or "").lower() or
+                        search_term.lower() in (prospect.get("description", "") or "").lower() or
+                        search_term.lower() in (prospect.get("agency", "") or "").lower()
+                    )
+                    assert found, f"Search term '{search_term}' not found in prospect"
+    
+    def test_ai_enrichment_filter(self, client):
+        """Test filtering by AI enrichment status."""
+        # Test filtering for AI-enriched prospects
+        response = client.get("/api/prospects?ai_enrichment=true")
+        assert response.status_code == 200
+        data = response.get_json()["data"]
+        
+        # All returned prospects should have AI enrichment
+        for prospect in data["prospects"]:
+            assert prospect.get("ollama_processed_at") is not None
+        
+        # Test filtering for non-enriched prospects
+        response = client.get("/api/prospects?ai_enrichment=false")
+        assert response.status_code == 200
+        data = response.get_json()["data"]
+        
+        # All returned prospects should NOT have AI enrichment
+        for prospect in data["prospects"]:
+            assert prospect.get("ollama_processed_at") is None
+    
+    def test_keywords_filter(self, client):
+        """Test filtering by keywords."""
+        # Test with single keyword
+        response = client.get("/api/prospects?keywords=software")
+        assert response.status_code == 200
+        data = response.get_json()["data"]
+        
+        # Should return results (may be empty if no matches)
+        assert "prospects" in data
+        
+        # Test with multiple keywords
+        response = client.get("/api/prospects?keywords=software,cloud,data")
+        assert response.status_code == 200
+        data = response.get_json()["data"]
+        assert "prospects" in data
+        
+        # Verify keyword matching if results exist
+        if data["prospects"]:
+            keywords = ["software", "cloud", "data"]
+            for prospect in data["prospects"]:
+                # At least one keyword should match
+                text = f"{prospect.get('title', '')} {prospect.get('description', '')}".lower()
+                assert any(kw in text for kw in keywords)
+    
+    def test_pagination_edge_cases(self, client):
+        """Test pagination edge cases."""
+        # Test page 0 (should be invalid)
+        response = client.get("/api/prospects?page=0")
+        assert response.status_code == 400
+        
+        # Test negative page
+        response = client.get("/api/prospects?page=-1")
+        assert response.status_code == 400
+        
+        # Test very large page number
+        response = client.get("/api/prospects?page=999999")
+        assert response.status_code == 200
+        data = response.get_json()["data"]
+        # Should return empty results, not error
+        assert len(data["prospects"]) == 0
+        assert data["pagination"]["has_next"] is False
+        
+        # Test limit 0 (should be invalid or use default)
+        response = client.get("/api/prospects?limit=0")
+        # Either error or default limit
+        if response.status_code == 200:
+            data = response.get_json()["data"]
+            assert data["pagination"]["per_page"] > 0  # Should use default
+        else:
+            assert response.status_code == 400
+            
+        # Test negative limit
+        response = client.get("/api/prospects?limit=-10")
+        assert response.status_code == 400
+    
+    def test_empty_filters_behavior(self, client):
+        """Test behavior with empty filter values."""
+        # Empty search should be ignored
+        response = client.get("/api/prospects?search=")
+        assert response.status_code == 200
+        
+        # Empty agency should be ignored
+        response = client.get("/api/prospects?agency=")
+        assert response.status_code == 200
+        
+        # Empty NAICS should be ignored
+        response = client.get("/api/prospects?naics=")
+        assert response.status_code == 200
+        
+        # All empty filters should return unfiltered results
+        response = client.get("/api/prospects?search=&agency=&naics=")
+        assert response.status_code == 200
+        data = response.get_json()["data"]
+        assert "prospects" in data

@@ -246,6 +246,16 @@ class TestSplitPlace:
 
         city, state = split_place("Puerto Rico")
         assert pd.isna(city) and state == "PR"
+        
+        # Additional edge cases
+        city, state = split_place("Multiple, Commas, Here")
+        assert city == "Multiple" and pd.isna(state)  # Too many commas
+        
+        city, state = split_place("123 Main St, NY")
+        assert city == "123 Main St" and state == "NY"  # Address-like string
+        
+        city, state = split_place("City Name, 12345")
+        assert city == "City Name" and pd.isna(state)  # Zip code instead of state
 
 
 class TestPerformanceAndEdgeCases:
@@ -257,6 +267,9 @@ class TestPerformanceAndEdgeCases:
             ("$999,999,999,999", (999999999999.0, None)),
             ("$1T", (pd.NA, "$1T")),  # T not recognized
             ("$1.5 trillion", (pd.NA, "$1.5 trillion")),  # trillion not recognized
+            ("$0.01", (0.01, None)),  # Very small value
+            ("$0", (0.0, None)),  # Zero value
+            ("-$100,000", (pd.NA, "-$100,000")),  # Negative value
         ]
 
         for input_value, expected in large_values:
@@ -303,9 +316,10 @@ class TestPerformanceAndEdgeCases:
             ), f"Unit failed for {input_value}: got {unit_str}, expected {expected_unit}"
 
     def test_parsing_performance(self):
-        """Test parsing performance with many inputs."""
+        """Test parsing performance with deterministic inputs."""
         import time
 
+        # Deterministic test values - no randomness
         test_values = [
             "$100,000",
             "$1M",
@@ -334,3 +348,33 @@ class TestPerformanceAndEdgeCases:
 
         # Should complete in reasonable time (less than 1 second for 900 operations)
         assert end_time - start_time < 1.0, "Parsing performance is too slow"
+    
+    def test_malformed_input_edge_cases(self):
+        """Test edge cases with malformed inputs."""
+        malformed_inputs = [
+            ("$$$100,000", (pd.NA, "$$$100,000")),  # Multiple dollar signs
+            ("100,00,000", (pd.NA, "100,00,000")),  # Incorrect comma placement
+            ("$1.2.3M", (pd.NA, "$1.2.3M")),  # Multiple decimal points
+            ("$100K$200K", (100000.0, "$100K$200K")),  # Multiple values concatenated
+            ("$  100  K", (100000.0, "K")),  # Extra spaces
+            ("$100\nK", (pd.NA, "$100\nK")),  # Newline in value
+            ("$100\t000", (100000.0, None)),  # Tab in value
+        ]
+        
+        for input_value, expected in malformed_inputs:
+            numeric_val, unit_str = parse_value_range(input_value)
+            expected_num, expected_unit = expected
+
+            if pd.notna(expected_num) and pd.notna(numeric_val):
+                assert (
+                    abs(numeric_val - expected_num) < 0.01
+                ), f"Failed for malformed input {input_value}: got {numeric_val}, expected {expected_num}"
+            else:
+                assert pd.isna(numeric_val) and pd.isna(
+                    expected_num
+                ), f"Failed for {input_value}: got {numeric_val}, expected {expected_num}"
+
+            if expected_unit is not None:
+                assert (
+                    unit_str == expected_unit
+                ), f"Unit failed for {input_value}: got {unit_str}, expected {expected_unit}"

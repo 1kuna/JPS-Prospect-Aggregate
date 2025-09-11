@@ -101,7 +101,7 @@ class TestSQLInjection:
             response = client.get(f"/api/prospects?keywords={payload}")
 
             # Should handle malicious input gracefully
-            assert response.status_code in [200, 400, 422]  # Valid responses
+            assert response.status_code == 200 or response.status_code == 400 or response.status_code == 422
 
             if response.status_code == 200:
                 data = response.get_json()
@@ -122,11 +122,11 @@ class TestSQLInjection:
         for payload in payloads:
             # Test agency filter
             response = client.get(f"/api/prospects?agency={payload}")
-            assert response.status_code in [200, 400, 422]
+            assert response.status_code == 200 or response.status_code == 400 or response.status_code == 422
 
             # Test NAICS filter
             response = client.get(f"/api/prospects?naics={payload}")
-            assert response.status_code in [200, 400, 422]
+            assert response.status_code == 200 or response.status_code == 400 or response.status_code == 422
 
     def test_decisions_api_sql_injection(self, auth_client):
         """Test SQL injection in decision creation."""
@@ -158,10 +158,10 @@ class TestSQLInjection:
                     content_type="application/json",
                 )
             else:
-                response = auth_client.get(f"/api/decisions/{payload}")
+                response = auth_client.get(f"/api/decisions/prospect/{payload}")
 
             # Should handle malicious input gracefully
-            assert response.status_code in [200, 400, 404, 422]
+            assert response.status_code == 200 or response.status_code == 400 or response.status_code == 404 or response.status_code == 422
 
 
 class TestXSSPrevention:
@@ -179,7 +179,7 @@ class TestXSSPrevention:
                 description=f"Test Description {xss_payload}",
                 agency="Test Agency",
                 posted_date=datetime(2024, 1, 15).date(),
-                source_data_id=app.config["TEST_SOURCE_ID"],
+                source_id=app.config["TEST_SOURCE_ID"],
                 source_file="xss_test.json",
                 loaded_at=datetime.now(UTC),
             )
@@ -217,7 +217,7 @@ class TestXSSPrevention:
                 description="Test description",
                 agency="Test Agency",
                 posted_date=datetime(2024, 1, 15).date(),
-                source_data_id=app.config["TEST_SOURCE_ID"],
+                source_id=app.config["TEST_SOURCE_ID"],
                 source_file="xss_test.json",
                 loaded_at=datetime.now(UTC),
             )
@@ -242,7 +242,7 @@ class TestXSSPrevention:
         assert response.status_code == 201
 
         # Get decisions back
-        response = auth_client.get("/api/decisions/XSS-DECISION-001")
+        response = auth_client.get("/api/decisions/prospect/XSS-DECISION-001")
         assert response.status_code == 200
 
         data = response.get_json()
@@ -313,7 +313,7 @@ class TestInputValidation:
             content_type="application/json",
         )
         # Should either reject or truncate gracefully
-        assert response.status_code in [400, 422]
+        assert response.status_code == 400 or response.status_code == 422
 
     def test_malformed_json_handling(self, auth_client):
         """Test handling of malformed JSON requests."""
@@ -330,7 +330,7 @@ class TestInputValidation:
                 "/api/decisions/", data=payload, content_type="application/json"
             )
             # Should handle gracefully
-            assert response.status_code in [400, 422]
+            assert response.status_code == 400 or response.status_code == 422
 
 
 class TestAccessControl:
@@ -340,7 +340,7 @@ class TestAccessControl:
         """Test that protected endpoints require authentication."""
         protected_endpoints = [
             ("/api/decisions/", "POST"),
-            ("/api/decisions/TEST-001", "GET"),
+            ("/api/decisions/prospect/TEST-001", "GET"),
             ("/api/decisions/stats", "GET"),
             ("/api/decisions/123", "DELETE"),
         ]
@@ -358,11 +358,7 @@ class TestAccessControl:
                 response = client.get(endpoint)
 
             # Should require authentication
-            assert response.status_code in [
-                401,
-                403,
-                302,
-            ]  # Unauthorized, Forbidden, or Redirect
+            assert response.status_code == 401 or response.status_code == 403 or response.status_code == 302  # Unauthorized, Forbidden, or Redirect
 
     def test_public_endpoints_accessibility(self, client):
         """Test that public endpoints are accessible without authentication."""
@@ -376,7 +372,7 @@ class TestAccessControl:
         for endpoint in public_endpoints:
             response = client.get(endpoint)
             # Should be accessible (may return empty data but not auth error)
-            assert response.status_code in [200, 404]
+            assert response.status_code == 200 or response.status_code == 404
 
 
 class TestDataLeakage:
@@ -416,7 +412,7 @@ class TestDataLeakage:
                 description="Test description",
                 agency="Test Agency",
                 posted_date=datetime(2024, 1, 15).date(),
-                source_data_id=app.config["TEST_SOURCE_ID"],
+                source_id=app.config["TEST_SOURCE_ID"],
                 source_file="leak_test.json",
                 loaded_at=datetime.now(UTC),
             )
@@ -431,7 +427,7 @@ class TestDataLeakage:
 
         # Should not include internal database fields
         internal_fields = [
-            "source_data_id",  # Internal ID reference
+            "source_id",  # Internal ID reference
             "_sa_instance_state",  # SQLAlchemy internal
         ]
 
@@ -483,9 +479,16 @@ class TestSecurityHeaders:
             if header in response.headers:
                 present_headers.append(header)
 
-        # At least some security headers should be present
-        # (This test will pass even if none are present, but documents the expectation)
-        assert len(present_headers) >= 0  # Placeholder - adjust based on implementation
+        # Check for specific security headers we expect to be set
+        expected_headers = ["X-Content-Type-Options", "X-Frame-Options"]
+        for header in expected_headers:
+            assert header in response.headers, f"Security header {header} should be present"
+            
+        # Verify header values if they are present
+        if "X-Content-Type-Options" in response.headers:
+            assert response.headers["X-Content-Type-Options"] == "nosniff"
+        if "X-Frame-Options" in response.headers:
+            assert response.headers["X-Frame-Options"] in ["DENY", "SAMEORIGIN"]
 
 
 if __name__ == "__main__":

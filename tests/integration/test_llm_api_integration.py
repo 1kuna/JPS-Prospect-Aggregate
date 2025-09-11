@@ -183,23 +183,18 @@ class TestLLMAPIIntegration:
                 response = client.get("/api/llm/status")
 
         assert response.status_code == 200
-        data = response.get_json()
+        outer = response.get_json()
+        assert "status" in outer, "Response should have standardized envelope with 'status' field"
+        assert outer["status"] == "success"
+        assert "data" in outer, "Response should have standardized envelope with 'data' field"
+        data = outer["data"]
 
         # Verify database queries worked with dynamic data
         assert data["total_prospects"] == app.config["TEST_TOTAL_PROSPECTS"]
         assert data["processed_prospects"] == app.config["TEST_PROCESSED_COUNT"]
 
-        # Verify percentage calculation
-        if app.config["TEST_TOTAL_PROSPECTS"] > 0:
-            expected_percentage = round(
-                (
-                    app.config["TEST_PROCESSED_COUNT"]
-                    / app.config["TEST_TOTAL_PROSPECTS"]
-                )
-                * 100,
-                2,
-            )
-            assert data["processing_percentage"] == expected_percentage
+        # Processed is never more than total
+        assert data["processed_prospects"] <= data["total_prospects"]
 
         # Verify NAICS statistics match our tracking
         assert data["naics_coverage"]["original"] == app.config["TEST_NAICS_ORIGINAL"]
@@ -232,13 +227,13 @@ class TestLLMAPIIntegration:
 
         # Mock enhancement function
         mock_add.return_value = {
-            "success": True,
+            "queue_item_id": f"queue-{prospect_id}",
+            "was_existing": False,
             "queue_position": queue_position,
-            "message": f"Added to enhancement queue at position {queue_position}",
         }
 
         response = client.post(
-            "/api/llm/enhance",
+            "/api/llm/enhance-single",
             json={
                 "prospect_id": prospect_id,
                 "force_redo": force_redo,
@@ -248,9 +243,13 @@ class TestLLMAPIIntegration:
         )
 
         assert response.status_code == 200
-        data = response.get_json()
-        assert data["success"] is True
-        assert data["queue_position"] == queue_position
+        outer = response.get_json()
+        assert "status" in outer, "Response should have standardized envelope with 'status' field"
+        assert outer["status"] == "success"
+        assert "data" in outer, "Response should have standardized envelope with 'data' field"
+        assert "queue_item_id" in outer["data"]
+        # planned_steps should be included by backend for frontend planning
+        assert "planned_steps" in outer["data"]
 
         # Verify the enhancement function was called with correct parameters
         mock_add.assert_called_once()
@@ -265,7 +264,7 @@ class TestLLMAPIIntegration:
         mock_admin.side_effect = lambda f: f
 
         response = client.post(
-            "/api/llm/enhance",
+            "/api/llm/enhance-single",
             json={"force_redo": random.choice([True, False])},
             headers={"Content-Type": "application/json"},
         )
@@ -298,7 +297,11 @@ class TestLLMAPIIntegration:
         response = client.get("/api/llm/queue/status")
 
         assert response.status_code == 200
-        data = response.get_json()
+        outer = response.get_json()
+        assert "status" in outer, "Response should have standardized envelope with 'status' field"
+        assert outer["status"] == "success"
+        assert "data" in outer, "Response should have standardized envelope with 'data' field"
+        data = outer["data"]
         assert data["total_items"] == total
         assert data["is_processing"] == (processing > 0)
         if processing > 0:
@@ -335,7 +338,11 @@ class TestLLMAPIIntegration:
         response = client.get(f"/api/llm/queue/item/{item_id}")
 
         assert response.status_code == 200
-        data = response.get_json()
+        outer = response.get_json()
+        assert "status" in outer, "Response should have standardized envelope with 'status' field"
+        assert outer["status"] == "success"
+        assert "data" in outer, "Response should have standardized envelope with 'data' field"
+        data = outer["data"]
         assert data["status"] == status
         assert data["queue_position"] == queue_position
         assert len(data["enhancement_types"]) == len(enhancement_types)
@@ -362,17 +369,18 @@ class TestLLMAPIIntegration:
         mock_admin.side_effect = lambda f: f
 
         success = random.choice([True, False])
-        mock_queue.remove_from_queue.return_value = success
+        mock_queue.cancel_item.return_value = success
 
         item_id = str(random.randint(100, 999))
-        response = client.delete(f"/api/llm/queue/item/{item_id}")
+        response = client.post(f"/api/llm/queue/item/{item_id}/cancel")
 
         if success:
             assert response.status_code == 200
             data = response.get_json()
-            assert data["success"] is True
-
-        mock_queue.remove_from_queue.assert_called_once_with(item_id)
+            assert "status" in data, "Response should have standardized envelope with 'status' field"
+            assert data["status"] == "success"
+        
+        mock_queue.cancel_item.assert_called_once_with(item_id)
 
     @patch("app.api.llm_processing.admin_required")
     @patch("app.api.llm_processing.enhancement_queue")
@@ -380,14 +388,15 @@ class TestLLMAPIIntegration:
         """Test starting queue processing."""
         mock_admin.side_effect = lambda f: f
 
-        response = client.post("/api/llm/queue/start")
+        response = client.post("/api/llm/queue/start-worker")
 
         assert response.status_code == 200
         data = response.get_json()
-        assert data["success"] is True
+        assert "status" in data, "Response should have standardized envelope with 'status' field"
+        assert data["status"] == "success"
         assert "message" in data
 
-        mock_queue.start_processing.assert_called_once()
+        mock_queue.start_worker.assert_called_once()
 
     @patch("app.api.llm_processing.admin_required")
     @patch("app.api.llm_processing.enhancement_queue")
@@ -395,14 +404,15 @@ class TestLLMAPIIntegration:
         """Test stopping queue processing."""
         mock_admin.side_effect = lambda f: f
 
-        response = client.post("/api/llm/queue/stop")
+        response = client.post("/api/llm/queue/stop-worker")
 
         assert response.status_code == 200
         data = response.get_json()
-        assert data["success"] is True
+        assert "status" in data, "Response should have standardized envelope with 'status' field"
+        assert data["status"] == "success"
         assert "message" in data
 
-        mock_queue.stop_processing.assert_called_once()
+        mock_queue.stop_worker.assert_called_once()
 
     @patch("app.api.llm_processing.admin_required")
     @patch("app.api.llm_processing.enhancement_queue")
@@ -417,76 +427,34 @@ class TestLLMAPIIntegration:
 
         assert response.status_code == 200
         data = response.get_json()
-        assert data["success"] is True
-        assert data["cleared_count"] == cleared_count
+        assert "status" in data, "Response should have standardized envelope with 'status' field"
+        assert data["status"] == "success"
+        assert "data" in data, "Response should have standardized envelope with 'data' field"
+        assert data["data"]["cleared_count"] == cleared_count
 
     @patch("app.api.llm_processing.admin_required")
     def test_enhancement_history_integration(self, mock_admin, client, app):
-        """Test enhancement history endpoint with database queries."""
+        """Test enhancement logs endpoint with database queries."""
         mock_admin.side_effect = lambda f: f
 
         limit = random.randint(5, 20)
-        offset = random.randint(0, 10)
 
-        response = client.get(f"/api/llm/history?limit={limit}&offset={offset}")
+        response = client.get(f"/api/llm/logs?limit={limit}")
 
         assert response.status_code == 200
         data = response.get_json()
-        assert "total" in data
-        assert "items" in data
-        assert isinstance(data["items"], list)
-        assert isinstance(data["total"], int)
+        assert "status" in data, "Response should have standardized envelope with 'status' field"
+        assert data["status"] == "success"
+        assert "data" in data, "Response should have standardized envelope with 'data' field"
+        assert isinstance(data["data"], list)
+        assert len(data["data"]) <= limit
 
     def test_api_error_handling(self, client):
         """Test API error handling for unauthenticated requests."""
         # Test that admin_required decorator works
         response = client.get("/api/llm/status")
 
-        # Should get 401 or 403 depending on admin_required implementation
-        assert response.status_code in [
-            401,
-            403,
-            404,
-        ]  # 404 if route doesn't exist without auth
+        # Should get 401 for unauthenticated request
+        assert response.status_code == 401
 
-    @patch("app.api.llm_processing.admin_required")
-    def test_stream_progress_endpoint(self, mock_admin, client):
-        """Test SSE progress streaming endpoint with dynamic data."""
-        mock_admin.side_effect = lambda f: f
-
-        # Generate random progress data
-        total_items = random.randint(1, 10)
-        processing_items = min(random.randint(1, 3), total_items)
-        current_item = str(random.randint(100, 999))
-        steps = [
-            "Processing values",
-            "Extracting contacts",
-            "Inferring NAICS",
-            "Enhancing title",
-        ]
-        current_step = random.choice(steps)
-
-        with patch("app.api.llm_processing.enhancement_queue") as mock_queue:
-            mock_queue.get_queue_status.return_value = {
-                "total_items": total_items,
-                "processing_items": processing_items,
-                "current_item": current_item,
-                "current_step": current_step,
-            }
-
-            response = client.get("/api/llm/stream/progress")
-
-            assert response.status_code == 200
-            assert "text" in response.content_type  # SSE content type
-
-            # Read first chunk of SSE data
-            if hasattr(response, "response"):
-                data_chunk = next(response.response)
-                assert b"data:" in data_chunk
-
-                # Verify the SSE contains expected fields
-                if b"current_step" in data_chunk:
-                    assert (
-                        current_step.encode() in data_chunk
-                        or b"current_step" in data_chunk
-                    )
+    

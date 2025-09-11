@@ -1,0 +1,4 @@
+Procurement Number,Operating Division,Title,Description,Primary NAICS,Contract Vehicle,Contract Type,Total Contract Range,Target Award Month/Year (Award by),Target Solicitation Month/Year,Anticipated Acquisition Strategy,Program Office POC First Name,Program Office POC Last Name,Program Office POC Email
+HHS-2024-001,CDC,Disease Surveillance System,Development of national disease surveillance platform,541511,GSA MAS,FFP,"$1,000,000 - $3,000,000",2024-09-01,2024-06-01,Small Business,John,Smith,john.smith@hhs.gov
+HHS-2024-002,FDA,Drug Safety Analytics Platform,Analytics platform for drug safety monitoring,541512,CIO-SP3,T&M,"$2,000,000 - $5,000,000",2024-12-01,2024-09-01,8(a),Jane,Johnson,jane.johnson@hhs.gov
+HHS-2024-003,NIH,Research Data Management System,Centralized research data management system,517311,SEWP,CPFF,"$500,000 - $1,500,000",2025-03-01,2024-12-01,WOSB,Bob,Williams,bob.williams@hhs.gov

@@ -106,6 +106,17 @@ def get_llm_status():
         else None
     )
 
+    # Gather queue and LLM availability status for frontend
+    try:
+        queue_status = enhancement_queue.get_queue_status()
+    except Exception:
+        queue_status = {"is_processing": False, "total_items": 0}
+
+    try:
+        llm_status = llm_service.check_ollama_status()
+    except Exception:
+        llm_status = {"available": False, "error": "unavailable"}
+
     response_data = {
         "total_prospects": total_prospects,
         "processed_prospects": processed_prospects,
@@ -128,6 +139,8 @@ def get_llm_status():
         },
         "last_processed": last_processed,
         "model_version": model_version,
+        "queue_status": queue_status,
+        "llm_status": llm_status,
     }
 
     logger.info(

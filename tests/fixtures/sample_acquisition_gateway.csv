@@ -1,0 +1,6 @@
+Listing ID,Title,Body,NAICS Code,Estimated Contract Value,Estimated Solicitation Date,Ultimate Completion Date,Estimated Award FY,Agency,Place of Performance City,Place of Performance State,Place of Performance Country,Contract Type,Set Aside Type
+AG-10001,Software Development Services,Implementation and support for new software systems,541511,"$100,000 - $500,000",2024-03-15,2025-03-15,2024,Department of Defense,Washington,DC,USA,FFP,Small Business
+AG-10002,Cloud Infrastructure Management,Migration and management of cloud infrastructure,541512,"$500,000 - $1,000,000",2024-06-01,2025-12-31,2024,Department of Energy,Arlington,VA,USA,T&M,8(a)
+AG-10003,Cybersecurity Assessment Services,Comprehensive security assessment and remediation,541611,"$250,000 - $750,000",2024-09-01,2025-09-01,2025,Department of Homeland Security,New York,NY,USA,CPFF,WOSB
+AG-10004,Data Analytics Platform,Development of analytics and reporting platform,517311,"$1,000,000 - $2,500,000",2024-12-01,2026-06-01,2025,Department of Treasury,San Francisco,CA,USA,IDIQ,Full and Open
+AG-10005,Research and Development Services,Advanced research in emerging technologies,541330,"$750,000 - $1,500,000",2025-02-01,2026-08-01,2025,NASA,Chicago,IL,USA,Cost Plus,HUBZone

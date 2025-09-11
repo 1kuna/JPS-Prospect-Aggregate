@@ -347,9 +347,6 @@ class TestLLMService:
             assert llm_service._thread is not None
             assert llm_service._thread.is_alive()
 
-            # Let it run briefly
-            time.sleep(0.5)
-
             # Stop processing
             llm_service.stop_iterative_processing()
 

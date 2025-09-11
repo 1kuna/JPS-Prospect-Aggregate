@@ -1,0 +1,43 @@
+{
+  "opportunities": [
+    {
+      "APFS Number": "DHS-2024-001",
+      "Title": "Border Security Technology Integration",
+      "Description": "Implementation of advanced border security technologies",
+      "NAICS": "541512",
+      "Component": "CBP",
+      "Place of Performance City": "El Paso",
+      "Place of Performance State": "TX",
+      "Dollar Range": "$2,000,000 - $5,000,000",
+      "Contract Type": "IDIQ",
+      "Small Business Set-Aside": "Full and Open",
+      "Award Quarter": "FY24 Q3"
+    },
+    {
+      "APFS Number": "DHS-2024-002",
+      "Title": "Emergency Management Systems",
+      "Description": "Development of disaster response management systems",
+      "NAICS": "541611",
+      "Component": "FEMA",
+      "Place of Performance City": "Washington",
+      "Place of Performance State": "DC",
+      "Dollar Range": "$500,000 - $1,500,000",
+      "Contract Type": "FFP",
+      "Small Business Set-Aside": "Small Business",
+      "Award Quarter": "FY24 Q4"
+    },
+    {
+      "APFS Number": "DHS-2024-003",
+      "Title": "Cybersecurity Infrastructure Modernization",
+      "Description": "Upgrade and modernization of CISA cybersecurity infrastructure",
+      "NAICS": "541511",
+      "Component": "CISA",
+      "Place of Performance City": "Arlington",
+      "Place of Performance State": "VA",
+      "Dollar Range": "$3,000,000 - $7,000,000",
+      "Contract Type": "T&M",
+      "Small Business Set-Aside": "8(a)",
+      "Award Quarter": "FY25 Q1"
+    }
+  ]
+}

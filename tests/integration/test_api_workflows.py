@@ -371,7 +371,7 @@ class TestDecisionWorkflow:
         decision_id = created_decision["data"]["decision"]["id"]
 
         # Retrieve decisions for the prospect
-        response = auth_client.get(f"/api/decisions/{prospect_id}")
+        response = auth_client.get(f"/api/decisions/prospect/{prospect_id}")
         assert response.status_code == 200
 
         decisions_data = response.get_json()
@@ -395,7 +395,7 @@ class TestDecisionWorkflow:
         assert response.status_code == 201
 
         # Should now have 2 decisions (history is kept)
-        response = auth_client.get(f"/api/decisions/{prospect_id}")
+        response = auth_client.get(f"/api/decisions/prospect/{prospect_id}")
         assert response.status_code == 200
         decisions_data = response.get_json()
         assert decisions_data["data"]["total_decisions"] == 2
@@ -559,15 +559,15 @@ class TestErrorHandlingWorkflow:
         """Test handling of invalid pagination parameters."""
         # Test negative page
         response = client.get("/api/prospects?page=-1")
-        assert response.status_code in [400, 200]  # May handle gracefully
+        assert response.status_code == 400
 
         # Test invalid limit
         response = client.get("/api/prospects?limit=0")
-        assert response.status_code in [400, 200]  # May handle gracefully
+        assert response.status_code == 400
 
         # Test excessive limit
         response = client.get("/api/prospects?limit=1000")
-        assert response.status_code in [400, 200]  # May have max limit
+        assert response.status_code == 400
 
     def test_malformed_decision_workflow(self, app, auth_client):
         """Test handling of malformed decision requests."""
@@ -575,7 +575,7 @@ class TestErrorHandlingWorkflow:
         response = auth_client.post(
             "/api/decisions/", data=json.dumps({}), content_type="application/json"
         )
-        assert response.status_code in [400, 422]  # Bad request or unprocessable
+        assert response.status_code == 400  # Bad request for missing fields
 
         # Invalid decision type
         invalid_decision = {
@@ -589,7 +589,7 @@ class TestErrorHandlingWorkflow:
             data=json.dumps(invalid_decision),
             content_type="application/json",
         )
-        assert response.status_code in [400, 422]
+        assert response.status_code == 400  # Bad request for invalid decision type
 
 
 class TestConcurrencyWorkflow:
@@ -632,7 +632,7 @@ class TestConcurrencyWorkflow:
             assert response.status_code == 201
 
         # Verify all decisions were recorded
-        response = auth_client.get(f"/api/decisions/{prospect_id}")
+        response = auth_client.get(f"/api/decisions/prospect/{prospect_id}")
         assert response.status_code == 200
 
         decisions_data = response.get_json()
