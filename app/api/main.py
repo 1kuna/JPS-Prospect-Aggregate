@@ -1,6 +1,5 @@
-from datetime import timezone
+from datetime import date, datetime, timezone
 UTC = timezone.utc
-from datetime import date, datetime
 
 from flask import request
 from sqlalchemy import desc, func
@@ -51,7 +50,7 @@ def health_check():
         return success_response(
             data={
                 "status": "healthy",
-                "timestamp": datetime.now(UTC).isoformat() + "Z",
+                "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
                 "database": "connected",
             }
         )
@@ -62,7 +61,7 @@ def health_check():
             500,
             "Health check failed",
             status="unhealthy",
-            timestamp=datetime.now(UTC).isoformat() + "Z",
+            timestamp=datetime.now(UTC).isoformat().replace("+00:00", "Z"),
             database="disconnected",
             error=str(e),
         )
@@ -119,8 +118,7 @@ def get_dashboard():
         return success_response(
             data={
                 "total_proposals": total_prospects,
-                "latest_successful_scrape": latest_successful_scrape.isoformat()
-                + "Z"
+                "latest_successful_scrape": latest_successful_scrape.isoformat().replace("+00:00", "Z")
                 if latest_successful_scrape
                 else None,
                 "top_agencies": [
@@ -132,7 +130,7 @@ def get_dashboard():
                         "id": p.id,
                         "title": p.title,
                         "agency": p.agency,
-                        "proposal_date": p.release_date.isoformat() + "Z"
+                        "proposal_date": p.release_date.isoformat().replace("+00:00", "Z")
                         if p.release_date
                         else None,
                     }
@@ -142,7 +140,7 @@ def get_dashboard():
                     {
                         "data_source_name": name,
                         "status": status,
-                        "last_checked": last_checked.isoformat() + "Z"
+                        "last_checked": last_checked.isoformat().replace("+00:00", "Z")
                         if last_checked
                         else None,
                         "details": details,
@@ -170,7 +168,7 @@ def _execute_database_clear_operation(operation_name: str, clear_function):
 
         return success_response(
             data={
-                "timestamp": datetime.now(UTC).isoformat() + "Z",
+                "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
             },
             message=result["response_message"],
         )
@@ -182,21 +180,14 @@ def _execute_database_clear_operation(operation_name: str, clear_function):
 
 
 @api_route(main_bp, "/database/clear", methods=["POST"])
-def clear_database_all():
-    """Clear all data from the database."""
-    return _clear_database_typed("all")
-
 @api_route(main_bp, "/database/clear/<clear_type>", methods=["POST"])
-def clear_database(clear_type):
-    """Clear data from the database based on type.
+def clear_database(clear_type="all"):
+    """
+    Clear data from the database based on type.
 
     Args:
         clear_type: Type of data to clear ('all', 'ai', 'original')
     """
-    return _clear_database_typed(clear_type)
-
-def _clear_database_typed(clear_type):
-    """Internal function to handle database clearing."""
     if clear_type not in ["all", "ai", "original"]:
         return error_response(
             400,
@@ -326,7 +317,7 @@ def database_status():
 
         status_count = db.session.query(func.count(ScraperStatus.id)).scalar()
 
-        # Get database size for SQLite
+        # Get database size for SQLite (silently ignore errors)
         db_size = None
         try:
             from flask import current_app
@@ -340,7 +331,6 @@ def database_status():
                 db_file = db_path.replace("sqlite:///", "")
                 if os.path.exists(db_file):
                     db_size = os.path.getsize(db_file)
-            # Only SQLite is supported
         except Exception:
             # If any error occurs, silently continue with db_size = None
             pass
@@ -355,7 +345,7 @@ def database_status():
                 "data_source_count": data_source_count,
                 "status_record_count": status_count,
                 "database_size_bytes": db_size,
-                "timestamp": datetime.now(UTC).isoformat(),
+                "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
             }
         )
 
@@ -491,7 +481,7 @@ def _format_prospect_for_api(prospect):
         "place_city": prospect.place_city,
         "place_state": prospect.place_state,
         "ai_processed": prospect.ollama_processed_at is not None,
-        "loaded_at": prospect.loaded_at.isoformat() + "Z"
+        "loaded_at": prospect.loaded_at.isoformat().replace("+00:00", "Z")
         if prospect.loaded_at
         else None,
     }
@@ -910,3 +900,7 @@ def get_data_sources_for_duplicates():
     except Exception as e:
         logger.error(f"Error getting data sources: {str(e)}", exc_info=True)
         return error_response(500, f"Failed to get data sources: {str(e)}")
+
+# Add main/general routes here
+
+
