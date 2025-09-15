@@ -161,7 +161,7 @@ describe('useProspectDecisions', () => {
     });
 
     expect(mockGet).toHaveBeenCalledWith(
-      '/api/decisions/prospect-123',
+      '/api/decisions/prospect/prospect-123',
       { credentials: 'include' }
     );
     expect(result.current.data).toEqual(mockResponse);

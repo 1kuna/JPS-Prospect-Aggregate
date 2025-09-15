@@ -4,21 +4,20 @@ import React from 'react';
 import { ProspectEnhancementProvider, useProspectEnhancement } from './ProspectEnhancementContext';
 
 // Mock the useEnhancementSimple hook
-const mockQueueEnhancement = vi.fn();
-const mockGetEnhancementState = vi.fn();
-const mockCancelEnhancement = vi.fn();
+const {
+  mockQueueEnhancement,
+  mockGetEnhancementState,
+  mockCancelEnhancement,
+  mockUseEnhancementSimple
+} = vi.hoisted(() => ({
+  mockQueueEnhancement: vi.fn(),
+  mockGetEnhancementState: vi.fn(),
+  mockCancelEnhancement: vi.fn(),
+  mockUseEnhancementSimple: vi.fn()
+}));
 
 vi.mock('@/hooks/api/useEnhancementSimple', () => ({
-  useEnhancementSimple: () => ({
-    queueEnhancement: mockQueueEnhancement,
-    getEnhancementState: mockGetEnhancementState,
-    cancelEnhancement: mockCancelEnhancement,
-    enhancementStates: {
-      'prospect-1': { status: 'queued', queuePosition: 1 },
-      'prospect-2': { status: 'queued', queuePosition: 2 },
-      'prospect-3': { status: 'processing', currentStep: 'Enhancing title...' }
-    }
-  })
+  useEnhancementSimple: mockUseEnhancementSimple
 }));
 
 // Test component that uses the context
@@ -85,6 +84,16 @@ const TestComponentWithoutProvider = () => {
 describe('ProspectEnhancementContext', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockUseEnhancementSimple.mockImplementation(() => ({
+      queueEnhancement: mockQueueEnhancement,
+      getEnhancementState: mockGetEnhancementState,
+      cancelEnhancement: mockCancelEnhancement,
+      enhancementStates: {
+        'prospect-1': { status: 'queued', queuePosition: 1 },
+        'prospect-2': { status: 'queued', queuePosition: 2 },
+        'prospect-3': { status: 'processing', currentStep: 'Enhancing title...' }
+      }
+    }));
     // Clean up any elements added to body during tests
     document.querySelectorAll('[data-testid="prospect-status"]').forEach(el => el.remove());
     document.querySelectorAll('[data-testid="cancel-result"]').forEach(el => el.remove());
@@ -264,7 +273,7 @@ describe('ProspectEnhancementContext', () => {
     expect(screen.getByTestId('is-processing')).toHaveTextContent('processing');
   });
 
-  it('updates when underlying hook state changes', () => {
+  it('updates when underlying hook state changes', async () => {
     const { rerender } = render(
       <ProspectEnhancementProvider>
         <TestComponent />
@@ -275,13 +284,14 @@ describe('ProspectEnhancementContext', () => {
     expect(screen.getByTestId('is-processing')).toHaveTextContent('processing');
 
     // Mock the hook to return different values
-    vi.mocked(vi.importMock('@/hooks/api/useEnhancementSimple')).mockImplementation(() => ({
-      useEnhancementSimple: () => ({
-        queueEnhancement: mockQueueEnhancement,
-        getEnhancementState: mockGetEnhancementState,
-        cancelEnhancement: mockCancelEnhancement,
-        enhancementStates: {}
-      })
+    const mockedModule = await vi.importMock<typeof import('@/hooks/api/useEnhancementSimple')>(
+      '@/hooks/api/useEnhancementSimple'
+    );
+    mockedModule.useEnhancementSimple.mockImplementation(() => ({
+      queueEnhancement: mockQueueEnhancement,
+      getEnhancementState: mockGetEnhancementState,
+      cancelEnhancement: mockCancelEnhancement,
+      enhancementStates: {}
     }));
 
     rerender(
@@ -290,10 +300,9 @@ describe('ProspectEnhancementContext', () => {
       </ProspectEnhancementProvider>
     );
 
-    // Values should remain the same since the mock was set at module level
-    // This test demonstrates the context correctly uses the hook values
-    expect(screen.getByTestId('queue-length')).toHaveTextContent('3');
-    expect(screen.getByTestId('is-processing')).toHaveTextContent('processing');
+    // Updated mock should change the derived metrics after rerender
+    expect(screen.getByTestId('queue-length')).toHaveTextContent('0');
+    expect(screen.getByTestId('is-processing')).toHaveTextContent('idle');
   });
 
   it('handles complex enhancement state with all fields', () => {

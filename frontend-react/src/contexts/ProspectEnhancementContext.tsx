@@ -26,7 +26,7 @@ interface ProspectEnhancementContextType {
     force_redo?: boolean;
     user_id?: number;
     enhancement_types?: string[];
-  }) => void;
+  }) => Promise<string>;
   getProspectStatus: (prospect_id: string | undefined) => ProspectEnhancementStatus | null;
   cancelEnhancement: (prospect_id: string) => Promise<boolean>;
   queueLength: number;
@@ -44,7 +44,7 @@ export function ProspectEnhancementProvider({ children }: { children: ReactNode 
   } = useEnhancementSimple();
   
   // Derive queue length and processing status from enhancement states
-  const queueLength = Object.values(enhancementStates).filter(s => s.status === 'queued').length;
+  const queueLength = Object.values(enhancementStates).filter(s => ['queued', 'processing'].includes(s.status)).length;
   const isProcessing = Object.values(enhancementStates).some(s => s.status === 'processing');
 
   // Adapt the interface to match existing API
@@ -56,28 +56,34 @@ export function ProspectEnhancementProvider({ children }: { children: ReactNode 
       if (!state) return null;
       
       // Initialize progress object with all possible enhancement types
-      const progress: any = {};
-      const allEnhancementTypes = state.enhancementTypes || ['titles', 'values', 'naics', 'set_asides'];
+      const progress: Record<string, any> = {};
+      const baseEnhancementTypes = state.enhancementTypes || ['titles', 'values', 'naics', 'set_asides'];
+      const progressKeys = state.progress ? Object.keys(state.progress) : [];
+      const plannedKeys = state.plannedSteps ? Object.keys(state.plannedSteps) : [];
+      const allEnhancementTypes = Array.from(new Set([...baseEnhancementTypes, ...progressKeys, ...plannedKeys]));
       
       // Initialize all enhancement types based on planned steps
       allEnhancementTypes.forEach(type => {
         // Check if this step is planned to be skipped
         if (state.plannedSteps && state.plannedSteps[type]) {
           const planned = state.plannedSteps[type];
-          if (!planned.will_process) {
-            // This step will be skipped
-            progress[type] = { 
-              completed: false, 
-              skipped: true,
-              skipReason: planned.reason || 'already_enhanced'
-            };
-          } else {
-            // This step will be processed
-            progress[type] = { completed: false, skipped: false };
-          }
+          const baseProgress = state.progress?.[type] || {};
+          const willProcess = planned.will_process;
+          progress[type] = {
+            ...baseProgress,
+            completed: Boolean((baseProgress as any).completed) && willProcess,
+            skipped: willProcess ? Boolean((baseProgress as any).skipped) : true,
+            skipReason: !willProcess ? planned.reason || 'already_enhanced' : (baseProgress as any).skipReason
+          };
         } else {
           // No planned steps info, default behavior
-          progress[type] = { completed: false, skipped: false };
+          const baseProgress = state.progress?.[type] || {};
+          progress[type] = {
+            ...baseProgress,
+            completed: Boolean((baseProgress as any).completed),
+            skipped: Boolean((baseProgress as any).skipped),
+            skipReason: (baseProgress as any).skipReason
+          };
         }
       });
       
@@ -88,7 +94,11 @@ export function ProspectEnhancementProvider({ children }: { children: ReactNode 
             // If it was already marked as skipped, keep that status
             // Otherwise mark as completed
             if (!progress[step].skipped) {
-              progress[step] = { completed: true, skipped: false };
+              progress[step] = {
+                ...progress[step],
+                completed: true,
+                skipped: false
+              };
             }
           }
         });
@@ -110,7 +120,7 @@ export function ProspectEnhancementProvider({ children }: { children: ReactNode 
         status: state.status,
         queuePosition: state.queuePosition,
         queueSize: state.queueSize,
-        estimatedTimeRemaining: undefined, // Not used in simple version
+        estimatedTimeRemaining: state.estimatedTimeRemaining,
         currentStep: state.currentStep,
         progress,
         enhancementTypes: state.enhancementTypes,

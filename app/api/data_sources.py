@@ -87,7 +87,7 @@ def get_data_sources():
             data_sources.append(data_source_dict)
 
         logger.info(f"Returning {len(data_sources)} data sources")
-        return success_response(data={"data_sources": data_sources})
+        return success_response(data=data_sources)
 
     except DatabaseError as de:
         raise de  # Re-raise to be handled by api_route
@@ -305,3 +305,44 @@ def delete_data_source(source_id):
         logger.error(f"Error deleting data source {source_id}: {str(e)}", exc_info=True)
         db.session.rollback()
         return error_response(500, "Failed to delete data source")
+
+
+@api_route(data_sources_bp, "/<int:source_id>/clear-data", methods=["POST"], auth="super_admin")
+def clear_data_source_data(source_id):
+    """Clear all prospect data for a specific data source without deleting the source.
+
+    Returns the number of deleted prospect records.
+    """
+    try:
+        data_source = db.session.query(DataSource).filter_by(id=source_id).first()
+        if not data_source:
+            raise NotFoundError(f"Data source with ID {source_id} not found")
+
+        # Count related prospects
+        prospect_count = (
+            db.session.query(func.count(Prospect.id))
+            .filter(Prospect.source_id == source_id)
+            .scalar()
+        )
+
+        # Delete related prospects
+        db.session.query(Prospect).filter(Prospect.source_id == source_id).delete()
+        db.session.commit()
+
+        logger.info(
+            f"Cleared {prospect_count} prospects for data source: {data_source.name} (ID: {source_id})"
+        )
+
+        return success_response(
+            message=f"Cleared {prospect_count} prospects for '{data_source.name}'",
+            data={"deleted_count": prospect_count}
+        )
+    except NotFoundError as nfe:
+        raise nfe
+    except Exception as e:
+        logger.error(
+            f"Error clearing data for data source {source_id}: {str(e)}",
+            exc_info=True,
+        )
+        db.session.rollback()
+        return error_response(500, "Failed to clear data source data")

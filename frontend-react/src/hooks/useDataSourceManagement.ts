@@ -31,11 +31,7 @@ export function useDataSourceManagement(enabled: boolean = true) {
 
   // Mutation for running all scrapers
   const runAllScrapersMutation = useMutation({
-    mutationFn: () => postProcessing<{
-      message: string;
-      total_duration: number;
-      results?: ScraperResult[];
-    }>('/api/data-sources/run-all', undefined, { 
+    mutationFn: () => postProcessing<any>('/api/data-sources/run-all', undefined, { 
       deduplicate: true,
       deduplicationKey: 'run-all-scrapers'
     }),
@@ -45,13 +41,14 @@ export function useDataSourceManagement(enabled: boolean = true) {
     },
     onSuccess: (data) => {
       // All scrapers completed - show results
-      if (data.results) {
-        const { message, failedCount } = formatScraperResults(data.results, data.total_duration);
+      const payload = (data && data.data) ? data.data : data;
+      if (payload?.results) {
+        const { message, failedCount } = formatScraperResults(payload.results, payload.total_duration || 0);
         
         // Show appropriate toast based on results
         if (failedCount === 0) {
           showSuccessToast('All Scrapers Completed', message);
-        } else if (failedCount === data.results.length) {
+        } else if (failedCount === payload.results.length) {
           showErrorToast({
             code: 'ALL_SCRAPERS_FAILED',
             message: message,

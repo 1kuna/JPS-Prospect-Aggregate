@@ -143,16 +143,39 @@ def signout():
     return success_response(message="Sign out successful")
 
 
+@api_route(auth_bp, "/status", methods=["GET"])
+def get_status():
+    """Check authentication status without requiring login."""
+    user_id = session.get("user_id")
+
+    if user_id:
+        user = db.session.query(User).filter_by(id=user_id).first()
+        if user:
+            return success_response(data={
+                "authenticated": True,
+                "user": user.to_dict()
+            })
+        else:
+            # Invalid session, clear it
+            session.clear()
+
+    # Not authenticated
+    return success_response(data={
+        "authenticated": False,
+        "user": None
+    })
+
+
 @api_route(auth_bp, "/session", methods=["GET"], auth="login")
 def get_session():
     """Get current session info."""
     user_id = session.get("user_id")
     user = db.session.query(User).filter_by(id=user_id).first()
-    
+
     if not user:
         session.clear()
         return error_response(401, "Session expired")
-    
+
     return success_response(data={"user": user.to_dict()})
 
 

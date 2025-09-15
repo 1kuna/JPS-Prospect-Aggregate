@@ -153,9 +153,18 @@ class SimpleEnhancementQueue:
                         item_to_process['force_redo']
                     )
                     
-                    # Update item status
+                    # Update item status based on explicit result status
+                    status = str(result.get('status', '')).lower()
                     with self._lock:
-                        item_to_process['status'] = 'completed' if result.get('status') in ['completed', 'no_changes'] else 'failed'
+                        if status == 'completed':
+                            item_to_process['status'] = 'completed'
+                        elif status == 'failed' or status == 'error':
+                            item_to_process['status'] = 'failed'
+                            item_to_process['error'] = result.get('message') or 'Enhancement failed'
+                        else:
+                            # Treat unknown statuses conservatively as failed
+                            item_to_process['status'] = 'failed'
+                            item_to_process['error'] = result.get('message') or 'Unknown enhancement status'
                         item_to_process['completed_at'] = time.time()
                         item_to_process['result'] = result
                         
@@ -236,6 +245,7 @@ class SimpleEnhancementQueue:
         with self._lock:
             # Create pending items list for API compatibility
             pending_items = []
+            # Include currently-processing item (if any)
             if self._processing and self._current_prospect_id:
                 item_id = f"{self._current_processing_type}_{self._current_prospect_id}_{self._current_user_id or 1}"
                 pending_items.append(
@@ -245,9 +255,14 @@ class SimpleEnhancementQueue:
                         "user_id": self._current_user_id or 1,
                         "type": self._current_processing_type,
                         "enhancement_type": self._current_enhancement_type or "all",
-                        "status": "processing" if self._processing else "pending",
+                        "status": "processing",
                     }
                 )
+            # Also reflect queued items that haven't started
+            queued_count = 0
+            for qi in self._individual_queue:
+                if qi.get("status") in ["queued", "processing"]:
+                    queued_count += 1
 
             return {
                 "status": self._progress.status.value,
@@ -264,8 +279,10 @@ class SimpleEnhancementQueue:
                 "errors": self._progress.errors[-10:],  # Keep only last 10 errors
                 "is_processing": self._processing,
                 "pending_items": pending_items,
-                "queue_size": len(pending_items),
-                "worker_running": self._processing,
+                # Reflect actual queue length (queued + processing)
+                "queue_size": queued_count,
+                # Reflect background queue worker state, not per-item processing flag
+                "worker_running": self._queue_worker_running,
             }
 
     def is_processing(self) -> bool:
@@ -354,9 +371,130 @@ class SimpleEnhancementQueue:
             # Create progress callback for status updates
             progress_callback = self._create_progress_callback(prospect_id)
 
+            # Determine which steps are actually planned to run (for accurate status)
+            def _compute_planned_steps() -> dict[str, dict[str, Any]]:
+                planned: dict[str, dict[str, Any]] = {}
+                types = (
+                    [t.strip() for t in enhancement_type.split(",")]
+                    if isinstance(enhancement_type, str) and "," in enhancement_type
+                    else [enhancement_type]
+                )
+                types = [str(t) for t in types]
+
+                # Titles
+                if "all" in types or "titles" in types:
+                    will = bool(prospect.title) and (
+                        not bool(prospect.ai_enhanced_title) or bool(force_redo)
+                    )
+                    planned["titles"] = {
+                        "will_process": will,
+                        "reason": None if will else "already_enhanced_or_missing_title",
+                    }
+
+                # Values
+                if "all" in types or "values" in types:
+                    already_parsed = (
+                        bool(prospect.estimated_value_single)
+                        or bool(prospect.estimated_value_min)
+                        or bool(prospect.estimated_value_max)
+                    )
+                    has_source_value = bool(prospect.estimated_value_text) or (
+                        prospect.estimated_value is not None
+                    )
+                    will = (force_redo or not already_parsed) and has_source_value
+                    planned["values"] = {
+                        "will_process": will,
+                        "reason": None
+                        if will
+                        else (
+                            "already_parsed"
+                            if already_parsed and not force_redo
+                            else "no_value_source"
+                        ),
+                    }
+
+                # NAICS (full classification)
+                if "all" in types or "naics" in types:
+                    will = bool(prospect.description) and (
+                        not bool(prospect.naics) or bool(force_redo)
+                    )
+                    planned["naics"] = {
+                        "will_process": will,
+                        "reason": None
+                        if will
+                        else (
+                            "already_has_code"
+                            if prospect.naics and not force_redo
+                            else "missing_description"
+                        ),
+                    }
+
+                # NAICS code only
+                if "naics_code" in types:
+                    will = bool(prospect.description) and (
+                        not bool(prospect.naics) or bool(force_redo)
+                    )
+                    planned["naics_code"] = {
+                        "will_process": will,
+                        "reason": None
+                        if will
+                        else (
+                            "already_has_code"
+                            if prospect.naics and not force_redo
+                            else "missing_description"
+                        ),
+                    }
+
+                # NAICS description backfill
+                if "naics_description" in types:
+                    will = bool(prospect.naics) and (
+                        not bool(prospect.naics_description) or bool(force_redo)
+                    )
+                    planned["naics_description"] = {
+                        "will_process": will,
+                        "reason": None
+                        if will
+                        else (
+                            "already_has_description"
+                            if prospect.naics_description and not force_redo
+                            else "no_code_to_describe"
+                        ),
+                    }
+
+                # Set asides
+                if "all" in types or "set_asides" in types:
+                    # Minimal signal that we have something to process
+                    has_set_aside_signal = bool((prospect.set_aside or "").strip()) or (
+                        isinstance(prospect.extra, dict)
+                        and bool(
+                            (prospect.extra or {}).get(
+                                "original_small_business_program", ""
+                            ).strip()
+                        )
+                    )
+                    will = (not bool(prospect.set_aside_standardized) or bool(force_redo)) and has_set_aside_signal
+                    planned["set_asides"] = {
+                        "will_process": will,
+                        "reason": None
+                        if will
+                        else (
+                            "already_standardized"
+                            if prospect.set_aside_standardized and not force_redo
+                            else "no_set_aside_signal"
+                        ),
+                    }
+
+                return planned
+
+            planned_steps = _compute_planned_steps()
+
             # Pass force_redo to LLM service
             results = llm_service.enhance_single_prospect(
                 prospect, enhancement_type, progress_callback, force_redo
+            )
+
+            attempted = any(
+                step.get("will_process") for step in planned_steps.values()
             )
 
             if any(results.values()):
@@ -374,6 +512,7 @@ class SimpleEnhancementQueue:
                         "completed_steps": self._completed_steps.get(
                             prospect_id, ["titles", "values", "naics", "set_asides"]
                         ),
+                        "planned_steps": planned_steps,
                     }
 
                 # Enhancement completed successfully
@@ -383,22 +522,52 @@ class SimpleEnhancementQueue:
                     "prospect_id": prospect_id,
                     "enhancements": results,
                     "message": f"Enhanced {sum(results.values())} fields",
+                    "planned_steps": planned_steps,
                 }
             else:
-                # No enhancements needed
+                # No enhancements applied
+                if attempted:
+                    # We expected to process, but nothing applied – treat as failure
+                    error_msg = (
+                        "No enhancements were applied despite planned work. "
+                        "LLM may be unavailable or inputs insufficient."
+                    )
+                    with self._lock:
+                        self._recent_results[prospect_id] = {
+                            "status": "failed",
+                            "completed_at": time.time(),
+                            "completed_steps": self._completed_steps.get(
+                                prospect_id, []
+                            ),
+                            "planned_steps": planned_steps,
+                            "error": error_msg,
+                        }
 
-                # Store result for polling
+                    return {
+                        "status": "failed",
+                        "prospect_id": prospect_id,
+                        "message": error_msg,
+                        "planned_steps": planned_steps,
+                    }
+
+                # Otherwise truly nothing to do – treat as completed with no-op
                 with self._lock:
                     self._recent_results[prospect_id] = {
-                        "status": "no_changes",
+                        "status": "completed",
+                        "enhancements": results,
                         "completed_at": time.time(),
-                        "completed_steps": self._completed_steps.get(prospect_id, []),
+                        "completed_steps": self._completed_steps.get(
+                            prospect_id, []
+                        ),
+                        "planned_steps": planned_steps,
                     }
 
                 return {
-                    "status": "no_changes",
+                    "status": "completed",
                     "prospect_id": prospect_id,
-                    "message": "No enhancements needed or possible",
+                    "enhancements": results,
+                    "message": "No enhancements needed",
+                    "planned_steps": planned_steps,
                 }
 
         except Exception as e:

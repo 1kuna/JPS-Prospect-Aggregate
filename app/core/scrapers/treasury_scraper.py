@@ -9,6 +9,92 @@ import pandas as pd
 from app.config import active_config
 from app.core.scraper_base import ConsolidatedScraperBase
 from app.core.scraper_configs import get_scraper_config
+from html.parser import HTMLParser
+
+
+class _SimpleHTMLTableParser(HTMLParser):
+    """Very lightweight HTML table parser that extracts the first table into rows.
+
+    This avoids external dependencies (bs4/html5lib/lxml) so we always have a
+    last-resort parser available for Treasury's HTML-in-XLS files.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.in_table = False
+        self.table_depth = 0
+        self.in_row = False
+        self.in_cell = False
+        self.is_header_cell = False
+        self.current_cell = []
+        self.current_row = []
+        self.rows: list[list[str]] = []
+        self.has_header = False
+        self.done = False
+
+    def handle_starttag(self, tag, attrs):
+        if self.done:
+            return
+        tag = tag.lower()
+        if tag == "table":
+            if not self.in_table:
+                self.in_table = True
+            self.table_depth += 1
+        elif self.in_table:
+            if tag == "tr":
+                self.in_row = True
+                self.current_row = []
+            elif tag in ("td", "th"):
+                self.in_cell = True
+                self.is_header_cell = tag == "th"
+                self.current_cell = []
+
+    def handle_endtag(self, tag):
+        if self.done:
+            return
+        tag = tag.lower()
+        if tag == "table" and self.in_table:
+            self.table_depth -= 1
+            if self.table_depth == 0:
+                self.in_table = False
+                # Stop after first table
+                self.done = True
+        elif self.in_table:
+            if tag == "tr" and self.in_row:
+                # finalize row
+                self.rows.append(self.current_row)
+                self.in_row = False
+            elif tag in ("td", "th") and self.in_cell:
+                # finalize cell
+                text = "".join(self.current_cell).strip()
+                self.current_row.append(text)
+                if self.is_header_cell and not self.rows:
+                    self.has_header = True
+                self.in_cell = False
+                self.is_header_cell = False
+
+    def handle_data(self, data):
+        if self.in_cell and not self.done:
+            self.current_cell.append(data)
+
+    def to_dataframe(self) -> pd.DataFrame | None:
+        if not self.rows:
+            return None
+        # Determine header
+        if self.has_header and self.rows:
+            headers = self.rows[0]
+            data_rows = self.rows[1:]
+        else:
+            headers = [f"col_{i+1}" for i in range(max(len(r) for r in self.rows))]
+            data_rows = self.rows
+
+        # Normalize row lengths
+        max_len = len(headers)
+        normalized = [r + [None] * (max_len - len(r)) for r in data_rows]
+        try:
+            return pd.DataFrame(normalized, columns=headers)
+        except Exception:
+            return None
 
 
 class TreasuryScraper(ConsolidatedScraperBase):
@@ -117,23 +203,23 @@ class TreasuryScraper(ConsolidatedScraperBase):
         if self._is_html_content(file_path):
             self.logger.info("Detected HTML content in .xls file, using HTML parser")
             try:
-                # Try different parsers for HTML parsing
-                parsers_to_try = ["lxml", "html.parser", "html5lib"]
+                # Prefer bs4 flavor (works with beautifulsoup4 + html5lib), then lxml if available
+                flavors_to_try = ["bs4", "lxml"]
 
-                for parser in parsers_to_try:
+                for flavor in flavors_to_try:
                     try:
-                        self.logger.info(f"Trying HTML parser: {parser}")
+                        self.logger.info(f"Trying HTML flavor: {flavor}")
                         tables = pd.read_html(
                             file_path,
                             header=0,  # First row contains headers
                             encoding="utf-8",
-                            flavor=parser if parser != "html.parser" else None,
+                            flavor=flavor,
                         )
 
                         if tables and len(tables) > 0:
                             df = tables[0]
                             self.logger.info(
-                                f"Successfully read HTML table with {parser}: {len(df)} rows and {len(df.columns)} columns"
+                                f"Successfully read HTML table with {flavor}: {len(df)} rows and {len(df.columns)} columns"
                             )
 
                             # If empty, try without header specification
@@ -144,7 +230,7 @@ class TreasuryScraper(ConsolidatedScraperBase):
                                 tables = pd.read_html(
                                     file_path,
                                     encoding="utf-8",
-                                    flavor=parser if parser != "html.parser" else None,
+                                    flavor=flavor,
                                 )
                                 if tables and len(tables[0]) > 0:
                                     df = tables[0]
@@ -155,12 +241,33 @@ class TreasuryScraper(ConsolidatedScraperBase):
                             if len(df) > 0:
                                 return df
 
+                    except ImportError as dep_err:
+                        # Missing optional dependency for this flavor; try next
+                        self.logger.debug(f"Flavor {flavor} unavailable: {dep_err}")
+                        continue
                     except Exception as parser_error:
-                        self.logger.debug(f"Parser {parser} failed: {parser_error}")
+                        self.logger.debug(f"Flavor {flavor} failed: {parser_error}")
                         continue
 
-                self.logger.warning("All HTML parsers failed")
-                return None
+                # Last-resort fallback: parse first HTML table without external deps
+                try:
+                    self.logger.info("Falling back to built-in HTML table parser (no external deps)")
+                    with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                        html = f.read()
+                    parser = _SimpleHTMLTableParser()
+                    parser.feed(html)
+                    df = parser.to_dataframe()
+                    if df is not None and not df.empty:
+                        self.logger.info(
+                            f"Parsed HTML table via built-in parser: {len(df)} rows, {len(df.columns)} columns"
+                        )
+                        return df
+                    else:
+                        self.logger.warning("Built-in HTML parser found no data")
+                        return None
+                except Exception as e:
+                    self.logger.warning(f"Built-in HTML parser fallback failed: {e}")
+                    return None
 
             except Exception as e:
                 self.logger.warning(f"Failed to read as HTML: {e}")

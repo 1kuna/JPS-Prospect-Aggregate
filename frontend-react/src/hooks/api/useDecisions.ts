@@ -21,8 +21,9 @@ const decisionsApi = {
   },
 
   getProspectDecisions: async (prospectId: string): Promise<ApiResponse<{ prospect_id: string; decisions: GoNoGoDecision[]; total_decisions: number }>> => {
+    // Backend route: GET /api/decisions/prospect/<prospect_id>
     return await get<ApiResponse<{ prospect_id: string; decisions: GoNoGoDecision[]; total_decisions: number }>>(
-      `${API_BASE}/${prospectId}`,
+      `${API_BASE}/prospect/${prospectId}`,
       { credentials: 'include' }
     );
   },

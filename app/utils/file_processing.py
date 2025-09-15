@@ -71,8 +71,37 @@ def validate_file_content(
 
         # Try to read file and check basic structure
         try:
-            if file_path.endswith((".xls", ".xlsx", ".xlsm")):
+            # Detect HTML content masquerading as Excel (common for Treasury)
+            is_excel_like = file_path.endswith((".xls", ".xlsx", ".xlsm"))
+            is_html_inside = False
+            if is_excel_like and file_path.endswith(".xls"):
+                try:
+                    with open(file_path, encoding="utf-8", errors="ignore") as f:
+                        first_chunk = f.read(256).lower()
+                        is_html_inside = ("<html" in first_chunk) or ("<table" in first_chunk)
+                except Exception:
+                    is_html_inside = False
+
+            if is_excel_like and not is_html_inside:
                 df = pd.read_excel(file_path, nrows=5)  # Just check first few rows
+            elif is_excel_like and is_html_inside:
+                # Use HTML parser for validation if Excel file contains HTML
+                # Prefer bs4/html5lib if available; otherwise, skip heavy validation to avoid noisy warnings
+                try:
+                    import bs4  # type: ignore
+                    _ = bs4  # silence linter unused import
+                    tables = pd.read_html(file_path, flavor="bs4")
+                    df = tables[0] if tables else pd.DataFrame()
+                    df = df.head(5)
+                except Exception:
+                    # If HTML parsers aren't available, treat as valid to avoid warning spam during soft validation
+                    return {
+                        "valid": True,
+                        "columns": [],
+                        "row_count_sample": 0,
+                        "missing_expected_columns": expected_columns or [],
+                        "has_schema_changes": bool(expected_columns),
+                    }
             else:
                 df = pd.read_csv(file_path, nrows=5)
 

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { post, get, ApiError } from '@/utils/apiUtils';
+import type { ApiResponse } from '@/types/api';
 
 // Simple enhancement state for a prospect
 interface EnhancementState {
@@ -13,6 +14,7 @@ interface EnhancementState {
   error?: string;
   queueItemId?: string;
   plannedSteps?: Record<string, { will_process: boolean; reason?: string | null }>;
+  progress?: Record<string, { completed?: boolean; skipped?: boolean; skipReason?: string | null }>;
 }
 
 interface EnhancementRequest {
@@ -24,6 +26,7 @@ interface EnhancementRequest {
 
 interface QueueResponse {
   queue_item_id: string;
+  status?: 'queued' | 'processing' | 'completed' | 'failed';
   position?: number;
   queue_position?: number;
   queue_size?: number;
@@ -31,6 +34,22 @@ interface QueueResponse {
   worker_running?: boolean;
   message?: string;
   planned_steps?: Record<string, { will_process: boolean; reason?: string | null }>;
+  enhancement_types?: string[];
+}
+
+interface QueueItemStatusResponse {
+  item_id?: string;
+  queue_item_id?: string;
+  status?: 'queued' | 'processing' | 'completed' | 'failed';
+  position?: number | null;
+  queue_position?: number | null;
+  queue_size?: number | null;
+  current_step?: string | null;
+  completed_steps?: string[];
+  enhancement_types?: string[];
+  planned_steps?: Record<string, { will_process: boolean; reason?: string | null }>;
+  progress?: Record<string, { completed?: boolean; skipped?: boolean; skipReason?: string | null }>;
+  error?: string | null;
 }
 
 /**
@@ -62,25 +81,31 @@ export function useEnhancementSimple() {
       console.log(`[Enhancement] Polling status for ${prospectId} with queue item ${queueItemId}`);
       
       // Use the queue item status endpoint
-      const response = await get<any>(`/api/llm/queue/item/${queueItemId}`);
+      const response = await get<ApiResponse<QueueItemStatusResponse> | QueueItemStatusResponse>(`/api/llm/queue/item/${queueItemId}`);
+      const itemStatus = (response as ApiResponse<QueueItemStatusResponse>)?.data ?? (response as QueueItemStatusResponse);
+
+      if (!itemStatus) {
+        throw new Error('Queue item status payload missing');
+      }
       
-      console.log(`[Enhancement] Poll response for ${prospectId}:`, response);
+      console.log(`[Enhancement] Poll response for ${prospectId}:`, itemStatus);
       
       // Get previous state from ref to preserve queue position
       const prevState = enhancementStatesRef.current[prospectId];
       
       // Map the response to our simple state
       const status: EnhancementState = {
-        status: response.status || 'processing',
+        status: itemStatus?.status || prevState?.status || 'processing',
         // Preserve the initial queue position throughout processing
-        queuePosition: response.position || prevState?.queuePosition || 1,
-        queueSize: prevState?.queueSize, // Preserve queue size from initial response
-        currentStep: response.current_step,
-        completedSteps: response.completed_steps || [],
-        enhancementTypes: prevState?.enhancementTypes, // Preserve enhancement types
-        error: response.error,
-        queueItemId: prevState?.queueItemId, // Preserve queue item ID
-        plannedSteps: prevState?.plannedSteps // Preserve planned steps from initial response
+        queuePosition: itemStatus?.queue_position ?? itemStatus?.position ?? prevState?.queuePosition ?? 1,
+        queueSize: itemStatus?.queue_size ?? prevState?.queueSize, // Preserve queue size from initial response
+        currentStep: itemStatus?.current_step ?? prevState?.currentStep,
+        completedSteps: itemStatus?.completed_steps || prevState?.completedSteps || [],
+        enhancementTypes: itemStatus?.enhancement_types || prevState?.enhancementTypes, // Preserve enhancement types
+        error: itemStatus?.error ?? undefined,
+        queueItemId: prevState?.queueItemId || itemStatus?.queue_item_id || itemStatus?.item_id || queueItemId,
+        plannedSteps: itemStatus?.planned_steps || prevState?.plannedSteps,
+        progress: itemStatus?.progress || prevState?.progress
       };
 
       // Update state
@@ -88,6 +113,18 @@ export function useEnhancementSimple() {
         ...prev,
         [prospectId]: status
       }));
+      
+      // Surface failure to the user immediately when status changes
+      if (status.status === 'failed' && prevState?.status !== 'failed') {
+        if (window.showToast) {
+          window.showToast({
+            title: 'Enhancement Failed',
+            message: status.error || 'The AI enhancement failed. Please review the error and try again.',
+            type: 'error',
+            duration: 6000
+          });
+        }
+      }
       
       // Reset retry count on successful poll
       pollingRetryCountRef.current.delete(prospectId);
@@ -141,7 +178,16 @@ export function useEnhancementSimple() {
             completedSteps: prev[prospectId]?.completedSteps || []
           }
         }));
-        
+
+        if (window.showToast) {
+          window.showToast({
+            title: 'Enhancement Status Unavailable',
+            message: 'Failed to retrieve enhancement progress after multiple attempts.',
+            type: 'error',
+            duration: 5000
+          });
+        }
+
         // Clean up after delay
         setTimeout(() => {
           setEnhancementStates(prev => {
@@ -177,27 +223,32 @@ export function useEnhancementSimple() {
         }
       }));
 
-      const response = await post<QueueResponse>('/api/llm/enhance-single', {
+      const response = await post<ApiResponse<QueueResponse> | QueueResponse>('/api/llm/enhance-single', {
         prospect_id: request.prospect_id,
         enhancement_type: enhancementType,
         force_redo: request.force_redo,
         user_id: request.user_id
       });
 
-      const queueItemId = response.queue_item_id;
-      console.log(`[Enhancement] Received queue item ID: ${queueItemId}`, response);
+      const queueData = (response as ApiResponse<QueueResponse>)?.data ?? (response as QueueResponse);
+      const queueItemId = queueData.queue_item_id;
+      if (!queueItemId) {
+        throw new Error('Queue item ID not returned from enhancement request');
+      }
+      console.log(`[Enhancement] Received queue item ID: ${queueItemId}`, queueData);
 
       // Update state with actual queue position, size, queue item ID, and planned steps
       setEnhancementStates(prev => ({
         ...prev,
         [prospect_id]: {
           ...prev[prospect_id], // Preserve existing state like enhancementTypes
-          status: 'queued',
-          queuePosition: response.queue_position || response.position || 1,
-          queueSize: response.queue_size,
+          status: queueData.status || 'queued',
+          queuePosition: queueData.queue_position || queueData.position || 1,
+          queueSize: queueData.queue_size,
           currentStep: undefined,
           queueItemId: queueItemId,
-          plannedSteps: response.planned_steps // Store planned steps from API
+          plannedSteps: queueData.planned_steps, // Store planned steps from API
+          enhancementTypes: prev[prospect_id]?.enhancementTypes || queueData.enhancement_types || prev[prospect_id]?.enhancementTypes
         }
       }));
 
@@ -213,10 +264,10 @@ export function useEnhancementSimple() {
       pollEnhancementStatus(prospect_id, queueItemId);
 
       // Show toast only if this is a new queue item (not already existing)
-      if (window.showToast && !response.was_existing) {
+      if (window.showToast && !queueData.was_existing) {
         window.showToast({
           title: 'Enhancement Queued',
-          message: `Enhancement queued${response.queue_position ? ` at position ${response.queue_position}` : ''}`,
+          message: `Enhancement queued${queueData.queue_position ? ` at position ${queueData.queue_position}` : ''}`,
           type: 'success',
           duration: 2000
         });

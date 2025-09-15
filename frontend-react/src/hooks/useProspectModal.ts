@@ -21,10 +21,15 @@ export function useProspectModal(prospects: Prospect[] = []) {
   }, []);
 
   const handleOpenChange = useCallback((open: boolean) => {
-    setIsOpen(open);
-    if (!open) {
-      setSelectedProspectId(null);
-    }
+    // Prevent redundant state updates to avoid render loops
+    setIsOpen(prev => {
+      if (prev === open) return prev;
+      // If closing, clear selected prospect
+      if (!open) {
+        setSelectedProspectId(null);
+      }
+      return open;
+    });
   }, []);
 
   return {

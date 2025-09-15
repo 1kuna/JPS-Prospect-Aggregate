@@ -1,4 +1,4 @@
-import { CheckIcon, ReloadIcon, Cross2Icon } from '@radix-ui/react-icons';
+import { CheckIcon, ReloadIcon, Cross2Icon, ExclamationTriangleIcon } from '@radix-ui/react-icons';
 
 interface ProgressStep {
   key: string;
@@ -11,6 +11,7 @@ interface ProgressStep {
 
 interface EnhancementProgressProps {
   status: {
+    overallStatus?: 'idle' | 'queued' | 'processing' | 'completed' | 'failed';
     currentStep?: string;
     progress?: {
       titles?: { completed: boolean; skipped?: boolean; skipReason?: string };
@@ -20,6 +21,7 @@ interface EnhancementProgressProps {
     };
     enhancementTypes?: string[];
     plannedSteps?: Record<string, { will_process: boolean; reason?: string | null }>;
+    error?: string | null;
   } | null;
   isVisible: boolean;
 }
@@ -29,6 +31,10 @@ export function EnhancementProgress({ status, isVisible }: EnhancementProgressPr
     return null;
   }
   
+  const overallStatus = status.overallStatus;
+  const isFailed = overallStatus === 'failed';
+  const failureMessage = status.error || 'The AI enhancement failed. Please try again.';
+
   const allSteps: ProgressStep[] = [
     {
       key: 'titles',
@@ -92,6 +98,12 @@ export function EnhancementProgress({ status, isVisible }: EnhancementProgressPr
   return (
     <div className="bg-yellow-50 dark:bg-amber-400/10 border border-yellow-200 dark:border-amber-400/20 p-4 rounded-lg">
       <h4 className="text-sm font-medium text-yellow-800 dark:text-amber-300 mb-3">AI Enhancement Progress</h4>
+      {isFailed && (
+        <div className="mb-3 flex items-start rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          <ExclamationTriangleIcon className="mr-2 mt-0.5 h-4 w-4 flex-shrink-0" />
+          <span>{failureMessage}</span>
+        </div>
+      )}
       
       <div className="space-y-2">
         {steps.map((step) => (

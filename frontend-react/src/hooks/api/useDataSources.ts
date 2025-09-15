@@ -2,10 +2,31 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { DataSource } from '@/types';
 import { get, post, put, del } from '@/utils/apiUtils';
 
+// Normalize API payload to frontend DataSource shape
+function normalizeDataSource(apiItem: any): DataSource {
+  return {
+    id: apiItem.id,
+    name: apiItem.name,
+    url: apiItem.url,
+    description: apiItem.description || '',
+    last_scraped: apiItem.last_scraped ?? null,
+    prospectCount: apiItem.prospect_count ?? 0,
+    last_checked: apiItem.last_status?.last_checked ?? null,
+    status: apiItem.last_status?.status ?? 'ready',
+    type: apiItem.type,
+  };
+}
+
 // --- API Call Functions ---
 
 async function fetchDataSourcesAPI(): Promise<{ status: string; data: DataSource[] }> {
-  return get<{ status: string; data: DataSource[] }>('/api/data-sources/public');
+  const response = await get<{ status: string; data: any[] }>(
+    '/api/data-sources/'
+  );
+  return {
+    status: response.status,
+    data: Array.isArray(response.data) ? response.data.map(normalizeDataSource) : [],
+  };
 }
 
 async function createDataSourceAPI(newDataSource: Omit<DataSource, 'id'>): Promise<DataSource> {
@@ -48,7 +69,15 @@ export function useListDataSources() {
 export function useListDataSourcesAdmin(options?: { refetchInterval?: number; refetchIntervalInBackground?: boolean; enabled?: boolean }) {
   return useQuery({
     queryKey: ['dataSources', 'admin'],
-    queryFn: () => get<{ status: string; data: DataSource[] }>('/api/data-sources'),
+    queryFn: async () => {
+      const response = await get<{ status: string; data: any[] }>(
+        '/api/data-sources'
+      );
+      return {
+        status: response.status,
+        data: Array.isArray(response.data) ? response.data.map(normalizeDataSource) : [],
+      } as { status: string; data: DataSource[] };
+    },
     staleTime: 5 * 60 * 1000, // 5 minutes
     refetchInterval: options?.refetchInterval,
     refetchIntervalInBackground: options?.refetchIntervalInBackground,

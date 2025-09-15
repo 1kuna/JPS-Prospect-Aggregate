@@ -82,7 +82,7 @@ export function AIEnrichment() {
               AI Enrichment Status
               {status?.total_prospects && (
                 <div className="ml-auto text-sm font-normal text-muted-foreground">
-                  {status.processed_prospects.toLocaleString()} of {status.total_prospects.toLocaleString()} processed
+                  {(status?.processed_prospects ?? 0).toLocaleString()} of {(status?.total_prospects ?? 0).toLocaleString()} processed
                 </div>
               )}
             </CardTitle>
@@ -100,15 +100,15 @@ export function AIEnrichment() {
                   <div className="space-y-1 text-sm">
                     <div className="flex justify-between">
                       <span>Original:</span>
-                      <span className="font-medium">{status.naics_coverage.original.toLocaleString()}</span>
+                      <span className="font-medium">{status?.naics_coverage?.original?.toLocaleString?.() ?? '0'}</span>
                     </div>
                     <div className="flex justify-between">
                       <span>AI Classified:</span>
-                      <span className="font-medium text-primary dark:text-primary">{status.naics_coverage.llm_inferred.toLocaleString()}</span>
+                      <span className="font-medium text-primary dark:text-primary">{status?.naics_coverage?.llm_inferred?.toLocaleString?.() ?? '0'}</span>
                     </div>
                     <div className="flex justify-between border-t border-primary/30 dark:border-primary/20 pt-1 font-medium">
                       <span>Coverage:</span>
-                      <span>{status.naics_coverage.total_percentage.toFixed(1)}%</span>
+                      <span>{(status?.naics_coverage?.total_percentage ?? 0).toFixed(1)}%</span>
                     </div>
                   </div>
                 </div>
@@ -119,11 +119,11 @@ export function AIEnrichment() {
                   <div className="space-y-1 text-sm">
                     <div className="flex justify-between">
                       <span>Parsed Values:</span>
-                      <span className="font-medium text-success-dark dark:text-success">{status.value_parsing.parsed_count.toLocaleString()}</span>
+                      <span className="font-medium text-success-dark dark:text-success">{status?.value_parsing?.parsed_count?.toLocaleString?.() ?? '0'}</span>
                     </div>
                     <div className="flex justify-between border-t border-emerald-500/30 dark:border-emerald-400/20 pt-1 font-medium">
                       <span>Coverage:</span>
-                      <span>{status.value_parsing.total_percentage.toFixed(1)}%</span>
+                      <span>{(status?.value_parsing?.total_percentage ?? 0).toFixed(1)}%</span>
                     </div>
                   </div>
                 </div>
@@ -134,11 +134,11 @@ export function AIEnrichment() {
                   <div className="space-y-1 text-sm">
                     <div className="flex justify-between">
                       <span>Standardized Set-Asides:</span>
-                      <span className="font-medium text-warning-dark dark:text-warning">{status.set_aside_standardization.standardized_count.toLocaleString()}</span>
+                      <span className="font-medium text-warning-dark dark:text-warning">{status?.set_aside_standardization?.standardized_count?.toLocaleString?.() ?? '0'}</span>
                     </div>
                     <div className="flex justify-between border-t border-amber-500/30 dark:border-amber-400/20 pt-1 font-medium">
                       <span>Coverage:</span>
-                      <span>{status.set_aside_standardization.total_percentage.toFixed(1)}%</span>
+                      <span>{(status?.set_aside_standardization?.total_percentage ?? 0).toFixed(1)}%</span>
                     </div>
                   </div>
                 </div>
@@ -166,12 +166,12 @@ export function AIEnrichment() {
               <div className="mt-4 text-sm text-muted-foreground border-t pt-4">
                 <div className="flex justify-between">
                   <span>Last processed:</span>
-                  <span>{formatLastProcessed(status.last_processed)}</span>
+                  <span>{formatLastProcessed(status?.last_processed)}</span>
                 </div>
-                {status.model_version && (
+                {status?.model_version && (
                   <div className="flex justify-between">
                     <span>Model version:</span>
-                    <span className="font-mono">{status.model_version}</span>
+                    <span className="font-mono">{status?.model_version}</span>
                   </div>
                 )}
               </div>

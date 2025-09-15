@@ -61,13 +61,14 @@ export function DataSourceTable({
                 <TableCell className="font-medium">{source.name}</TableCell>
                 <TableCell className="text-sm text-muted-foreground">{source.description}</TableCell>
                 <TableCell>
-                  <span className={`font-medium ${getStatusColor(source.status)}`}>
+                  <span className={`font-medium ${getStatusColor(source.status || 'unknown')}`}>
                     {(() => {
                       // Format status display
-                      const statusText = source.status.charAt(0).toUpperCase() + source.status.slice(1);
+                      const statusValue = source.status || 'unknown';
+                      const statusText = statusValue.charAt(0).toUpperCase() + statusValue.slice(1);
                       
                       // For completed status, show how long ago if we have last_checked
-                      if (source.status === 'completed' && source.last_checked) {
+                      if (statusValue === 'completed' && source.last_checked) {
                         const timeAgo = formatUserDate(source.last_checked, 'relative');
                         return `${statusText} (${timeAgo})`;
                       }

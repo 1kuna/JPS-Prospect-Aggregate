@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { get, post, buildQueryString } from '@/utils/apiUtils';
+import type { ApiResponse } from '@/types/api';
 import { LLMParsedResult } from '@/types';
 
 /**
@@ -126,7 +127,10 @@ export function useEnhancementQueueService(options?: {
   // Queue status monitoring
   const queueStatus = useQuery<QueueStatus>({
     queryKey: queryKeys.queueStatus,
-    queryFn: () => get<QueueStatus>('/api/llm/queue/status'),
+    queryFn: async () => {
+      const resp = await get<ApiResponse<QueueStatus>>('/api/llm/queue/status');
+      return resp.data as QueueStatus;
+    },
     refetchInterval: 1000,
     staleTime: 500,
     refetchOnWindowFocus: true
@@ -135,7 +139,10 @@ export function useEnhancementQueueService(options?: {
   // Iterative enhancement progress
   const iterativeProgress = useQuery<IterativeProgress>({
     queryKey: queryKeys.iterativeProgress,
-    queryFn: () => get<IterativeProgress>('/api/llm/iterative/progress'),
+    queryFn: async () => {
+      const resp = await get<ApiResponse<IterativeProgress>>('/api/llm/iterative/progress');
+      return resp.data as IterativeProgress;
+    },
     refetchInterval: (query) => {
       const data = query.state.data;
       return data?.status === 'processing' ? 1000 : 5000;
@@ -145,7 +152,10 @@ export function useEnhancementQueueService(options?: {
   // AI enrichment status
   const enrichmentStatus = useQuery<AIEnrichmentStatus>({
     queryKey: queryKeys.enrichmentStatus,
-    queryFn: () => get<AIEnrichmentStatus>('/api/llm/status'),
+    queryFn: async () => {
+      const resp = await get<ApiResponse<AIEnrichmentStatus>>('/api/llm/status');
+      return resp.data as AIEnrichmentStatus;
+    },
     refetchInterval: 30000, // Every 30 seconds
   });
 
@@ -157,7 +167,8 @@ export function useEnhancementQueueService(options?: {
         limit: llmOutputsLimit, 
         enhancement_type: llmOutputsType 
       });
-      return await get<LLMOutput[]>(`/api/llm/outputs${queryParams}`);
+      const resp = await get<ApiResponse<LLMOutput[]>>(`/api/llm/outputs${queryParams}`);
+      return resp.data as LLMOutput[];
     },
     refetchInterval: 2000, // Refresh every 2 seconds to show new outputs
   });
@@ -165,7 +176,10 @@ export function useEnhancementQueueService(options?: {
   // Queue item details query options
   const getQueueItemOptions = (itemId: string | undefined) => ({
     queryKey: queryKeys.queueItem(itemId!),
-    queryFn: () => get<QueueItem>(`/api/llm/queue/item/${itemId}`),
+    queryFn: async () => {
+      const resp = await get<ApiResponse<QueueItem>>(`/api/llm/queue/item/${itemId}`);
+      return resp.data as QueueItem;
+    },
     enabled: !!itemId,
     refetchInterval: 1000,
     staleTime: 500

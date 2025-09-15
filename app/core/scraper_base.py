@@ -1651,9 +1651,83 @@ class ConsolidatedScraperBase:
             if "engine" not in read_options:
                 read_options["engine"] = "openpyxl"
 
-            df = pd.read_excel(file_path, **read_options)
-            self.logger.debug(f"Successfully read Excel file with {len(df)} rows")
-            return df
+            def _is_meaningful(df: pd.DataFrame | None) -> bool:
+                if df is None:
+                    return False
+                # Consider meaningful if at least a few rows and columns
+                return df.shape[0] >= 5 and df.shape[1] >= 3
+
+            # First attempt: use configured options
+            try:
+                df = pd.read_excel(file_path, **read_options)
+                if _is_meaningful(df):
+                    self.logger.debug(
+                        f"Successfully read Excel (configured options) with {len(df)} rows and {df.shape[1]} columns"
+                    )
+                    return df
+                else:
+                    self.logger.info(
+                        "Excel read returned few rows/columns with configured options; attempting fallbacks"
+                    )
+            except Exception as e:
+                self.logger.info(f"Configured Excel read failed: {e}; attempting fallbacks")
+
+            # Fallback 1: header=0 (first row as header), same sheet_name if present
+            try:
+                fallback1_opts = dict(read_options)
+                fallback1_opts["header"] = 0
+                df1 = pd.read_excel(file_path, **fallback1_opts)
+                if _is_meaningful(df1):
+                    self.logger.info(
+                        f"Excel fallback header=0 succeeded with {len(df1)} rows and {df1.shape[1]} columns"
+                    )
+                    return df1
+            except Exception as e:
+                self.logger.debug(f"Excel fallback header=0 failed: {e}")
+
+            # Fallback 2: read all sheets, pick the largest by rows then columns
+            try:
+                fallback2_opts = dict(read_options)
+                fallback2_opts.pop("sheet_name", None)
+                fallback2_opts["sheet_name"] = None
+                # try with header=0 first
+                fallback2_opts["header"] = 0
+                all_sheets = pd.read_excel(file_path, **fallback2_opts)
+                if isinstance(all_sheets, dict) and all_sheets:
+                    best_name, best_df = None, None
+                    for name, sdf in all_sheets.items():
+                        if best_df is None or (sdf.shape[0], sdf.shape[1]) > (best_df.shape[0], best_df.shape[1]):
+                            best_name, best_df = name, sdf
+                    if _is_meaningful(best_df):
+                        self.logger.info(
+                            f"Excel fallback all-sheets header=0 picked '{best_name}' with {len(best_df)} rows and {best_df.shape[1]} columns"
+                        )
+                        return best_df
+            except Exception as e:
+                self.logger.debug(f"Excel fallback all-sheets header=0 failed: {e}")
+
+            # Fallback 3: all sheets with header=2 (common for some agencies)
+            try:
+                fallback3_opts = dict(read_options)
+                fallback3_opts.pop("sheet_name", None)
+                fallback3_opts["sheet_name"] = None
+                fallback3_opts["header"] = 2
+                all_sheets2 = pd.read_excel(file_path, **fallback3_opts)
+                if isinstance(all_sheets2, dict) and all_sheets2:
+                    best_name, best_df = None, None
+                    for name, sdf in all_sheets2.items():
+                        if best_df is None or (sdf.shape[0], sdf.shape[1]) > (best_df.shape[0], best_df.shape[1]):
+                            best_name, best_df = name, sdf
+                    if _is_meaningful(best_df):
+                        self.logger.info(
+                            f"Excel fallback all-sheets header=2 picked '{best_name}' with {len(best_df)} rows and {best_df.shape[1]} columns"
+                        )
+                        return best_df
+            except Exception as e:
+                self.logger.debug(f"Excel fallback all-sheets header=2 failed: {e}")
+
+            self.logger.warning("All Excel read attempts yielded insufficient data; returning None")
+            return None
 
         except Exception as e:
             self.logger.warning(f"Failed to read as Excel: {e}")
@@ -1823,21 +1897,53 @@ class ConsolidatedScraperBase:
         if self.config.fields_for_id_hash:
             df = self._generate_id_hash(df, self.config.fields_for_id_hash)
 
-        # 13. Clean up - keep only columns that are in the db_column_rename_map values (final columns)
-        # Only filter columns if db_column_rename_map is provided, otherwise keep all columns
+        # 13. Clean up columns conservatively
+        # Keep: all Prospect model columns present, renamed final columns, and essentials.
+        # Rationale: downstream upsert and duplicate prevention need key fields (title, description, etc.).
+        # Over-aggressive pruning here caused only one record to be loaded due to identical hashes.
         if self.config.db_column_rename_map:
-            final_columns = list(self.config.db_column_rename_map.values())
-            # Also keep id and any other essential columns (extras_json gets renamed to extra via mapping)
-            essential_columns = ["id", "source_id", "loaded_at"]
-            columns_to_keep = [
-                col
-                for col in df.columns
-                if col in final_columns or col in essential_columns
-            ]
-            df = df[columns_to_keep]
-            self.logger.debug(f"Kept only final columns: {columns_to_keep}")
+            try:
+                from app.database.models import Prospect
+                model_columns = {column.name for column in Prospect.__table__.columns}
+            except Exception:
+                model_columns = set()
 
-        self.logger.info(f"DataFrame transformation completed with {len(df)} rows")
+            final_columns = set(self.config.db_column_rename_map.values())
+            essential_columns = {"id", "source_id", "loaded_at"}
+            special_columns = {"extras_json"}
+            allowed = model_columns.union(final_columns).union(essential_columns).union(special_columns)
+
+            present_allowed = [col for col in df.columns if col in allowed]
+            # If for some reason allowed is very small, fall back to keeping all columns
+            if len(present_allowed) >= 3:
+                df = df[present_allowed]
+                self.logger.debug(f"Kept model and final columns: {present_allowed}")
+
+        # 13a. Deduplicate any duplicate column names to avoid pandas warning when converting to records
+        try:
+            if df.columns.duplicated().any():
+                before = list(df.columns)
+                df = df.loc[:, ~df.columns.duplicated()]
+                after = list(df.columns)
+                self.logger.debug(
+                    f"Deduplicated columns. Before: {len(before)} columns, After: {len(after)} columns"
+                )
+        except Exception:
+            pass
+
+        # Debug: log uniqueness of IDs if present to catch collapsing issues early
+        try:
+            if "id" in df.columns:
+                uniq = df["id"].nunique(dropna=True)
+                self.logger.info(
+                    f"DataFrame transformation completed with {len(df)} rows (unique ids: {uniq})"
+                )
+            else:
+                self.logger.info(
+                    f"DataFrame transformation completed with {len(df)} rows (no id column yet)"
+                )
+        except Exception:
+            self.logger.info(f"DataFrame transformation completed with {len(df)} rows")
         return df
 
     def _apply_column_renaming(

@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { useEnhancementActivityMonitor } from './useEnhancementActivityMonitor';
 import type { ProspectFilters } from './useProspectFilters';
@@ -28,30 +28,35 @@ const fetchProspects = async (page: number, limit: number, filters?: ProspectFil
   
   const url = `/api/prospects?${queryParams.toString()}`;
   
-  const response = await fetch(url);
+  const response = await fetch(url, { credentials: 'include' });
   
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({ message: 'Failed to fetch prospects and parse error response' }));
     throw new Error(errorData.error || `Network response was not ok: ${response.statusText}`);
   }
   
-  const result: { prospects: Prospect[], pagination: { total_items: number, total_pages: number, page: number, per_page: number } } = await response.json();
-  
+  const json = await response.json();
+  const data = json?.data || {};
+  const prospects: Prospect[] = data.prospects || data.items || [];
+  const pagination = data.pagination || { total_items: 0, total_pages: 0 };
+
   return {
-    data: result.prospects,
-    total: result.pagination.total_items,
-    totalPages: result.pagination.total_pages
+    data: prospects,
+    total: pagination.total_items || 0,
+    totalPages: pagination.total_pages || 0,
   };
 };
 
 export function usePaginatedProspects(filters: ProspectFilters) {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
+  // Stabilize filters in the query key to avoid rerenders from object identity
+  const filtersKey = useMemo(() => JSON.stringify(filters), [filters]);
   
   const { hasAnyActivity } = useEnhancementActivityMonitor();
   
   const { data: prospectsData, isLoading, isFetching, refetch } = useQuery({
-    queryKey: ['prospects', currentPage, itemsPerPage, filters],
+    queryKey: ['prospects', currentPage, itemsPerPage, filtersKey],
     queryFn: () => fetchProspects(currentPage, itemsPerPage, filters),
     placeholderData: keepPreviousData,
     staleTime: 5000,

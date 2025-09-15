@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useCreateDecision, useProspectDecisions, useDeleteDecision } from '../hooks/api';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -21,6 +21,16 @@ export const GoNoGoDecision = ({ prospectId, prospectTitle, compact }: GoNoGoDec
   const createDecisionMutation = useCreateDecision();
   const deleteDecisionMutation = useDeleteDecision();
   const { data: decisionsData, isLoading: isLoadingDecisions, error: decisionsError } = useProspectDecisions(prospectId ? String(prospectId) : null);
+  
+  // Handle error via effect to avoid state updates during render
+  useEffect(() => {
+    if (!decisionsError) return;
+    handleError(decisionsError, {
+      context: { operation: 'loadDecisions', prospectId },
+      fallbackMessage: 'Failed to load existing decisions',
+      showToast: false,
+    });
+  }, [decisionsError, handleError, prospectId]);
   
   // Check if current user has already made a decision
   const existingDecision = decisionsData?.data?.decisions && Array.isArray(decisionsData.data.decisions) && decisionsData.data.decisions.length > 0 
@@ -91,18 +101,7 @@ export const GoNoGoDecision = ({ prospectId, prospectTitle, compact }: GoNoGoDec
     );
   }
 
-  // Show error state (optional - could be silent)
-  if (decisionsError) {
-    handleError(decisionsError, {
-      context: { 
-        operation: 'loadDecisions', 
-        prospectId 
-      },
-      fallbackMessage: 'Failed to load existing decisions',
-      showToast: false // Silent error - don't show toast for read operations
-    });
-    // Continue to render without existing decisions
-  }
+  
 
   if (compact) {
     return (

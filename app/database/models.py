@@ -158,6 +158,8 @@ class ScraperStatus(db.Model):
     source_id = Column(Integer, ForeignKey("data_sources.id"), nullable=False, index=True)
     status = Column(String, nullable=True)
     last_checked = Column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now())
+    records_found = Column(Integer, default=0, nullable=False)
+    error_message = Column(Text, nullable=True)
     details = Column(Text, nullable=True)
 
     data_source = relationship("DataSource", back_populates="status_records")
@@ -171,6 +173,8 @@ class ScraperStatus(db.Model):
             "source_id": self.source_id,
             "status": self.status,
             "last_checked": self.last_checked.isoformat() + "Z" if self.last_checked else None,
+            "records_found": self.records_found,
+            "error_message": self.error_message,
             "details": self.details,
         }
 

@@ -7,14 +7,14 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { ReloadIcon, ChevronDownIcon } from '@radix-ui/react-icons';
+import { ReloadIcon, ChevronDownIcon, ExclamationTriangleIcon } from '@radix-ui/react-icons';
 import { GoNoGoDecision } from '@/components/GoNoGoDecision';
 import { EnhancementButtonWithSelector } from '@/components/EnhancementButtonWithSelector';
 import { EnhancementProgress } from '@/components/EnhancementProgress';
 import { EnhancementErrorBoundary } from '@/components/EnhancementErrorBoundary';
 import { useIsSuperAdmin } from '@/hooks/api/useAuth';
 import type { Prospect } from '@/types/prospects';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 
 interface ProspectDetailsModalProps {
   isOpen: boolean;
@@ -33,7 +33,7 @@ interface ProspectDetailsModalProps {
       contacts?: { completed: boolean };
     };
   } | null;
-  _addToQueue?: (params: { prospect_id: string; force_redo: boolean; user_id: number; enhancement_types?: string[] }) => void;
+  _addToQueue?: (params: { prospect_id: string; force_redo: boolean; user_id: number; enhancement_types?: string[] }) => Promise<string>;
   formatUserDate: (dateString: string | null | undefined, format?: 'date' | 'datetime' | 'time' | 'relative', options?: Partial<Record<string, unknown>>) => string;
 }
 
@@ -50,20 +50,22 @@ export function ProspectDetailsModal({
   const isSuperAdmin = useIsSuperAdmin();
   const [showRawData, setShowRawData] = useState(false);
   const [enhancementStarted, setEnhancementStarted] = useState(false);
+  const enhancementState = useMemo(() => {
+    return selectedProspect ? getProspectStatus(selectedProspect.id) : null;
+  }, [selectedProspect?.id, getProspectStatus]);
+  const isEnhancementActive = enhancementState?.status ? ['queued', 'processing'].includes(enhancementState.status) : false;
+  const showCompletionBadge = Boolean(selectedProspect?.ollama_processed_at) && !enhancementStarted && !isEnhancementActive;
   
   // Monitor enhancement status and reset the started flag when completed
   useEffect(() => {
-    if (selectedProspect) {
-      const status = getProspectStatus(selectedProspect.id);
-      if (status && (status.status === 'completed' || status.status === 'failed')) {
+    if (enhancementState && (enhancementState.status === 'completed' || enhancementState.status === 'failed')) {
         // Add a small delay before hiding to ensure user sees completion
         const timer = setTimeout(() => {
           setEnhancementStarted(false);
         }, 2000);
         return () => clearTimeout(timer);
-      }
     }
-  }, [selectedProspect, getProspectStatus]);
+  }, [enhancementState]);
   
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
@@ -89,19 +91,28 @@ export function ProspectDetailsModal({
             </span>
             {(() => {
               if (!selectedProspect) return null;
-              const status = getProspectStatus(selectedProspect.id);
-              const isActive = status?.status ? ['queued', 'processing'].includes(status.status) : false;
-              if (!isActive) return null;
-              
-              return (
-                <div className="inline-flex items-center ml-3 px-2 py-1 text-xs font-medium bg-yellow-100 text-yellow-800 rounded-full">
-                  <ReloadIcon className="mr-1 h-3 w-3 animate-spin" />
-                  {status?.status === 'queued' ? 
-                    `Queued (#${status?.queuePosition || 1})` : 
-                    `Processing${status?.queuePosition ? ` (#${status.queuePosition})` : ''}`
-                  }
-                </div>
-              );
+              if (isEnhancementActive && enhancementState) {
+                return (
+                  <div className="inline-flex items-center ml-3 px-2 py-1 text-xs font-medium bg-yellow-100 text-yellow-800 rounded-full">
+                    <ReloadIcon className="mr-1 h-3 w-3 animate-spin" />
+                    {enhancementState.status === 'queued' ? 
+                      `Queued (#${enhancementState.queuePosition || 1})` : 
+                      `Processing${enhancementState.queuePosition ? ` (#${enhancementState.queuePosition})` : ''}`
+                    }
+                  </div>
+                );
+              }
+
+              if (enhancementState?.status === 'failed') {
+                return (
+                  <div className="inline-flex items-center ml-3 px-2 py-1 text-xs font-medium bg-destructive/10 text-destructive border border-destructive/40 rounded-full">
+                    <ExclamationTriangleIcon className="mr-1 h-3 w-3" />
+                    Enhancement failed
+                  </div>
+                );
+              }
+
+              return null;
             })()}
           </DialogTitle>
           <DialogDescription>
@@ -114,7 +125,7 @@ export function ProspectDetailsModal({
             {/* Enhancement Status and Button */}
             <div className="flex items-center justify-between">
               {/* Enhancement Status - Left side */}
-              {selectedProspect.ollama_processed_at && (
+              {showCompletionBadge && (
                 <div className="bg-blue-50 dark:bg-primary/10 border border-blue-200 dark:border-primary/20 p-3 rounded-lg">
                   <div className="flex items-center text-sm text-blue-800 dark:text-primary">
                     <div className="w-2 h-2 bg-blue-500 dark:bg-primary rounded-full mr-2"></div>
@@ -124,7 +135,7 @@ export function ProspectDetailsModal({
               )}
               
               {/* Spacer when no enhancement status */}
-              {!selectedProspect.ollama_processed_at && <div />}
+              {!showCompletionBadge && <div />}
               
               {/* Enhancement Button - Right side */}
               <EnhancementErrorBoundary>
@@ -139,27 +150,18 @@ export function ProspectDetailsModal({
             {/* Enhancement Progress */}
             <EnhancementErrorBoundary>
               <EnhancementProgress 
-                status={(() => {
-                  const enhancementState = getProspectStatus(selectedProspect?.id || '');
-                  if (!enhancementState) return null;
-                  
-                  const status = {
-                    currentStep: enhancementState.currentStep,
-                    progress: enhancementState.progress,
-                    enhancementTypes: (enhancementState as any).enhancementTypes,
-                    // Include the plannedSteps from the enhancement state
-                    plannedSteps: (enhancementState as any).plannedSteps
-                  };
-                  return status;
-                })()}
-                isVisible={(() => {
-                  if (!selectedProspect) return false;
-                  const status = getProspectStatus(selectedProspect.id);
-                  // Show progress when enhancement started or when queued/processing
-                  const isActive = status && ['queued', 'processing'].includes(status.status);
-                  const isVisible = enhancementStarted || isActive;
-                  return isVisible;
-                })()}
+                status={enhancementState ? {
+                  overallStatus: enhancementState.status,
+                  currentStep: enhancementState.currentStep,
+                  progress: enhancementState.progress,
+                  enhancementTypes: (enhancementState as any).enhancementTypes,
+                  plannedSteps: (enhancementState as any).plannedSteps,
+                  error: enhancementState.error
+                } : null}
+                isVisible={Boolean(
+                  enhancementStarted ||
+                  (enhancementState && ['queued', 'processing', 'failed'].includes(enhancementState.status as string))
+                )}
               />
             </EnhancementErrorBoundary>
             
@@ -196,20 +198,18 @@ export function ProspectDetailsModal({
               <h3 className="text-lg font-semibold mb-3 text-foreground">Basic Information</h3>
               <div className="grid grid-cols-1 gap-4 bg-muted p-4 rounded-lg">
                 <div className={`${(() => {
-                  const status = getProspectStatus(selectedProspect.id);
-                  const isTitleActive = status?.currentStep?.toLowerCase().includes('title') || 
-                                      status?.currentStep?.toLowerCase().includes('enhancing');
-                  const isTitleCompleted = status?.progress?.titles?.completed;
+                  const isTitleActive = enhancementState?.currentStep?.toLowerCase().includes('title') || 
+                                      enhancementState?.currentStep?.toLowerCase().includes('enhancing');
+                  const isTitleCompleted = enhancementState?.progress?.titles?.completed;
                   
                   // Only show animation if actively processing titles and not yet completed
                   return (isTitleActive && !isTitleCompleted) ? 'animate-pulse bg-blue-50 dark:bg-primary/10 border border-blue-200 dark:border-primary/20 rounded p-2' : '';
                 })()}`}>
                   <span className="font-medium text-muted-foreground">Title:</span>
                   {(() => {
-                    const status = getProspectStatus(selectedProspect.id);
-                    const isTitleActive = status?.currentStep?.toLowerCase().includes('title') || 
-                                        status?.currentStep?.toLowerCase().includes('enhancing');
-                    const isTitleCompleted = status?.progress?.titles?.completed;
+                    const isTitleActive = enhancementState?.currentStep?.toLowerCase().includes('title') || 
+                                        enhancementState?.currentStep?.toLowerCase().includes('enhancing');
+                    const isTitleCompleted = enhancementState?.progress?.titles?.completed;
                     
                     // Only show spinner if actively processing titles and not yet completed
                     return (isTitleActive && !isTitleCompleted) ? (
@@ -255,19 +255,17 @@ export function ProspectDetailsModal({
                     <p className="mt-1 text-foreground">{selectedProspect.agency || 'N/A'}</p>
                   </div>
                   <div className={`${(() => {
-                    const status = getProspectStatus(selectedProspect.id);
-                    const isNaicsActive = status?.currentStep?.toLowerCase().includes('naics') || 
-                                        status?.currentStep?.toLowerCase().includes('classifying');
-                    const isNaicsCompleted = status?.progress?.naics?.completed;
+                    const isNaicsActive = enhancementState?.currentStep?.toLowerCase().includes('naics') || 
+                                        enhancementState?.currentStep?.toLowerCase().includes('classifying');
+                    const isNaicsCompleted = enhancementState?.progress?.naics?.completed;
                     
                     return (isNaicsActive && !isNaicsCompleted) ? 'animate-pulse bg-primary/10 border border-primary/20 rounded p-2' : '';
                   })()}`}>
                     <span className="font-medium text-muted-foreground">NAICS:</span>
                     {(() => {
-                      const status = getProspectStatus(selectedProspect.id);
-                      const isNaicsActive = status?.currentStep?.toLowerCase().includes('naics') || 
-                                          status?.currentStep?.toLowerCase().includes('classifying');
-                      const isNaicsCompleted = status?.progress?.naics?.completed;
+                      const isNaicsActive = enhancementState?.currentStep?.toLowerCase().includes('naics') || 
+                                          enhancementState?.currentStep?.toLowerCase().includes('classifying');
+                      const isNaicsCompleted = enhancementState?.progress?.naics?.completed;
                       
                       return (isNaicsActive && !isNaicsCompleted) ? (
                         <span className="ml-2 text-xs px-2 py-1 rounded bg-blue-100 dark:bg-primary/20 text-blue-700 dark:text-primary animate-pulse inline-flex items-center">
@@ -472,10 +470,9 @@ export function ProspectDetailsModal({
 
             {/* Contact Information with progress indicator */}
             {(() => {
-              const status = getProspectStatus(selectedProspect.id);
-              const isContactsActive = status?.currentStep?.toLowerCase().includes('contact') || 
-                                     status?.currentStep?.toLowerCase().includes('extracting');
-              const isContactsCompleted = status?.progress?.contacts?.completed;
+              const isContactsActive = enhancementState?.currentStep?.toLowerCase().includes('contact') || 
+                                     enhancementState?.currentStep?.toLowerCase().includes('extracting');
+              const isContactsCompleted = enhancementState?.progress?.contacts?.completed;
               
               return (isContactsActive && !isContactsCompleted) ? (
                 <div>
@@ -493,10 +490,9 @@ export function ProspectDetailsModal({
 
             {/* Contact Information */}
             {(() => {
-              const status = getProspectStatus(selectedProspect.id);
-              const isContactsActive = status?.currentStep?.toLowerCase().includes('contact') || 
-                                     status?.currentStep?.toLowerCase().includes('extracting');
-              const isContactsCompleted = status?.progress?.contacts?.completed;
+              const isContactsActive = enhancementState?.currentStep?.toLowerCase().includes('contact') || 
+                                     enhancementState?.currentStep?.toLowerCase().includes('extracting');
+              const isContactsCompleted = enhancementState?.progress?.contacts?.completed;
               
               return !(isContactsActive && !isContactsCompleted) && (selectedProspect.primary_contact_email || selectedProspect.primary_contact_name);
             })() && (
