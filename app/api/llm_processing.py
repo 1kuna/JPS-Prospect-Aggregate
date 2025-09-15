@@ -218,7 +218,7 @@ def trigger_llm_enhancement():
     return success_response(data=response_data)
 
 
-@api_route(llm_bp, "/preview", methods=["POST"], auth="admin")
+@api_route(llm_bp, "/preview", methods=["POST"], auth="login")
 def preview_llm_enhancement():
     """Preview LLM enhancement for a single prospect without saving"""
     data = request.get_json()
@@ -1023,15 +1023,51 @@ def stop_queue_worker():
 # SSE functionality has been removed - using polling instead
 
 
-@api_route(llm_bp, "/enhancement-queue/<queue_item_id>", methods=["DELETE"], auth="admin")
+@api_route(llm_bp, "/enhancement-queue/<queue_item_id>", methods=["DELETE"], auth="login")
 def cancel_enhancement(queue_item_id):
-    """Cancel a queued enhancement request"""
+    """Cancel a queued enhancement request
+
+    Regular users can only cancel their own enhancements.
+    Admins and super admins can cancel any enhancement.
+    """
+    from flask import session
+
+    # Get current user from session
+    current_user_id = session.get("user_id")
+    current_user_role = session.get("user_role", "user")
+
+    # Check if the queue item exists and get its user_id
+    queue_items = enhancement_queue._queue_items
+    queue_item = queue_items.get(queue_item_id)
+
+    if not queue_item:
+        logger.warning(
+            f"Failed to cancel enhancement queue item: {queue_item_id} (not found)"
+        )
+        return error_response(
+            "Queue item not found",
+            status_code=404,
+            data={"success": False}
+        )
+
+    # Check ownership - regular users can only cancel their own enhancements
+    if current_user_role not in ["admin", "super_admin"]:
+        if hasattr(queue_item, 'user_id') and queue_item.user_id != current_user_id:
+            logger.warning(
+                f"User {current_user_id} attempted to cancel enhancement owned by user {queue_item.user_id}"
+            )
+            return error_response(
+                "You can only cancel your own enhancement requests",
+                status_code=403,
+                data={"success": False}
+            )
+
     # Attempt to cancel the queue item
     success = enhancement_queue.cancel_item(queue_item_id)
 
     if success:
         logger.info(
-            f"Successfully cancelled enhancement queue item: {queue_item_id}"
+            f"Successfully cancelled enhancement queue item: {queue_item_id} by user {current_user_id}"
         )
         return success_response(
             message="Enhancement request cancelled successfully",
@@ -1039,10 +1075,10 @@ def cancel_enhancement(queue_item_id):
         )
     else:
         logger.warning(
-            f"Failed to cancel enhancement queue item: {queue_item_id} (not found or already processing)"
+            f"Failed to cancel enhancement queue item: {queue_item_id} (already processing)"
         )
         return error_response(
-            "Queue item not found or already processing",
-            status_code=404,
+            "Queue item is already processing and cannot be cancelled",
+            status_code=409,
             data={"success": False}
         )
