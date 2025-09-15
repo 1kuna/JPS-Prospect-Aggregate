@@ -179,9 +179,7 @@ def _execute_database_clear_operation(operation_name: str, clear_function):
         return error_response(500, f"Failed to {operation_name.lower()}: {str(e)}")
 
 
-@api_route(main_bp, "/database/clear", methods=["POST"])
-@api_route(main_bp, "/database/clear/<clear_type>", methods=["POST"])
-def clear_database(clear_type="all"):
+def _clear_database_impl(clear_type="all"):
     """
     Clear data from the database based on type.
 
@@ -289,6 +287,18 @@ def clear_database(clear_type="all"):
     return _execute_database_clear_operation(
         operation_names[clear_type], clear_functions[clear_type]
     )
+
+
+@api_route(main_bp, "/database/clear", methods=["POST"])
+def clear_database_default():
+    """Clear all data from the database."""
+    return _clear_database_impl("all")
+
+
+@api_route(main_bp, "/database/clear/<clear_type>", methods=["POST"])
+def clear_database_with_type(clear_type):
+    """Clear specific type of data from the database."""
+    return _clear_database_impl(clear_type)
 
 
 @api_route(main_bp, "/database/status", methods=["GET"])
