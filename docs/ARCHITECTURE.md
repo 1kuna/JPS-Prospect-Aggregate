@@ -10,7 +10,7 @@ The JPS Prospect Aggregate system is a comprehensive web scraping and data proce
 
 The entire scraping system is built on a consolidated architecture that eliminates code duplication and provides consistent behavior across all agency scrapers.
 
-#### ConsolidatedScraperBase (`app/core/consolidated_scraper_base.py`)
+#### ConsolidatedScraperBase (`app/core/scraper_base.py`)
 - **Purpose**: Single base class containing all scraping functionality
 - **Key Features**:
   - Browser automation with Playwright
@@ -21,7 +21,7 @@ The entire scraping system is built on a consolidated architecture that eliminat
   - Data transformation pipeline
   - Database integration
 
-#### ScraperConfig (`app/core/consolidated_scraper_base.py`)
+#### ScraperConfig (`app/core/scraper_base.py`)
 - **Purpose**: Unified configuration dataclass for all scrapers
 - **Key Configuration Areas**:
   - Browser settings (stealth mode, timeouts, special args)

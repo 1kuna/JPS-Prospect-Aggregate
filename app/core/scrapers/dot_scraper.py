@@ -9,7 +9,7 @@ import pandas as pd
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
 from app.config import active_config
-from app.core.consolidated_scraper_base import ConsolidatedScraperBase
+from app.core.scraper_base import ConsolidatedScraperBase
 from app.core.scraper_configs import get_scraper_config
 
 

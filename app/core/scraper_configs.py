@@ -4,8 +4,8 @@ Replaces the complex config_converter.py with direct, simple dictionary-based co
 Each scraper now has a clear, readable configuration that can be easily modified.
 """
 
-# Import the proper dataclass ScraperConfig from consolidated_scraper_base
-from app.core.consolidated_scraper_base import ScraperConfig
+# Import the proper dataclass ScraperConfig from scraper_base
+from app.core.scraper_base import ScraperConfig
 
 # =============================================================================
 # SIMPLIFIED SCRAPER CONFIGURATIONS

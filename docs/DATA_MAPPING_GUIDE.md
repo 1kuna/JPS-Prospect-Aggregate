@@ -18,7 +18,7 @@ This guide provides detailed technical specifications for data mapping and field
 
 - Primary: `app/core/scraper_configs.py` - Contains all source-specific mappings
 - Transforms: `app/core/scrapers/*_scraper.py` - Custom per-source transformations
-- Base Logic: `app/core/consolidated_scraper_base.py` - Shared normalization logic
+- Base Logic: `app/core/scraper_base.py` - Shared normalization logic
 
 ### Key Configuration Fields
 

@@ -193,7 +193,7 @@ YOUR_AGENCY_CONFIG = ScraperConfig(
 
 2. Create scraper in `app/core/scrapers/your_agency.py`:
 ```python
-from app.core.consolidated_scraper_base import ConsolidatedScraperBase
+from app.core.scraper_base import ConsolidatedScraperBase
 from app.core.scraper_configs import YOUR_AGENCY_CONFIG
 
 class YourAgencyScraper(ConsolidatedScraperBase):
@@ -282,7 +282,7 @@ ollama serve                              # Start service
 ├── app/                   # Backend application
 │   ├── api/              # API endpoints
 │   ├── core/             # Scraper framework
-│   │   ├── consolidated_scraper_base.py
+│   │   ├── scraper_base.py
 │   │   ├── scraper_configs.py
 │   │   └── scrapers/     # Agency scrapers
 │   ├── database/         # Models & operations

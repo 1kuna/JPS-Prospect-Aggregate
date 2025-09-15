@@ -22,7 +22,7 @@ import pandas as pd
 import pytest
 
 from app import create_app
-from app.core.consolidated_scraper_base import ConsolidatedScraperBase, ScraperConfig
+from app.core.scraper_base import ConsolidatedScraperBase, ScraperConfig
 from app.database import db
 from app.database.models import DataSource, Prospect
 
@@ -188,7 +188,7 @@ class TestConsolidatedScraperBase:
             ]
         )
 
-    @patch("app.core.consolidated_scraper_base.async_playwright")
+    @patch("app.core.scraper_base.async_playwright")
     def test_setup_browser_success(self, mock_playwright, scraper):
         """Test successful browser setup."""
         mock_browser = Mock()
@@ -202,12 +202,12 @@ class TestConsolidatedScraperBase:
         mock_context.new_page = AsyncMock(return_value=mock_page)
 
         # Mock stealth plugin
-        with patch("app.core.consolidated_scraper_base.stealth_async"):
+        with patch("app.core.scraper_base.stealth_async"):
             result = scraper._setup_browser()
 
         assert result == (mock_browser, mock_context, mock_page)
 
-    @patch("app.core.consolidated_scraper_base.async_playwright")
+    @patch("app.core.scraper_base.async_playwright")
     def test_setup_browser_failure(self, mock_playwright, scraper):
         """Test browser setup failure handling."""
         mock_playwright.return_value.__aenter__.return_value.chromium.launch = (
@@ -657,7 +657,7 @@ class TestConsolidatedScraperBase:
                 assert prospect.id is not None
                 assert prospect.source_id == data_source.id
 
-    @patch("app.core.consolidated_scraper_base.async_playwright")
+    @patch("app.core.scraper_base.async_playwright")
     def test_run_scraper_success(self, mock_playwright, scraper, db_session):
         """Test successful end-to-end scraper run with dynamic data."""
         # Mock browser operations
@@ -673,7 +673,7 @@ class TestConsolidatedScraperBase:
         mock_page.goto = AsyncMock()
         mock_page.wait_for_load_state = AsyncMock()
 
-        with patch("app.core.consolidated_scraper_base.stealth_async"):
+        with patch("app.core.scraper_base.stealth_async"):
             # Generate random data
             num_rows = random.randint(1, 5)
             test_data = {}
@@ -727,7 +727,7 @@ class TestConsolidatedScraperBase:
                         assert result["prospects_saved"] == saved_count
                         assert result["errors"] == error_count
 
-    @patch("app.core.consolidated_scraper_base.async_playwright")
+    @patch("app.core.scraper_base.async_playwright")
     def test_run_scraper_with_errors(self, mock_playwright, scraper):
         """Test scraper run with errors."""
         # Mock browser failure

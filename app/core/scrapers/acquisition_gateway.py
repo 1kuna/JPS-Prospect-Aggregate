@@ -5,7 +5,7 @@ This replaces the original acquisition_gateway.py with simplified, unified appro
 import pandas as pd
 
 from app.config import active_config
-from app.core.consolidated_scraper_base import ConsolidatedScraperBase
+from app.core.scraper_base import ConsolidatedScraperBase
 from app.core.scraper_configs import get_scraper_config
 from app.utils.logger import logger
 
@@ -109,55 +109,3 @@ class AcquisitionGatewayScraper(ConsolidatedScraperBase):
         """
         return await self.scrape_with_structure()
 
-
-# Testing function
-async def test_acquisition_gateway_scraper():
-    """Test the consolidated scraper implementation."""
-    scraper = AcquisitionGatewayScraper()
-
-    try:
-        logger.info("Testing Acquisition Gateway consolidated scraper...")
-
-        # Test configuration
-        assert scraper.source_name == "Acquisition Gateway"
-        assert scraper.config.debug_mode == True  # Should be non-headless
-        assert scraper.config.download_timeout_ms == 90000  # 90 seconds as requested
-        assert scraper.config.export_button_selector == "button#export-0"
-
-        # Test custom transform function
-        test_df = pd.DataFrame(
-            {
-                "Description": ["Valid desc", None, ""],
-                "Body": ["Body 1", "Body 2", "Body 3"],
-                "Node_ID": ["123", "456", "789"],
-                "Organization": ["GSA", "DOD", "VA"],
-            }
-        )
-
-        transformed_df = scraper.custom_summary_fallback(test_df)
-
-        # Verify fallback behavior
-        assert transformed_df.loc[1, "Description"] == "Body 2"  # Filled from Body
-        assert transformed_df.loc[2, "Description"] == "Body 3"  # Filled from Body
-        assert transformed_df.loc[0, "Description"] == "Valid desc"  # Unchanged
-        assert "Body" in transformed_df.columns  # Body column retained
-        assert "extras_json" in transformed_df.columns  # Extras JSON column created
-
-        # Verify extras dict contains expected data
-        extras_0 = transformed_df.loc[0, "extras_json"]
-        assert extras_0["node_id"] == "123"
-        assert extras_0["body"] == "Body 1"
-        assert extras_0["organization"] == "GSA"
-
-        logger.info("✓ Acquisition Gateway consolidated scraper test passed")
-        return True
-
-    except Exception as e:
-        logger.error(f"✗ Acquisition Gateway consolidated scraper test failed: {e}")
-        return False
-
-
-if __name__ == "__main__":
-    import asyncio
-
-    asyncio.run(test_acquisition_gateway_scraper())

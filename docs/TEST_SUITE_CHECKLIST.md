@@ -212,7 +212,7 @@ Use this interactive checklist to track fixes and improvements to the test suite
 
 - Scraper fixtures and mappings
   - Files:
-    - `tests/core/test_consolidated_scraper_base.py`
+    - `tests/core/test_scraper_base.py`
     - `tests/core/scrapers/test_scrapers.py`
   - Actions:
     - Move dynamic DataFrame generation to static fixtures under `tests/fixtures/`

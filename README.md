@@ -296,7 +296,7 @@ The following agencies are configured through `populate_data_sources.py`:
 - [General Services Administration](https://acquisitiongateway.gov/forecast)
 - [Nuclear Regulatory Commission](https://acquisitiongateway.gov/forecast)
 
-See `docs/CONTRACT_MAPPING_LLM.md` for LLM implementation details. The scraper architecture uses a unified `ConsolidatedScraperBase` class (see inline documentation in `app/core/consolidated_scraper_base.py`).
+See `docs/CONTRACT_MAPPING_LLM.md` for LLM implementation details. The scraper architecture uses a unified `ConsolidatedScraperBase` class (see inline documentation in `app/core/scraper_base.py`).
 
 ## Data Retention
 

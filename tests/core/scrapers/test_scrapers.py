@@ -309,11 +309,11 @@ class TestConsolidatedScrapers:
         """Mock browser setup for all scrapers."""
         with (
             patch(
-                "app.core.consolidated_scraper_base.ConsolidatedScraperBase.setup_browser",
+                "app.core.scraper_base.ConsolidatedScraperBase.setup_browser",
                 new_callable=AsyncMock,
             ) as mock_setup,
             patch(
-                "app.core.consolidated_scraper_base.ConsolidatedScraperBase.cleanup_browser",
+                "app.core.scraper_base.ConsolidatedScraperBase.cleanup_browser",
                 new_callable=AsyncMock,
             ) as mock_cleanup,
         ):
@@ -324,16 +324,16 @@ class TestConsolidatedScrapers:
         """Mock navigation methods."""
         with (
             patch(
-                "app.core.consolidated_scraper_base.ConsolidatedScraperBase.navigate_to_url",
+                "app.core.scraper_base.ConsolidatedScraperBase.navigate_to_url",
                 new_callable=AsyncMock,
                 return_value=True,
             ) as mock_nav,
             patch(
-                "app.core.consolidated_scraper_base.ConsolidatedScraperBase.wait_for_load_state",
+                "app.core.scraper_base.ConsolidatedScraperBase.wait_for_load_state",
                 new_callable=AsyncMock,
             ) as mock_wait,
             patch(
-                "app.core.consolidated_scraper_base.ConsolidatedScraperBase.wait_for_timeout",
+                "app.core.scraper_base.ConsolidatedScraperBase.wait_for_timeout",
                 new_callable=AsyncMock,
             ) as mock_timeout,
         ):
@@ -344,12 +344,12 @@ class TestConsolidatedScrapers:
         """Mock page interaction methods."""
         with (
             patch(
-                "app.core.consolidated_scraper_base.ConsolidatedScraperBase.click_element",
+                "app.core.scraper_base.ConsolidatedScraperBase.click_element",
                 new_callable=AsyncMock,
                 return_value=True,
             ) as mock_click,
             patch(
-                "app.core.consolidated_scraper_base.ConsolidatedScraperBase.wait_for_selector",
+                "app.core.scraper_base.ConsolidatedScraperBase.wait_for_selector",
                 new_callable=AsyncMock,
             ) as mock_selector,
         ):
@@ -383,7 +383,7 @@ class TestConsolidatedScrapers:
 
         try:
             with patch(
-                "app.core.consolidated_scraper_base.ConsolidatedScraperBase.download_file_via_click",
+                "app.core.scraper_base.ConsolidatedScraperBase.download_file_via_click",
                 new_callable=AsyncMock,
                 return_value=test_file,
             ):
@@ -421,7 +421,7 @@ class TestConsolidatedScrapers:
 
         try:
             with patch(
-                "app.core.consolidated_scraper_base.ConsolidatedScraperBase.download_file_via_click",
+                "app.core.scraper_base.ConsolidatedScraperBase.download_file_via_click",
                 new_callable=AsyncMock,
                 return_value=test_file,
             ):
@@ -451,7 +451,7 @@ class TestConsolidatedScrapers:
 
         try:
             with patch(
-                "app.core.consolidated_scraper_base.ConsolidatedScraperBase.download_file_via_click",
+                "app.core.scraper_base.ConsolidatedScraperBase.download_file_via_click",
                 new_callable=AsyncMock,
                 return_value=test_file,
             ):
@@ -479,7 +479,7 @@ class TestConsolidatedScrapers:
 
         try:
             with patch(
-                "app.core.consolidated_scraper_base.ConsolidatedScraperBase.download_file_via_new_page",
+                "app.core.scraper_base.ConsolidatedScraperBase.download_file_via_new_page",
                 new_callable=AsyncMock,
                 return_value=test_file,
             ):
@@ -507,7 +507,7 @@ class TestConsolidatedScrapers:
 
         try:
             with patch(
-                "app.core.consolidated_scraper_base.ConsolidatedScraperBase.download_with_fallback",
+                "app.core.scraper_base.ConsolidatedScraperBase.download_with_fallback",
                 new_callable=AsyncMock,
                 return_value=test_file,
             ):
@@ -544,12 +544,12 @@ class TestConsolidatedScrapers:
         try:
             with (
                 patch(
-                    "app.core.consolidated_scraper_base.ConsolidatedScraperBase.find_excel_link",
+                    "app.core.scraper_base.ConsolidatedScraperBase.find_excel_link",
                     new_callable=AsyncMock,
                     return_value="http://test.com/file.xlsx",
                 ),
                 patch(
-                    "app.core.consolidated_scraper_base.ConsolidatedScraperBase.download_file_directly",
+                    "app.core.scraper_base.ConsolidatedScraperBase.download_file_directly",
                     new_callable=AsyncMock,
                     return_value=test_file,
                 ),
@@ -579,12 +579,12 @@ class TestConsolidatedScrapers:
         try:
             with (
                 patch(
-                    "app.core.consolidated_scraper_base.ConsolidatedScraperBase.find_link_by_text",
+                    "app.core.scraper_base.ConsolidatedScraperBase.find_link_by_text",
                     new_callable=AsyncMock,
                     return_value="http://test.com/file.xlsx",
                 ),
                 patch(
-                    "app.core.consolidated_scraper_base.ConsolidatedScraperBase.download_file_directly",
+                    "app.core.scraper_base.ConsolidatedScraperBase.download_file_directly",
                     new_callable=AsyncMock,
                     return_value=test_file,
                 ),
@@ -613,7 +613,7 @@ class TestConsolidatedScrapers:
 
         try:
             with patch(
-                "app.core.consolidated_scraper_base.ConsolidatedScraperBase.download_file_via_click",
+                "app.core.scraper_base.ConsolidatedScraperBase.download_file_via_click",
                 new_callable=AsyncMock,
                 return_value=test_file,
             ):
@@ -641,7 +641,7 @@ class TestConsolidatedScrapers:
 
         try:
             with patch(
-                "app.core.consolidated_scraper_base.ConsolidatedScraperBase.download_file_directly",
+                "app.core.scraper_base.ConsolidatedScraperBase.download_file_directly",
                 new_callable=AsyncMock,
                 return_value=test_file,
             ):
@@ -671,7 +671,7 @@ class TestConsolidatedScrapers:
         ]
 
         with patch(
-            "app.core.consolidated_scraper_base.ConsolidatedScraperBase.download_file_via_click",
+            "app.core.scraper_base.ConsolidatedScraperBase.download_file_via_click",
             new_callable=AsyncMock,
             side_effect=Exception(random.choice(error_messages)),
         ):
