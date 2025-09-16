@@ -11,11 +11,11 @@ from pathlib import Path
 
 from flask import Response, request, stream_with_context
 
-from app.api.auth import admin_required
 from app.api.factory import (
     api_route,
     create_blueprint,
     error_response,
+    admin_required,
     success_response,
 )
 
