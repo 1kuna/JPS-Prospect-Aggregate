@@ -7,7 +7,6 @@ import pandas as pd
 from app.config import active_config
 from app.core.scraper_base import ConsolidatedScraperBase
 from app.core.scraper_configs import get_scraper_config
-from app.utils.logger import logger
 
 
 class AcquisitionGatewayScraper(ConsolidatedScraperBase):
@@ -108,4 +107,3 @@ class AcquisitionGatewayScraper(ConsolidatedScraperBase):
         Uses the standard pattern but can be customized if needed.
         """
         return await self.scrape_with_structure()
-

@@ -11,12 +11,13 @@ import threading
 import time
 from collections.abc import Callable
 from datetime import timezone
+
 UTC = timezone.utc
 from datetime import datetime
 from typing import Any, Literal, Optional
 
-from flask import current_app, has_app_context
-from sqlalchemy.orm import scoped_session
+import requests
+from flask import has_app_context
 from app.database import db
 from app.database.models import LLMOutput, Prospect
 from app.services.optimized_prompts import (
@@ -28,11 +29,13 @@ from app.services.set_aside_standardization import (
     SetAsideStandardizer,
     StandardSetAside,
 )
-from app.utils.llm_utils import call_ollama
+from app.utils.llm_utils import OLLAMA_BASE, call_ollama
 from app.utils.logger import logger
 from app.utils.naics_lookup import get_naics_description, validate_naics_code
 
-EnhancementType = Literal["all", "values", "titles", "naics", "naics_code", "naics_description", "set_asides"]
+EnhancementType = Literal[
+    "all", "values", "titles", "naics", "naics_code", "naics_description", "set_asides"
+]
 
 
 class LLMService:
@@ -68,15 +71,52 @@ class LLMService:
             "errors": [],
         }
         self._lock = threading.Lock()
-    
+
     def set_app(self, app):
         """Set Flask app reference for database context in threads"""
         self._app = app
         logger.info("Flask app reference set in LLM service")
-    
+
     def set_emit_callback(self, callback: Callable | None):
         """Set the emit callback for field updates"""
         self._emit_callback = callback
+
+    def check_ollama_status(self, timeout: float = 5.0) -> dict[str, Any]:
+        """Lightweight availability check for the Ollama service."""
+        base_url = OLLAMA_BASE.removesuffix("/api/generate").rstrip("/")
+        health_url = f"{base_url}/api/tags"
+
+        try:
+            response = requests.get(health_url, timeout=timeout)
+            response.raise_for_status()
+            data = response.json() if response.content else {}
+
+            # tags endpoint returns {"models": [...]}; we only need lightweight signal
+            installed_models = []
+            if isinstance(data, dict):
+                models = data.get("models") or []
+                if isinstance(models, list):
+                    installed_models = [
+                        model.get("name") for model in models if isinstance(model, dict)
+                    ]
+
+            return {
+                "available": True,
+                "model": self.model_name,
+                "installed_models": installed_models,
+            }
+        except requests.exceptions.RequestException as exc:
+            logger.warning("Ollama health check failed: %s", exc, exc_info=False)
+            return {
+                "available": False,
+                "error": str(exc),
+            }
+        except Exception as exc:  # pragma: no cover - defensive catch
+            logger.error("Unexpected error checking Ollama status: %s", exc)
+            return {
+                "available": False,
+                "error": str(exc),
+            }
 
     # =============================================================================
     # UTILITY FUNCTIONS (from llm_service_utils.py)
@@ -482,15 +522,17 @@ class LLMService:
             parsed = json.loads(cleaned_response)
 
             result = {
-                "single": float(parsed.get("single"))
-                if parsed.get("single") is not None
-                else None,
-                "min": float(parsed.get("min"))
-                if parsed.get("min") is not None
-                else None,
-                "max": float(parsed.get("max"))
-                if parsed.get("max") is not None
-                else None,
+                "single": (
+                    float(parsed.get("single"))
+                    if parsed.get("single") is not None
+                    else None
+                ),
+                "min": (
+                    float(parsed.get("min")) if parsed.get("min") is not None else None
+                ),
+                "max": (
+                    float(parsed.get("max")) if parsed.get("max") is not None else None
+                ),
                 "confidence": parsed.get("confidence", 1.0),
             }
 
@@ -771,9 +813,9 @@ class LLMService:
                     parsed_result={"original_input": set_aside_text},
                     success=False,
                     error_message=str(e),
-                    processing_time=time.time() - start_time
-                    if "start_time" in locals()
-                    else None,
+                    processing_time=(
+                        time.time() - start_time if "start_time" in locals() else None
+                    ),
                 )
 
             return None
@@ -1103,8 +1145,12 @@ class LLMService:
                 # Store original NAICS if it exists and hasn't been stored yet
                 if prospect.naics and "original_naics" not in prospect.extra:
                     prospect.extra["original_naics"] = prospect.naics
-                    prospect.extra["original_naics_description"] = prospect.naics_description
-                    prospect.extra["original_naics_source"] = prospect.naics_source or "original"
+                    prospect.extra["original_naics_description"] = (
+                        prospect.naics_description
+                    )
+                    prospect.extra["original_naics_source"] = (
+                        prospect.naics_source or "original"
+                    )
 
                 # First check extra field
                 extra_naics = self.extract_naics_from_extra_field(prospect.extra)
@@ -1159,7 +1205,7 @@ class LLMService:
                 # Get official description from lookup table
                 official_description = get_naics_description(prospect.naics)
                 processing_time = time.time() - start_time
-                
+
                 if official_description:
                     prospect.naics_description = official_description
                     # Mark that we backfilled the description
@@ -1167,22 +1213,27 @@ class LLMService:
                         prospect.extra["naics_description_backfill"] = {
                             "backfilled_at": datetime.now(UTC).isoformat(),
                             "source": "official_lookup",
-                            "code": prospect.naics
+                            "code": prospect.naics,
                         }
                     results["naics"] = True
-                    
+
                     # Log to LLMOutput table for visibility
                     self._log_llm_output(
                         prospect_id=prospect.id,
                         enhancement_type="naics_description",
                         prompt=f"Lookup NAICS description for code: {prospect.naics}",
                         response=f"Found official description: {official_description}",
-                        parsed_result={"code": prospect.naics, "description": official_description},
+                        parsed_result={
+                            "code": prospect.naics,
+                            "description": official_description,
+                        },
                         success=True,
                         processing_time=processing_time,
                     )
-                    
-                    logger.info(f"Backfilled NAICS description for {prospect.id[:8]}: {prospect.naics} -> {official_description}")
+
+                    logger.info(
+                        f"Backfilled NAICS description for {prospect.id[:8]}: {prospect.naics} -> {official_description}"
+                    )
                 else:
                     # Log failed lookup
                     self._log_llm_output(
@@ -1195,7 +1246,9 @@ class LLMService:
                         error_message=f"No official description found for NAICS code {prospect.naics}",
                         processing_time=processing_time,
                     )
-                    logger.warning(f"No official description found for NAICS code {prospect.naics}")
+                    logger.warning(
+                        f"No official description found for NAICS code {prospect.naics}"
+                    )
 
             # Emit completion callback
             if progress_callback:
@@ -1347,10 +1400,6 @@ class LLMService:
     # ITERATIVE PROCESSING WITH PROGRESS TRACKING
     # =============================================================================
 
-    def set_emit_callback(self, emit_callback: Callable):
-        """Set callback for real-time field updates."""
-        self._emit_callback = emit_callback
-
     def get_progress(self) -> dict[str, any]:
         """Get current processing progress."""
         with self._lock:
@@ -1482,21 +1531,25 @@ class LLMService:
             logger.error("No Flask app context available for worker thread")
             with self._lock:
                 self._progress["status"] = "failed"
-                self._progress["errors"].append({
-                    "error": "No Flask app context available",
-                    "timestamp": datetime.now(UTC).isoformat(),
-                })
+                self._progress["errors"].append(
+                    {
+                        "error": "No Flask app context available",
+                        "timestamp": datetime.now(UTC).isoformat(),
+                    }
+                )
             self._processing = False
-    
-    def _process_with_context(self, prospects: list[Prospect], enhancement_type: EnhancementType):
+
+    def _process_with_context(
+        self, prospects: list[Prospect], enhancement_type: EnhancementType
+    ):
         """Process prospects within Flask app context"""
         # Import db for thread use
         from app.database import db as thread_db
-        
+
         try:
             error_count = 0
             MAX_STORED_ERRORS = 10  # Only keep last 10 errors to prevent memory issues
-            
+
             for i, prospect in enumerate(prospects):
                 if self._stop_event.is_set():
                     break
@@ -1510,7 +1563,7 @@ class LLMService:
                     if not prospect:
                         logger.error(f"Prospect {prospect.id} not found in database")
                         continue
-                        
+
                     results = self.enhance_single_prospect(prospect, enhancement_type)
 
                     if any(results.values()):

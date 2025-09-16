@@ -43,7 +43,6 @@ class DotScraper(ConsolidatedScraperBase):
 
         return df
 
-
     async def dot_setup(self) -> bool:
         """DOT-specific setup with complex retry logic and Apply button click.
         Preserves original DOT navigation behavior.

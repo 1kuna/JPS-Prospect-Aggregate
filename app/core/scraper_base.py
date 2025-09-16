@@ -50,6 +50,7 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import timezone
+
 UTC = timezone.utc
 from datetime import datetime
 from typing import Any
@@ -146,8 +147,12 @@ class ScraperConfig:
     fields_for_id_hash: list[str] = field(default_factory=list)
     required_fields_for_load: list[str] | None = None
     dropna_how_all: bool = True
-    extras_fields_map: dict[str, str] | None = None  # Maps source columns to extras keys
-    transform_params: dict[str, Any] | None = None  # Parameters for common transform helpers
+    extras_fields_map: dict[str, str] | None = (
+        None  # Maps source columns to extras keys
+    )
+    transform_params: dict[str, Any] | None = (
+        None  # Parameters for common transform helpers
+    )
 
     # Special retry configuration (for DOT-style scrapers)
     # Some agencies (like DOT) have multiple download endpoints that may fail intermittently.
@@ -285,9 +290,9 @@ class ConsolidatedScraperBase:
             }
             # Set appropriate referer
             if "Treasury" in self.source_name:
-                context_kwargs["extra_http_headers"]["Referer"] = (
-                    "https://www.treasury.gov/"
-                )
+                context_kwargs["extra_http_headers"][
+                    "Referer"
+                ] = "https://www.treasury.gov/"
             else:
                 context_kwargs["extra_http_headers"]["Referer"] = "https://www.hhs.gov/"
         else:
@@ -1670,7 +1675,9 @@ class ConsolidatedScraperBase:
                         "Excel read returned few rows/columns with configured options; attempting fallbacks"
                     )
             except Exception as e:
-                self.logger.info(f"Configured Excel read failed: {e}; attempting fallbacks")
+                self.logger.info(
+                    f"Configured Excel read failed: {e}; attempting fallbacks"
+                )
 
             # Fallback 1: header=0 (first row as header), same sheet_name if present
             try:
@@ -1696,7 +1703,10 @@ class ConsolidatedScraperBase:
                 if isinstance(all_sheets, dict) and all_sheets:
                     best_name, best_df = None, None
                     for name, sdf in all_sheets.items():
-                        if best_df is None or (sdf.shape[0], sdf.shape[1]) > (best_df.shape[0], best_df.shape[1]):
+                        if best_df is None or (sdf.shape[0], sdf.shape[1]) > (
+                            best_df.shape[0],
+                            best_df.shape[1],
+                        ):
                             best_name, best_df = name, sdf
                     if _is_meaningful(best_df):
                         self.logger.info(
@@ -1716,7 +1726,10 @@ class ConsolidatedScraperBase:
                 if isinstance(all_sheets2, dict) and all_sheets2:
                     best_name, best_df = None, None
                     for name, sdf in all_sheets2.items():
-                        if best_df is None or (sdf.shape[0], sdf.shape[1]) > (best_df.shape[0], best_df.shape[1]):
+                        if best_df is None or (sdf.shape[0], sdf.shape[1]) > (
+                            best_df.shape[0],
+                            best_df.shape[1],
+                        ):
                             best_name, best_df = name, sdf
                     if _is_meaningful(best_df):
                         self.logger.info(
@@ -1726,7 +1739,9 @@ class ConsolidatedScraperBase:
             except Exception as e:
                 self.logger.debug(f"Excel fallback all-sheets header=2 failed: {e}")
 
-            self.logger.warning("All Excel read attempts yielded insufficient data; returning None")
+            self.logger.warning(
+                "All Excel read attempts yielded insufficient data; returning None"
+            )
             return None
 
         except Exception as e:
@@ -1801,11 +1816,11 @@ class ConsolidatedScraperBase:
         # 2. Apply parameterized transforms from config
         if self.config.transform_params:
             self.logger.debug("Applying parameterized transforms")
-            
+
             # Add row index
             if self.config.transform_params.get("add_row_index"):
                 df = self._add_row_index(df)
-            
+
             # Default country
             country_params = self.config.transform_params.get("default_country")
             if country_params:
@@ -1813,17 +1828,17 @@ class ConsolidatedScraperBase:
                     df = self._default_country(df, **country_params)
                 else:
                     df = self._default_country(df)
-            
+
             # Derive date from FY/Q
             date_fyq_params = self.config.transform_params.get("derive_date_from_fyq")
             if date_fyq_params:
                 df = self._derive_date_from_fyq(df, **date_fyq_params)
-            
+
             # Parse place location
             place_params = self.config.transform_params.get("parse_place")
             if place_params:
                 df = self._parse_place_location(df, **place_params)
-            
+
             # Combine name fields (can have multiple)
             name_combines = self.config.transform_params.get("combine_names")
             if name_combines:
@@ -1832,17 +1847,19 @@ class ConsolidatedScraperBase:
                         df = self._combine_name_fields(df, **name_config)
                 else:
                     df = self._combine_name_fields(df, **name_combines)
-            
+
             # Parse value with priority
             value_params = self.config.transform_params.get("parse_value_priority")
             if value_params:
                 df = self._parse_value_with_priority(df, **value_params)
-            
+
             # Derive award date with priority
-            award_params = self.config.transform_params.get("derive_award_date_priority")
+            award_params = self.config.transform_params.get(
+                "derive_award_date_priority"
+            )
             if award_params:
                 df = self._derive_award_date_with_priority(df, **award_params)
-        
+
         # 3. Apply custom transformation functions
         for func_name in self.config.custom_transform_functions:
             if hasattr(self, func_name):
@@ -1858,7 +1875,7 @@ class ConsolidatedScraperBase:
                 self.logger.warning(
                     f"Custom transformation function {func_name} not found"
                 )
-        
+
         # 3a. Apply extras mapping from config (replaces per-scraper _create_extras methods)
         if self.config.extras_fields_map:
             df = self._apply_extras_mapping(df)
@@ -1904,6 +1921,7 @@ class ConsolidatedScraperBase:
         if self.config.db_column_rename_map:
             try:
                 from app.database.models import Prospect
+
                 model_columns = {column.name for column in Prospect.__table__.columns}
             except Exception:
                 model_columns = set()
@@ -1911,7 +1929,11 @@ class ConsolidatedScraperBase:
             final_columns = set(self.config.db_column_rename_map.values())
             essential_columns = {"id", "source_id", "loaded_at"}
             special_columns = {"extras_json"}
-            allowed = model_columns.union(final_columns).union(essential_columns).union(special_columns)
+            allowed = (
+                model_columns.union(final_columns)
+                .union(essential_columns)
+                .union(special_columns)
+            )
 
             present_allowed = [col for col in df.columns if col in allowed]
             # If for some reason allowed is very small, fall back to keeping all columns
@@ -2339,10 +2361,12 @@ class ConsolidatedScraperBase:
         """
         if not self.config.extras_fields_map:
             return df
-            
+
         try:
-            self.logger.debug(f"Applying extras mapping with {len(self.config.extras_fields_map)} fields")
-            
+            self.logger.debug(
+                f"Applying extras mapping with {len(self.config.extras_fields_map)} fields"
+            )
+
             # Vectorized approach for better performance
             def create_extras_row(row):
                 extras = {}
@@ -2353,44 +2377,56 @@ class ConsolidatedScraperBase:
                         if pd.notna(value) and value != "":
                             extras[extras_key] = str(value)
                 return extras if extras else None
-            
+
             # Apply the mapping to create extras_json
             new_extras = df.apply(create_extras_row, axis=1)
-            
+
             # Merge with existing extras_json if present
             if "extras_json" in df.columns:
                 self.logger.debug("Merging with existing extras_json")
-                
+
                 def merge_extras(row):
                     existing = row.get("extras_json")
-                    new = new_extras.loc[row.name] if row.name in new_extras.index else None
-                    
+                    new = (
+                        new_extras.loc[row.name]
+                        if row.name in new_extras.index
+                        else None
+                    )
+
                     # Handle existing extras that might be a JSON string
                     if isinstance(existing, str):
                         try:
-                            existing = json.loads(existing) if existing and existing != "{}" else {}
+                            existing = (
+                                json.loads(existing)
+                                if existing and existing != "{}"
+                                else {}
+                            )
                         except (json.JSONDecodeError, TypeError):
                             existing = {}
                     elif not isinstance(existing, dict):
                         existing = {}
-                    
+
                     # Merge new with existing
                     if new:
                         merged = {**existing, **new}
                         return merged if merged else None
                     return existing if existing else None
-                
+
                 df["extras_json"] = df.apply(merge_extras, axis=1)
             else:
                 df["extras_json"] = new_extras
-            
+
             # Log statistics
-            non_empty_extras = df["extras_json"].notna().sum() if "extras_json" in df.columns else 0
-            self.logger.debug(f"Applied extras mapping: {non_empty_extras}/{len(df)} rows have extras data")
-            
+            non_empty_extras = (
+                df["extras_json"].notna().sum() if "extras_json" in df.columns else 0
+            )
+            self.logger.debug(
+                f"Applied extras mapping: {non_empty_extras}/{len(df)} rows have extras data"
+            )
+
         except Exception as e:
             self.logger.warning(f"Error in _apply_extras_mapping: {e}")
-            
+
         return df
 
     # Transform helper methods for common patterns
@@ -2402,8 +2438,10 @@ class ConsolidatedScraperBase:
         df["row_index"] = df.index
         self.logger.debug("Added 'row_index' column")
         return df
-    
-    def _default_country(self, df: pd.DataFrame, column: str = "place_country", default: str = "USA") -> pd.DataFrame:
+
+    def _default_country(
+        self, df: pd.DataFrame, column: str = "place_country", default: str = "USA"
+    ) -> pd.DataFrame:
         """Set default country value if column doesn't exist or has NaN values.
         Used by all scrapers to default to USA.
         """
@@ -2414,42 +2452,46 @@ class ConsolidatedScraperBase:
             df[column] = df[column].fillna(default)
             self.logger.debug(f"Filled NaN values in '{column}' with '{default}'")
         return df
-    
+
     def _derive_date_from_fyq(
-        self, 
-        df: pd.DataFrame, 
-        year_col: str, 
-        quarter_col: str, 
+        self,
+        df: pd.DataFrame,
+        year_col: str,
+        quarter_col: str,
         out_date_col: str,
-        out_fy_col: str | None = None
+        out_fy_col: str | None = None,
     ) -> pd.DataFrame:
         """Derive date from fiscal year and quarter columns.
         Used by DOC, DOJ, DOS scrapers.
         """
         from app.utils.value_and_date_parsing import fiscal_quarter_to_date
-        
+
         if year_col in df.columns and quarter_col in df.columns:
             # Format quarter column correctly for fiscal_quarter_to_date
             df["_fyq_temp"] = (
-                df[year_col].astype(str).fillna("") + " " +
-                df[quarter_col].astype(str).apply(
-                    lambda x: f'Q{x.split(".")[0]}' if pd.notna(x) and x else ""
+                df[year_col].astype(str).fillna("")
+                + " "
+                + df[quarter_col]
+                .astype(str)
+                .apply(lambda x: f'Q{x.split(".")[0]}' if pd.notna(x) and x else "")
+            )
+
+            parsed_info = df["_fyq_temp"].apply(
+                lambda x: (
+                    fiscal_quarter_to_date(x.strip())
+                    if pd.notna(x) and x.strip()
+                    else (None, None)
                 )
             )
-            
-            parsed_info = df["_fyq_temp"].apply(
-                lambda x: fiscal_quarter_to_date(x.strip()) 
-                if pd.notna(x) and x.strip() else (None, None)
-            )
-            
+
             df[out_date_col] = parsed_info.apply(
                 lambda x: x[0].date() if x[0] else None
             )
-            
+
             if out_fy_col:
                 df[out_fy_col] = parsed_info.apply(lambda x: x[1])
                 df[out_fy_col] = df[out_fy_col].astype("Int64")
-            
+
             df.drop("_fyq_temp", axis=1, inplace=True, errors="ignore")
             self.logger.debug(f"Derived '{out_date_col}' from fiscal year and quarter")
         else:
@@ -2459,16 +2501,16 @@ class ConsolidatedScraperBase:
             self.logger.warning(
                 f"Could not derive '{out_date_col}'; columns '{year_col}' or '{quarter_col}' missing"
             )
-        
+
         return df
-    
+
     def _parse_place_location(
-        self, 
-        df: pd.DataFrame, 
+        self,
+        df: pd.DataFrame,
         source_col: str,
         city_col: str = "place_city",
-        state_col: str = "place_state", 
-        country_col: str = "place_country"
+        state_col: str = "place_state",
+        country_col: str = "place_country",
     ) -> pd.DataFrame:
         """Parse location string into city, state, country components.
         Used by Treasury, SSA, DOT, DOS scrapers.
@@ -2481,57 +2523,55 @@ class ConsolidatedScraperBase:
             )
             df[city_col] = df[city_col].str.strip()
             df[state_col] = df[state_col].str.strip()
-            
+
             if country_col:
                 df[country_col] = "USA"  # Default for US government data
-            
+
             self.logger.debug(f"Parsed '{source_col}' into city, state, and country")
         else:
-            self.logger.warning(f"Source column '{source_col}' not found for place parsing")
-        
+            self.logger.warning(
+                f"Source column '{source_col}' not found for place parsing"
+            )
+
         return df
-    
+
     def _combine_name_fields(
-        self,
-        df: pd.DataFrame,
-        first_col: str,
-        last_col: str,
-        out_col: str
+        self, df: pd.DataFrame, first_col: str, last_col: str, out_col: str
     ) -> pd.DataFrame:
         """Combine first and last name fields into full name.
         Used by HHS and DHS scrapers.
         """
         if first_col in df.columns and last_col in df.columns:
-            df[out_col] = (
-                df[first_col].fillna("") + " " + df[last_col].fillna("")
-            )
+            df[out_col] = df[first_col].fillna("") + " " + df[last_col].fillna("")
             df[out_col] = df[out_col].str.strip()
             # Clean up empty combinations
             df[out_col] = df[out_col].replace("", None)
-            self.logger.debug(f"Combined '{first_col}' and '{last_col}' into '{out_col}'")
+            self.logger.debug(
+                f"Combined '{first_col}' and '{last_col}' into '{out_col}'"
+            )
         else:
             self.logger.warning(
                 f"Could not combine names; columns '{first_col}' or '{last_col}' missing"
             )
-        
+
         return df
-    
+
     def _parse_value_with_priority(
         self,
         df: pd.DataFrame,
         primary_col: str,
         secondary_col: str | None,
         out_value_col: str,
-        out_unit_col: str
+        out_unit_col: str,
     ) -> pd.DataFrame:
         """Parse estimated value with priority (primary then secondary column).
         Used by DOS scraper.
         """
         from app.utils.value_and_date_parsing import parse_value_range
-        
+
         df[out_value_col] = pd.NA
         df[out_unit_col] = pd.NA
-        
+
         if primary_col in df.columns and df[primary_col].notna().any():
             parsed_vals = df[primary_col].apply(
                 lambda x: parse_value_range(x) if pd.notna(x) else (None, None)
@@ -2543,9 +2583,9 @@ class ConsolidatedScraperBase:
             # Fallback to secondary column (assuming numeric)
             df[out_value_col] = pd.to_numeric(df[secondary_col], errors="coerce")
             self.logger.debug(f"Used secondary column '{secondary_col}' for values")
-        
+
         return df
-    
+
     def _derive_award_date_with_priority(
         self,
         df: pd.DataFrame,
@@ -2553,36 +2593,34 @@ class ConsolidatedScraperBase:
         qtr_col: str | None,
         fy_col: str | None,
         out_date_col: str,
-        out_fy_col: str
+        out_fy_col: str,
     ) -> pd.DataFrame:
         """Derive award date with priority: direct date → quarter → fiscal year.
         Used by DOJ and DOS scrapers.
         """
         from app.utils.value_and_date_parsing import fiscal_quarter_to_date
-        
+
         df[out_date_col] = None
         df[out_fy_col] = pd.NA
-        
+
         # First try fiscal year column if provided
         if fy_col and fy_col in df.columns:
             df[out_fy_col] = pd.to_numeric(df[fy_col], errors="coerce")
-        
+
         # Try direct date parsing
         if date_col in df.columns:
             parsed_date = pd.to_datetime(df[date_col], errors="coerce")
             df[out_date_col] = df[out_date_col].fillna(parsed_date.dt.date)
-            
+
             # Fill fiscal year from date if still NA
             needs_fy_mask = df[out_fy_col].isna() & parsed_date.notna()
             if needs_fy_mask.any():
                 df.loc[needs_fy_mask, out_fy_col] = parsed_date[needs_fy_mask].dt.year
-        
+
         # Try quarter parsing for remaining nulls
         if qtr_col and qtr_col in df.columns:
             needs_qtr_mask = (
-                df[out_date_col].isna() & 
-                df[out_fy_col].isna() & 
-                df[qtr_col].notna()
+                df[out_date_col].isna() & df[out_fy_col].isna() & df[qtr_col].notna()
             )
             if needs_qtr_mask.any():
                 parsed_qtr = df.loc[needs_qtr_mask, qtr_col].apply(
@@ -2592,11 +2630,11 @@ class ConsolidatedScraperBase:
                     lambda x: x[0].date() if x[0] else None
                 )
                 df.loc[needs_qtr_mask, out_fy_col] = parsed_qtr.apply(lambda x: x[1])
-        
+
         # Ensure Int64 type for fiscal year
         df[out_fy_col] = df[out_fy_col].astype("Int64")
-        
-        self.logger.debug(f"Processed award date and fiscal year with priority logic")
+
+        self.logger.debug("Processed award date and fiscal year with priority logic")
         return df
 
     def _collect_unmapped_columns_to_extras(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -2607,6 +2645,7 @@ class ConsolidatedScraperBase:
             # Determine model columns as the baseline for 'final' columns
             try:
                 from app.database.models import Prospect
+
                 model_columns = {column.name for column in Prospect.__table__.columns}
             except Exception:
                 model_columns = set()
@@ -2614,12 +2653,16 @@ class ConsolidatedScraperBase:
             # Add any explicitly configured final columns
             configured_final_columns = set()
             if self.config.db_column_rename_map:
-                configured_final_columns.update(self.config.db_column_rename_map.values())
+                configured_final_columns.update(
+                    self.config.db_column_rename_map.values()
+                )
 
             # Essential columns that should always be retained
             essential_columns = {"id", "source_id", "loaded_at"}
 
-            columns_to_keep = model_columns.union(configured_final_columns).union(essential_columns)
+            columns_to_keep = model_columns.union(configured_final_columns).union(
+                essential_columns
+            )
 
             # Find columns that will be dropped (unmapped columns)
             current_columns = set(df.columns)
@@ -2688,8 +2731,10 @@ class ConsolidatedScraperBase:
 
             # Log statistics about extras collection
             non_empty_extras = (
-                df["extras_json"].apply(lambda x: x is not None and len(x) > 0).sum()
-            ) if "extras_json" in df.columns else 0
+                (df["extras_json"].apply(lambda x: x is not None and len(x) > 0).sum())
+                if "extras_json" in df.columns
+                else 0
+            )
             self.logger.info(
                 f"Created extras_json for {non_empty_extras}/{len(df)} rows"
             )
@@ -2884,7 +2929,6 @@ class ConsolidatedScraperBase:
 
     def standard_process(self, file_path: str) -> int:
         """Standard processing with file validation and tracking."""
-        start_time = datetime.now()
         processing_log = None
 
         if not file_path:

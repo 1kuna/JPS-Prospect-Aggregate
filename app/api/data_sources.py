@@ -20,7 +20,7 @@ def get_data_sources():
     logger.info("GET /api/data-sources/ called")
     logger.info(f"User: {request.headers.get('User-Agent', 'Unknown')}")
     logger.info(f"Origin: {request.headers.get('Origin', 'No origin')}")
-    
+
     session = db.session
     try:
         # Subquery for prospect counts
@@ -74,9 +74,11 @@ def get_data_sources():
             if status:
                 data_source_dict["last_status"] = {
                     "status": status.status,
-                    "last_checked": status.last_checked.isoformat() + "Z"
-                    if status.last_checked
-                    else None,
+                    "last_checked": (
+                        status.last_checked.isoformat() + "Z"
+                        if status.last_checked
+                        else None
+                    ),
                     "records_found": status.records_found,
                     "error_message": status.error_message,
                     "details": status.details,
@@ -153,9 +155,11 @@ def get_data_source(source_id):
         if status:
             data_source_dict["last_status"] = {
                 "status": status.status,
-                "last_checked": status.last_checked.isoformat() + "Z"
-                if status.last_checked
-                else None,
+                "last_checked": (
+                    status.last_checked.isoformat() + "Z"
+                    if status.last_checked
+                    else None
+                ),
                 "records_found": status.records_found,
                 "error_message": status.error_message,
                 "details": status.details,
@@ -187,11 +191,11 @@ def create_data_source():
             return error_response(400, "Data source name is required")
 
         # Check for duplicate name
-        existing = (
-            db.session.query(DataSource).filter_by(name=data.get("name")).first()
-        )
+        existing = db.session.query(DataSource).filter_by(name=data.get("name")).first()
         if existing:
-            return error_response(409, f"Data source with name '{data.get('name')}' already exists")
+            return error_response(
+                409, f"Data source with name '{data.get('name')}' already exists"
+            )
 
         # Create new data source
         data_source = DataSource(
@@ -202,12 +206,14 @@ def create_data_source():
         db.session.add(data_source)
         db.session.commit()
 
-        logger.info(f"Created new data source: {data_source.name} (ID: {data_source.id})")
+        logger.info(
+            f"Created new data source: {data_source.name} (ID: {data_source.id})"
+        )
 
         return success_response(
             data={"data_source": data_source.to_dict()},
             message="Data source created successfully",
-            status_code=201
+            status_code=201,
         )
 
     except ValidationError as ve:
@@ -239,7 +245,9 @@ def update_data_source(source_id):
                 .first()
             )
             if existing:
-                return error_response(409, f"Data source with name '{data['name']}' already exists")
+                return error_response(
+                    409, f"Data source with name '{data['name']}' already exists"
+                )
             data_source.name = data["name"]
 
         if "description" in data:
@@ -251,7 +259,7 @@ def update_data_source(source_id):
 
         return success_response(
             data={"data_source": data_source.to_dict()},
-            message="Data source updated successfully"
+            message="Data source updated successfully",
         )
 
     except NotFoundError as nfe:
@@ -307,7 +315,9 @@ def delete_data_source(source_id):
         return error_response(500, "Failed to delete data source")
 
 
-@api_route(data_sources_bp, "/<int:source_id>/clear-data", methods=["POST"], auth="super_admin")
+@api_route(
+    data_sources_bp, "/<int:source_id>/clear-data", methods=["POST"], auth="super_admin"
+)
 def clear_data_source_data(source_id):
     """Clear all prospect data for a specific data source without deleting the source.
 
@@ -335,7 +345,7 @@ def clear_data_source_data(source_id):
 
         return success_response(
             message=f"Cleared {prospect_count} prospects for '{data_source.name}'",
-            data={"deleted_count": prospect_count}
+            data={"deleted_count": prospect_count},
         )
     except NotFoundError as nfe:
         raise nfe

@@ -7,11 +7,13 @@ Provides scraper execution, status management, and error handling.
 import asyncio
 import threading
 from datetime import timezone
+
 UTC = timezone.utc
 from datetime import datetime
 
 from app.config import active_config
 from app.core.scrapers import SCRAPERS
+from app.database import db
 from app.database.models import DataSource, ScraperStatus
 from app.exceptions import NotFoundError, ScraperError
 from app.utils.database_helpers import update_scraper_status
@@ -53,7 +55,7 @@ def trigger_scraper(source_id: int) -> dict[str, any]:
                 )
 
         # Get data source
-        data_source = DataSource.query.get(source_id)
+        data_source = db.session.get(DataSource, source_id)
         if not data_source:
             raise NotFoundError(f"Data source with ID {source_id} not found")
 
@@ -195,12 +197,12 @@ def get_scraper_status(source_id: int) -> dict[str, any]:
             "source_id": source_id,
             "status": status.status,
             "message": status.details,  # Use details field, not message
-            "last_run": status.last_checked.isoformat()
-            if status.last_checked
-            else None,  # Use last_checked, not last_run
-            "updated_at": status.last_checked.isoformat()
-            if status.last_checked
-            else None,  # Use last_checked for consistency
+            "last_run": (
+                status.last_checked.isoformat() if status.last_checked else None
+            ),  # Use last_checked, not last_run
+            "updated_at": (
+                status.last_checked.isoformat() if status.last_checked else None
+            ),  # Use last_checked for consistency
         }
 
     except Exception as e:

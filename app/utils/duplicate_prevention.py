@@ -630,20 +630,26 @@ def enhanced_bulk_upsert_prospects(
     """
     if df_in.empty:
         logger.info("DataFrame is empty, skipping database insertion.")
-        return {"processed": 0, "matched": 0, "inserted": 0, "duplicates_prevented": 0, "ai_preserved": 0}
+        return {
+            "processed": 0,
+            "matched": 0,
+            "inserted": 0,
+            "duplicates_prevented": 0,
+            "ai_preserved": 0,
+        }
 
     # Extract source_id from data if not provided
     if source_id is None and not df_in.empty:
         source_id = df_in.iloc[0].get("source_id")
         if source_id is None:
             logger.warning("No source_id found in data, smart matching will be limited")
-    
+
     # Convert DataFrame to list of dicts
     records = df_in.to_dict(orient="records")
-    
+
     # Remove duplicates within the batch
     records = _remove_batch_duplicates(records)
-    
+
     stats = {
         "processed": 0,
         "matched": 0,
@@ -658,7 +664,7 @@ def enhanced_bulk_upsert_prospects(
         return _batch_upsert_without_smart_matching(
             session, records, source_id, preserve_ai_data, stats
         )
-    
+
     # Smart matching enabled - use row-by-row processing
     detector = DuplicateDetector()
 
@@ -742,7 +748,7 @@ def _remove_batch_duplicates(records: list[dict]) -> list[dict]:
     seen_ids = set()
     unique_records = []
     duplicates_count = 0
-    
+
     for record in records:
         record_id = record.get("id")
         if record_id:
@@ -754,10 +760,12 @@ def _remove_batch_duplicates(records: list[dict]) -> list[dict]:
         else:
             # Records without ID are kept (will be assigned ID later)
             unique_records.append(record)
-    
+
     if duplicates_count > 0:
-        logger.warning(f"Removed {duplicates_count} duplicate records within the same batch")
-    
+        logger.warning(
+            f"Removed {duplicates_count} duplicate records within the same batch"
+        )
+
     return unique_records
 
 
@@ -770,29 +778,28 @@ def _batch_upsert_without_smart_matching(
 ) -> dict:
     """Optimized batch upsert when smart matching is disabled."""
     logger.info(f"Performing batch upsert for {len(records)} records")
-    
+
     # Generate IDs for all records
     for record in records:
         if "id" not in record or not record["id"]:
             record["id"] = _generate_primary_hash(record, source_id or 0)
-    
+
     # Extract all IDs
     ids_to_upsert = [r["id"] for r in records if r.get("id")]
-    
+
     if not ids_to_upsert:
         logger.warning("No valid IDs found in records")
         return stats
-    
+
     # Get existing records
-    existing_records = session.query(Prospect).filter(
-        Prospect.id.in_(ids_to_upsert)
-    ).all()
+    existing_records = (
+        session.query(Prospect).filter(Prospect.id.in_(ids_to_upsert)).all()
+    )
     existing_map = {r.id: r for r in existing_records}
-    
+
     # Separate updates and inserts
-    records_to_update = []
     records_to_insert = []
-    
+
     for record in records:
         record_id = record.get("id")
         if record_id in existing_map:
@@ -809,15 +816,15 @@ def _batch_upsert_without_smart_matching(
         else:
             records_to_insert.append(record)
             stats["inserted"] += 1
-    
+
     # Bulk insert new records
     if records_to_insert:
         # Use bulk_insert_mappings for better performance
         session.bulk_insert_mappings(Prospect, records_to_insert)
         logger.info(f"Bulk inserted {len(records_to_insert)} new records")
-    
+
     stats["processed"] = len(records)
-    
+
     try:
         session.commit()
         logger.info(f"Batch upsert completed: {stats}")
@@ -825,7 +832,7 @@ def _batch_upsert_without_smart_matching(
         session.rollback()
         logger.error(f"Error during batch upsert: {e}")
         raise
-    
+
     return stats
 
 
@@ -854,7 +861,9 @@ def _generate_primary_hash(record_data: dict, source_id: int) -> str:
 def _update_preserving_ai_fields(existing_prospect: Prospect, new_data: dict):
     """Update prospect while preserving AI-enhanced fields."""
     for key, value in new_data.items():
-        if key not in active_config.AI_PRESERVED_FIELDS and hasattr(existing_prospect, key):
+        if key not in active_config.AI_PRESERVED_FIELDS and hasattr(
+            existing_prospect, key
+        ):
             setattr(existing_prospect, key, value)
 
 

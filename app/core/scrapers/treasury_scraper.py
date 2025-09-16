@@ -176,7 +176,6 @@ class TreasuryScraper(ConsolidatedScraperBase):
 
         return df
 
-
     def _is_html_content(self, file_path: str) -> bool:
         """Check if file contains HTML content even with .xls extension."""
         try:
@@ -251,8 +250,10 @@ class TreasuryScraper(ConsolidatedScraperBase):
 
                 # Last-resort fallback: parse first HTML table without external deps
                 try:
-                    self.logger.info("Falling back to built-in HTML table parser (no external deps)")
-                    with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    self.logger.info(
+                        "Falling back to built-in HTML table parser (no external deps)"
+                    )
+                    with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
                         html = f.read()
                     parser = _SimpleHTMLTableParser()
                     parser.feed(html)

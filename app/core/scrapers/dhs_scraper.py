@@ -77,7 +77,6 @@ class DHSForecastScraper(ConsolidatedScraperBase):
         # If both are empty, return None
         return None
 
-
     async def scrape(self) -> int:
         """Execute the complete DHS scraping workflow."""
         return await self.scrape_with_structure()

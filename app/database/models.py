@@ -1,4 +1,5 @@
 from datetime import timezone
+
 UTC = timezone.utc
 
 from sqlalchemy import (
@@ -30,7 +31,9 @@ class Prospect(db.Model):
     agency = Column(Text, index=True)
     naics = Column(String, index=True)
     naics_description = Column(String(200))
-    naics_source = Column(String(20), index=True)  # 'original', 'llm_inferred', 'llm_enhanced'
+    naics_source = Column(
+        String(20), index=True
+    )  # 'original', 'llm_inferred', 'llm_enhanced'
     estimated_value = Column(Numeric)
     est_value_unit = Column(String)
     estimated_value_text = Column(String(100))
@@ -49,7 +52,9 @@ class Prospect(db.Model):
     set_aside_standardized_label = Column(String(100))
     primary_contact_email = Column(String(100), index=True)
     primary_contact_name = Column(String(100))
-    loaded_at = Column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now(), index=True)
+    loaded_at = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now(), index=True
+    )
     ollama_processed_at = Column(TIMESTAMP(timezone=True), index=True)
     ollama_model_version = Column(String(50))
     enhancement_status = Column(String(20), index=True, default="idle")
@@ -57,7 +62,9 @@ class Prospect(db.Model):
     enhancement_user_id = Column(Integer, index=True)
     extra = Column(JSON)
 
-    source_id = Column(Integer, ForeignKey("data_sources.id"), nullable=True, index=True)
+    source_id = Column(
+        Integer, ForeignKey("data_sources.id"), nullable=True, index=True
+    )
     data_source = relationship("DataSource", back_populates="prospects")
 
     inferred_data = relationship(
@@ -92,14 +99,32 @@ class Prospect(db.Model):
             "naics": self.naics,
             "naics_description": self.naics_description,
             "naics_source": self.naics_source,
-            "estimated_value": str(self.estimated_value) if self.estimated_value is not None else None,
+            "estimated_value": (
+                str(self.estimated_value) if self.estimated_value is not None else None
+            ),
             "est_value_unit": self.est_value_unit,
             "estimated_value_text": self.estimated_value_text,
-            "estimated_value_min": str(self.estimated_value_min) if self.estimated_value_min is not None else None,
-            "estimated_value_max": str(self.estimated_value_max) if self.estimated_value_max is not None else None,
-            "estimated_value_single": str(self.estimated_value_single) if self.estimated_value_single is not None else None,
-            "release_date": self.release_date.strftime("%Y-%m-%d") if self.release_date else None,
-            "award_date": self.award_date.strftime("%Y-%m-%d") if self.award_date else None,
+            "estimated_value_min": (
+                str(self.estimated_value_min)
+                if self.estimated_value_min is not None
+                else None
+            ),
+            "estimated_value_max": (
+                str(self.estimated_value_max)
+                if self.estimated_value_max is not None
+                else None
+            ),
+            "estimated_value_single": (
+                str(self.estimated_value_single)
+                if self.estimated_value_single is not None
+                else None
+            ),
+            "release_date": (
+                self.release_date.strftime("%Y-%m-%d") if self.release_date else None
+            ),
+            "award_date": (
+                self.award_date.strftime("%Y-%m-%d") if self.award_date else None
+            ),
             "award_fiscal_year": self.award_fiscal_year,
             "place_city": self.place_city,
             "place_state": self.place_state,
@@ -111,10 +136,20 @@ class Prospect(db.Model):
             "primary_contact_email": self.primary_contact_email,
             "primary_contact_name": self.primary_contact_name,
             "loaded_at": self.loaded_at.isoformat() + "Z" if self.loaded_at else None,
-            "ollama_processed_at": self.ollama_processed_at.replace(tzinfo=UTC).isoformat().replace("+00:00", "Z") if self.ollama_processed_at else None,
+            "ollama_processed_at": (
+                self.ollama_processed_at.replace(tzinfo=UTC)
+                .isoformat()
+                .replace("+00:00", "Z")
+                if self.ollama_processed_at
+                else None
+            ),
             "ollama_model_version": self.ollama_model_version,
             "enhancement_status": self.enhancement_status,
-            "enhancement_started_at": self.enhancement_started_at.isoformat() + "Z" if self.enhancement_started_at else None,
+            "enhancement_started_at": (
+                self.enhancement_started_at.isoformat() + "Z"
+                if self.enhancement_started_at
+                else None
+            ),
             "enhancement_user_id": self.enhancement_user_id,
             "extra": clean_value(self.extra) if self.extra else None,
             "source_id": self.source_id,
@@ -133,7 +168,9 @@ class DataSource(db.Model):
     last_scraped = Column(TIMESTAMP(timezone=True), nullable=True)
     frequency = Column(String, nullable=True)
 
-    status_records = relationship("ScraperStatus", back_populates="data_source", cascade="all, delete-orphan")
+    status_records = relationship(
+        "ScraperStatus", back_populates="data_source", cascade="all, delete-orphan"
+    )
     prospects = relationship("Prospect", back_populates="data_source")
 
     def __repr__(self):
@@ -146,7 +183,9 @@ class DataSource(db.Model):
             "url": self.url,
             "description": self.description,
             "scraper_key": self.scraper_key,
-            "last_scraped": self.last_scraped.isoformat() + "Z" if self.last_scraped else None,
+            "last_scraped": (
+                self.last_scraped.isoformat() + "Z" if self.last_scraped else None
+            ),
             "frequency": self.frequency,
         }
 
@@ -155,9 +194,13 @@ class ScraperStatus(db.Model):
     __tablename__ = "scraper_status"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    source_id = Column(Integer, ForeignKey("data_sources.id"), nullable=False, index=True)
+    source_id = Column(
+        Integer, ForeignKey("data_sources.id"), nullable=False, index=True
+    )
     status = Column(String, nullable=True)
-    last_checked = Column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now())
+    last_checked = Column(
+        TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
     records_found = Column(Integer, default=0, nullable=False)
     error_message = Column(Text, nullable=True)
     details = Column(Text, nullable=True)
@@ -172,7 +215,9 @@ class ScraperStatus(db.Model):
             "id": self.id,
             "source_id": self.source_id,
             "status": self.status,
-            "last_checked": self.last_checked.isoformat() + "Z" if self.last_checked else None,
+            "last_checked": (
+                self.last_checked.isoformat() + "Z" if self.last_checked else None
+            ),
             "records_found": self.records_found,
             "error_message": self.error_message,
             "details": self.details,
@@ -183,7 +228,9 @@ class AIEnrichmentLog(db.Model):
     __tablename__ = "ai_enrichment_logs"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    timestamp = Column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now(), index=True)
+    timestamp = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now(), index=True
+    )
     enhancement_type = Column(String(50), nullable=False, index=True)
     status = Column(String(20), nullable=False, index=True)
     processed_count = Column(Integer, nullable=False, default=0)
@@ -211,7 +258,9 @@ class LLMOutput(db.Model):
     __tablename__ = "llm_outputs"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    timestamp = Column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now(), index=True)
+    timestamp = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now(), index=True
+    )
     prospect_id = Column(String, ForeignKey("prospects.id"), nullable=True, index=True)
     enhancement_type = Column(String(50), nullable=False, index=True)
     prompt = Column(Text, nullable=True)
@@ -231,9 +280,17 @@ class LLMOutput(db.Model):
             "id": self.id,
             "timestamp": self.timestamp.isoformat() + "Z" if self.timestamp else None,
             "prospect_id": self.prospect_id,
-            "prospect_title": self.prospect.title[:100] if self.prospect and self.prospect.title else None,
+            "prospect_title": (
+                self.prospect.title[:100]
+                if self.prospect and self.prospect.title
+                else None
+            ),
             "enhancement_type": self.enhancement_type,
-            "prompt": self.prompt[:200] + "..." if self.prompt and len(self.prompt) > 200 else self.prompt,
+            "prompt": (
+                self.prompt[:200] + "..."
+                if self.prompt and len(self.prompt) > 200
+                else self.prompt
+            ),
             "response": self.response,
             "parsed_result": self.parsed_result,
             "success": self.success,
@@ -249,7 +306,12 @@ class Settings(db.Model):
     key = Column(String(100), nullable=False, unique=True, index=True)
     value = Column(String(500), nullable=False)
     description = Column(Text, nullable=True)
-    updated_at = Column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+    updated_at = Column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
 
     def __repr__(self):
         return f"<Settings(key='{self.key}', value='{self.value}')>"
@@ -260,7 +322,9 @@ class Settings(db.Model):
             "key": self.key,
             "value": self.value,
             "description": self.description,
-            "updated_at": self.updated_at.isoformat() + "Z" if self.updated_at else None,
+            "updated_at": (
+                self.updated_at.isoformat() + "Z" if self.updated_at else None
+            ),
         }
 
 
@@ -269,11 +333,20 @@ class GoNoGoDecision(db.Model):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     prospect_id = Column(String, ForeignKey("prospects.id"), nullable=False, index=True)
-    user_id = Column(Integer, nullable=False, index=True)  # No FK since user is in separate DB
+    user_id = Column(
+        Integer, nullable=False, index=True
+    )  # No FK since user is in separate DB
     decision = Column(String(10), nullable=False, index=True)  # 'go' or 'no-go'
     reason = Column(Text, nullable=True)
-    created_at = Column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now())
-    updated_at = Column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+    created_at = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at = Column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
 
     prospect = relationship("Prospect", backref="go_no_go_decisions")
 
@@ -287,8 +360,12 @@ class GoNoGoDecision(db.Model):
             "user_id": self.user_id,
             "decision": self.decision,
             "reason": self.reason,
-            "created_at": self.created_at.isoformat() + "Z" if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() + "Z" if self.updated_at else None,
+            "created_at": (
+                self.created_at.isoformat() + "Z" if self.created_at else None
+            ),
+            "updated_at": (
+                self.updated_at.isoformat() + "Z" if self.updated_at else None
+            ),
         }
 
         if include_user and user_data:
@@ -303,13 +380,19 @@ class FileProcessingLog(db.Model):
     __tablename__ = "file_processing_log"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    source_id = Column(Integer, ForeignKey("data_sources.id"), nullable=False, index=True)
+    source_id = Column(
+        Integer, ForeignKey("data_sources.id"), nullable=False, index=True
+    )
     file_path = Column(String(500), nullable=False, index=True)
     file_name = Column(String(255), nullable=False, index=True)
     file_size = Column(Integer, nullable=True)
     file_timestamp = Column(TIMESTAMP(timezone=True), nullable=False, index=True)
-    processing_started_at = Column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now(), index=True)
-    processing_completed_at = Column(TIMESTAMP(timezone=True), nullable=True, index=True)
+    processing_started_at = Column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now(), index=True
+    )
+    processing_completed_at = Column(
+        TIMESTAMP(timezone=True), nullable=True, index=True
+    )
     success = Column(db.Boolean, nullable=False, default=False, index=True)
     records_extracted = Column(Integer, nullable=True)
     records_inserted = Column(Integer, nullable=True)
@@ -332,9 +415,19 @@ class FileProcessingLog(db.Model):
             "file_path": self.file_path,
             "file_name": self.file_name,
             "file_size": self.file_size,
-            "file_timestamp": self.file_timestamp.isoformat() + "Z" if self.file_timestamp else None,
-            "processing_started_at": self.processing_started_at.isoformat() + "Z" if self.processing_started_at else None,
-            "processing_completed_at": self.processing_completed_at.isoformat() + "Z" if self.processing_completed_at else None,
+            "file_timestamp": (
+                self.file_timestamp.isoformat() + "Z" if self.file_timestamp else None
+            ),
+            "processing_started_at": (
+                self.processing_started_at.isoformat() + "Z"
+                if self.processing_started_at
+                else None
+            ),
+            "processing_completed_at": (
+                self.processing_completed_at.isoformat() + "Z"
+                if self.processing_completed_at
+                else None
+            ),
             "success": self.success,
             "records_extracted": self.records_extracted,
             "records_inserted": self.records_inserted,
@@ -368,12 +461,12 @@ class InferredProspectData(db.Model):
     inferred_primary_contact_email = Column(String(100), nullable=True)
     inferred_primary_contact_name = Column(String(100), nullable=True)
     llm_confidence_scores = Column(JSON, nullable=True)
-    inferred_at = Column(TIMESTAMP(timezone=False), server_default=func.now(), onupdate=func.now())
+    inferred_at = Column(
+        TIMESTAMP(timezone=False), server_default=func.now(), onupdate=func.now()
+    )
     inferred_by_model = Column(String, nullable=True)
 
     prospect = relationship("Prospect", back_populates="inferred_data")
 
     def __repr__(self):
         return f"<InferredProspectData(prospect_id='{self.prospect_id}')>"
-
-

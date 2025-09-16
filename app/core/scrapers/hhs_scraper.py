@@ -41,7 +41,6 @@ class HHSForecastScraper(ConsolidatedScraperBase):
 
         return df
 
-
     async def hhs_setup(self) -> bool:
         """HHS-specific setup: navigate and click 'View All' button.
         Enhanced for JavaScript-heavy HHS site with multi-step navigation.

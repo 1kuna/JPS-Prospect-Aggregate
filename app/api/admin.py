@@ -2,10 +2,11 @@
 
 import datetime
 from datetime import timezone
+
 UTC = timezone.utc
 
 from flask import request, session
-from sqlalchemy import case, desc, func
+from sqlalchemy import case, desc, func, text
 
 from app.api.factory import (
     api_route,
@@ -126,7 +127,7 @@ def admin_health():
     """Health check endpoint that works even in maintenance mode."""
     try:
         # Test database connection
-        db.session.execute("SELECT 1")
+        db.session.execute(text("SELECT 1"))
 
         # Get maintenance status
         setting = db.session.query(Settings).filter_by(key="maintenance_mode").first()
@@ -137,7 +138,9 @@ def admin_health():
                 "status": "healthy",
                 "database": "connected",
                 "maintenance_mode": maintenance_enabled,
-                "timestamp": db.func.now(),
+                "timestamp": datetime.datetime.now(UTC)
+                .isoformat()
+                .replace("+00:00", "Z"),
             }
         )
     except Exception as e:
@@ -334,9 +337,7 @@ def get_admin_decision_stats():
         )
 
         # Recent activity (last 30 days)
-        thirty_days_ago = datetime.datetime.now(UTC) - datetime.timedelta(
-            days=30
-        )
+        thirty_days_ago = datetime.datetime.now(UTC) - datetime.timedelta(days=30)
         recent_decisions = (
             db.session.query(func.count(GoNoGoDecision.id))
             .filter(GoNoGoDecision.created_at >= thirty_days_ago)
@@ -374,9 +375,11 @@ def get_admin_decision_stats():
                     "total_decisions": stat.total,
                     "go_decisions": stat.go_count,
                     "nogo_decisions": stat.nogo_count,
-                    "go_percentage": round((stat.go_count / stat.total) * 100, 1)
-                    if stat.total > 0
-                    else 0,
+                    "go_percentage": (
+                        round((stat.go_count / stat.total) * 100, 1)
+                        if stat.total > 0
+                        else 0
+                    ),
                 }
             )
 
@@ -390,9 +393,11 @@ def get_admin_decision_stats():
                     "go_decisions": total_go,
                     "nogo_decisions": total_nogo,
                     "recent_decisions_30d": recent_decisions,
-                    "go_percentage": round((total_go / total_decisions) * 100, 1)
-                    if total_decisions > 0
-                    else 0,
+                    "go_percentage": (
+                        round((total_go / total_decisions) * 100, 1)
+                        if total_decisions > 0
+                        else 0
+                    ),
                 },
                 "by_user": user_statistics,
             }
@@ -430,12 +435,16 @@ def export_all_decisions():
                     "decision_id": decision.id,
                     "decision": decision.decision,
                     "reason": decision.reason or "",
-                    "decision_created_at": decision.created_at.isoformat() + "Z"
-                    if decision.created_at
-                    else "",
-                    "decision_updated_at": decision.updated_at.isoformat() + "Z"
-                    if decision.updated_at
-                    else "",
+                    "decision_created_at": (
+                        decision.created_at.isoformat() + "Z"
+                        if decision.created_at
+                        else ""
+                    ),
+                    "decision_updated_at": (
+                        decision.updated_at.isoformat() + "Z"
+                        if decision.updated_at
+                        else ""
+                    ),
                     # User fields
                     "user_id": decision.user_id,
                     "user_email": user.email if user else "Unknown",
@@ -445,87 +454,105 @@ def export_all_decisions():
                     "prospect_native_id": prospect.native_id if prospect else "",
                     # Prospect basic info
                     "prospect_title": prospect.title if prospect else "",
-                    "prospect_ai_enhanced_title": prospect.ai_enhanced_title
-                    if prospect
-                    else "",
+                    "prospect_ai_enhanced_title": (
+                        prospect.ai_enhanced_title if prospect else ""
+                    ),
                     "prospect_description": prospect.description if prospect else "",
                     "prospect_agency": prospect.agency if prospect else "",
                     # NAICS classification
                     "prospect_naics": prospect.naics if prospect else "",
-                    "prospect_naics_description": prospect.naics_description
-                    if prospect
-                    else "",
+                    "prospect_naics_description": (
+                        prospect.naics_description if prospect else ""
+                    ),
                     "prospect_naics_source": prospect.naics_source if prospect else "",
                     # Financial information
-                    "prospect_estimated_value": str(prospect.estimated_value)
-                    if prospect and prospect.estimated_value
-                    else "",
-                    "prospect_est_value_unit": prospect.est_value_unit
-                    if prospect
-                    else "",
-                    "prospect_estimated_value_text": prospect.estimated_value_text
-                    if prospect
-                    else "",
-                    "prospect_estimated_value_min": str(prospect.estimated_value_min)
-                    if prospect and prospect.estimated_value_min
-                    else "",
-                    "prospect_estimated_value_max": str(prospect.estimated_value_max)
-                    if prospect and prospect.estimated_value_max
-                    else "",
-                    "prospect_estimated_value_single": str(
-                        prospect.estimated_value_single
-                    )
-                    if prospect and prospect.estimated_value_single
-                    else "",
+                    "prospect_estimated_value": (
+                        str(prospect.estimated_value)
+                        if prospect and prospect.estimated_value
+                        else ""
+                    ),
+                    "prospect_est_value_unit": (
+                        prospect.est_value_unit if prospect else ""
+                    ),
+                    "prospect_estimated_value_text": (
+                        prospect.estimated_value_text if prospect else ""
+                    ),
+                    "prospect_estimated_value_min": (
+                        str(prospect.estimated_value_min)
+                        if prospect and prospect.estimated_value_min
+                        else ""
+                    ),
+                    "prospect_estimated_value_max": (
+                        str(prospect.estimated_value_max)
+                        if prospect and prospect.estimated_value_max
+                        else ""
+                    ),
+                    "prospect_estimated_value_single": (
+                        str(prospect.estimated_value_single)
+                        if prospect and prospect.estimated_value_single
+                        else ""
+                    ),
                     # Important dates
-                    "prospect_release_date": prospect.release_date.isoformat() + "Z"
-                    if prospect and prospect.release_date
-                    else "",
-                    "prospect_award_date": prospect.award_date.isoformat() + "Z"
-                    if prospect and prospect.award_date
-                    else "",
-                    "prospect_award_fiscal_year": str(prospect.award_fiscal_year)
-                    if prospect and prospect.award_fiscal_year
-                    else "",
+                    "prospect_release_date": (
+                        prospect.release_date.isoformat() + "Z"
+                        if prospect and prospect.release_date
+                        else ""
+                    ),
+                    "prospect_award_date": (
+                        prospect.award_date.isoformat() + "Z"
+                        if prospect and prospect.award_date
+                        else ""
+                    ),
+                    "prospect_award_fiscal_year": (
+                        str(prospect.award_fiscal_year)
+                        if prospect and prospect.award_fiscal_year
+                        else ""
+                    ),
                     # Location information
                     "prospect_place_city": prospect.place_city if prospect else "",
                     "prospect_place_state": prospect.place_state if prospect else "",
-                    "prospect_place_country": prospect.place_country
-                    if prospect
-                    else "",
+                    "prospect_place_country": (
+                        prospect.place_country if prospect else ""
+                    ),
                     # Contract details
-                    "prospect_contract_type": prospect.contract_type
-                    if prospect
-                    else "",
+                    "prospect_contract_type": (
+                        prospect.contract_type if prospect else ""
+                    ),
                     "prospect_set_aside": prospect.set_aside if prospect else "",
                     # Contact information
-                    "prospect_primary_contact_email": prospect.primary_contact_email
-                    if prospect
-                    else "",
-                    "prospect_primary_contact_name": prospect.primary_contact_name
-                    if prospect
-                    else "",
+                    "prospect_primary_contact_email": (
+                        prospect.primary_contact_email if prospect else ""
+                    ),
+                    "prospect_primary_contact_name": (
+                        prospect.primary_contact_name if prospect else ""
+                    ),
                     # Processing metadata
-                    "prospect_loaded_at": prospect.loaded_at.isoformat() + "Z"
-                    if prospect and prospect.loaded_at
-                    else "",
-                    "prospect_ollama_processed_at": prospect.ollama_processed_at.isoformat()
-                    + "Z"
-                    if prospect and prospect.ollama_processed_at
-                    else "",
-                    "prospect_ollama_model_version": prospect.ollama_model_version
-                    if prospect
-                    else "",
-                    "prospect_enhancement_status": prospect.enhancement_status
-                    if prospect
-                    else "",
-                    "prospect_enhancement_started_at": prospect.enhancement_started_at.isoformat()
-                    + "Z"
-                    if prospect and prospect.enhancement_started_at
-                    else "",
-                    "prospect_enhancement_user_id": str(prospect.enhancement_user_id)
-                    if prospect and prospect.enhancement_user_id
-                    else "",
+                    "prospect_loaded_at": (
+                        prospect.loaded_at.isoformat() + "Z"
+                        if prospect and prospect.loaded_at
+                        else ""
+                    ),
+                    "prospect_ollama_processed_at": (
+                        prospect.ollama_processed_at.isoformat() + "Z"
+                        if prospect and prospect.ollama_processed_at
+                        else ""
+                    ),
+                    "prospect_ollama_model_version": (
+                        prospect.ollama_model_version if prospect else ""
+                    ),
+                    "prospect_enhancement_status": (
+                        prospect.enhancement_status if prospect else ""
+                    ),
+                    "prospect_enhancement_started_at": (
+                        prospect.enhancement_started_at.isoformat() + "Z"
+                        if prospect and prospect.enhancement_started_at
+                        else ""
+                    ),
+                    "prospect_enhancement_user_id": (
+                        str(prospect.enhancement_user_id)
+                        if prospect and prospect.enhancement_user_id
+                        else ""
+                    ),
                 }
             )
 
@@ -653,9 +680,7 @@ def update_user_role_endpoint(user_id):
             f"User {user_id} role updated to {new_role} by admin {current_user_id}"
         )
 
-        return success_response(
-            message=f"User role updated to {new_role} successfully"
-        )
+        return success_response(message=f"User role updated to {new_role} successfully")
 
     except Exception as e:
         logger.error(f"Error updating user role: {str(e)}", exc_info=True)

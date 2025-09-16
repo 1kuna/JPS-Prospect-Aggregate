@@ -29,7 +29,7 @@ class TestNAICSValidation:
             "200000",  # Edge case - starts with 2
             "654321",  # Another valid format
         ]
-        
+
         for code in test_codes:
             result = validate_naics_code(code)
             # The function should return a boolean for well-formatted codes
@@ -101,10 +101,12 @@ class TestNAICSDescriptions:
             "987654",  # Valid format but doesn't exist
             "123456",  # Valid format but doesn't exist
         ]
-        
+
         for test_code in non_existing_codes:
             result = get_naics_description(test_code)
-            assert result is None, f"Should return None for non-existing code {test_code}"
+            assert (
+                result is None
+            ), f"Should return None for non-existing code {test_code}"
 
     def test_get_naics_description_invalid_input(self):
         """Test description lookup with invalid input."""
@@ -176,7 +178,7 @@ class TestNAICSDataLoading:
         assert hasattr(app.utils.naics_lookup, "validate_naics_code")
         assert hasattr(app.utils.naics_lookup, "get_naics_description")
         assert hasattr(app.utils.naics_lookup, "get_naics_info")
-    
+
     def test_naics_backfill_behavior(self):
         """Test NAICS backfill behavior when descriptions are missing."""
         # Test that the system handles missing descriptions gracefully
@@ -184,15 +186,15 @@ class TestNAICSDataLoading:
         assert isinstance(result, dict)
         assert result.get("code") == "999999" or result.get("code") is None
         assert result.get("description") is None or result.get("description") == ""
-        
+
         # Test partial code matching behavior
         partial_codes = [
-            "54",     # 2-digit sector code
-            "541",    # 3-digit subsector
-            "5415",   # 4-digit industry group
+            "54",  # 2-digit sector code
+            "541",  # 3-digit subsector
+            "5415",  # 4-digit industry group
             "54151",  # 5-digit NAICS industry
         ]
-        
+
         for partial_code in partial_codes:
             # These should be handled as invalid by validation
             is_valid = validate_naics_code(partial_code)

@@ -1,7 +1,3 @@
-import time
-
-from flask import request
-
 from app.api.factory import (
     api_route,
     create_blueprint,
@@ -32,7 +28,7 @@ def pull_data_source(source_id):
                 "data_source_name": result.get("data_source_name"),
                 "scraper_status": result.get("scraper_status", "completed"),
             },
-            message=result.get("message", "Scraper completed")
+            message=result.get("message", "Scraper completed"),
         )
     except NotFoundError as nfe:
         raise nfe  # Re-raise to be handled by Flask error handlers
@@ -46,7 +42,9 @@ def pull_data_source(source_id):
             f"Route: Unexpected error for source ID {source_id}: {e}", exc_info=True
         )  # Use blueprint logger
         # Return a generic error response
-        return error_response(500, "An unexpected error occurred during the scraper run")
+        return error_response(
+            500, "An unexpected error occurred during the scraper run"
+        )
 
 
 @api_route(scrapers_bp, "/run-all", methods=["POST"], auth="super_admin")
@@ -56,7 +54,7 @@ def run_scrapers():
         results = run_all_scrapers()
         return success_response(
             data={"results": results},
-            message=f"Scrapers completed for {len(results)} sources"
+            message=f"Scrapers completed for {len(results)} sources",
         )
     except Exception as e:
         logger.error(f"Error running all scrapers: {e}", exc_info=True)
@@ -73,20 +71,26 @@ def get_scrapers_status():
 
         # Get all data sources
         sources = db.session.query(DataSource).all()
-        
+
         scraper_status = []
         for source in sources:
             status = status_dict.get(source.id)
-            scraper_status.append({
-                "source_id": source.id,
-                "source_name": source.name,
-                "description": source.description,
-                "status": status.status if status else "unknown",
-                "last_run": status.last_checked.isoformat() if status and status.last_checked else None,
-                "records_found": status.records_found if status else 0,
-                "error_message": status.error_message if status else None
-            })
-        
+            scraper_status.append(
+                {
+                    "source_id": source.id,
+                    "source_name": source.name,
+                    "description": source.description,
+                    "status": status.status if status else "unknown",
+                    "last_run": (
+                        status.last_checked.isoformat()
+                        if status and status.last_checked
+                        else None
+                    ),
+                    "records_found": status.records_found if status else 0,
+                    "error_message": status.error_message if status else None,
+                }
+            )
+
         return success_response(data={"scrapers": scraper_status})
     except Exception as e:
         logger.error(f"Error getting scraper status: {e}", exc_info=True)

@@ -587,7 +587,6 @@ NAICS_DESCRIPTIONS = {
     "813940": "Political Organizations",
     "813990": "Other Membership Organizations",
     "814110": "Private Households",
-    
     # Additional NAICS 2022 codes added to fix missing descriptions
     "114119": "Other Marine Fishing",
     "221118": "Other Electric Power Generation",
@@ -663,7 +662,6 @@ NAICS_DESCRIPTIONS = {
     "922160": "Fire Protection",
     "923120": "Administration of Public Health Programs",
     "926150": "Regulation, Licensing, and Inspection of Miscellaneous Commercial Sectors",
-    
     # Additional missing NAICS codes - batch 2
     "236116": "New Multifamily Housing Construction (except For-Sale Builders)",
     "314120": "Curtain and Linen Mills",

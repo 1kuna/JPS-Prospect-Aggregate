@@ -35,7 +35,7 @@ class User(db.Model):
             "first_name": self.first_name,
             "role": self.role,
             "created_at": self.created_at.isoformat() if self.created_at else None,
-            "last_login_at": self.last_login_at.isoformat()
-            if self.last_login_at
-            else None,
+            "last_login_at": (
+                self.last_login_at.isoformat() if self.last_login_at else None
+            ),
         }

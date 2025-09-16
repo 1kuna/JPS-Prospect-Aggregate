@@ -49,7 +49,6 @@ class DocScraper(ConsolidatedScraperBase):
 
         return df
 
-
     async def doc_setup(self) -> bool:
         """DOC-specific setup: simple navigation to base URL."""
         if not self.base_url:

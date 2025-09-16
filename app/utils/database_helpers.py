@@ -2,6 +2,7 @@
 
 import datetime
 from datetime import timezone
+
 UTC = timezone.utc
 
 # import shutil # Removed as it was only used by rebuild_database
@@ -45,6 +46,7 @@ def update_scraper_status(source_id: int, status: str, details: str | None = Non
         details (Optional[str]): Additional details or error message.
     """
     from flask import has_app_context
+
     # Ensure datetime is available (already imported at the top)
 
     logger.info(

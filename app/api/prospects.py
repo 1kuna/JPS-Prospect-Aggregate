@@ -14,6 +14,7 @@ from app.api.factory import (
     paginated_response,
     success_response,
 )
+from app.database import db
 from app.database.crud import paginate_sqlalchemy_query
 from app.database.models import Prospect
 from app.exceptions import NotFoundError, ValidationError
@@ -133,21 +134,25 @@ def get_prospects_route():
             per_page=results["per_page"],
             total_items=results["total_items"],
             total_pages=results["total_pages"],
-            prospects=prospect_items_dict  # Keep "prospects" key for backward compat
+            prospects=prospect_items_dict,  # Keep "prospects" key for backward compat
         )
 
     except ValidationError as ve:
         raise ve  # Let api_route decorator handle it
     except ValueError as ve_param:
         logger.error(f"ValueError in request arguments: {ve_param}", exc_info=True)
-        return error_response(400, "Invalid parameter type. 'page' and 'limit' must be integers.")
+        return error_response(
+            400, "Invalid parameter type. 'page' and 'limit' must be integers."
+        )
 
 
 @api_route(prospects_bp, "/<string:prospect_id>", methods=["GET"])
 def get_prospect_by_id_route(prospect_id: str):
     # Only log errors and warnings for individual prospect requests
     # session = db.session # Not strictly necessary if using .get() on the Model itself with Flask-SQLAlchemy
-    prospect = Prospect.query.get(prospect_id)  # Use .get() for primary key lookup
+    prospect = db.session.get(
+        Prospect, prospect_id
+    )  # Use Session.get for primary key lookup
 
     if not prospect:
         logger.warning(f"Prospect with ID {prospect_id} not found.")

@@ -5,6 +5,7 @@ Handles user decisions on prospects for company preferences.
 
 import datetime
 from datetime import timezone
+
 UTC = timezone.utc
 
 from flask import request, session
@@ -17,7 +18,7 @@ from app.api.factory import (
     success_response,
 )
 from app.database.models import GoNoGoDecision, Prospect, db
-from app.utils.user_utils import get_user_by_id, get_user_data_dict, get_users_by_ids
+from app.utils.user_utils import get_user_data_dict, get_users_by_ids
 
 decisions_bp, logger = create_blueprint("decisions", "/api/decisions")
 
@@ -69,7 +70,10 @@ def create_decision():
         else:
             # Create new decision
             new_decision = GoNoGoDecision(
-                prospect_id=prospect_id, user_id=user_id, decision=decision, reason=reason
+                prospect_id=prospect_id,
+                user_id=user_id,
+                decision=decision,
+                reason=reason,
             )
             db.session.add(new_decision)
             existing_decision = new_decision
@@ -81,7 +85,7 @@ def create_decision():
 
         return success_response(
             data={"decision": existing_decision.to_dict()},
-            message=f"Decision {'updated' if existing_decision.id else 'created'} successfully"
+            message=f"Decision {'updated' if existing_decision.id else 'created'} successfully",
         )
 
     except Exception as e:
@@ -238,7 +242,9 @@ def get_decision_stats():
 
         # Get top agencies for go decisions
         top_go_agencies = (
-            db.session.query(Prospect.agency, func.count(GoNoGoDecision.id).label("count"))
+            db.session.query(
+                Prospect.agency, func.count(GoNoGoDecision.id).label("count")
+            )
             .join(GoNoGoDecision, Prospect.id == GoNoGoDecision.prospect_id)
             .filter(GoNoGoDecision.user_id == user_id, GoNoGoDecision.decision == "go")
             .group_by(Prospect.agency)
@@ -249,7 +255,9 @@ def get_decision_stats():
 
         # Get top NAICS codes for go decisions
         top_go_naics = (
-            db.session.query(Prospect.naics, func.count(GoNoGoDecision.id).label("count"))
+            db.session.query(
+                Prospect.naics, func.count(GoNoGoDecision.id).label("count")
+            )
             .join(GoNoGoDecision, Prospect.id == GoNoGoDecision.prospect_id)
             .filter(
                 GoNoGoDecision.user_id == user_id,
@@ -267,12 +275,19 @@ def get_decision_stats():
                 "total_decisions": total_decisions,
                 "go_decisions": go_decisions,
                 "nogo_decisions": nogo_decisions,
-                "go_percentage": round((go_decisions / total_decisions) * 100, 1)
-                if total_decisions > 0
-                else 0,
+                "go_percentage": (
+                    round((go_decisions / total_decisions) * 100, 1)
+                    if total_decisions > 0
+                    else 0
+                ),
                 "recent_decisions_7d": recent_decisions,
-                "top_go_agencies": [{"agency": agency, "count": count} for agency, count in top_go_agencies],
-                "top_go_naics": [{"naics": naics, "count": count} for naics, count in top_go_naics],
+                "top_go_agencies": [
+                    {"agency": agency, "count": count}
+                    for agency, count in top_go_agencies
+                ],
+                "top_go_naics": [
+                    {"naics": naics, "count": count} for naics, count in top_go_naics
+                ],
             }
         )
 

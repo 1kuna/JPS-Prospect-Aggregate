@@ -59,7 +59,6 @@ class DOSForecastScraper(ConsolidatedScraperBase):
 
         return df
 
-
     async def dos_setup(self) -> bool:
         """DOS-specific setup: minimal setup for direct download.
         No browser navigation needed since it's a direct download.

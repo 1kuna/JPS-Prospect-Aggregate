@@ -47,9 +47,9 @@ class DOJForecastScraper(ConsolidatedScraperBase):
                     parsed_qtr_info = df.loc[
                         needs_fallback_mask, award_date_col_raw
                     ].apply(
-                        lambda x: fiscal_quarter_to_date(x)
-                        if pd.notna(x)
-                        else (None, None)
+                        lambda x: (
+                            fiscal_quarter_to_date(x) if pd.notna(x) else (None, None)
+                        )
                     )
                     df.loc[needs_fallback_mask, "award_date_final"] = (
                         parsed_qtr_info.apply(lambda x: x[0])
@@ -129,7 +129,6 @@ class DOJForecastScraper(ConsolidatedScraperBase):
             self.logger.warning(f"Error in _custom_doj_transforms: {e}")
 
         return df
-
 
     async def doj_setup(self) -> bool:
         """DOJ-specific setup: navigate to URL and wait for DOM to load."""

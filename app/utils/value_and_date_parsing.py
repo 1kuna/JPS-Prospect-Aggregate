@@ -65,7 +65,11 @@ def parse_value_range(value_str):
         unit_str = value_str_orig  # Store original threshold string as unit
     elif simple_unit_match:
         # Need to adjust group indices if unit_pattern changes captures
-        val = float(simple_unit_match.group(1))
+        try:
+            val = float(simple_unit_match.group(1))
+        except (TypeError, ValueError):
+            return pd.NA, value_str_orig
+
         unit = simple_unit_match.group(2)  # Assuming unit is the second capture group
         if unit:
             numeric_val = val * multipliers.get(unit, 1)

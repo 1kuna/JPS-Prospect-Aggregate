@@ -5,6 +5,7 @@ Provides simple email-based authentication without passwords.
 
 import datetime
 from datetime import timezone
+
 UTC = timezone.utc
 
 from flask import request, session
@@ -14,9 +15,6 @@ from app.api.factory import (
     api_route,
     create_blueprint,
     error_response,
-    login_required,
-    admin_required,
-    super_admin_required,
     success_response,
 )
 from app.database import db
@@ -28,13 +26,17 @@ auth_bp, logger = create_blueprint("auth", "/api/auth")
 
 # Add session debugging in production
 import os
+
 if os.getenv("ENVIRONMENT") == "production":
+
     @auth_bp.before_request
     def log_session_before():
         """Debug session issues in production."""
         logger.debug(f"Session before request to {request.endpoint}: {dict(session)}")
-        logger.debug(f"Session cookie: {request.cookies.get('session', 'none')[:50] if request.cookies.get('session') else 'none'}...")
-    
+        logger.debug(
+            f"Session cookie: {request.cookies.get('session', 'none')[:50] if request.cookies.get('session') else 'none'}..."
+        )
+
     @auth_bp.after_request
     def log_session_after(response):
         """Debug session issues in production."""
@@ -80,8 +82,7 @@ def signup():
         logger.info(f"New user signed up: {email}")
 
         return success_response(
-            data={"user": user.to_dict()},
-            message="Account created successfully"
+            data={"user": user.to_dict()}, message="Account created successfully"
         )
 
     except IntegrityError:
@@ -124,8 +125,7 @@ def signin():
         logger.info(f"User signed in: {email}")
 
         return success_response(
-            data={"user": user.to_dict()},
-            message="Sign in successful"
+            data={"user": user.to_dict()}, message="Sign in successful"
         )
 
     except Exception as e:
@@ -151,19 +151,15 @@ def get_status():
     if user_id:
         user = db.session.query(User).filter_by(id=user_id).first()
         if user:
-            return success_response(data={
-                "authenticated": True,
-                "user": user.to_dict()
-            })
+            return success_response(
+                data={"authenticated": True, "user": user.to_dict()}
+            )
         else:
             # Invalid session, clear it
             session.clear()
 
     # Not authenticated
-    return success_response(data={
-        "authenticated": False,
-        "user": None
-    })
+    return success_response(data={"authenticated": False, "user": None})
 
 
 @api_route(auth_bp, "/session", methods=["GET"], auth="login")
@@ -184,9 +180,7 @@ def get_users():
     """Get all users (super admin only)."""
     try:
         users = db.session.query(User).all()
-        return success_response(
-            data={"users": [user.to_dict() for user in users]}
-        )
+        return success_response(data={"users": [user.to_dict() for user in users]})
     except Exception as e:
         logger.error(f"Error getting users: {str(e)}", exc_info=True)
         return error_response(500, "Failed to get users")
@@ -202,7 +196,9 @@ def update_user_role(user_id):
 
         new_role = data.get("role", "").strip().lower()
         if new_role not in ["user", "admin", "super_admin"]:
-            return error_response(400, "Invalid role. Must be 'user', 'admin', or 'super_admin'")
+            return error_response(
+                400, "Invalid role. Must be 'user', 'admin', or 'super_admin'"
+            )
 
         # Prevent modifying own role
         if user_id == session.get("user_id"):
@@ -220,8 +216,7 @@ def update_user_role(user_id):
         logger.info(f"User role updated: {user.email} from {old_role} to {new_role}")
 
         return success_response(
-            data={"user": user.to_dict()},
-            message=f"User role updated to {new_role}"
+            data={"user": user.to_dict()}, message=f"User role updated to {new_role}"
         )
 
     except Exception as e:

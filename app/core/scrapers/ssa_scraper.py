@@ -75,7 +75,6 @@ class SsaScraper(ConsolidatedScraperBase):
 
         return df
 
-
     async def ssa_setup(self) -> bool:
         """SSA-specific setup: simple navigation to base URL."""
         if not self.base_url:

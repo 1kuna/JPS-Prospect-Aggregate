@@ -126,9 +126,9 @@ DHS_CONFIG = ScraperConfig(
         "combine_names": {
             "first_col": "primary_contact_first_name",
             "last_col": "primary_contact_last_name",
-            "out_col": "primary_contact_name"
+            "out_col": "primary_contact_name",
         },
-        "default_country": True
+        "default_country": True,
     },
     extras_fields_map={
         "Contract Number": "contract_number",
@@ -194,9 +194,9 @@ DOT_CONFIG = ScraperConfig(
             "source_col": "place_raw",
             "city_col": "place_city",
             "state_col": "place_state",
-            "country_col": "place_country"
+            "country_col": "place_country",
         },
-        "default_country": True
+        "default_country": True,
     },
     extras_fields_map={
         "Publication Status": "publication_status",
@@ -271,9 +271,9 @@ TREASURY_CONFIG = ScraperConfig(
             "source_col": "place_raw",
             "city_col": "place_city",
             "state_col": "place_state",
-            "country_col": "place_country"
+            "country_col": "place_country",
         },
-        "default_country": True
+        "default_country": True,
     },
     extras_fields_map={
         "PSC": "product_service_code",  # Product Service Code classification
@@ -350,9 +350,9 @@ HHS_CONFIG = ScraperConfig(
         "combine_names": {
             "first_col": "Program Office POC First Name",
             "last_col": "Program Office POC Last Name",
-            "out_col": "primary_contact_name"
+            "out_col": "primary_contact_name",
         },
-        "default_country": True
+        "default_country": True,
     },
     extras_fields_map={
         "Program POC Office": "program_poc_office",
@@ -415,9 +415,9 @@ SSA_CONFIG = ScraperConfig(
             "source_col": "place_raw",
             "city_col": "place_city",
             "state_col": "place_state",
-            "country_col": "place_country"
+            "country_col": "place_country",
         },
-        "default_country": True
+        "default_country": True,
     },
     extras_fields_map={
         "REQUIREMENT TYPE": "requirement_type",
@@ -470,9 +470,9 @@ DOC_CONFIG = ScraperConfig(
             "year_col": "Estimated Solicitation Fiscal Year",
             "quarter_col": "Estimated Solicitation Fiscal Quarter",
             "out_date_col": "release_date_final",
-            "out_fy_col": None
+            "out_fy_col": None,
         },
-        "default_country": {"column": "place_country_final"}
+        "default_country": {"column": "place_country_final"},
     },
     # Map computed final fields into model column names
     db_column_rename_map={
@@ -559,9 +559,9 @@ DOJ_CONFIG = ScraperConfig(
             "qtr_col": "award_date_raw",
             "fy_col": None,
             "out_date_col": "award_date_final",
-            "out_fy_col": "award_fiscal_year_final"
+            "out_fy_col": "award_fiscal_year_final",
         },
-        "default_country": True
+        "default_country": True,
     },
     extras_fields_map={
         "Fiscal Year": "fiscal_year",
@@ -643,15 +643,15 @@ DOS_CONFIG = ScraperConfig(
             "qtr_col": "award_qtr_raw",
             "fy_col": "award_fiscal_year_raw",
             "out_date_col": "award_date_final",
-            "out_fy_col": "award_fiscal_year_final"
+            "out_fy_col": "award_fiscal_year_final",
         },
         "parse_value_priority": {
             "primary_col": "estimated_value_raw1",
             "secondary_col": "estimated_value_raw2",
             "out_value_col": "estimated_value_final",
-            "out_unit_col": "est_value_unit_final"
+            "out_unit_col": "est_value_unit_final",
         },
-        "default_country": {"column": "place_country_final"}
+        "default_country": {"column": "place_country_final"},
     },
     # Map computed final fields into model column names
     db_column_rename_map={

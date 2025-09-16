@@ -125,6 +125,9 @@ class TestDuplicateLogic:
     def test_confidence_calculation_patterns(self):
         """Test confidence score calculation patterns."""
         # Generate random similarity scores
+        min_content_sim = getattr(
+            active_config, "DUPLICATE_NATIVE_ID_MIN_CONTENT_SIM", 0.3
+        )
         test_scenarios = []
         for _ in range(10):
             title_sim = random.random()
@@ -132,10 +135,6 @@ class TestDuplicateLogic:
             test_scenarios.append((title_sim, desc_sim))
 
         # Test that confidence calculation behaves reasonably
-        min_content_sim = getattr(
-            active_config, "DUPLICATE_NATIVE_ID_MIN_CONTENT_SIM", 0.3
-        )
-
         for title_sim, desc_sim in test_scenarios:
             # Simulate confidence calculation logic
             if title_sim < min_content_sim and desc_sim < min_content_sim:
@@ -170,9 +169,6 @@ class TestDuplicateLogic:
     def test_native_id_matching_prevents_false_positives(self):
         """Test that native ID matching logic prevents false positives."""
         min_confidence = getattr(active_config, "DUPLICATE_MIN_CONFIDENCE", 0.5)
-        min_content_sim = getattr(
-            active_config, "DUPLICATE_NATIVE_ID_MIN_CONTENT_SIM", 0.3
-        )
 
         # Test case: Very different content with same native_id
         very_low_title_sim = random.uniform(0.0, 0.1)

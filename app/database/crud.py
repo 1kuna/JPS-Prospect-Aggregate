@@ -75,8 +75,6 @@ def paginate_sqlalchemy_query(query, page: int, per_page: int):
     }
 
 
-
-
 def _preprocess_dataframe(df_in):
     """Preprocess DataFrame: convert dates, handle nulls, remove loaded_at column."""
     # Work on a copy to avoid SettingWithCopyWarning
@@ -122,12 +120,6 @@ def _preprocess_dataframe(df_in):
     return df
 
 
-
-
-
-
-
-
 def bulk_upsert_prospects(
     df_in: pd.DataFrame,
     preserve_ai_data: bool = True,
@@ -147,21 +139,27 @@ def bulk_upsert_prospects(
                                existing records that have been LLM-processed.
         enable_smart_matching (bool): If True, uses advanced matching strategies
                                     to prevent duplicates when titles/descriptions change.
-    
+
     Returns:
         dict: Statistics about the upsert operation including processed, matched,
               inserted, duplicates_prevented, and ai_preserved counts.
     """
     if df_in.empty:
         logger.info("DataFrame is empty, skipping database insertion.")
-        return {"processed": 0, "matched": 0, "inserted": 0, "duplicates_prevented": 0, "ai_preserved": 0}
-    
+        return {
+            "processed": 0,
+            "matched": 0,
+            "inserted": 0,
+            "duplicates_prevented": 0,
+            "ai_preserved": 0,
+        }
+
     # Preprocess the DataFrame
     df = _preprocess_dataframe(df_in)
-    
+
     # Import here to avoid circular imports
     from app.utils.duplicate_prevention import enhanced_bulk_upsert_prospects
-    
+
     # Delegate all work to the enhanced function
     stats = enhanced_bulk_upsert_prospects(
         df,
@@ -170,7 +168,7 @@ def bulk_upsert_prospects(
         preserve_ai_data=preserve_ai_data,
         enable_smart_matching=enable_smart_matching,
     )
-    
+
     # Log results
     if stats["processed"] > 0:
         logger.info(
@@ -178,12 +176,16 @@ def bulk_upsert_prospects(
             f"{stats['matched']} matched, {stats['inserted']} inserted"
         )
         if preserve_ai_data and stats["ai_preserved"] > 0:
-            logger.info(f"AI-enhanced data preserved for {stats['ai_preserved']} records.")
+            logger.info(
+                f"AI-enhanced data preserved for {stats['ai_preserved']} records."
+            )
         if enable_smart_matching and stats["duplicates_prevented"] > 0:
-            logger.info(f"Smart matching prevented {stats['duplicates_prevented']} duplicates.")
+            logger.info(
+                f"Smart matching prevented {stats['duplicates_prevented']} duplicates."
+            )
     else:
         logger.warning("No records were processed.")
-    
+
     return stats
 
 

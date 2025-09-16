@@ -12,7 +12,12 @@ from pathlib import Path
 from flask import Response, request, stream_with_context
 
 from app.api.auth import admin_required
-from app.api.factory import api_route, create_blueprint, error_response, success_response
+from app.api.factory import (
+    api_route,
+    create_blueprint,
+    error_response,
+    success_response,
+)
 
 tools_bp, logger = create_blueprint("tools", "/api/tools")
 
@@ -366,9 +371,9 @@ def execute_script_with_streaming(
                 output_queue.put(("status", "completed"))
             else:
                 running_scripts[execution_id]["status"] = "failed"
-                running_scripts[execution_id]["error"] = (
-                    f"Process exited with code {return_code}"
-                )
+                running_scripts[execution_id][
+                    "error"
+                ] = f"Process exited with code {return_code}"
                 output_queue.put(("error", f"Process exited with code {return_code}"))
 
     except Exception as e:

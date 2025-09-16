@@ -1,13 +1,19 @@
 import json
 import time
 from datetime import timezone
+
 UTC = timezone.utc
 from datetime import datetime, timedelta
 
 from flask import request
 from sqlalchemy import func
 
-from app.api.factory import api_route, create_blueprint, error_response, success_response
+from app.api.factory import (
+    api_route,
+    create_blueprint,
+    error_response,
+    success_response,
+)
 from app.database.models import (
     AIEnrichmentLog,
     LLMOutput,
@@ -160,15 +166,26 @@ def trigger_llm_enhancement():
     limit = data.get("limit", 10)  # Changed default from 100 to 10
 
     # Validate enhancement type
-    valid_types = ["values", "naics", "naics_code", "naics_description", "titles", "set_asides", "all"]
+    valid_types = [
+        "values",
+        "naics",
+        "naics_code",
+        "naics_description",
+        "titles",
+        "set_asides",
+        "all",
+    ]
     if enhancement_type not in valid_types:
-        return error_response(f"Invalid enhancement type. Must be one of: {valid_types}")
+        return error_response(
+            f"Invalid enhancement type. Must be one of: {valid_types}"
+        )
 
     logger.info(f"Starting LLM enhancement: type={enhancement_type}, limit={limit}")
     start_time = time.time()
 
     # Initialize the LLM service
     from app.services.llm_service import ContractLLMService
+
     llm_service = ContractLLMService(model_name="qwen3:latest")
 
     # Get prospects that need processing
@@ -184,7 +201,7 @@ def trigger_llm_enhancement():
                 "processed_count": 0,
                 "duration": 0.0,
                 "enhancement_type": enhancement_type,
-            }
+            },
         )
 
     # Run the appropriate enhancement
@@ -232,7 +249,7 @@ def preview_llm_enhancement():
         return error_response("prospect_id is required")
 
     # Get the prospect
-    prospect = Prospect.query.get(prospect_id)
+    prospect = db.session.get(Prospect, prospect_id)
     if not prospect:
         return error_response("Prospect not found", status_code=404)
 
@@ -253,12 +270,12 @@ def preview_llm_enhancement():
             preview_enhancements.update(
                 {
                     "estimated_value_single": float(parsed_value["single"]),
-                    "estimated_value_min": float(parsed_value["min"])
-                    if parsed_value["min"]
-                    else None,
-                    "estimated_value_max": float(parsed_value["max"])
-                    if parsed_value["max"]
-                    else None,
+                    "estimated_value_min": (
+                        float(parsed_value["min"]) if parsed_value["min"] else None
+                    ),
+                    "estimated_value_max": (
+                        float(parsed_value["max"]) if parsed_value["max"] else None
+                    ),
                 }
             )
             confidence_scores["values"] = (
@@ -321,9 +338,19 @@ def start_iterative_enhancement():
     skip_existing = data.get("skip_existing", True)
 
     # Validate enhancement type
-    valid_types = ["values", "naics", "naics_code", "naics_description", "titles", "set_asides", "all"]
+    valid_types = [
+        "values",
+        "naics",
+        "naics_code",
+        "naics_description",
+        "titles",
+        "set_asides",
+        "all",
+    ]
     if enhancement_type not in valid_types:
-        return error_response(f"Invalid enhancement type. Must be one of: {valid_types}")
+        return error_response(
+            f"Invalid enhancement type. Must be one of: {valid_types}"
+        )
 
     # Start enhancement (runs in background thread)
     result = llm_service.start_enhancement(enhancement_type, skip_existing)
@@ -603,9 +630,7 @@ def _process_title_enhancement(prospect, llm_service, force_redo):
                 prospect_id=prospect.id,
             )
         except Exception as e:
-            logger.error(
-                f"LLM service error for prospect {prospect.id}: {e}"
-            )
+            logger.error(f"LLM service error for prospect {prospect.id}: {e}")
             # Title enhancement failed - LLM service error
             return False
 
@@ -631,15 +656,6 @@ def _process_title_enhancement(prospect, llm_service, force_redo):
         else:
             # Title enhancement failed - no title generated
             return False
-    else:
-        # Not processing title - emit skipped completion
-        if not prospect.title:
-            reason = "No title available to enhance"
-        else:
-            reason = "Already has enhanced title"
-
-        # Title enhancement skipped
-
     return False
 
 
@@ -746,7 +762,7 @@ def _finalize_enhancement(prospect, llm_service, processed, enhancements, force_
             data={
                 "processed": True,
                 "enhancements": enhancements,
-            }
+            },
         )
     else:
         # Enhancement completed - no processing needed
@@ -756,7 +772,7 @@ def _finalize_enhancement(prospect, llm_service, processed, enhancements, force_
             data={
                 "processed": False,
                 "enhancements": [],
-            }
+            },
         )
 
 
@@ -784,7 +800,7 @@ def enhance_single_prospect():
         enhancement_type = data.get("enhancement_type", "all")
 
     # Get the prospect
-    prospect = Prospect.query.get(prospect_id)
+    prospect = db.session.get(Prospect, prospect_id)
     if not prospect:
         return error_response("Prospect not found", status_code=404)
 
@@ -804,7 +820,7 @@ def enhance_single_prospect():
                     "status": "blocked",
                     "enhancement_status": "in_progress",
                     "enhancement_user_id": prospect.enhancement_user_id,
-                }
+                },
             )
 
     # Also check if prospect is already in the queue with a different user
@@ -829,7 +845,7 @@ def enhance_single_prospect():
                     "status": "blocked",
                     "enhancement_status": "queued",
                     "queue_user_id": existing_item.user_id,
-                }
+                },
             )
         else:
             # Same user, return existing queue item
@@ -844,59 +860,79 @@ def enhance_single_prospect():
                     "prospect_id": prospect_id,
                     "priority": "high",
                     "was_existing": True,
-                }
+                },
             )
 
     # Determine which steps will be skipped
+    llm_status = llm_service.check_ollama_status()
+    if not llm_status.get("available"):
+        logger.warning(
+            "LLM service unavailable when queuing enhancement for prospect %s",
+            prospect_id,
+        )
+        return error_response(
+            503,
+            "AI enhancement service is currently unavailable. Please try again later.",
+            data={
+                "status": "llm_unavailable",
+                "llm_status": llm_status,
+            },
+        )
+
     planned_steps = {}
-    enhancement_types_list = enhancement_type.split(',') if enhancement_type else ['all']
-    
+    enhancement_types_list = (
+        enhancement_type.split(",") if enhancement_type else ["all"]
+    )
+
     # Check each enhancement type to see if it will be skipped
-    if 'all' in enhancement_types_list or 'titles' in enhancement_types_list:
+    if "all" in enhancement_types_list or "titles" in enhancement_types_list:
         will_skip = bool(prospect.ai_enhanced_title) and not force_redo
-        planned_steps['titles'] = {
-            'will_process': not will_skip,
-            'reason': 'already_enhanced' if will_skip else None
+        planned_steps["titles"] = {
+            "will_process": not will_skip,
+            "reason": "already_enhanced" if will_skip else None,
         }
-    
-    if 'all' in enhancement_types_list or 'values' in enhancement_types_list:
-        will_skip = (bool(prospect.estimated_value_single) or 
-                    bool(prospect.estimated_value_min) or 
-                    bool(prospect.estimated_value_max)) and not force_redo
-        planned_steps['values'] = {
-            'will_process': not will_skip,
-            'reason': 'already_parsed' if will_skip else None
+
+    if "all" in enhancement_types_list or "values" in enhancement_types_list:
+        will_skip = (
+            bool(prospect.estimated_value_single)
+            or bool(prospect.estimated_value_min)
+            or bool(prospect.estimated_value_max)
+        ) and not force_redo
+        planned_steps["values"] = {
+            "will_process": not will_skip,
+            "reason": "already_parsed" if will_skip else None,
         }
-    
-    if 'all' in enhancement_types_list or 'naics' in enhancement_types_list:
-        will_skip = (bool(prospect.naics) and 
-                    prospect.naics_source == 'llm_inferred') and not force_redo
-        planned_steps['naics'] = {
-            'will_process': not will_skip,
-            'reason': 'already_classified' if will_skip else None
+
+    if "all" in enhancement_types_list or "naics" in enhancement_types_list:
+        will_skip = (
+            bool(prospect.naics) and prospect.naics_source == "llm_inferred"
+        ) and not force_redo
+        planned_steps["naics"] = {
+            "will_process": not will_skip,
+            "reason": "already_classified" if will_skip else None,
         }
-    
-    if 'naics_code' in enhancement_types_list:
+
+    if "naics_code" in enhancement_types_list:
         will_skip = bool(prospect.naics) and not force_redo
-        planned_steps['naics_code'] = {
-            'will_process': not will_skip,
-            'reason': 'already_has_code' if will_skip else None
+        planned_steps["naics_code"] = {
+            "will_process": not will_skip,
+            "reason": "already_has_code" if will_skip else None,
         }
-    
-    if 'naics_description' in enhancement_types_list:
+
+    if "naics_description" in enhancement_types_list:
         will_skip = bool(prospect.naics_description) and not force_redo
-        planned_steps['naics_description'] = {
-            'will_process': not will_skip,
-            'reason': 'already_has_description' if will_skip else None
+        planned_steps["naics_description"] = {
+            "will_process": not will_skip,
+            "reason": "already_has_description" if will_skip else None,
         }
-    
-    if 'all' in enhancement_types_list or 'set_asides' in enhancement_types_list:
+
+    if "all" in enhancement_types_list or "set_asides" in enhancement_types_list:
         will_skip = bool(prospect.set_aside_standardized) and not force_redo
-        planned_steps['set_asides'] = {
-            'will_process': not will_skip,
-            'reason': 'already_standardized' if will_skip else None
+        planned_steps["set_asides"] = {
+            "will_process": not will_skip,
+            "reason": "already_standardized" if will_skip else None,
         }
-    
+
     # Add to priority queue (returns dict with queue_item_id and was_existing)
     enhancement_result = add_individual_enhancement(
         prospect_id=prospect_id,
@@ -923,9 +959,7 @@ def enhance_single_prospect():
             f"Enhancement queued and worker auto-started for prospect {prospect_id}"
         )
     elif was_existing:
-        message = (
-            f"Enhancement request already in progress for prospect {prospect_id}"
-        )
+        message = f"Enhancement request already in progress for prospect {prospect_id}"
     else:
         message = f"Enhancement request queued for prospect {prospect_id}"
 
@@ -941,7 +975,7 @@ def enhance_single_prospect():
             "queue_position": queue_position,
             "queue_size": queue_status.get("queue_size", 0),
             "planned_steps": planned_steps,  # Include planned steps for frontend
-        }
+        },
     )
 
 
@@ -973,7 +1007,7 @@ def cleanup_stale_enhancement_locks():
     logger.info(f"Cleaned up {cleanup_count} stale enhancement locks")
     return success_response(
         message=f"Cleaned up {cleanup_count} stale enhancement locks",
-        data={"cleanup_count": cleanup_count}
+        data={"cleanup_count": cleanup_count},
     )
 
 
@@ -1001,8 +1035,7 @@ def cancel_queue_item(item_id):
         return success_response(message=f"Queue item {item_id} cancelled successfully")
     else:
         return error_response(
-            "Cannot cancel item (not found or already processing)",
-            status_code=400
+            "Cannot cancel item (not found or already processing)", status_code=400
         )
 
 
@@ -1023,7 +1056,9 @@ def stop_queue_worker():
 # SSE functionality has been removed - using polling instead
 
 
-@api_route(llm_bp, "/enhancement-queue/<queue_item_id>", methods=["DELETE"], auth="login")
+@api_route(
+    llm_bp, "/enhancement-queue/<queue_item_id>", methods=["DELETE"], auth="login"
+)
 def cancel_enhancement(queue_item_id):
     """Cancel a queued enhancement request
 
@@ -1045,21 +1080,19 @@ def cancel_enhancement(queue_item_id):
             f"Failed to cancel enhancement queue item: {queue_item_id} (not found)"
         )
         return error_response(
-            "Queue item not found",
-            status_code=404,
-            data={"success": False}
+            "Queue item not found", status_code=404, data={"success": False}
         )
 
     # Check ownership - regular users can only cancel their own enhancements
     if current_user_role not in ["admin", "super_admin"]:
-        if hasattr(queue_item, 'user_id') and queue_item.user_id != current_user_id:
+        if hasattr(queue_item, "user_id") and queue_item.user_id != current_user_id:
             logger.warning(
                 f"User {current_user_id} attempted to cancel enhancement owned by user {queue_item.user_id}"
             )
             return error_response(
                 "You can only cancel your own enhancement requests",
                 status_code=403,
-                data={"success": False}
+                data={"success": False},
             )
 
     # Attempt to cancel the queue item
@@ -1070,8 +1103,7 @@ def cancel_enhancement(queue_item_id):
             f"Successfully cancelled enhancement queue item: {queue_item_id} by user {current_user_id}"
         )
         return success_response(
-            message="Enhancement request cancelled successfully",
-            data={"success": True}
+            message="Enhancement request cancelled successfully", data={"success": True}
         )
     else:
         logger.warning(
@@ -1080,5 +1112,5 @@ def cancel_enhancement(queue_item_id):
         return error_response(
             "Queue item is already processing and cannot be cancelled",
             status_code=409,
-            data={"success": False}
+            data={"success": False},
         )

@@ -265,11 +265,18 @@ export function useEnhancementSimple() {
 
       // Show toast only if this is a new queue item (not already existing)
       if (window.showToast && !queueData.was_existing) {
+        const queuePositionMessage = queueData.queue_position 
+          ? ` at position ${queueData.queue_position}`
+          : '';
+        const workerMessage = queueData.worker_running
+          ? ''
+          : ' Worker is starting automatically.';
+
         window.showToast({
           title: 'Enhancement Queued',
-          message: `Enhancement queued${queueData.queue_position ? ` at position ${queueData.queue_position}` : ''}`,
-          type: 'success',
-          duration: 2000
+          message: `Enhancement queued${queuePositionMessage}.${workerMessage}`.trim(),
+          type: 'info',
+          duration: 3000
         });
       }
 
@@ -277,23 +284,39 @@ export function useEnhancementSimple() {
     } catch (error: unknown) {
       const apiError = error as ApiError;
       
+      const isServiceUnavailable = apiError.status === 503;
+      const errorMessage = apiError.message || (isServiceUnavailable
+        ? 'AI enhancement service is currently unavailable. Please try again later.'
+        : 'Failed to queue enhancement');
+
       // Update state to show error
       setEnhancementStates(prev => ({
         ...prev,
         [prospect_id]: {
           status: 'failed',
-          error: apiError.message || 'Failed to queue enhancement'
+          error: errorMessage
         }
       }));
 
       if (window.showToast) {
         window.showToast({
-          title: 'Enhancement Failed',
-          message: apiError.message || 'Failed to queue enhancement',
-          type: 'error',
-          duration: 5000
+          title: isServiceUnavailable ? 'Enhancement Unavailable' : 'Enhancement Failed',
+          message: errorMessage,
+          type: isServiceUnavailable ? 'warning' : 'error',
+          duration: isServiceUnavailable ? 6000 : 5000
         });
       }
+
+      // Clean up the temporary state after notification shows
+      setTimeout(() => {
+        setEnhancementStates(prev => {
+          const updated = { ...prev };
+          if (updated[prospect_id]?.status === 'failed' && updated[prospect_id]?.error === errorMessage) {
+            delete updated[prospect_id];
+          }
+          return updated;
+        });
+      }, 6000);
 
       throw error;
     }

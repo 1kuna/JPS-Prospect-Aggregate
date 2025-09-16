@@ -20,9 +20,10 @@ error_logger = get_logger("api.error_handlers")
 
 def error_response(status_code, message):
     """Create a standardized error response."""
-    return jsonify(
-        {"error": True, "message": message, "status_code": status_code}
-    ), status_code
+    return (
+        jsonify({"error": True, "message": message, "status_code": status_code}),
+        status_code,
+    )
 
 
 def bad_request(message):
@@ -49,9 +50,16 @@ def register_error_handlers(app):
     @app.errorhandler(SQLAlchemyError)
     def handle_sqlalchemy_error(error):
         error_logger.error(f"SQLAlchemy error: {str(error)}", exc_info=True)
-        return jsonify(
-            {"error": "database_error", "message": "Database error", "status_code": 500}
-        ), 500
+        return (
+            jsonify(
+                {
+                    "error": "database_error",
+                    "message": "Database error",
+                    "status_code": 500,
+                }
+            ),
+            500,
+        )
 
     @app.errorhandler(ScraperError)
     def handle_scraper_error(error):

@@ -8,6 +8,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 from datetime import timezone
+
 UTC = timezone.utc
 from datetime import datetime
 from enum import Enum
@@ -102,18 +103,18 @@ class SimpleEnhancementQueue:
 
         # Cache recent enhancement results for polling
         self._recent_results: dict[str, dict[str, Any]] = {}
-        self._completed_steps: dict[
-            str, list[str]
-        ] = {}  # Track completed steps per prospect
-        self._initial_queue_positions: dict[
-            str, int
-        ] = {}  # Track initial queue positions
-        
+        self._completed_steps: dict[str, list[str]] = (
+            {}
+        )  # Track completed steps per prospect
+        self._initial_queue_positions: dict[str, int] = (
+            {}
+        )  # Track initial queue positions
+
         # Add a real queue for individual enhancements
         self._individual_queue: list[dict[str, Any]] = []
         self._queue_worker_thread: threading.Thread | None = None
         self._queue_worker_running = False
-    
+
     def set_app(self, app):
         """Set the Flask app reference for use in background threads"""
         self._app = app
@@ -122,122 +123,141 @@ class SimpleEnhancementQueue:
     def _process_queue_worker(self):
         """Background worker to process queued enhancements"""
         logger.info("Queue worker started")
-        
+
         # Check if app is set
         if not self._app:
             logger.error("Flask app not set in enhancement queue - worker cannot start")
             return
-        
+
         while self._queue_worker_running:
             item_to_process = None
             with self._lock:
                 # Find next queued item (don't remove it yet)
                 for item in self._individual_queue:
-                    if item['status'] == 'queued':
-                        item['status'] = 'processing'
+                    if item["status"] == "queued":
+                        item["status"] = "processing"
                         item_to_process = item
                         break
-            
+
             if not item_to_process:
                 time.sleep(1)
                 continue
-            
+
             # Process the item outside the lock, but within app context
             with self._app.app_context():
                 try:
-                    logger.info(f"Processing queued enhancement for prospect {item_to_process['prospect_id'][:8]}...")
-                    result = self.enhance_single_prospect(
-                        item_to_process['prospect_id'],
-                        item_to_process['enhancement_type'],
-                        item_to_process['user_id'],
-                        item_to_process['force_redo']
+                    logger.info(
+                        f"Processing queued enhancement for prospect {item_to_process['prospect_id'][:8]}..."
                     )
-                    
+                    result = self.enhance_single_prospect(
+                        item_to_process["prospect_id"],
+                        item_to_process["enhancement_type"],
+                        item_to_process["user_id"],
+                        item_to_process["force_redo"],
+                    )
+
                     # Update item status based on explicit result status
-                    status = str(result.get('status', '')).lower()
+                    status = str(result.get("status", "")).lower()
                     with self._lock:
-                        if status == 'completed':
-                            item_to_process['status'] = 'completed'
-                        elif status == 'failed' or status == 'error':
-                            item_to_process['status'] = 'failed'
-                            item_to_process['error'] = result.get('message') or 'Enhancement failed'
+                        if status == "completed":
+                            item_to_process["status"] = "completed"
+                        elif status == "failed" or status == "error":
+                            item_to_process["status"] = "failed"
+                            item_to_process["error"] = (
+                                result.get("message") or "Enhancement failed"
+                            )
                         else:
                             # Treat unknown statuses conservatively as failed
-                            item_to_process['status'] = 'failed'
-                            item_to_process['error'] = result.get('message') or 'Unknown enhancement status'
-                        item_to_process['completed_at'] = time.time()
-                        item_to_process['result'] = result
-                        
+                            item_to_process["status"] = "failed"
+                            item_to_process["error"] = (
+                                result.get("message") or "Unknown enhancement status"
+                            )
+                        item_to_process["completed_at"] = time.time()
+                        item_to_process["result"] = result
+
                 except Exception as e:
-                    logger.error(f"Error processing queued enhancement: {e}", exc_info=True)
+                    logger.error(
+                        f"Error processing queued enhancement: {e}", exc_info=True
+                    )
                     with self._lock:
-                        item_to_process['status'] = 'failed'
-                        item_to_process['error'] = str(e)
-                        item_to_process['completed_at'] = time.time()
-                
+                        item_to_process["status"] = "failed"
+                        item_to_process["error"] = str(e)
+                        item_to_process["completed_at"] = time.time()
+
             # Clean up old completed/failed items (older than 5 minutes)
             with self._lock:
                 current_time = time.time()
                 self._individual_queue = [
-                    item for item in self._individual_queue
-                    if item['status'] in ['queued', 'processing'] or 
-                    (current_time - item.get('completed_at', current_time)) < 300
+                    item
+                    for item in self._individual_queue
+                    if item["status"] in ["queued", "processing"]
+                    or (current_time - item.get("completed_at", current_time)) < 300
                 ]
-            
+
             time.sleep(0.5)  # Small delay between items
-            
+
         logger.info("Queue worker stopped")
-    
+
     def start_queue_worker(self):
         """Start the background queue worker"""
         with self._lock:
             if self._queue_worker_running:
                 return
-            
+
             self._queue_worker_running = True
-            self._queue_worker_thread = threading.Thread(target=self._process_queue_worker)
+            self._queue_worker_thread = threading.Thread(
+                target=self._process_queue_worker
+            )
             self._queue_worker_thread.daemon = True
             self._queue_worker_thread.start()
             logger.info("Started queue worker thread")
-    
+
     def stop_queue_worker(self):
         """Stop the background queue worker"""
         with self._lock:
             self._queue_worker_running = False
-        
+
         if self._queue_worker_thread:
             self._queue_worker_thread.join(timeout=5)
             self._queue_worker_thread = None
             logger.info("Stopped queue worker thread")
-            
-    def add_to_queue(self, prospect_id: str, enhancement_type: str, user_id: int, force_redo: bool) -> str:
+
+    def add_to_queue(
+        self, prospect_id: str, enhancement_type: str, user_id: int, force_redo: bool
+    ) -> str:
         """Add an enhancement to the queue and return immediately"""
         queue_item_id = f"individual_{prospect_id[:8]}_{int(time.time())}"
-        
+
         with self._lock:
-            self._individual_queue.append({
-                'queue_item_id': queue_item_id,
-                'prospect_id': prospect_id,
-                'enhancement_type': enhancement_type,
-                'user_id': user_id,
-                'force_redo': force_redo,
-                'status': 'queued',
-                'created_at': time.time()
-            })
-            
+            self._individual_queue.append(
+                {
+                    "queue_item_id": queue_item_id,
+                    "prospect_id": prospect_id,
+                    "enhancement_type": enhancement_type,
+                    "user_id": user_id,
+                    "force_redo": force_redo,
+                    "status": "queued",
+                    "created_at": time.time(),
+                }
+            )
+
             # Calculate actual queue position (only count queued items)
-            queue_position = sum(1 for item in self._individual_queue if item['status'] == 'queued')
-            
+            queue_position = sum(
+                1 for item in self._individual_queue if item["status"] == "queued"
+            )
+
             # Store initial queue position
             self._initial_queue_positions[prospect_id] = queue_position
-            
+
             # Initialize completed steps
             self._completed_steps[prospect_id] = []
-        
+
         # Start worker if not running
         self.start_queue_worker()
-        
-        logger.info(f"Added enhancement to queue: {queue_item_id} at position {queue_position}")
+
+        logger.info(
+            f"Added enhancement to queue: {queue_item_id} at position {queue_position}"
+        )
         return queue_item_id
 
     def get_status(self) -> dict[str, Any]:
@@ -270,12 +290,16 @@ class SimpleEnhancementQueue:
                 "processed": self._progress.processed,
                 "total": self._progress.total,
                 "current_prospect_id": self._progress.current_prospect_id,
-                "started_at": self._progress.started_at.isoformat()
-                if self._progress.started_at
-                else None,
-                "completed_at": self._progress.completed_at.isoformat()
-                if self._progress.completed_at
-                else None,
+                "started_at": (
+                    self._progress.started_at.isoformat()
+                    if self._progress.started_at
+                    else None
+                ),
+                "completed_at": (
+                    self._progress.completed_at.isoformat()
+                    if self._progress.completed_at
+                    else None
+                ),
                 "errors": self._progress.errors[-10:],  # Keep only last 10 errors
                 "is_processing": self._processing,
                 "pending_items": pending_items,
@@ -347,7 +371,7 @@ class SimpleEnhancementQueue:
         This is for real-time UI updates.
         """
         try:
-            prospect = Prospect.query.get(prospect_id)
+            prospect = db.session.get(Prospect, prospect_id)
             if not prospect:
                 return {
                     "status": "error",
@@ -404,12 +428,14 @@ class SimpleEnhancementQueue:
                     will = (force_redo or not already_parsed) and has_source_value
                     planned["values"] = {
                         "will_process": will,
-                        "reason": None
-                        if will
-                        else (
-                            "already_parsed"
-                            if already_parsed and not force_redo
-                            else "no_value_source"
+                        "reason": (
+                            None
+                            if will
+                            else (
+                                "already_parsed"
+                                if already_parsed and not force_redo
+                                else "no_value_source"
+                            )
                         ),
                     }
 
@@ -420,12 +446,14 @@ class SimpleEnhancementQueue:
                     )
                     planned["naics"] = {
                         "will_process": will,
-                        "reason": None
-                        if will
-                        else (
-                            "already_has_code"
-                            if prospect.naics and not force_redo
-                            else "missing_description"
+                        "reason": (
+                            None
+                            if will
+                            else (
+                                "already_has_code"
+                                if prospect.naics and not force_redo
+                                else "missing_description"
+                            )
                         ),
                     }
 
@@ -436,12 +464,14 @@ class SimpleEnhancementQueue:
                     )
                     planned["naics_code"] = {
                         "will_process": will,
-                        "reason": None
-                        if will
-                        else (
-                            "already_has_code"
-                            if prospect.naics and not force_redo
-                            else "missing_description"
+                        "reason": (
+                            None
+                            if will
+                            else (
+                                "already_has_code"
+                                if prospect.naics and not force_redo
+                                else "missing_description"
+                            )
                         ),
                     }
 
@@ -452,12 +482,14 @@ class SimpleEnhancementQueue:
                     )
                     planned["naics_description"] = {
                         "will_process": will,
-                        "reason": None
-                        if will
-                        else (
-                            "already_has_description"
-                            if prospect.naics_description and not force_redo
-                            else "no_code_to_describe"
+                        "reason": (
+                            None
+                            if will
+                            else (
+                                "already_has_description"
+                                if prospect.naics_description and not force_redo
+                                else "no_code_to_describe"
+                            )
                         ),
                     }
 
@@ -467,20 +499,24 @@ class SimpleEnhancementQueue:
                     has_set_aside_signal = bool((prospect.set_aside or "").strip()) or (
                         isinstance(prospect.extra, dict)
                         and bool(
-                            (prospect.extra or {}).get(
-                                "original_small_business_program", ""
-                            ).strip()
+                            (prospect.extra or {})
+                            .get("original_small_business_program", "")
+                            .strip()
                         )
                     )
-                    will = (not bool(prospect.set_aside_standardized) or bool(force_redo)) and has_set_aside_signal
+                    will = (
+                        not bool(prospect.set_aside_standardized) or bool(force_redo)
+                    ) and has_set_aside_signal
                     planned["set_asides"] = {
                         "will_process": will,
-                        "reason": None
-                        if will
-                        else (
-                            "already_standardized"
-                            if prospect.set_aside_standardized and not force_redo
-                            else "no_set_aside_signal"
+                        "reason": (
+                            None
+                            if will
+                            else (
+                                "already_standardized"
+                                if prospect.set_aside_standardized and not force_redo
+                                else "no_set_aside_signal"
+                            )
                         ),
                     }
 
@@ -493,9 +529,7 @@ class SimpleEnhancementQueue:
                 prospect, enhancement_type, progress_callback, force_redo
             )
 
-            attempted = any(
-                step.get("will_process") for step in planned_steps.values()
-            )
+            attempted = any(step.get("will_process") for step in planned_steps.values())
 
             if any(results.values()):
                 db.session.commit()
@@ -556,9 +590,7 @@ class SimpleEnhancementQueue:
                         "status": "completed",
                         "enhancements": results,
                         "completed_at": time.time(),
-                        "completed_steps": self._completed_steps.get(
-                            prospect_id, []
-                        ),
+                        "completed_steps": self._completed_steps.get(prospect_id, []),
                         "planned_steps": planned_steps,
                     }
 
@@ -672,18 +704,18 @@ class SimpleEnhancementQueue:
         with self._lock:
             # First check if item is in the queue
             for queue_item in self._individual_queue:
-                if queue_item.get('queue_item_id') == item_id:
-                    prospect_id = queue_item['prospect_id']
-                    
-                    if queue_item['status'] == 'queued':
+                if queue_item.get("queue_item_id") == item_id:
+                    prospect_id = queue_item["prospect_id"]
+
+                    if queue_item["status"] == "queued":
                         # Calculate queue position
                         position = 1
                         for idx, item in enumerate(self._individual_queue):
-                            if item['status'] == 'queued':
-                                if item['queue_item_id'] == item_id:
+                            if item["status"] == "queued":
+                                if item["queue_item_id"] == item_id:
                                     break
                                 position += 1
-                        
+
                         return {
                             "item_id": item_id,
                             "status": "queued",
@@ -692,7 +724,7 @@ class SimpleEnhancementQueue:
                             "completed_steps": [],
                             "error": None,
                         }
-                    elif queue_item['status'] == 'processing':
+                    elif queue_item["status"] == "processing":
                         # Item is currently being processed
                         current_step = None
                         if self._current_enhancement_type:
@@ -710,34 +742,40 @@ class SimpleEnhancementQueue:
                                 current_step = "Processing set asides..."
                             else:
                                 current_step = "Processing..."
-                        
+
                         return {
                             "item_id": item_id,
                             "status": "processing",
                             "position": None,
                             "current_step": current_step,
-                            "completed_steps": self._completed_steps.get(prospect_id, []),
+                            "completed_steps": self._completed_steps.get(
+                                prospect_id, []
+                            ),
                             "error": None,
                         }
-                    elif queue_item['status'] == 'completed':
+                    elif queue_item["status"] == "completed":
                         return {
                             "item_id": item_id,
                             "status": "completed",
                             "position": None,
                             "current_step": None,
-                            "completed_steps": self._completed_steps.get(prospect_id, ["titles", "values", "naics", "set_asides"]),
+                            "completed_steps": self._completed_steps.get(
+                                prospect_id, ["titles", "values", "naics", "set_asides"]
+                            ),
                             "error": None,
                         }
-                    elif queue_item['status'] == 'failed':
+                    elif queue_item["status"] == "failed":
                         return {
                             "item_id": item_id,
                             "status": "failed",
                             "position": None,
                             "current_step": None,
-                            "completed_steps": self._completed_steps.get(prospect_id, []),
-                            "error": queue_item.get('error', 'Unknown error'),
+                            "completed_steps": self._completed_steps.get(
+                                prospect_id, []
+                            ),
+                            "error": queue_item.get("error", "Unknown error"),
                         }
-            
+
             # Extract prospect_id from item_id for backward compatibility
             parts = item_id.split("_")
             if len(parts) >= 2:
@@ -819,7 +857,7 @@ class SimpleEnhancementQueue:
                 # Query database to check if prospect has been enhanced
                 from app.database.models import Prospect
 
-                prospect = Prospect.query.get(prospect_id)
+                prospect = db.session.get(Prospect, prospect_id)
                 if prospect and prospect.ollama_processed_at:
                     # Clean up cached initial position for completed item
                     if prospect_id in self._initial_queue_positions:
@@ -866,17 +904,17 @@ class SimpleEnhancementQueue:
             items = {}
             # Add all queued items from the individual queue
             for queue_item in self._individual_queue:
-                if queue_item['status'] in ['queued', 'processing']:
+                if queue_item["status"] in ["queued", "processing"]:
                     mock_item = MockQueueItem(
-                        prospect_id=queue_item['prospect_id'],
-                        user_id=queue_item.get('user_id', 1),
-                        enhancement_type=queue_item.get('enhancement_type', 'all'),
-                        processing_type='individual',
-                        status=queue_item['status'],
-                        item_id=queue_item['queue_item_id'],
+                        prospect_id=queue_item["prospect_id"],
+                        user_id=queue_item.get("user_id", 1),
+                        enhancement_type=queue_item.get("enhancement_type", "all"),
+                        processing_type="individual",
+                        status=queue_item["status"],
+                        item_id=queue_item["queue_item_id"],
                     )
-                    items[queue_item['queue_item_id']] = mock_item
-            
+                    items[queue_item["queue_item_id"]] = mock_item
+
             # Also add current processing item if different
             if self._processing and self._current_prospect_id:
                 # Create mock queue item with expected attributes and consistent ID
@@ -891,7 +929,7 @@ class SimpleEnhancementQueue:
                         item_id=item_id,
                     )
                     items[item_id] = mock_item
-            
+
             return items
 
     def _get_prospects_needing_enhancement(
@@ -1010,7 +1048,7 @@ def add_individual_enhancement(
     queue_item_id = enhancement_queue.add_to_queue(
         prospect_id, enhancement_type, user_id or 1, force_redo
     )
-    
+
     # Get current queue position
     with enhancement_queue._lock:
         queue_position = len(enhancement_queue._individual_queue)

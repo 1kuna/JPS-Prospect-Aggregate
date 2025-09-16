@@ -93,10 +93,10 @@ def cleanup_logs(logs_dir=None, keep_count=3):
 
 def get_logger(name: str | None = None) -> Any:
     """Get a bound logger with the specified or auto-detected name.
-    
+
     Args:
         name: Logger name. If None, uses the calling module's __name__
-        
+
     Returns:
         Bound logger instance
     """
@@ -104,7 +104,7 @@ def get_logger(name: str | None = None) -> Any:
         # Auto-detect from calling module
         frame = inspect.currentframe()
         if frame and frame.f_back:
-            name = frame.f_back.f_globals.get('__name__', 'unknown')
+            name = frame.f_back.f_globals.get("__name__", "unknown")
     return logger.bind(name=name)
 
 

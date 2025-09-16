@@ -6,6 +6,7 @@ prevention system.
 """
 
 from datetime import timezone
+
 UTC = timezone.utc
 from datetime import datetime
 from unittest.mock import Mock, patch
@@ -222,8 +223,6 @@ class TestConfigurableThresholds:
         mock_config.DUPLICATE_TITLE_SIMILARITY_THRESHOLD = 0.7
         mock_config.DUPLICATE_FUZZY_CONTENT_THRESHOLD = 0.9
         mock_config.DUPLICATE_MIN_CONFIDENCE = 0.85
-
-        detector = DuplicateDetector()
 
         # This would need more complex mocking to fully test,
         # but the configuration is now accessible

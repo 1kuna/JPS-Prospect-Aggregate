@@ -1,4 +1,5 @@
 from datetime import date, datetime, timezone
+
 UTC = timezone.utc
 
 from flask import request
@@ -118,21 +119,24 @@ def get_dashboard():
         return success_response(
             data={
                 "total_proposals": total_prospects,
-                "latest_successful_scrape": latest_successful_scrape.isoformat().replace("+00:00", "Z")
-                if latest_successful_scrape
-                else None,
+                "latest_successful_scrape": (
+                    latest_successful_scrape.isoformat().replace("+00:00", "Z")
+                    if latest_successful_scrape
+                    else None
+                ),
                 "top_agencies": [
-                    {"agency": agency, "count": count}
-                    for agency, count in top_agencies
+                    {"agency": agency, "count": count} for agency, count in top_agencies
                 ],
                 "upcoming_proposals": [
                     {
                         "id": p.id,
                         "title": p.title,
                         "agency": p.agency,
-                        "proposal_date": p.release_date.isoformat().replace("+00:00", "Z")
-                        if p.release_date
-                        else None,
+                        "proposal_date": (
+                            p.release_date.isoformat().replace("+00:00", "Z")
+                            if p.release_date
+                            else None
+                        ),
                     }
                     for p in upcoming_prospects_data
                 ],
@@ -140,9 +144,11 @@ def get_dashboard():
                     {
                         "data_source_name": name,
                         "status": status,
-                        "last_checked": last_checked.isoformat().replace("+00:00", "Z")
-                        if last_checked
-                        else None,
+                        "last_checked": (
+                            last_checked.isoformat().replace("+00:00", "Z")
+                            if last_checked
+                            else None
+                        ),
                         "details": details,
                     }
                     for name, status, last_checked, details in recent_scraper_activity
@@ -415,9 +421,7 @@ def set_ai_preservation_config():
             logger.info(f"Smart duplicate matching setting updated to: {new_value}")
 
         if not updated_fields:
-            return error_response(
-                400, "At least one configuration field is required"
-            )
+            return error_response(400, "At least one configuration field is required")
 
         return success_response(
             data={
@@ -480,20 +484,26 @@ def _format_prospect_for_api(prospect):
     return {
         "id": prospect.id,
         "native_id": prospect.native_id,
-        "title": prospect.title[:100] + "..."
-        if prospect.title and len(prospect.title) > 100
-        else prospect.title,
-        "description": prospect.description[:150] + "..."
-        if prospect.description and len(prospect.description) > 150
-        else prospect.description,
+        "title": (
+            prospect.title[:100] + "..."
+            if prospect.title and len(prospect.title) > 100
+            else prospect.title
+        ),
+        "description": (
+            prospect.description[:150] + "..."
+            if prospect.description and len(prospect.description) > 150
+            else prospect.description
+        ),
         "agency": prospect.agency,
         "naics": prospect.naics,
         "place_city": prospect.place_city,
         "place_state": prospect.place_state,
         "ai_processed": prospect.ollama_processed_at is not None,
-        "loaded_at": prospect.loaded_at.isoformat().replace("+00:00", "Z")
-        if prospect.loaded_at
-        else None,
+        "loaded_at": (
+            prospect.loaded_at.isoformat().replace("+00:00", "Z")
+            if prospect.loaded_at
+            else None
+        ),
     }
 
 
@@ -911,6 +921,5 @@ def get_data_sources_for_duplicates():
         logger.error(f"Error getting data sources: {str(e)}", exc_info=True)
         return error_response(500, f"Failed to get data sources: {str(e)}")
 
+
 # Add main/general routes here
-
-

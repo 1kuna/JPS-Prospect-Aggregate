@@ -78,7 +78,9 @@ def validate_file_content(
                 try:
                     with open(file_path, encoding="utf-8", errors="ignore") as f:
                         first_chunk = f.read(256).lower()
-                        is_html_inside = ("<html" in first_chunk) or ("<table" in first_chunk)
+                        is_html_inside = ("<html" in first_chunk) or (
+                            "<table" in first_chunk
+                        )
                 except Exception:
                     is_html_inside = False
 
@@ -89,6 +91,7 @@ def validate_file_content(
                 # Prefer bs4/html5lib if available; otherwise, skip heavy validation to avoid noisy warnings
                 try:
                     import bs4  # type: ignore
+
                     _ = bs4  # silence linter unused import
                     tables = pd.read_html(file_path, flavor="bs4")
                     df = tables[0] if tables else pd.DataFrame()
