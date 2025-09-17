@@ -15,6 +15,11 @@ interface ScraperResult {
   error?: string;
 }
 
+interface RunAllScrapersResponse {
+  results?: ScraperResult[];
+  total_duration?: number;
+}
+
 export function useDataSourceManagement(enabled: boolean = true) {
   const queryClient = useQueryClient();
   const { showSuccessToast, showErrorToast, showInfoToast } = useToast();
@@ -31,24 +36,28 @@ export function useDataSourceManagement(enabled: boolean = true) {
 
   // Mutation for running all scrapers
   const runAllScrapersMutation = useMutation({
-    mutationFn: () => postProcessing<any>('/api/data-sources/run-all', undefined, { 
-      deduplicate: true,
-      deduplicationKey: 'run-all-scrapers'
-    }),
+    mutationFn: () =>
+      postProcessing<RunAllScrapersResponse>('/api/data-sources/run-all', undefined, {
+        deduplicate: true,
+        deduplicationKey: 'run-all-scrapers',
+      }),
     onMutate: () => {
       // Show initial toast when scrapers start
       showInfoToast('Scrapers Started', 'Running all scrapers... This may take several minutes.');
     },
     onSuccess: (data) => {
       // All scrapers completed - show results
-      const payload = (data && data.data) ? data.data : data;
-      if (payload?.results) {
-        const { message, failedCount } = formatScraperResults(payload.results, payload.total_duration || 0);
-        
+      const payload: RunAllScrapersResponse | undefined = data?.data ?? data;
+      const results: ScraperResult[] | undefined = payload?.results;
+
+      if (results && results.length > 0) {
+        const totalDuration = payload?.total_duration ?? 0;
+        const { message, failedCount } = formatScraperResults(results, totalDuration);
+
         // Show appropriate toast based on results
         if (failedCount === 0) {
           showSuccessToast('All Scrapers Completed', message);
-        } else if (failedCount === payload.results.length) {
+        } else if (failedCount === results.length) {
           showErrorToast({
             code: 'ALL_SCRAPERS_FAILED',
             message: message,

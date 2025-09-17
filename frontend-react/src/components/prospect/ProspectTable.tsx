@@ -71,7 +71,7 @@ export function ProspectTable({
           ))}
         </TableHeader>
         <TableBody className="bg-background divide-y divide-border">
-          {table.getRowModel().rows.map((row, rowIndex) => {
+          {table.getRowModel().rows.map((row) => {
             const isRecentlyUpdated = false; // Animation removed for performance
             
             return (
