@@ -44,10 +44,3 @@ jobs:
           docker-compose pull
           powershell -ExecutionPolicy Bypass -File .\docker\deploy.ps1
     
-    - name: Notify deployment status
-      if: always()
-      uses: 8398a7/action-slack@v3
-      with:
-        status: ${{ job.status }}
-        text: 'Deployment ${{ job.status }} for commit ${{ github.sha }}'
-        webhook_url: ${{ secrets.SLACK_WEBHOOK }}
