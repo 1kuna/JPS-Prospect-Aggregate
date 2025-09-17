@@ -127,7 +127,7 @@ describe('useProspectDecisions', () => {
     
     // Generate fresh test data
     testDecision = generateDecision();
-    testProspectId = `prospect-${Math.random().toString(36).substr(2, 9)}`;
+    testProspectId = 'prospect-123';
     
     // Get mocked functions
     const { get } = await import('@/utils/apiUtils');

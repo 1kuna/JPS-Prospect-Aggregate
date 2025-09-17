@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
 import { get, post, del, buildQueryString } from '@/utils/apiUtils';
 import { 
   ApiResponse, 
@@ -31,7 +32,7 @@ const decisionsApi = {
   getMyDecisions: async (page = 1, perPage = 50): Promise<ApiResponse<{ decisions: GoNoGoDecision[]; pagination: PaginationMeta }>> => {
     const queryParams = buildQueryString({ page, per_page: perPage });
     return await get<ApiResponse<{ decisions: GoNoGoDecision[]; pagination: PaginationMeta }>>(
-      `${API_BASE}/my${queryParams}`,
+      `${API_BASE}/user${queryParams}`,
       { credentials: 'include' }
     );
   },
@@ -59,7 +60,7 @@ export const useProspectDecisions = (prospectId: string | null) => {
     enabled: !!prospectId,
     staleTime: 1 * 60 * 1000, // 1 minute
     retry: 1, // Only retry once
-    retryDelay: 1000, // Wait 1 second before retry
+    retryDelay: 100, // Short retry delay keeps UI responsive and tests deterministic
   });
 };
 
@@ -84,9 +85,13 @@ export const useDecisionStats = () => {
 // Hook to create or update a decision
 export const useCreateDecision = () => {
   const queryClient = useQueryClient();
-  
-  return useMutation({
+  const [lastError, setLastError] = useState<Error | null>(null);
+
+  const mutation = useMutation({
     mutationFn: decisionsApi.createDecision,
+    onMutate: () => {
+      setLastError(null);
+    },
     onSuccess: (_, variables) => {
       // Invalidate queries related to this prospect
       queryClient.invalidateQueries({ 
@@ -103,16 +108,31 @@ export const useCreateDecision = () => {
       queryClient.invalidateQueries({ 
         queryKey: ['admin'] 
       });
+      setLastError(null);
+    },
+    onError: (error) => {
+      if (error instanceof Error) {
+        setLastError(error);
+      }
     },
   });
+
+  return {
+    ...mutation,
+    error: (mutation.error as Error | null) ?? lastError,
+  };
 };
 
 // Hook to delete a decision
 export const useDeleteDecision = () => {
   const queryClient = useQueryClient();
-  
-  return useMutation({
+  const [lastError, setLastError] = useState<Error | null>(null);
+
+  const mutation = useMutation({
     mutationFn: decisionsApi.deleteDecision,
+    onMutate: () => {
+      setLastError(null);
+    },
     onSuccess: () => {
       // Invalidate all decision queries
       queryClient.invalidateQueries({ 
@@ -122,6 +142,17 @@ export const useDeleteDecision = () => {
       queryClient.invalidateQueries({ 
         queryKey: ['admin'] 
       });
+      setLastError(null);
+    },
+    onError: (error) => {
+      if (error instanceof Error) {
+        setLastError(error);
+      }
     },
   });
+
+  return {
+    ...mutation,
+    error: (mutation.error as Error | null) ?? lastError,
+  };
 };

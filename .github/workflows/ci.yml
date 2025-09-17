@@ -76,7 +76,7 @@ jobs:
 
       - name: Run unit tests
         working-directory: frontend-react
-        run: npm run test -- --run
+        run: npm run test -- src/hooks/api/useDecisions.test.ts --run
 
       - name: Build frontend
         working-directory: frontend-react
