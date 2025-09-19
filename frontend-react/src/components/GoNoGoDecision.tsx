@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useCreateDecision, useProspectDecisions, useDeleteDecision } from '../hooks/api';
+import { useCreateDecision, useProspectDecisions, useDeleteDecision } from '@/hooks/api/useDecisions';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
@@ -50,7 +50,7 @@ export const GoNoGoDecision = ({ prospectId, prospectTitle, compact }: GoNoGoDec
       await createDecisionMutation.mutateAsync({
         prospect_id: String(prospectId),
         decision: pendingDecision,
-        reason: reason.trim(),
+        reason: reason.trim() === '' ? undefined : reason.trim(),
       });
       
       setShowReasonDialog(false);
@@ -111,8 +111,8 @@ export const GoNoGoDecision = ({ prospectId, prospectTitle, compact }: GoNoGoDec
             <span 
               className={`px-2 py-1 rounded text-xs font-medium ${
                 existingDecision.decision === 'go' 
-                  ? 'bg-success-light/20 text-success-dark dark:text-success' 
-                  : 'bg-danger-light/20 text-danger-dark dark:text-danger'
+                  ? 'bg-success-light/20 text-success-dark dark:text-success bg-green-100 text-green-800' 
+                  : 'bg-danger-light/20 text-danger-dark dark:text-danger bg-red-100 text-red-800'
               }`}
             >
               {existingDecision.decision === 'go' ? 'GO' : 'NO-GO'}
@@ -130,7 +130,7 @@ export const GoNoGoDecision = ({ prospectId, prospectTitle, compact }: GoNoGoDec
               variant="outline"
               onClick={() => handleDecisionClick('go')}
               disabled={createDecisionMutation.isPending}
-              className="text-success-dark dark:text-success border-success/30 dark:border-success/30 hover:bg-highlight-success dark:hover:bg-highlight-success"
+              className="text-success-dark dark:text-success border-success/30 dark:border-success/30 hover:bg-highlight-success dark:hover:bg-highlight-success text-green-700 border-green-300 hover:bg-green-50"
             >
               GO
             </Button>
@@ -139,7 +139,7 @@ export const GoNoGoDecision = ({ prospectId, prospectTitle, compact }: GoNoGoDec
               variant="outline"
               onClick={() => handleDecisionClick('no-go')}
               disabled={createDecisionMutation.isPending}
-              className="text-danger-dark dark:text-danger border-danger/30 dark:border-danger/30 hover:bg-highlight-danger dark:hover:bg-highlight-danger"
+              className="text-danger-dark dark:text-danger border-danger/30 dark:border-danger/30 hover:bg-highlight-danger dark:hover:bg-highlight-danger text-red-700 border-red-300 hover:bg-red-50"
             >
               NO-GO
             </Button>
@@ -155,9 +155,7 @@ export const GoNoGoDecision = ({ prospectId, prospectTitle, compact }: GoNoGoDec
             </DialogHeader>
             
             {prospectTitle && (
-              <p className="text-sm text-muted-foreground mb-4">
-                <strong>Prospect:</strong> {prospectTitle}
-              </p>
+              <p className="text-sm text-muted-foreground mb-4">Prospect: {prospectTitle}</p>
             )}
 
             <div className="mb-4">
@@ -200,9 +198,7 @@ export const GoNoGoDecision = ({ prospectId, prospectTitle, compact }: GoNoGoDec
       <h3 className="text-lg font-semibold mb-4">Go/No-Go Decision</h3>
       
       {prospectTitle && (
-        <p className="text-muted-foreground mb-4">
-          <strong>Prospect:</strong> {prospectTitle}
-        </p>
+        <p className="text-muted-foreground mb-4">Prospect: {prospectTitle}</p>
       )}
 
       {existingDecision ? (
