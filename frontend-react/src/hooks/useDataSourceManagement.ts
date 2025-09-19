@@ -47,7 +47,7 @@ export function useDataSourceManagement(enabled: boolean = true) {
     },
     onSuccess: (data) => {
       // All scrapers completed - show results
-      const payload: RunAllScrapersResponse | undefined = data?.data ?? data;
+      const payload: RunAllScrapersResponse | undefined = data;
       const results: ScraperResult[] | undefined = payload?.results;
 
       if (results && results.length > 0) {

@@ -19,10 +19,9 @@ export default tseslint.config(
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
-      'react-refresh/only-export-components': [
-        'warn',
-        { allowConstantExport: true },
-      ],
+      // This rule optimizes local dev Fast Refresh, not runtime correctness.
+      // Disable to avoid non-actionable warnings in CI while keeping other strict rules.
+      'react-refresh/only-export-components': 'off',
       '@typescript-eslint/no-unused-vars': [
         'error',
         {

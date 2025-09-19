@@ -56,7 +56,7 @@ export function ProspectEnhancementProvider({ children }: { children: ReactNode 
       if (!state) return null;
       
       // Initialize progress object with all possible enhancement types
-      const progress: Record<string, any> = {};
+      const progress: Record<string, EnhancementStepData> = {} as Record<string, EnhancementStepData>;
       const baseEnhancementTypes = state.enhancementTypes || ['titles', 'values', 'naics', 'set_asides'];
       const progressKeys = state.progress ? Object.keys(state.progress) : [];
       const plannedKeys = state.plannedSteps ? Object.keys(state.plannedSteps) : [];
@@ -67,22 +67,22 @@ export function ProspectEnhancementProvider({ children }: { children: ReactNode 
         // Check if this step is planned to be skipped
         if (state.plannedSteps && state.plannedSteps[type]) {
           const planned = state.plannedSteps[type];
-          const baseProgress = state.progress?.[type] || {};
+          const baseProgress = (state.progress?.[type] ?? {}) as EnhancementStepData;
           const willProcess = planned.will_process;
           progress[type] = {
             ...baseProgress,
-            completed: Boolean((baseProgress as any).completed) && willProcess,
-            skipped: willProcess ? Boolean((baseProgress as any).skipped) : true,
-            skipReason: !willProcess ? planned.reason || 'already_enhanced' : (baseProgress as any).skipReason
+            completed: Boolean(baseProgress.completed) && willProcess,
+            skipped: willProcess ? Boolean(baseProgress.skipped) : true,
+            skipReason: !willProcess ? planned.reason || 'already_enhanced' : baseProgress.skipReason
           };
         } else {
           // No planned steps info, default behavior
-          const baseProgress = state.progress?.[type] || {};
+          const baseProgress = (state.progress?.[type] ?? {}) as EnhancementStepData;
           progress[type] = {
             ...baseProgress,
-            completed: Boolean((baseProgress as any).completed),
-            skipped: Boolean((baseProgress as any).skipped),
-            skipReason: (baseProgress as any).skipReason
+            completed: Boolean(baseProgress.completed),
+            skipped: Boolean(baseProgress.skipped),
+            skipReason: baseProgress.skipReason
           };
         }
       });

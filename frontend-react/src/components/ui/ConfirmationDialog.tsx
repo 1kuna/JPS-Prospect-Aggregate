@@ -112,6 +112,12 @@ export function useConfirmationDialog() {
     props: {},
   });
 
+  // Keep a stable ref to the resolver to avoid stale closures in callbacks
+  const resolveRef = React.useRef<((confirmed: boolean) => void) | null>(null);
+  React.useEffect(() => {
+    resolveRef.current = dialogState.resolve ?? null;
+  }, [dialogState.resolve]);
+
   const confirm = React.useCallback(
     (props: Omit<ConfirmationDialogProps, 'open' | 'onOpenChange' | 'onConfirm'>) => {
       return new Promise<boolean>((resolve) => {
@@ -126,18 +132,18 @@ export function useConfirmationDialog() {
   );
 
   const handleOpenChange = React.useCallback((open: boolean) => {
-    if (!open && dialogState.resolve) {
-      dialogState.resolve(false);
+    if (!open && resolveRef.current) {
+      resolveRef.current(false);
     }
     setDialogState((prev) => ({ ...prev, open }));
-  }, [dialogState.resolve]);
+  }, []);
 
   const handleConfirm = React.useCallback(() => {
-    if (dialogState.resolve) {
-      dialogState.resolve(true);
+    if (resolveRef.current) {
+      resolveRef.current(true);
     }
     setDialogState((prev) => ({ ...prev, open: false }));
-  }, [dialogState.resolve]);
+  }, []);
 
   const DialogComponent = React.useMemo(
     () => (

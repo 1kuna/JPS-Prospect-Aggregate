@@ -2,8 +2,19 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { DataSource } from '@/types';
 import { get, post, put, del } from '@/utils/apiUtils';
 
+interface ApiDataSourceRaw {
+  id: number;
+  name: string;
+  url: string;
+  description?: string | null;
+  last_scraped?: string | null;
+  prospect_count?: number;
+  last_status?: { last_checked?: string | null; status?: string };
+  type?: string;
+}
+
 // Normalize API payload to frontend DataSource shape
-function normalizeDataSource(apiItem: any): DataSource {
+function normalizeDataSource(apiItem: ApiDataSourceRaw): DataSource {
   return {
     id: apiItem.id,
     name: apiItem.name,
@@ -20,7 +31,7 @@ function normalizeDataSource(apiItem: any): DataSource {
 // --- API Call Functions ---
 
 async function fetchDataSourcesAPI(): Promise<{ status: string; data: DataSource[] }> {
-  const response = await get<{ status: string; data: any[] }>(
+  const response = await get<{ status: string; data: ApiDataSourceRaw[] }>(
     '/api/data-sources/'
   );
   return {
@@ -70,7 +81,7 @@ export function useListDataSourcesAdmin(options?: { refetchInterval?: number; re
   return useQuery({
     queryKey: ['dataSources', 'admin'],
     queryFn: async () => {
-      const response = await get<{ status: string; data: any[] }>(
+      const response = await get<{ status: string; data: ApiDataSourceRaw[] }>(
         '/api/data-sources'
       );
       return {

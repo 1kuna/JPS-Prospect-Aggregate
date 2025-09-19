@@ -15,6 +15,7 @@ interface EnhancementState {
   queueItemId?: string;
   plannedSteps?: Record<string, { will_process: boolean; reason?: string | null }>;
   progress?: Record<string, { completed?: boolean; skipped?: boolean; skipReason?: string | null }>;
+  estimatedTimeRemaining?: number;
 }
 
 interface EnhancementRequest {
@@ -69,9 +70,10 @@ export function useEnhancementSimple() {
 
   // Clean up polling intervals on unmount
   useEffect(() => {
+    const intervals = pollingIntervalsRef.current;
     return () => {
-      pollingIntervalsRef.current.forEach(interval => clearInterval(interval));
-      pollingIntervalsRef.current.clear();
+      intervals.forEach(interval => clearInterval(interval));
+      intervals.clear();
     };
   }, []);
 

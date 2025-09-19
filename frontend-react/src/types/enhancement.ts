@@ -6,6 +6,7 @@
 export interface EnhancementStepData {
   completed: boolean;
   skipped?: boolean;
+  skipReason?: string;
   data?: {
     // Values step data
     estimated_value_single?: string;

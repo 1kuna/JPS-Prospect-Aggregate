@@ -85,19 +85,18 @@ export default function Prospects() {
   };
 
   // Auto-load more data when scrolling near the end
+  const virtualItems = virtualizer.getVirtualItems();
   useEffect(() => {
-    const [lastItem] = [...virtualizer.getVirtualItems()].reverse();
-    
+    const lastItem = virtualItems[virtualItems.length - 1];
     if (!lastItem) return;
-    
     if (
-      prospects && lastItem.index >= prospects.length - 1 - 5 && // Load when 5 items from the end
+      prospects && lastItem.index >= (prospects.length - 1 - 5) &&
       hasNextPage &&
       !isFetchingNextPage
     ) {
       fetchNextPage();
     }
-  }, [hasNextPage, fetchNextPage, isFetchingNextPage, virtualizer.getVirtualItems(), prospects?.length]);
+  }, [hasNextPage, fetchNextPage, isFetchingNextPage, virtualItems, prospects]);
 
 
   const totalProspects = statisticsData?.data?.total ?? 0;

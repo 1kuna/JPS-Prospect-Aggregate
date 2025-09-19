@@ -29,12 +29,12 @@ export function AIEnrichment() {
     isStartingIterative,
     isStoppingIterative
   } = useEnhancementQueueService({
-    llmOutputsType: enhancementType as any  // Cast to any to handle all enhancement types including naics_description
+    llmOutputsType: enhancementType
   });
 
   // Sync local processing state with server state
   useEffect(() => {
-    if (progress?.status === 'idle' || progress?.status === 'completed' || progress?.status === 'failed') {
+    if (progress?.status === 'idle' || progress?.status === 'completed' || progress?.status === 'error') {
       setIsLocalProcessing(false);
     } else if (progress?.status === 'processing' || progress?.status === 'stopping') {
       setIsLocalProcessing(true);
@@ -299,7 +299,7 @@ export function AIEnrichment() {
                   )}
 
                   {/* Errors */}
-                  {(progress?.error_count > 0 || (progress?.errors && progress.errors.length > 0)) && (
+                  {(((progress?.error_count ?? 0) > 0) || (progress?.errors && progress.errors.length > 0)) && (
                     <div className="bg-destructive/10 border border-destructive/20 p-3 rounded-lg">
                       <div className="text-sm text-destructive">
                         <span className="font-medium">Errors encountered: </span>

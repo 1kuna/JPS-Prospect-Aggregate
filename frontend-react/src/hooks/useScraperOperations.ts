@@ -3,15 +3,6 @@ import { useMutation, useQueryClient, UseMutationResult } from '@tanstack/react-
 import { post } from '@/utils/apiUtils';
 import { DataSource } from '@/types';
 
-interface ScraperResult {
-  source_name: string;
-  source_id: number;
-  status: string;
-  duration: number;
-  message?: string;
-  error?: string;
-}
-
 export function useScraperOperations() {
   const queryClient = useQueryClient();
   const [runningScrapers, setRunningScrapers] = useState<Set<number>>(new Set());
@@ -59,11 +50,7 @@ export function useScraperOperations() {
   };
 
   // Handle running all scrapers with progress tracking
-  const handleRunAllScrapers = (runAllMutation: UseMutationResult<{
-    message: string;
-    total_duration: number;
-    results?: ScraperResult[];
-  }, Error, void, unknown>) => {
+  const handleRunAllScrapers = (runAllMutation: UseMutationResult<unknown, Error, void, unknown>) => {
     setRunAllInProgress(true);
     return runAllMutation.mutate(undefined, {
       onSettled: () => {

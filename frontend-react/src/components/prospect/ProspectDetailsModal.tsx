@@ -23,17 +23,21 @@ interface ProspectDetailsModalProps {
   showAIEnhanced: boolean;
   onShowAIEnhancedChange: (checked: boolean) => void;
   getProspectStatus: (id: string) => {
-    status?: string;
+    status?: 'idle' | 'queued' | 'processing' | 'completed' | 'failed' | string;
     currentStep?: string;
     queuePosition?: number;
     progress?: {
-      titles?: { completed: boolean };
-      naics?: { completed: boolean };
-      values?: { completed: boolean };
-      contacts?: { completed: boolean };
+      titles?: { completed: boolean; skipped?: boolean; skipReason?: string };
+      naics?: { completed: boolean; skipped?: boolean; skipReason?: string };
+      values?: { completed: boolean; skipped?: boolean; skipReason?: string };
+      contacts?: { completed: boolean; skipped?: boolean; skipReason?: string };
+      set_asides?: { completed: boolean; skipped?: boolean; skipReason?: string };
     };
+    enhancementTypes?: string[];
+    plannedSteps?: Record<string, { will_process: boolean; reason?: string | null }>;
+    error?: string | null;
   } | null;
-  _addToQueue?: (params: { prospect_id: string; force_redo: boolean; user_id: number; enhancement_types?: string[] }) => Promise<string>;
+  addToQueue?: (params: { prospect_id: string; force_redo: boolean; user_id: number; enhancement_types?: string[] }) => Promise<string>;
   formatUserDate: (dateString: string | null | undefined, format?: 'date' | 'datetime' | 'time' | 'relative', options?: Partial<Record<string, unknown>>) => string;
 }
 
@@ -44,7 +48,7 @@ export function ProspectDetailsModal({
   showAIEnhanced,
   onShowAIEnhancedChange,
   getProspectStatus,
-  _addToQueue,
+  addToQueue: _addToQueue,
   formatUserDate
 }: ProspectDetailsModalProps) {
   const isSuperAdmin = useIsSuperAdmin();
@@ -52,9 +56,12 @@ export function ProspectDetailsModal({
   const [enhancementStarted, setEnhancementStarted] = useState(false);
   const enhancementState = useMemo(() => {
     return selectedProspect ? getProspectStatus(selectedProspect.id) : null;
-  }, [selectedProspect?.id, getProspectStatus]);
+  }, [selectedProspect, getProspectStatus]);
   const isEnhancementActive = enhancementState?.status ? ['queued', 'processing'].includes(enhancementState.status) : false;
   const showCompletionBadge = Boolean(selectedProspect?.ollama_processed_at) && !enhancementStarted && !isEnhancementActive;
+  type OverallStatus = 'idle' | 'queued' | 'processing' | 'completed' | 'failed';
+  const toOverallStatus = (s?: string): OverallStatus | undefined =>
+    s === 'idle' || s === 'queued' || s === 'processing' || s === 'completed' || s === 'failed' ? s : undefined;
   
   // Monitor enhancement status and reset the started flag when completed
   useEffect(() => {
@@ -151,12 +158,12 @@ export function ProspectDetailsModal({
             <EnhancementErrorBoundary>
               <EnhancementProgress 
                 status={enhancementState ? {
-                  overallStatus: enhancementState.status,
+                  overallStatus: toOverallStatus(enhancementState.status),
                   currentStep: enhancementState.currentStep,
                   progress: enhancementState.progress,
-                  enhancementTypes: (enhancementState as any).enhancementTypes,
-                  plannedSteps: (enhancementState as any).plannedSteps,
-                  error: enhancementState.error
+                  enhancementTypes: enhancementState.enhancementTypes,
+                  plannedSteps: enhancementState.plannedSteps,
+                  error: enhancementState.error ?? null
                 } : null}
                 isVisible={Boolean(
                   enhancementStarted ||

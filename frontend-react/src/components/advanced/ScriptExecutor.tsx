@@ -32,7 +32,7 @@ export function ScriptExecutor({ script, onClose }: ScriptExecutorProps) {
   // Initialize default parameters
   useEffect(() => {
     if (script.parameters) {
-      const defaults: Record<string, any> = {};
+      const defaults: Record<string, string | number | boolean> = {};
       script.parameters.forEach(param => {
         if (param.default !== undefined) {
           defaults[param.name] = param.default;
