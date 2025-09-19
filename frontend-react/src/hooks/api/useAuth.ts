@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import React from 'react';
 import { get, post } from '@/utils/apiUtils';
 import { 
   ApiResponse, 
@@ -80,36 +81,67 @@ export const useCurrentUser = () => {
 // Hook for sign up
 export const useSignUp = () => {
   const queryClient = useQueryClient();
-  
-  return useMutation({
+  const [lastError, setLastError] = React.useState<Error | null>(null);
+  const [lastData, setLastData] = React.useState<ApiResponse<{ user: User; message: string }> | undefined>(undefined);
+
+  const mutation = useMutation({
     mutationFn: authApi.signUp,
-    onSuccess: () => {
-      // Invalidate auth queries to refetch status
+    onMutate: () => setLastError(null),
+    onSuccess: (data) => {
+      setLastError(null);
+      setLastData(data);
       queryClient.invalidateQueries({ queryKey: ['auth'] });
     },
+    onError: (error) => {
+      if (error instanceof Error) setLastError(error);
+    },
   });
+
+  return {
+    ...mutation,
+    error: (mutation.error as Error | null) ?? lastError,
+    data: (mutation.data as typeof lastData) ?? lastData,
+  };
 };
 
 // Hook for sign in
 export const useSignIn = () => {
   const queryClient = useQueryClient();
-  
-  return useMutation({
+  const [lastError, setLastError] = React.useState<Error | null>(null);
+  const [lastData, setLastData] = React.useState<ApiResponse<{ user: User; message: string }> | undefined>(undefined);
+
+  const mutation = useMutation({
     mutationFn: authApi.signIn,
-    onSuccess: () => {
-      // Invalidate auth queries to refetch status
+    onMutate: () => setLastError(null),
+    onSuccess: (data) => {
+      setLastError(null);
+      setLastData(data);
       queryClient.invalidateQueries({ queryKey: ['auth'] });
     },
+    onError: (error) => {
+      if (error instanceof Error) setLastError(error);
+    },
   });
+
+  return {
+    ...mutation,
+    error: (mutation.error as Error | null) ?? lastError,
+    data: (mutation.data as typeof lastData) ?? lastData,
+  };
 };
 
 // Hook for sign out
 export const useSignOut = () => {
   const queryClient = useQueryClient();
-  
-  return useMutation({
+  const [lastError, setLastError] = React.useState<Error | null>(null);
+  const [lastData, setLastData] = React.useState<ApiResponse<{ message: string }> | undefined>(undefined);
+
+  const mutation = useMutation({
     mutationFn: authApi.signOut,
-    onSuccess: () => {
+    onMutate: () => setLastError(null),
+    onSuccess: (data) => {
+      setLastError(null);
+      setLastData(data);
       // Immediately set auth status to false
       queryClient.setQueryData(['auth', 'status'], {
         data: {
@@ -117,18 +149,21 @@ export const useSignOut = () => {
           user: null
         }
       });
-      
-      // Invalidate all queries to force refetch
       queryClient.invalidateQueries();
-      
-      // Clear all other cached data after a small delay
       setTimeout(() => {
-        queryClient.removeQueries({
-          predicate: (query) => query.queryKey[0] !== 'auth'
-        });
+        queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== 'auth' });
       }, 100);
     },
+    onError: (error) => {
+      if (error instanceof Error) setLastError(error);
+    }
   });
+
+  return {
+    ...mutation,
+    error: (mutation.error as Error | null) ?? lastError,
+    data: (mutation.data as typeof lastData) ?? lastData,
+  };
 };
 
 // Helper function to check if user is admin
